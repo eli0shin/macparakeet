@@ -50,12 +50,12 @@ The long monologue is 235 words in one Reading Turn. Its three paragraphs are 84
 
 ## Decision
 
-**Select Reading (`?variant=reading`) as the production direction.**
+**Select Conversation (`?variant=conversation`) as the production direction.**
 
-Reading makes the transcript a continuous document. The speaker rail gives identity and one quiet start timestamp without making each timing boundary dominant. Paragraphs carry the visual hierarchy for long speech. The contained overlap treatment preserves both complete contributions. Playback focus remains clear without changing the document structure.
+Conversation gives each stable Reading Turn a clear speaker container and makes exchanges easy to follow. One quiet timestamp or play control belongs to the complete Reading Turn; fine word timestamps remain hidden evidence and do not create visible rows. Long cards keep paragraphs inside the same speaker container, while overlap keeps both complete contributions together.
 
-Reject **Conversation** as the default because repeated card edges give short and uncertain turns too much weight. It works well for rapid chat but fragments a long meeting and makes the 235-word turn feel like a message bubble.
+Reject **Reading** as the default because its editorial speaker rail makes speaker changes less immediate in conversational material. Its continuous page is calm for monologues, but the weaker turn boundaries require more effort when the reader follows an exchange.
 
-Reject **Hybrid** as the default because topic rails add an editorial grouping that the available transcript evidence does not reliably provide. It scans well and its side-by-side overlap treatment is useful, but the extra hierarchy competes with speaker continuity.
+Reject **Hybrid** as the default because topic rails add an editorial grouping that the available transcript evidence does not reliably provide. It scans well, but the extra hierarchy competes with the conversation and implies chapters that the transcript builder cannot safely infer.
 
-For production, use Reading as the base and retain Hybrid's explicit overlap boundary. Do not carry the prototype evidence notes or synthetic topic labels into production.
+For production, use Conversation as the base. Keep one seek affordance per Reading Turn, paragraphs inside long turns, and an explicit overlap boundary. Do not carry the prototype evidence notes or synthetic topic labels into production.

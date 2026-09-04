@@ -206,7 +206,7 @@
 
     function render() {
       const requested = new URLSearchParams(location.search).get("variant");
-      const variant = variants.find(item => item.key === requested) || variants[1];
+      const variant = variants.find(item => item.key === requested) || variants[0];
       const transcript = document.getElementById("transcript");
       transcript.className = variant.key;
       if (variant.key === "hybrid") {
@@ -232,7 +232,7 @@
     }
 
     function cycle(direction) {
-      const current = new URLSearchParams(location.search).get("variant") || "reading";
+      const current = new URLSearchParams(location.search).get("variant") || "conversation";
       const index = variants.findIndex(item => item.key === current);
       const next = variants[(index + direction + variants.length) % variants.length];
       const url = new URL(location.href);
