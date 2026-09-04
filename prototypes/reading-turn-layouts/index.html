@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reading Turn Layout Prototype — MacParakeet</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #202322;
+      --muted: #5f6460;
+      --line: #dedfdc;
+      --paper: #fbfaf7;
+      --surface: #ffffff;
+      --accent: #e86b3b;
+      --accent-soft: #fff0e9;
+      --focus: #147d64;
+      --focus-soft: #e5f4ef;
+      --overlap: #7a5cba;
+      --overlap-soft: #f2edfb;
+      --warning: #7b4908;
+      --shadow: 0 12px 35px rgb(27 31 29 / 10%);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f1f0ec; color: var(--ink); }
+    button { font: inherit; }
+    .app-shell { display: grid; grid-template-columns: 190px minmax(0, 1fr); min-height: 100vh; }
+    .sidebar { background: #ebeae6; border-right: 1px solid #d6d5d1; padding: 20px 14px; }
+    .brand { display: flex; align-items: center; gap: 9px; padding: 4px 8px 23px; font-weight: 700; }
+    .brand-mark { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 9px; background: var(--accent); color: #38170b; }
+    .nav-item { display: flex; gap: 9px; padding: 8px 10px; margin-bottom: 3px; border-radius: 7px; color: #555956; font-size: 14px; }
+    .nav-item.active { background: #d9d8d4; color: var(--ink); font-weight: 600; }
+    main { min-width: 0; padding: 32px 42px 120px; }
+    .page-header { max-width: 980px; margin: 0 auto 24px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+    .eyebrow { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    h1 { margin: 6px 0 5px; font-size: 27px; letter-spacing: -.02em; }
+    .subtitle { margin: 0; color: var(--muted); font-size: 14px; }
+    .header-actions { display: flex; gap: 8px; }
+    .quiet-button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 11px; color: #505451; }
+    .prototype-note { max-width: 980px; margin: 0 auto 22px; padding: 10px 13px; border: 1px dashed #c5a794; border-radius: 9px; color: #705847; background: #fff8f1; font-size: 12px; }
+    .metrics { max-width: 980px; margin: 0 auto 22px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--line); }
+    .metric { background: rgb(255 255 255 / 70%); padding: 11px 14px; }
+    .metric strong { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+    .metric span { color: var(--muted); font-size: 11px; }
+    #transcript { max-width: 980px; margin: auto; }
+    .turn { scroll-margin: 100px; transition: background .18s, box-shadow .18s, border-color .18s; }
+    .turn.playing { background: var(--focus-soft) !important; border-color: #8cc8b7 !important; box-shadow: 0 0 0 2px rgb(20 125 100 / 10%); }
+    .speaker { font-weight: 690; }
+    .speaker-dot { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--speaker-color); }
+    .time-button { border: 0; background: transparent; padding: 2px 3px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; cursor: pointer; border-radius: 4px; }
+    .time-button:hover, .time-button:focus-visible { color: var(--focus); background: var(--focus-soft); outline: none; }
+    .paragraphs { user-select: text; }
+    .paragraphs p { margin: 0 0 .78em; line-height: 1.64; }
+    .paragraphs p:last-child { margin-bottom: 0; }
+    .evidence { margin-top: 10px; color: var(--warning); font-size: 11px; }
+    .overlap-label { display: inline-flex; align-items: center; gap: 5px; color: var(--overlap); font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+
+    /* A: familiar conversation cards; every turn is a discrete object. */
+    .conversation { display: grid; gap: 9px; }
+    .conversation .turn { width: min(78%, 740px); padding: 13px 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+    .conversation .turn[data-speaker="Me"] { margin-left: auto; background: #fff9f5; }
+    .conversation .turn-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; font-size: 13px; }
+    .conversation .overlap-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; border-left: 3px solid var(--overlap); background: var(--overlap-soft); border-radius: 10px; }
+    .conversation .overlap-pair .turn { width: auto; margin: 0; }
+
+    /* B: editorial reading page; turns share one continuous document. */
+    .reading { max-width: 820px !important; padding: 34px 46px; background: var(--paper); border: 1px solid #dfddd7; border-radius: 6px; box-shadow: var(--shadow); }
+    .reading .turn { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 20px; padding: 16px 8px; border-top: 1px solid transparent; border-bottom: 1px solid transparent; }
+    .reading .turn + .turn { border-top-color: #e7e3dc; }
+    .reading .turn-header { position: sticky; top: 12px; align-self: start; display: grid; gap: 4px; font-size: 12px; }
+    .reading .time-button { width: fit-content; padding-left: 15px; }
+    .reading .paragraphs { font-family: Charter, Georgia, serif; font-size: 16px; }
+    .reading .overlap-pair { margin: 12px -24px; padding: 5px 16px 5px 21px; border-left: 3px solid var(--overlap); background: linear-gradient(90deg, var(--overlap-soft), transparent); }
+    .reading .overlap-pair::before { content: "SIMULTANEOUS SPEECH"; display: block; margin: 5px 7px 1px 156px; color: var(--overlap); font-size: 9px; font-weight: 800; letter-spacing: .08em; }
+
+    /* C: grouped scan view; chapter rails contain compact turns. */
+    .hybrid { display: grid; gap: 18px; }
+    .scene { display: grid; grid-template-columns: 135px minmax(0, 1fr); border-top: 1px solid #cccac4; padding-top: 13px; }
+    .scene-marker { color: var(--muted); font-size: 11px; }
+    .scene-marker strong { display: block; margin-bottom: 5px; color: var(--ink); font-size: 13px; }
+    .scene-content { display: grid; gap: 3px; }
+    .hybrid .turn { display: grid; grid-template-columns: 105px minmax(0, 1fr); gap: 16px; padding: 11px 13px; border: 1px solid transparent; border-radius: 8px; }
+    .hybrid .turn:hover { background: rgb(255 255 255 / 60%); }
+    .hybrid .turn-header { display: grid; align-content: start; gap: 4px; font-size: 12px; }
+    .hybrid .paragraphs { font-size: 14px; }
+    .hybrid .overlap-pair { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid #d9cdef; border-radius: 9px; background: var(--overlap-soft); }
+    .hybrid .overlap-pair .turn { grid-template-columns: 82px minmax(0, 1fr); }
+
+    .switcher { position: fixed; z-index: 20; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 7px; border-radius: 15px; background: #202321; box-shadow: 0 8px 30px rgb(0 0 0 / 28%); color: white; }
+    .switcher button { width: 34px; height: 34px; border: 0; border-radius: 9px; background: #393d3a; color: white; cursor: pointer; }
+    .switcher button:hover { background: #4c514d; }
+    .variant-label { min-width: 210px; text-align: center; }
+    .variant-label strong { display: block; font-size: 13px; }
+    .variant-label span { color: #afb5b0; font-size: 10px; }
+    .player { position: fixed; z-index: 10; right: 22px; bottom: 22px; display: none; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 11px; background: var(--focus); color: white; box-shadow: var(--shadow); font-size: 12px; }
+    .player.visible { display: flex; }
+    .player button { border: 0; background: rgb(255 255 255 / 18%); color: white; border-radius: 50%; width: 27px; height: 27px; }
+    @media (max-width: 820px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      main { padding: 24px 16px 115px; }
+      .metrics { grid-template-columns: 1fr 1fr; }
+      .reading { padding: 18px 16px; }
+      .reading .turn, .hybrid .turn, .scene { grid-template-columns: 1fr; gap: 7px; }
+      .conversation .turn { width: 94%; }
+      .conversation .overlap-pair, .hybrid .overlap-pair { grid-template-columns: 1fr; }
+      .reading .turn-header { position: static; display: flex; justify-content: space-between; }
+      .reading .overlap-pair::before { margin-left: 7px; }
+      .scene-marker { padding: 0 6px; }
+      .player { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="App preview navigation">
+      <div class="brand"><span class="brand-mark">M</span> MacParakeet</div>
+      <div class="nav-item">⌁ Transcribe</div>
+      <div class="nav-item">▦ Library</div>
+      <div class="nav-item active">♬ Meetings</div>
+      <div class="nav-item">✦ Transforms</div>
+      <div class="nav-item">⚙ Settings</div>
+    </aside>
+    <main>
+      <header class="page-header">
+        <div>
+          <div class="eyebrow">Saved meeting · 8 September 2026</div>
+          <h1>Reading Turn design review</h1>
+          <p class="subtitle">18:00 · 3 participants · Source audio saved</p>
+        </div>
+        <div class="header-actions"><button class="quiet-button">Find</button><button class="quiet-button">Export</button></div>
+      </header>
+      <div class="prototype-note"><strong>Throwaway prototype.</strong> Three presentations use one frozen Reading Turn fixture. Select transcript text normally. Select a timestamp to test playback focus.</div>
+      <section class="metrics" id="metrics" aria-label="Fixture readability metrics"></section>
+      <article id="transcript" aria-live="polite"></article>
+    </main>
+  </div>
+  <div class="player" id="player"><button id="pause" aria-label="Pause">Ⅱ</button><span id="player-label"></span></div>
+  <nav class="switcher" aria-label="Prototype variant switcher">
+    <button id="previous" aria-label="Previous variant">←</button>
+    <div class="variant-label"><strong id="variant-name"></strong><span>Use ← and → to compare</span></div>
+    <button id="next" aria-label="Next variant">→</button>
+  </nav>
+
+  <script>
+    // Three transcript presentations, switchable with ?variant=, in a production-shaped meeting detail shell.
+    const readingTurns = Object.freeze([
+      { id: "t01", speaker: "Alex", color: "#3278a8", source: "system", start: 0, end: 18, scene: "Opening", paragraphs: ["Thanks for joining. The goal today is to choose a transcript presentation that stays readable after a long meeting without hiding where the speech came from. We should judge the same difficult evidence in every option, not tune the sample until one design wins."] },
+      { id: "t02", speaker: "Me", color: "#d75e35", source: "microphone", start: 19, end: 30, scene: "Opening", paragraphs: ["I want the result to feel like a document first. Playback and attribution still matter, but neither should make every timing adjustment look like a new thought."] },
+      { id: "t03", speaker: "Priya", color: "#6d58a7", source: "system", start: 33, end: 224, scene: "Design principles", paragraphs: ["The first principle is continuity. People speak in ideas that are longer than an ASR chunk, and a useful transcript should preserve that shape. If a speaker pauses to find a word, restarts a clause, or receives a quick acknowledgement, the page should not immediately turn into a stack of tiny cards. Stable attribution belongs at the Reading Turn level while precise word times remain available as evidence. This also gives us a safe place to apply conservative cleanup without rewriting the source transcript.", "The second principle is editorial rhythm. A long explanation needs paragraphs even when the speaker never changes. Sentence punctuation can suggest a boundary, a clear pause can strengthen it, and a maximum word count can stop the page becoming a wall of text. The paragraph does not claim that a new event happened in the audio. It only gives the reader a place to breathe, and it must not repeat the speaker heading as if another person began speaking.", "The final principle is honest uncertainty. One noisy word at the edge of a diarization region should not manufacture a confident participant. Unattributed system words can inherit the stable identity of their utterance when the surrounding evidence agrees. Real interjections and real simultaneous speech must remain visible, however, because readability is not permission to erase disagreement. The design should make exceptional evidence available without asking every ordinary sentence to carry diagnostic chrome."], overlap: "ov1", note: "Contains a long monologue and unattributed system words inherited from stable utterance context." },
+      { id: "t04", speaker: "Me", color: "#d75e35", source: "microphone", start: 91, end: 92, scene: "Design principles", paragraphs: ["Right."], overlap: "ov1", note: "Short backchannel retained inside Priya’s continuing Reading Turn." },
+      { id: "t05", speaker: "Unknown", color: "#8a8d89", source: "system", start: 229, end: 230, scene: "Stress cases", paragraphs: ["Actually."], uncertain: true, note: "One-word A/B/A label flip with weak attribution; shown as Unknown rather than a confident new speaker." },
+      { id: "t06", speaker: "Priya", color: "#6d58a7", source: "system", start: 231, end: 257, scene: "Stress cases", paragraphs: ["The familiar conversation layout makes that uncertainty very visible. That can be useful for correction, but it also gives a single doubtful word almost the same visual weight as an entire explanation. In a ninety-minute meeting the card edges become the strongest feature on the page."], note: "Stable speaker resumes after the one-word flip." },
+      { id: "t07", speaker: "Me", color: "#d75e35", source: "microphone", start: 262, end: 281, scene: "Stress cases", paragraphs: ["What happens during real overlap? I do not want alternating words. I want both complete contributions held together so the reader can understand that they happened at the same time."], overlap: "ov2" },
+      { id: "t08", speaker: "Priya", color: "#6d58a7", source: "system", start: 265, end: 286, scene: "Stress cases", paragraphs: ["We can use a contained overlap treatment. It should interrupt the reading flow just enough to explain the timing, while preserving each speaker’s sentence as selectable text."], overlap: "ov2", note: "Genuine cross-source overlap; both contributions stay intact." },
+      { id: "t09", speaker: "Alex", color: "#3278a8", source: "system", start: 292, end: 306, scene: "Stress cases", paragraphs: ["The recording plays through the selected output device, so everyone in the room hears the same phrase."], overlap: "dup1", duplicate: true },
+      { id: "t10", speaker: "Me", color: "#d75e35", source: "microphone", start: 293, end: 308, scene: "Stress cases", paragraphs: ["The recording plays through the selected output device, so everyone in the room hears the same phrase."], overlap: "dup1", duplicate: true, note: "Speaker-mode acoustic duplicate is exposed, not silently merged as a diarization fix." },
+      { id: "t11", speaker: "Priya", color: "#6d58a7", source: "system", start: 315, end: 340, scene: "Decision", paragraphs: ["My preference is the Reading option. It is the only one that makes the long explanation feel primary while timestamps, overlap, and uncertain attribution remain available. Conversation is best for rapid chat, and Hybrid scans well, but both introduce more repeated structure than this material needs."] },
+      { id: "t12", speaker: "Me", color: "#d75e35", source: "microphone", start: 342, end: 351, scene: "Decision", paragraphs: ["Agreed. Let us keep the editorial page and borrow the clear overlap boundary from Hybrid."] }
+    ]);
+
+    const variants = [
+      { key: "conversation", label: "A — Conversation cards" },
+      { key: "reading", label: "B — Reading document" },
+      { key: "hybrid", label: "C — Grouped hybrid" }
+    ];
+    let activeTurn = "t07";
+
+    const words = text => text.trim().split(/\s+/).filter(Boolean).length;
+    const durationMinutes = Math.max(...readingTurns.map(turn => turn.end)) / 60;
+    const turnWordCounts = readingTurns.map(turn => turn.paragraphs.reduce((sum, paragraph) => sum + words(paragraph), 0)).sort((a, b) => a - b);
+    const median = (turnWordCounts[5] + turnWordCounts[6]) / 2;
+    const metrics = [
+      [(readingTurns.length / durationMinutes).toFixed(1), "Reading Turns / minute"],
+      [turnWordCounts.filter(count => count < 3).length, "Tiny blocks (<3 words)"],
+      [median.toFixed(1), "Median words / turn"],
+      [readingTurns.flatMap(turn => turn.paragraphs).filter(paragraph => words(paragraph) > 120).length, "Paragraphs over 120 words"]
+    ];
+    document.getElementById("metrics").innerHTML = metrics.map(([value, label]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join("");
+
+    function time(seconds) {
+      const minutes = Math.floor(seconds / 60);
+      return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+    }
+
+    function turnMarkup(turn) {
+      return `<section class="turn ${turn.id === activeTurn ? "playing" : ""}" data-id="${turn.id}" data-speaker="${turn.speaker}" style="--speaker-color:${turn.color}" aria-label="${turn.speaker}, ${time(turn.start)}">
+        <header class="turn-header"><span class="speaker"><i class="speaker-dot"></i>${turn.speaker}</span><button class="time-button" data-seek="${turn.id}" title="Play from ${time(turn.start)}">▶ ${time(turn.start)}</button></header>
+        <div><div class="paragraphs">${turn.paragraphs.map(paragraph => `<p>${paragraph}</p>`).join("")}</div>${turn.uncertain ? `<div class="evidence">◇ Attribution uncertain</div>` : ""}${turn.duplicate ? `<div class="evidence">⧉ Possible cross-source duplicate</div>` : ""}${turn.note ? `<div class="evidence" title="Synthetic evidence annotation">${turn.note}</div>` : ""}</div>
+      </section>`;
+    }
+
+    function sequenceMarkup(turns) {
+      const result = [];
+      const consumed = new Set();
+      turns.forEach(turn => {
+        if (consumed.has(turn.id)) return;
+        const peers = turn.overlap ? turns.filter(candidate => candidate.overlap === turn.overlap) : [turn];
+        peers.forEach(peer => consumed.add(peer.id));
+        if (peers.length > 1) result.push(`<div class="overlap-pair">${peers.map(turnMarkup).join("")}</div>`);
+        else result.push(turnMarkup(turn));
+      });
+      return result.join("");
+    }
+
+    function render() {
+      const requested = new URLSearchParams(location.search).get("variant");
+      const variant = variants.find(item => item.key === requested) || variants[1];
+      const transcript = document.getElementById("transcript");
+      transcript.className = variant.key;
+      if (variant.key === "hybrid") {
+        const scenes = [...new Set(readingTurns.map(turn => turn.scene))];
+        transcript.innerHTML = scenes.map(scene => {
+          const turns = readingTurns.filter(turn => turn.scene === scene);
+          return `<section class="scene"><div class="scene-marker"><strong>${scene}</strong>${time(turns[0].start)}–${time(turns.at(-1).end)}</div><div class="scene-content">${sequenceMarkup(turns)}</div></section>`;
+        }).join("");
+      } else {
+        transcript.innerHTML = sequenceMarkup(readingTurns);
+      }
+      document.getElementById("variant-name").textContent = variant.label;
+      document.querySelectorAll("[data-seek]").forEach(button => button.addEventListener("click", () => setPlayback(button.dataset.seek)));
+    }
+
+    function setPlayback(id) {
+      activeTurn = id;
+      const turn = readingTurns.find(item => item.id === id);
+      document.getElementById("player-label").textContent = `${turn.speaker} · ${time(turn.start)} / ${time(turn.end)}`;
+      document.getElementById("player").classList.add("visible");
+      render();
+      document.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    function cycle(direction) {
+      const current = new URLSearchParams(location.search).get("variant") || "reading";
+      const index = variants.findIndex(item => item.key === current);
+      const next = variants[(index + direction + variants.length) % variants.length];
+      const url = new URL(location.href);
+      url.searchParams.set("variant", next.key);
+      history.replaceState({}, "", url);
+      render();
+    }
+
+    document.getElementById("previous").addEventListener("click", () => cycle(-1));
+    document.getElementById("next").addEventListener("click", () => cycle(1));
+    document.getElementById("pause").addEventListener("click", () => document.getElementById("player").classList.remove("visible"));
+    addEventListener("keydown", event => {
+      if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+      if (event.key === "ArrowLeft") cycle(-1);
+      if (event.key === "ArrowRight") cycle(1);
+    });
+    render();
+  </script>
+</body>
+</html>
