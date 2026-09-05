@@ -25,3 +25,7 @@ Represent genuine simultaneous speech and short interjections without turning th
 ## Blocked by
 
 - 004 — Stabilize remote-speaker attribution by utterance
+
+## Resolution
+
+Shipped derived overlap groups for microphone/system and supported remote-speaker concurrency, with seekable contribution identity, conservative attribution, preserved short backchannels, stable surrounding turns, and deterministic accessibility order. Reviewed and merged in PR #5 at commit `c7692f690e45b1ec8afd4e43b86641042ad2d663`.

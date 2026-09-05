@@ -4,7 +4,6 @@ Tags:
   - ready-for-agent
 Parent: 001-improve-meeting-transcript-readability-with-reading-turns
 Blocked-By:
-  - 005-represent-overlap-and-short-interjections
   - 007-format-long-meetings-with-bounded-ai-requests
   - 008-use-reading-turns-in-copy-export-and-ai-context
   - 009-add-non-blocking-speaker-count-correction
