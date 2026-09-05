@@ -93,33 +93,40 @@ class WorkflowTests(unittest.TestCase):
         )
         self.assertLess(
             self.release_job.index("Build downloadable unsigned app"),
-            self.release_job.index("Package unsigned app archive"),
+            self.release_job.index("Package unsigned app disk image"),
         )
 
-    def test_release_job_packages_app_only_for_main_and_manual_runs(self):
-        package = self.release_job.split("      - name: Package unsigned app archive\n", 1)[1]
+    def test_release_job_packages_finder_mountable_app_only_for_main_and_manual_runs(self):
+        package = self.release_job.split("      - name: Package unsigned app disk image\n", 1)[1]
         package = package.split("      - name:", 1)[0]
         publish_condition = (
             "if: github.event_name == 'workflow_dispatch' || "
             "(github.event_name == 'push' && github.ref == 'refs/heads/main')"
         )
         self.assertIn(publish_condition, package)
-        self.assertIn("test -d dist/MacParakeet.app", package)
-        self.assertIn(
-            "/usr/bin/ditto -c -k --sequesterRsrc --keepParent "
-            "dist/MacParakeet.app dist/MacParakeet-unsigned-non-notarized.zip",
-            package,
-        )
-        self.assertIn("/usr/bin/ditto -x -k", package)
+        self.assertIn('APP_PATH="dist/MacParakeet.app"', package)
+        self.assertIn('DMG_PATH="dist/MacParakeet-unsigned-non-notarized.dmg"', package)
+        self.assertIn('/usr/bin/ditto "$APP_PATH" "$STAGING_DIR/MacParakeet.app"', package)
+        self.assertIn('ln -s /Applications "$STAGING_DIR/Applications"', package)
+        self.assertIn("hdiutil create", package)
+        self.assertIn('-format UDZO "$DMG_PATH"', package)
+        self.assertIn("hdiutil imageinfo -plist", package)
+        self.assertIn('= "UDZO"', package)
+        self.assertIn('hdiutil verify "$DMG_PATH"', package)
+        self.assertIn('hdiutil attach "$DMG_PATH" -readonly -nobrowse -noautoopen', package)
         self.assertIn("test -x", package)
         self.assertIn("stat -f '%p'", package)
         self.assertIn("readlink", package)
+        self.assertIn("CFBundleIdentifier", package)
+        self.assertIn("com.macparakeet.MacParakeet", package)
         self.assertIn(
-            'bash scripts/ci/verify_downloadable_app.sh "$INSPECTION_DIR/MacParakeet.app"',
+            'bash scripts/ci/verify_downloadable_app.sh "$MOUNTED_APP"',
             package,
         )
+        self.assertNotIn("ditto -c -k", package)
+        self.assertNotIn("unsigned-non-notarized.zip", package)
 
-    def test_release_job_uploads_named_archive_fail_closed_with_retention(self):
+    def test_release_job_uploads_named_disk_image_fail_closed_with_retention(self):
         upload = self.release_job.split("      - name: Upload unsigned non-notarized app\n", 1)[1]
         upload = upload.split("      - name:", 1)[0]
         publish_condition = (
@@ -129,7 +136,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn(publish_condition, upload)
         self.assertIn("uses: actions/upload-artifact@v7", upload)
         self.assertIn("name: MacParakeet-unsigned-non-notarized", upload)
-        self.assertIn("path: dist/MacParakeet-unsigned-non-notarized.zip", upload)
+        self.assertIn("path: dist/MacParakeet-unsigned-non-notarized.dmg", upload)
+        self.assertNotIn(".zip", upload)
         self.assertIn("if-no-files-found: error", upload)
         self.assertIn("retention-days: 7", upload)
         self.assertNotIn("continue-on-error", upload)

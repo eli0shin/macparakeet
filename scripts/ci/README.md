@@ -29,9 +29,11 @@ the bundle smoke is not signing/notarization or complete distribution validation
 After a successful `release` job on `main` or a manual run, CI builds
 `dist/MacParakeet.app` with the bundle defaults, including the verified portable
 FFmpeg download, yt-dlp helper seed, and Node runtime. It executes each helper's
-version command, packages the app with macOS `ditto`, extracts the archive, and
-executes the helper checks again before uploading
-`MacParakeet-unsigned-non-notarized` for seven days. Pull requests use the fast
+version command, packages the app in a compressed, Finder-mountable disk image,
+mounts that image read-only, compares app modes and symlinks with the source
+bundle, and executes the helper checks again before uploading
+`MacParakeet-unsigned-non-notarized` for seven days. The GitHub artifact ZIP
+contains one `.dmg`, not an identically named inner ZIP. Pull requests use the fast
 `/usr/bin/true` bundle fixture with helper downloads disabled, but that step is
 limited to pull-request events and its output cannot reach publication. Pull
 requests do not publish the app artifact. The artifact is only a development

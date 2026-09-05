@@ -111,14 +111,17 @@ into `Info.plist` as:
 ### Downloadable CI development build
 
 Successful `main` and manual CI runs upload a GitHub Actions artifact named
-`MacParakeet-unsigned-non-notarized`. It contains
-`MacParakeet-unsigned-non-notarized.zip`, which wraps `MacParakeet.app` with
-macOS `ditto` so bundle metadata, symlinks, and executable permissions are
-preserved. The app contains the normal portable FFmpeg, yt-dlp helper seed, and
-Node runtime. CI executes safe version checks for these helpers before packaging
-and again after archive extraction. The artifact is retained for seven days.
-Pull request runs use a separate fixture-only bundle smoke and do not publish
-its output.
+`MacParakeet-unsigned-non-notarized`. GitHub downloads the artifact as a ZIP;
+expanding it reveals one Finder-mountable
+`MacParakeet-unsigned-non-notarized.dmg`. The disk image contains
+`MacParakeet.app` and an Applications shortcut. This shape avoids a ZIP inside
+an identically named ZIP. The disk image preserves bundle metadata, symlinks,
+and executable permissions. The app contains the normal portable FFmpeg,
+yt-dlp helper seed, and Node runtime. CI verifies the compressed disk-image
+format, mounts it read-only, compares its app entries with the built bundle,
+and executes safe helper version checks before upload. The artifact is retained
+for seven days. Pull request runs use a separate fixture-only bundle smoke and
+do not publish its output.
 
 This artifact is an **unsigned, non-notarized development build** for testing.
 It is not the stable MacParakeet release and does not replace the Developer ID,
@@ -126,12 +129,17 @@ notarization, DMG, R2, Sparkle, or GitHub release steps below. macOS can warn or
 block the app because it has no release signature. CI does not receive signing
 credentials and does not publish this archive outside GitHub Actions.
 
-After downloading the Actions artifact, extract its inner archive on macOS with
-Finder or:
+To install with Finder:
 
-```bash
-ditto -x -k MacParakeet-unsigned-non-notarized.zip .
-```
+1. Download `MacParakeet-unsigned-non-notarized` from the successful workflow's
+   **Artifacts** section.
+2. Double-click the downloaded ZIP. Then double-click
+   `MacParakeet-unsigned-non-notarized.dmg`.
+3. Drag `MacParakeet.app` to Applications.
+
+This development app is unsigned and non-notarized, so macOS can block its
+first launch. Use it only when you trust the workflow and commit that produced
+it.
 
 ## 2) Sign + notarize (recommended)
 

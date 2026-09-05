@@ -172,36 +172,56 @@ jobs:
           set -o pipefail
           bash scripts/dist/build_app_bundle.sh 2>&1 | tee .ci-logs/downloadable-app-build.log
           bash scripts/ci/verify_downloadable_app.sh dist/MacParakeet.app 2>&1 | tee .ci-logs/downloadable-app-helpers.log
-      - name: Package unsigned app archive
+      - name: Package unsigned app disk image
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         run: |
           set -euo pipefail
-          test -d dist/MacParakeet.app
-          /usr/bin/ditto -c -k --sequesterRsrc --keepParent dist/MacParakeet.app dist/MacParakeet-unsigned-non-notarized.zip
-          test -s dist/MacParakeet-unsigned-non-notarized.zip
-          INSPECTION_DIR="$(mktemp -d)"
-          trap 'rm -rf "$INSPECTION_DIR"' EXIT
-          /usr/bin/ditto -x -k dist/MacParakeet-unsigned-non-notarized.zip "$INSPECTION_DIR"
-          test -d "$INSPECTION_DIR/MacParakeet.app/Contents"
-          test -x "$INSPECTION_DIR/MacParakeet.app/Contents/MacOS/MacParakeet"
-          test -x "$INSPECTION_DIR/MacParakeet.app/Contents/MacOS/macparakeet-cli"
-          bash scripts/ci/verify_downloadable_app.sh "$INSPECTION_DIR/MacParakeet.app" 2>&1 | tee -a .ci-logs/downloadable-app-helpers.log
-          while IFS= read -r -d '' SOURCE_PATH; do
-            RELATIVE_PATH="${SOURCE_PATH#dist/MacParakeet.app}"
-            EXTRACTED_PATH="$INSPECTION_DIR/MacParakeet.app$RELATIVE_PATH"
-            test -e "$EXTRACTED_PATH" || test -L "$EXTRACTED_PATH"
-            test "$(stat -f '%p' "$SOURCE_PATH")" = "$(stat -f '%p' "$EXTRACTED_PATH")"
-            if test -L "$SOURCE_PATH"; then
-              test "$(readlink "$SOURCE_PATH")" = "$(readlink "$EXTRACTED_PATH")"
+          APP_PATH="dist/MacParakeet.app"
+          DMG_PATH="dist/MacParakeet-unsigned-non-notarized.dmg"
+          STAGING_DIR="$(mktemp -d "$RUNNER_TEMP/macparakeet-unsigned-dmg.XXXXXX")"
+          MOUNT_DIR="$(mktemp -d "$RUNNER_TEMP/macparakeet-unsigned-mount.XXXXXX")"
+          MOUNTED=0
+          cleanup() {
+            if test "$MOUNTED" = 1; then
+              hdiutil detach "$MOUNT_DIR" -quiet || true
             fi
-          done < <(find dist/MacParakeet.app -print0)
-          /usr/bin/unzip -l dist/MacParakeet-unsigned-non-notarized.zip | tee .ci-logs/unsigned-app-archive-contents.log
+            rm -rf "$STAGING_DIR" "$MOUNT_DIR"
+          }
+          trap cleanup EXIT
+
+          test -d "$APP_PATH/Contents"
+          /usr/bin/ditto "$APP_PATH" "$STAGING_DIR/MacParakeet.app"
+          ln -s /Applications "$STAGING_DIR/Applications"
+          hdiutil create -volname "MacParakeet Dev (Unsigned)" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
+          test -s "$DMG_PATH"
+          test "$(hdiutil imageinfo -plist "$DMG_PATH" | plutil -extract Format raw -)" = "UDZO"
+          hdiutil verify "$DMG_PATH"
+          hdiutil attach "$DMG_PATH" -readonly -nobrowse -noautoopen -mountpoint "$MOUNT_DIR"
+          MOUNTED=1
+
+          MOUNTED_APP="$MOUNT_DIR/MacParakeet.app"
+          test -d "$MOUNTED_APP/Contents"
+          test "$(readlink "$MOUNT_DIR/Applications")" = "/Applications"
+          test -x "$MOUNTED_APP/Contents/MacOS/MacParakeet"
+          test -x "$MOUNTED_APP/Contents/MacOS/macparakeet-cli"
+          test "$(plutil -extract CFBundleIdentifier raw "$MOUNTED_APP/Contents/Info.plist")" = "com.macparakeet.MacParakeet"
+          bash scripts/ci/verify_downloadable_app.sh "$MOUNTED_APP" 2>&1 | tee -a .ci-logs/downloadable-app-helpers.log
+          while IFS= read -r -d '' SOURCE_PATH; do
+            RELATIVE_PATH="${SOURCE_PATH#$APP_PATH}"
+            MOUNTED_PATH="$MOUNTED_APP$RELATIVE_PATH"
+            test -e "$MOUNTED_PATH" || test -L "$MOUNTED_PATH"
+            test "$(stat -f '%p' "$SOURCE_PATH")" = "$(stat -f '%p' "$MOUNTED_PATH")"
+            if test -L "$SOURCE_PATH"; then
+              test "$(readlink "$SOURCE_PATH")" = "$(readlink "$MOUNTED_PATH")"
+            fi
+          done < <(find "$APP_PATH" -print0)
+          hdiutil imageinfo "$DMG_PATH" | tee .ci-logs/unsigned-app-disk-image-info.log
       - name: Upload unsigned non-notarized app
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         uses: actions/upload-artifact@v7
         with:
           name: MacParakeet-unsigned-non-notarized
-          path: dist/MacParakeet-unsigned-non-notarized.zip
+          path: dist/MacParakeet-unsigned-non-notarized.dmg
           if-no-files-found: error
           retention-days: 7
       - name: Upload release logs
