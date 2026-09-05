@@ -230,6 +230,7 @@ struct TranscriptResultView: View {
     // Cached transcript data — recomputed only when transcription.id changes, not on every playback tick
     @State private var cachedSegments: [TranscriptSegment] = []
     @State private var cachedIdentifiedTurnCards: [IdentifiedSpeakerTurn] = []
+    @State private var cachedReadingTurns: [IdentifiedReadingTurn] = []
     @State private var cachedHasSpeakers: Bool = false
     @State private var cachedSpeakerColorMap: [String: Color] = [:]
     @State private var cachedSpeakerLabelMap: [String: String] = [:]
@@ -349,7 +350,13 @@ struct TranscriptResultView: View {
             rebuildSegmentCache()
             if findBarVisible { rebuildFindBlocks() }
         }
+        .onChange(of: activeTranscription.status) {
+            rebuildSegmentCache()
+            syncTranscriptDisplayMode()
+            if findBarVisible { rebuildFindBlocks() }
+        }
         .onChange(of: transcriptText) {
+            rebuildSegmentCache()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: transcriptAIContextModeRaw) {
@@ -871,6 +878,11 @@ struct TranscriptResultView: View {
         activeTranscription.cleanTranscript ?? activeTranscription.rawTranscript ?? ""
     }
 
+    private var usesMeetingReadingSurface: Bool {
+        activeTranscription.sourceType == .meeting
+            && activeTranscription.status == .completed
+    }
+
     private var currentAIContextMode: TranscriptAIContextMode {
         TranscriptAIContextMode(rawValue: transcriptAIContextModeRaw) ?? .richTranscript
     }
@@ -1295,6 +1307,13 @@ struct TranscriptResultView: View {
                     if editingTranscript {
                         transcriptEditor
                     } else if transcriptDisplayMode == .timed,
+                              usesMeetingReadingSurface,
+                              !cachedReadingTurns.isEmpty {
+                        if let speakers = activeTranscription.speakers, !speakers.isEmpty {
+                            speakerSummaryPanel(speakers: speakers)
+                        }
+                        meetingReadingTurnView
+                    } else if transcriptDisplayMode == .timed,
                               let timestamps = activeTranscription.wordTimestamps,
                               !timestamps.isEmpty {
                         if let speakers = activeTranscription.speakers, !speakers.isEmpty {
@@ -1537,7 +1556,11 @@ struct TranscriptResultView: View {
             return
         }
         let blocks: [TranscriptFindBlock]
-        if transcriptDisplayMode == .timed, hasTimestamps {
+        if transcriptDisplayMode == .timed, usesMeetingReadingSurface {
+            blocks = cachedReadingTurns.map {
+                TranscriptFindBlock(id: $0.scrollID, text: $0.turn.text)
+            }
+        } else if transcriptDisplayMode == .timed, hasTimestamps {
             blocks = cachedSegments.map { TranscriptFindBlock(id: $0.startMs, text: $0.text) }
         } else {
             blocks = [TranscriptFindBlock(id: 0, text: transcriptText)]
@@ -1634,12 +1657,13 @@ struct TranscriptResultView: View {
 
             Spacer()
 
-            // Show whenever word timestamps exist: Timed renders from word data,
-            // and Text falls back to the raw transcript when clean text is absent.
-            if !editingTranscript, hasTimestamps {
+            // Completed meetings expose Reading and Text. Other transcripts show
+            // Timed only when word timestamps exist.
+            if !editingTranscript, hasTimestamps || usesMeetingReadingSurface {
                 Picker("Transcript view", selection: $transcriptDisplayMode) {
                     ForEach(TranscriptDisplayMode.allCases, id: \.self) { mode in
-                        Text(mode.rawValue).tag(mode)
+                        Text(mode == .timed && usesMeetingReadingSurface ? "Reading" : mode.rawValue)
+                            .tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -3094,6 +3118,46 @@ struct TranscriptResultView: View {
         )
     }
 
+    private var meetingReadingTurnView: some View {
+        let highlights = findHighlightsByBlockId
+        let current = findCurrentHighlight
+        let activeID = playerViewModel.playbackMode == .none
+            ? nil
+            : readingTurnScrollTarget(
+                for: playerViewModel.currentTimeMs,
+                in: cachedReadingTurns
+            )
+        return MeetingReadingTurnContentView(
+            turns: cachedReadingTurns,
+            speakerColorMap: cachedSpeakerColorMap,
+            speakerLabelContent: { speakerID, speakerLabel, speakerColor, renameContextID, isRenameButtonVisuallyRevealed in
+                speakerLabelView(
+                    speaker: SpeakerInfo(id: speakerID, label: speakerLabel),
+                    color: speakerColor,
+                    contextID: renameContextID,
+                    font: DesignSystem.Typography.body.weight(.semibold),
+                    renameButtonOpacity: SpeakerRenameAccessibility.renameButtonOpacity(
+                        isVisuallyRevealed: isRenameButtonVisuallyRevealed
+                    )
+                )
+            },
+            activeScrollID: activeID,
+            timestampLabel: { formatTimestamp(ms: $0) },
+            isTimestampSeekable: playerViewModel.playerState == .ready,
+            onTimestampTap: { startMs in
+                playerViewModel.seek(toMs: startMs)
+                if !playerViewModel.isPlaying {
+                    playerViewModel.togglePlayPause()
+                }
+                autoScrollPaused = false
+                scrollPauseTask?.cancel()
+            },
+            bodyFont: scaledTranscriptFont,
+            highlightRangesByScrollID: highlights,
+            currentHighlight: current
+        )
+    }
+
     // MARK: - Speaker Summary Panel
 
     @ViewBuilder
@@ -3285,12 +3349,19 @@ struct TranscriptResultView: View {
 
     /// Rebuild cached segment data. Called once on appear and when transcription.id changes.
     private func rebuildSegmentCache() {
+        cachedSpeakerColorMap = buildSpeakerColorMap()
+        cachedSpeakerLabelMap = buildSpeakerLabelMap()
+        let readingDocument = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: transcriptText,
+            words: activeTranscription.wordTimestamps,
+            speakers: activeTranscription.speakers
+        )
+        cachedReadingTurns = identifiedReadingTurns(readingDocument.turns)
+
         guard let words = activeTranscription.wordTimestamps, !words.isEmpty else {
             cachedSegments = []
             cachedIdentifiedTurnCards = []
             cachedHasSpeakers = false
-            cachedSpeakerColorMap = [:]
-            cachedSpeakerLabelMap = [:]
             cachedSegmentStartMs = []
             return
         }
@@ -3300,8 +3371,6 @@ struct TranscriptResultView: View {
 
         cachedSegments = segments
         cachedHasSpeakers = hasSpeakers
-        cachedSpeakerColorMap = buildSpeakerColorMap()
-        cachedSpeakerLabelMap = buildSpeakerLabelMap()
         cachedSegmentStartMs = segments.map(\.startMs)
 
         if hasSpeakers {
@@ -3353,6 +3422,9 @@ struct TranscriptResultView: View {
 
     /// Find the scroll target ID (segment startMs) for the given playback time.
     private func autoScrollTarget(for currentMs: Int) -> Int? {
+        if usesMeetingReadingSurface {
+            return readingTurnScrollTarget(for: currentMs, in: cachedReadingTurns)
+        }
         if cachedHasSpeakers {
             return speakerTurnCardScrollTarget(
                 for: currentMs,
@@ -3387,7 +3459,11 @@ struct TranscriptResultView: View {
     }
 
     private func syncTranscriptDisplayMode() {
-        transcriptDisplayMode = (hasCleanTranscriptText || !hasTimestamps) ? .text : .timed
+        if usesMeetingReadingSurface, !cachedReadingTurns.isEmpty {
+            transcriptDisplayMode = .timed
+        } else {
+            transcriptDisplayMode = (hasCleanTranscriptText || !hasTimestamps) ? .text : .timed
+        }
     }
 
     private func beginTranscriptEdit() {

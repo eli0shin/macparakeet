@@ -48,6 +48,10 @@ dictation-only so the verbatim meeting record is preserved. The shared
 matching logic lives in `CustomWordReplacer`; the meeting entry point is
 `MeetingTranscriptVocabularyApplier`.
 
+## Meeting Reading Turn presentation
+
+Completed meetings have a separate pure presentation boundary. `MeetingTranscriptPresentationBuilder` reads the finalized transcript text, source-aware words, and speaker roster and returns ordered Reading Turns with stable evidence-derived identity, source, optional time range, paragraphs, and underlying word indexes. It assembles each capture source before ordering turns, so microphone/system timestamp interleaving does not create alternating one-word rows. Paragraph limits are three sentences, 80 words, or a 2.5-second pause. This derivation is local and read-only. It does not update raw words, source attribution, timestamps, durable transcript segments, or diarization regions. Meetings without word timings receive one unlabelled, untimed text fallback.
+
 ### Step 3: Trailing Action Extraction
 
 If the user's text ends with an enabled action-snippet trigger, the trigger is stripped and the action is returned through `TextProcessingResult.postPasteAction`. This is how Voice Return-style behavior can simulate Return after paste without leaving a configured trigger phrase such as "press return" or "zatwierdź" in the transcript.

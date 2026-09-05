@@ -570,6 +570,10 @@ Floating panel opened from the meeting recording pill. Shows live notes, live tr
 - **Meetings empty state copy** — one-line guidance: "For the cleanest separation between you and other participants, use headphones."
 - Notes and Ask own their own bottom UI; the shared footer is hidden on those tabs. The final saved meeting transcript remains authoritative even if live preview lagged.
 
+### Completed-meeting Reading surface
+
+The default completed-meeting transcript uses the selected Conversation prototype layout. A lazy stack renders one card per Reading Turn, never one view per word. Each card presents one speaker header and one secondary start-time button. Long turns keep several selectable paragraphs inside the same card. The start-time button supports pointer and keyboard activation, seeks to the turn start, and starts playback. Playback focus strengthens the active card border. Transcript find searches complete turns in reading order and scrolls to the containing card. VoiceOver encounters the speaker group, optional start time, and text in that order. Untimed fallback cards omit the timestamp instead of implying unavailable precision. The Text mode remains available for editing the plain transcript.
+
 ### Concurrent Operation (ADR-015)
 
 During concurrent dictation + meeting recording:

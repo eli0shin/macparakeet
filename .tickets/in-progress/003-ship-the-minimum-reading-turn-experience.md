@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@003-ship-the-minimum-reading-turn-experience
 Tags:
   - ready-for-agent
 Parent: 001-improve-meeting-transcript-readability-with-reading-turns
