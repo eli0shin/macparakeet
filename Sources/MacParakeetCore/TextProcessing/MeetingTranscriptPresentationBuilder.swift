@@ -344,7 +344,10 @@ public enum MeetingTranscriptPresentationBuilder {
 
         let fallback = source == .system ? AudioSource.system.rawValue : "unknown"
         guard let dominant = unambiguousDominantSpeaker(in: durationBySpeaker) else {
-            return SpeakerEvidence(speakerId: fallback, durationMs: 0)
+            let utteranceSpeechMs = words.reduce(0) {
+                $0 + max(1, $1.word.endMs - $1.word.startMs)
+            }
+            return SpeakerEvidence(speakerId: fallback, durationMs: utteranceSpeechMs)
         }
         return SpeakerEvidence(speakerId: dominant.key, durationMs: dominant.value)
     }
@@ -384,10 +387,9 @@ public enum MeetingTranscriptPresentationBuilder {
                 let evidenceMs = smoothed[runStart..<runEnd].reduce(0) {
                     $0 + $1.speakerEvidenceMs
                 }
-                let isFallback = runSpeaker == AudioSource.system.rawValue
                 if previousSpeaker == nextSpeaker,
                     runSpeaker != previousSpeaker,
-                    isFallback || evidenceMs < minimumSpeakerChangeEvidenceMs
+                    evidenceMs < minimumSpeakerChangeEvidenceMs
                 {
                     for index in runStart..<runEnd {
                         smoothed[index].speakerId = previousSpeaker

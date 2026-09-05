@@ -178,6 +178,29 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
     }
 
+    func testSustainedAmbiguousFallbackRetainsThreeSpeakerTurns() {
+        let words = [
+            word("Opening.", 0, 500, "system:S1"),
+            word("Unclear.", 700, 1_900, "system"),
+            word("Closing.", 2_100, 2_600, "system:S1"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: remoteSpeakers,
+            diarizationSegments: [
+                segment("system:S1", 0, 500),
+                segment("system:S1", 700, 1_300),
+                segment("system:S2", 1_300, 1_900),
+                segment("system:S1", 2_100, 2_600),
+            ]
+        )
+
+        XCTAssertEqual(document.turns.map(\.speakerId), ["system:S1", "system", "system:S1"])
+        XCTAssertEqual(document.turns.map(\.text), ["Opening.", "Unclear.", "Closing."])
+    }
+
     func testSustainedRemoteExchangeRetainsThreeSpeakerTurns() {
         let words = [
             word("Opening.", 0, 600, "system:S1"),
