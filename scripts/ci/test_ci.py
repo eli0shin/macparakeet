@@ -1,3 +1,5 @@
+from contextlib import redirect_stdout
+import io
 import os
 from pathlib import Path
 import sys
@@ -126,6 +128,16 @@ class ShardingTests(unittest.TestCase):
     def test_test_failure_is_not_hidden_by_correct_count(self):
         result = self.run_fixture("print('Executed 2 tests, with 1 failure'); raise SystemExit(1)", 2)
         self.assertNotEqual(result["exit_code"], 0)
+
+    def test_early_assertion_is_visible_after_many_later_passes(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = self.run_fixture(
+                "print('Fixture.swift:12: error: original assertion'); "
+                "print('later passing test\\n' * 100); raise SystemExit(1)"
+            )
+        self.assertNotEqual(result["exit_code"], 0)
+        self.assertIn("Fixture.swift:12: error: original assertion", output.getvalue())
 
     def test_timeout_fails(self):
         self.assertNotEqual(self.run_fixture("import time; time.sleep(5)", timeout=0.05)["exit_code"], 0)

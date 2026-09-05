@@ -69,7 +69,8 @@ jobs:
         with:
           name: swift-debug-logs
           path: .ci-logs/
-          if-no-files-found: ignore
+          include-hidden-files: true
+          if-no-files-found: warn
           retention-days: 7
 
   swift6:
@@ -105,7 +106,8 @@ jobs:
         with:
           name: swift6-logs
           path: .ci-logs/
-          if-no-files-found: ignore
+          include-hidden-files: true
+          if-no-files-found: warn
           retention-days: 7
 
   release:
@@ -148,7 +150,8 @@ jobs:
         with:
           name: swift-release-logs
           path: .ci-logs/
-          if-no-files-found: ignore
+          include-hidden-files: true
+          if-no-files-found: warn
           retention-days: 7
 
   # Preserve the previous check name as a stable, fail-closed merge gate.

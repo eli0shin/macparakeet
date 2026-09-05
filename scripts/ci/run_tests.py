@@ -69,7 +69,9 @@ def run_command(name, command, log_dir, timeout, expected=None):
     print(f"{name}: {seconds}s, exit={code}, tests={actual}, log={path}", flush=True)
     if code:
         print(error or f"{name} failed", flush=True)
-        print("\n".join(output.splitlines()[-40:]), flush=True)
+        # Assertions can precede thousands of later passing cases. Preserve
+        # the full failed process output even if artifact upload is unavailable.
+        print(output, flush=True)
     return {"name": name, "seconds": seconds, "exit_code": code,
             "expected_tests": expected, "executed_tests": actual, "error": error}
 
