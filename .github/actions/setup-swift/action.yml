@@ -1,5 +1,9 @@
 name: Set up Swift CI
-description: Select the pinned toolchain and restore dependency inputs, not compiled outputs.
+description: Select the pinned toolchain and restore compatible compiled SwiftPM state.
+inputs:
+  lane:
+    description: Build configuration (debug-tests, swift6, or release)
+    required: true
 runs:
   using: composite
   steps:
@@ -11,7 +15,23 @@ runs:
         xcodebuild -version
         swift --version
         mkdir -p .ci-logs
-    - uses: actions/cache@v5
+    - name: Fingerprint compiled build state
+      id: fingerprint
+      shell: bash
+      env:
+        BUILD_LANE: ${{ inputs.lane }}
+      run: python3 scripts/ci/build_cache.py --lane "$BUILD_LANE"
+    - name: Cache compiled SwiftPM state
+      id: compiled
+      uses: actions/cache@v5
+      with:
+        path: .build
+        key: ${{ steps.fingerprint.outputs.key }}
+        # No prefix fallback: incompatible flags, toolchains, or dependency
+        # graphs must start cold. Saves occur only after a successful job.
+    - name: Seed a cold build from dependency sources
+      if: steps.compiled.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@v5
       with:
         path: |
           .build/checkouts
@@ -22,3 +42,12 @@ runs:
         key: ${{ runner.os }}-${{ runner.arch }}-xcode16.1-spm-v2-${{ hashFiles('Package.swift', 'Package.resolved') }}
         restore-keys: |
           ${{ runner.os }}-${{ runner.arch }}-xcode16.1-spm-v2-
+    - name: Report cache restore
+      shell: bash
+      env:
+        BUILD_LANE: ${{ inputs.lane }}
+        CACHE_HIT: ${{ steps.compiled.outputs.cache-hit }}
+        CACHE_KEY: ${{ steps.fingerprint.outputs.key }}
+      run: |
+        printf '%s compiled cache hit: %s\nKey: %s\n' "$BUILD_LANE" "${CACHE_HIT:-false}" "$CACHE_KEY" | tee .ci-logs/build-cache.txt
+        cat .ci-logs/build-cache.txt >> "$GITHUB_STEP_SUMMARY"

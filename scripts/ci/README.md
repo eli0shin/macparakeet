@@ -33,11 +33,46 @@ fixtures, JSON contracts, and mixed changes still receive code checks. Renames
 include old and new paths. The complete PR diff is used, not only its last commit.
 There are no workflow-level path skips, so prose PRs also report a final status.
 
-The dependency cache includes checkouts, repositories, binary artifacts and
-SwiftPM workspace state. It does **not** claim incremental compiled-output reuse.
-The Swift 6 lane has its own runner, so it no longer needs a second build path.
 Default debug/release dependencies still include WhisperKit. Tests and product
 behavior are unchanged; no regression suite has been removed.
+
+## Compiled SwiftPM cache
+
+Each lane caches its complete `.build` directory: dependency checkouts, compiled
+objects and modules, binary artifacts, module caches, and SwiftPM/llbuild state.
+Keeping these together preserves the source/output timestamps needed for reuse.
+The Swift 6 lane has its own runner and cache, so it does not need a second path.
+
+Cache keys include:
+
+- The lane: debug/tests, Swift 6 without WhisperKit, or optimized release.
+- Actual Swift and Xcode versions, SDK build, macOS build, architecture,
+  selected developer directory, and absolute checkout path.
+- Package manifest and lockfile contents.
+- Workflow, setup action, and cache-key implementation contents. This includes
+  the compiler flags and optional dependency routes declared in the workflow.
+
+There is no compiled-cache prefix fallback across incompatible inputs. On a
+miss, the old source dependency cache can seed a cold build. Compatible keys
+are stable across source commits: we do not upload a large archive on every PR
+update. GitHub saves a new compiled cache only after the complete job succeeds.
+Cache scope follows GitHub's branch rules: main can seed later PRs; one PR's
+merge-ref cache does not seed unrelated PRs or main.
+
+Every run still invokes SwiftPM on the current source checkout. Source mtimes
+are **not** restored or normalized to trick the compiler into skipping work.
+Cached first-party outputs are allowed, but current source changes must rebuild.
+A real SwiftPM fixture archives/restores `.build`, proves unchanged dependency
+objects are reused, then proves a changed app source produces the new binary
+output. It uses POSIX/PAX tar, like Actions, to preserve sub-second timestamps.
+This fixture runs on release-input PRs/main/manual runs; the Linux control tests
+check key separation and invalidation without compiling Swift.
+
+`build-cache.txt` records the key and hit status. A cache hit alone is not proof
+of a faster build: compare cold and warm job times including restore/save time,
+and inspect compilation messages to verify dependency objects were reused.
+Compiled caching is optional for correctness; a miss takes the normal build
+path. A cold run plus a same-head rerun is needed to measure the first rollout.
 
 ## Grouped test execution
 
@@ -72,6 +107,9 @@ swift build --build-tests -Xswiftc -warn-concurrency
 python3 scripts/ci/run_tests.py --filter 'TextProcessingPipelineTests|CLI.*Tests'
 bash scripts/ci/cli_smoke.sh .build/debug/macparakeet-cli
 
+# Cache reuse/invalidation fixture (small isolated package, no project build):
+CI_SWIFT_CACHE_INTEGRATION=1 python3 -m unittest discover -s scripts/ci -p 'test_build_cache.py'
+
 # Once, as the final full-suite gate:
 python3 scripts/ci/run_tests.py
 ```
@@ -86,7 +124,26 @@ group's log, and native Swift Testing output. Build/test durations also appear
 in the Actions job summaries. Use run/job timestamps for end-to-end time; do
 not sum parallel job durations.
 
-## Initial measurements
+## Hosted baseline before compiled caching
+
+[Run 33970463983](https://github.com/eli0shin/macparakeet/actions/runs/33970463983)
+passed on GitHub's macOS 14 / Xcode 16.1 runners:
+
+| Work | Time |
+|---|---:|
+| Debug build (app, CLI, tests) | 4:33 |
+| Full test execution (5,195 XCTest + 17 Swift Testing cases) | 2:30 |
+| Debug job including setup/artifacts | 7:54 |
+| Swift 6 job | 5:27 |
+| Release job | 8:56 |
+| Complete workflow, including release | 9:24 |
+
+The five-minute ordinary-source target was **not met**. Compiled-cache savings
+must be measured against this hosted baseline, not against the local figures
+below. First-run cache creation may take longer; subsequent restores must save
+more compilation time than their transfer/extraction cost.
+
+## Initial local measurements
 
 Local Apple Silicon, current installed Xcode (not the hosted Xcode 16.1 runner):
 

@@ -46,6 +46,16 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-swift
+        with:
+          lane: debug-tests
+      - name: Verify restored SwiftPM build behavior
+        if: needs.changes.outputs.release == 'true'
+        timeout-minutes: 2
+        env:
+          CI_SWIFT_CACHE_INTEGRATION: "1"
+        run: |
+          set -o pipefail
+          python3 -m unittest discover -s scripts/ci -p 'test_build_cache.py' 2>&1 | tee .ci-logs/cache-integration.log
       - name: Build app, CLI, and tests with concurrency diagnostics
         timeout-minutes: 7
         run: |
@@ -83,6 +93,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-swift
+        with:
+          lane: swift6
       - name: Swift 6 Language Mode
         timeout-minutes: 7
         env:
@@ -122,6 +134,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-swift
+        with:
+          lane: release
       - name: Swift Build (Release)
         timeout-minutes: 15
         run: |
