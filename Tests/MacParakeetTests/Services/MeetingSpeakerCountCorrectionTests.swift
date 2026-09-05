@@ -125,6 +125,83 @@ final class MeetingSpeakerCountCorrectionTests: XCTestCase {
         }
     }
 
+    func testCorrectionPreservesConcurrentSpeakerRenameWhenIdentityRemains() async throws {
+        let fixture = try await makeFixture(includeMicrophone: true)
+        defer { fixture.cleanup() }
+        await fixture.diarization.configure(
+            result: MacParakeetDiarizationResult(
+                segments: [SpeakerSegment(speakerId: "S9", startMs: 0, endMs: 900)],
+                speakerCount: 1,
+                speakers: [SpeakerInfo(id: "S9", label: "Speaker 1")]
+            )
+        )
+        await fixture.diarization.configureDiarizeDelay(.seconds(1))
+
+        let task = Task {
+            try await fixture.service.correctMeetingSpeakerAttribution(
+                existing: fixture.original,
+                recording: fixture.recording,
+                selection: .exact(totalPeople: 2)
+            )
+        }
+        while !(await fixture.diarization.diarizeCalled) {
+            await Task.yield()
+        }
+        _ = try fixture.repository.updateSpeakerLabel(
+            id: fixture.original.id,
+            speakerID: "system:S9",
+            label: "Client"
+        )
+
+        let result = try await task.value
+        XCTAssertEqual(result.speakers?.first(where: { $0.id == "system:S9" })?.label, "Client")
+        XCTAssertEqual(result.wordTimestamps?.map(\.speakerId), ["microphone", "system:S9", "system:S9"])
+    }
+
+    func testLateTranscriptEditCannotRestoreOldAttribution() async throws {
+        let fixture = try await makeFixture(includeMicrophone: true)
+        defer { fixture.cleanup() }
+        let corrected = try await fixture.service.correctMeetingSpeakerAttribution(
+            existing: fixture.original,
+            recording: fixture.recording,
+            selection: .exact(totalPeople: 3)
+        )
+
+        let afterEdit = try XCTUnwrap(
+            fixture.repository.updateTranscriptText(
+                id: fixture.original.id,
+                cleanTranscript: "Edited after correction.",
+                isTranscriptEdited: true
+            )
+        )
+
+        XCTAssertEqual(afterEdit.cleanTranscript, "Edited after correction.")
+        XCTAssertTrue(afterEdit.isTranscriptEdited)
+        XCTAssertEqual(afterEdit.speakers, corrected.speakers)
+        XCTAssertEqual(afterEdit.wordTimestamps, corrected.wordTimestamps)
+    }
+
+    func testLateRenameForReplacedIdentityCannotRestoreOldRoster() async throws {
+        let fixture = try await makeFixture(includeMicrophone: true)
+        defer { fixture.cleanup() }
+        let corrected = try await fixture.service.correctMeetingSpeakerAttribution(
+            existing: fixture.original,
+            recording: fixture.recording,
+            selection: .exact(totalPeople: 3)
+        )
+
+        let afterStaleRename = try XCTUnwrap(
+            fixture.repository.updateSpeakerLabel(
+                id: fixture.original.id,
+                speakerID: "system:S9",
+                label: "Stale rename"
+            )
+        )
+
+        XCTAssertEqual(afterStaleRename.speakers, corrected.speakers)
+        XCTAssertEqual(afterStaleRename.wordTimestamps, corrected.wordTimestamps)
+    }
+
     func testPostCommitSearchRefreshFailureReturnsCorrectionAndRemovesStaleSegments() async throws {
         let fixture = try await makeFixture(
             includeMicrophone: true,

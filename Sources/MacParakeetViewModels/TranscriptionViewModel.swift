@@ -942,10 +942,17 @@ public final class TranscriptionViewModel {
                 }
                 let result = try await service.correctMeetingSpeakerAttribution(existing: original, recording: recording, selection: selection, onProgress: progressHandler)
                 guard activeSpeakerAttributionTaskID == taskID else { return }
+                let latest: Transcription
+                do {
+                    latest = try transcriptionRepo?.fetch(id: result.id) ?? result
+                } catch {
+                    logger.error("Speaker correction committed but latest-row refresh failed error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+                    latest = result
+                }
                 speakerAttributionTask = nil
                 activeSpeakerAttributionTaskID = nil
                 speakerAttributionCorrectionState = .idle
-                if currentTranscription?.id == result.id { currentTranscription = result }
+                if currentTranscription?.id == result.id { currentTranscription = latest }
                 loadTranscriptions()
             } catch is CancellationError {
                 guard activeSpeakerAttributionTaskID == taskID else { return }
@@ -1572,7 +1579,7 @@ public final class TranscriptionViewModel {
 
     @discardableResult
     public func updateCurrentTranscriptText(to newText: String) -> Bool {
-        guard var transcription = currentTranscription else { return false }
+        guard let transcription = currentTranscription else { return false }
         guard let repo = transcriptionRepo else {
             reportMissingConfiguration("transcriptionRepo", action: "updateCurrentTranscriptText")
             return false
@@ -1582,16 +1589,17 @@ public final class TranscriptionViewModel {
 
         let currentText = transcription.cleanTranscript ?? transcription.rawTranscript ?? ""
         guard trimmed != currentText else { return false }
-
-        transcription.cleanTranscript = trimmed == transcription.rawTranscript ? nil : trimmed
-        transcription.isTranscriptEdited = transcription.cleanTranscript != nil
-        transcription.updatedAt = Date()
+        let cleanTranscript = trimmed == transcription.rawTranscript ? nil : trimmed
 
         do {
-            try repo.save(transcription)
-            currentTranscription = transcription
+            guard let persisted = try repo.updateTranscriptText(
+                id: transcription.id,
+                cleanTranscript: cleanTranscript,
+                isTranscriptEdited: cleanTranscript != nil
+            ) else { return false }
+            currentTranscription = persisted
             if let index = transcriptions.firstIndex(where: { $0.id == transcription.id }) {
-                transcriptions[index] = transcription
+                transcriptions[index] = persisted
             }
             return true
         } catch {
@@ -1602,7 +1610,7 @@ public final class TranscriptionViewModel {
 
     @discardableResult
     public func revertCurrentTranscriptToOriginal() -> Bool {
-        guard var transcription = currentTranscription,
+        guard let transcription = currentTranscription,
               transcription.cleanTranscript != nil
         else { return false }
         guard let repo = transcriptionRepo else {
@@ -1610,15 +1618,15 @@ public final class TranscriptionViewModel {
             return false
         }
 
-        transcription.cleanTranscript = nil
-        transcription.isTranscriptEdited = false
-        transcription.updatedAt = Date()
-
         do {
-            try repo.save(transcription)
-            currentTranscription = transcription
+            guard let persisted = try repo.updateTranscriptText(
+                id: transcription.id,
+                cleanTranscript: nil,
+                isTranscriptEdited: false
+            ) else { return false }
+            currentTranscription = persisted
             if let index = transcriptions.firstIndex(where: { $0.id == transcription.id }) {
-                transcriptions[index] = transcription
+                transcriptions[index] = persisted
             }
             return true
         } catch {
@@ -1663,7 +1671,8 @@ public final class TranscriptionViewModel {
             weak self,
             transcriptionRepo,
             transcriptionID,
-            speakers,
+            speakerId,
+            trimmed,
             previousCurrentSpeakers,
             previousCurrentSegments,
             previousCurrentUpdatedAt,
@@ -1673,9 +1682,18 @@ public final class TranscriptionViewModel {
             renameGeneration
         ] in
             do {
-                try await Task.detached(priority: .utility) {
-                    try transcriptionRepo.updateSpeakers(id: transcriptionID, speakers: speakers)
+                let persisted = try await Task.detached(priority: .utility) {
+                    try transcriptionRepo.updateSpeakerLabel(
+                        id: transcriptionID,
+                        speakerID: speakerId,
+                        label: trimmed
+                    )
                 }.value
+                self?.reconcileSpeakerRenamePersistence(
+                    transcriptionID: transcriptionID,
+                    generation: renameGeneration,
+                    persisted: persisted
+                )
                 self?.enqueueMeetingArtifactRefresh(
                     transcriptionID: transcriptionID,
                     generation: renameGeneration
@@ -1698,6 +1716,22 @@ public final class TranscriptionViewModel {
                     generation: renameGeneration
                 )
             }
+        }
+    }
+
+    private func reconcileSpeakerRenamePersistence(
+        transcriptionID: UUID,
+        generation: Int,
+        persisted: Transcription?
+    ) {
+        guard speakerRenameGenerations[transcriptionID] == generation,
+            let persisted
+        else { return }
+        if currentTranscription?.id == transcriptionID {
+            currentTranscription = persisted
+        }
+        if let index = transcriptions.firstIndex(where: { $0.id == transcriptionID }) {
+            transcriptions[index] = persisted
         }
     }
 
