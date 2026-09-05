@@ -714,6 +714,195 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         )
     }
 
+    func testFinalDocumentCleansConservativeArtifactsAndKeepsAllEvidenceReferences() {
+        let words = [
+            word("  We", 0, 100, "microphone"),
+            word("uh,", 120, 180, "microphone"),
+            word("use", 200, 300, "microphone"),
+            word("mac", 320, 400, "microphone"),
+            word("parakeet", 420, 520, "microphone"),
+            word("today", 540, 650, "microphone"),
+            word("today", 600, 650, "microphone"),
+            word(".", 670, 700, "microphone"),
+            word("umm", 720, 780, "microphone"),
+            word("Done", 800, 900, "microphone"),
+            word("..", 920, 950, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil,
+            customWords: [CustomWord(word: "mac parakeet", replacement: "MacParakeet")]
+        )
+
+        XCTAssertEqual(document.turns.count, 1)
+        XCTAssertEqual(document.turns[0].paragraphs.map(\.text), ["We use MacParakeet today. Done."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+        XCTAssertEqual(document.turns[0].paragraphs[0].wordReferences, Array(words.indices))
+        XCTAssertEqual(
+            document.turns[0].wordReferences.map { words[$0] },
+            words,
+            "Readable cleanup must retain a path to every verbatim word and timing"
+        )
+    }
+
+    func testCleanupModeChangesOnlyReadableText() {
+        let words = [
+            word("uh", 0, 100, "system:S1"),
+            word("acme", 120, 250, "system:S1"),
+            word("works.", 270, 500, "system:S1"),
+        ]
+        let vocabulary = [CustomWord(word: "acme", replacement: "ACME")]
+
+        let cleaned = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: [SpeakerInfo(id: "system:S1", label: "Avery")],
+            customWords: vocabulary,
+            cleanup: .cleaned
+        )
+        let verbatim = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: [SpeakerInfo(id: "system:S1", label: "Avery")],
+            customWords: vocabulary,
+            cleanup: .verbatim
+        )
+
+        XCTAssertEqual(cleaned.turns.map(\.text), ["ACME works."])
+        XCTAssertEqual(verbatim.turns.map(\.text), ["uh acme works."])
+        XCTAssertEqual(cleaned.turns.map(\.id), verbatim.turns.map(\.id))
+        XCTAssertEqual(cleaned.turns.map(\.speakerId), verbatim.turns.map(\.speakerId))
+        XCTAssertEqual(cleaned.turns.map(\.source), verbatim.turns.map(\.source))
+        XCTAssertEqual(cleaned.turns.map(\.timeRange), verbatim.turns.map(\.timeRange))
+        XCTAssertEqual(cleaned.turns.map(\.wordReferences), verbatim.turns.map(\.wordReferences))
+        XCTAssertEqual(
+            cleaned.turns.flatMap(\.paragraphs).map(\.wordReferences),
+            verbatim.turns.flatMap(\.paragraphs).map(\.wordReferences)
+        )
+    }
+
+    func testParagraphsUseNaturalSentenceBoundsAndKeepOneReadingTurn() {
+        var words: [WordTimestamp] = []
+        var time = 0
+        for sentence in 0..<4 {
+            for index in 0..<30 {
+                let suffix = index == 29 ? "." : ""
+                words.append(word("s\(sentence)w\(index)\(suffix)", time, time + 50, "microphone"))
+                time += 100
+            }
+        }
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.count, 1, "Paragraphs must not repeat the Reading Turn header")
+        XCTAssertEqual(document.turns[0].paragraphs.map { $0.wordReferences.count }, [60, 60])
+        XCTAssertTrue(document.turns[0].paragraphs.allSatisfy { $0.wordReferences.count <= 80 })
+    }
+
+    func testLongPauseKeepsClearReadingTurnBoundary() {
+        let words = [
+            word("Before", 0, 200, "microphone"),
+            word("the", 300, 450, "microphone"),
+            word("pause", 500, 700, "microphone"),
+            word("After", 3_200, 3_400, "microphone"),
+            word("the", 3_500, 3_650, "microphone"),
+            word("pause", 3_700, 3_900, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.count, 2)
+        XCTAssertEqual(document.turns.flatMap(\.paragraphs).map(\.text), ["Before the pause", "After the pause"])
+        XCTAssertEqual(document.turns.map(\.speakerLabel), ["Me", "Me"])
+    }
+
+    func testShortPauseAndMissingPunctuationStayTogetherWhenNoSafeBoundaryExists() {
+        let words = (0..<81).map { index in
+            let start = index < 40 ? index * 100 : index * 100 + 2_400
+            return word("word\(index)", start, start + 50, "microphone")
+        }
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.count, 1)
+        XCTAssertEqual(document.turns[0].paragraphs.count, 1)
+        XCTAssertEqual(document.turns[0].paragraphs[0].wordReferences.count, 81)
+    }
+
+    func testMeaningSensitiveFillersAndNonOverlappingRepetitionArePreserved() {
+        let words = [
+            word("um", 0, 100, "microphone"),
+            word("like", 150, 250, "microphone"),
+            word("very", 300, 400, "microphone"),
+            word("very", 500, 600, "microphone"),
+            word("clear...", 650, 800, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["um like very very clear..."])
+    }
+
+    func testUntimedFallbackUsesBoundedParagraphsAndConservativeCleanup() {
+        let sentences = (0..<7).map { "uh sentence\($0)." }.joined(separator: " ")
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: sentences,
+            words: nil,
+            speakers: nil,
+            customWords: [CustomWord(word: "sentence3", replacement: "SectionThree")]
+        )
+
+        XCTAssertEqual(document.turns.count, 1)
+        XCTAssertNil(document.turns[0].timeRange)
+        XCTAssertEqual(document.turns[0].paragraphs.count, 3)
+        XCTAssertEqual(
+            document.turns[0].paragraphs.map { $0.text.split(separator: " ").count },
+            [3, 3, 1]
+        )
+        XCTAssertFalse(document.turns[0].text.contains("uh"))
+        XCTAssertTrue(document.turns[0].text.contains("SectionThree"))
+    }
+
+    func testUntimedCleanupKeepsFillerOnlyParagraphStructure() {
+        let transcript = "uh. uhh. umm. Speech remains."
+
+        let cleaned = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: transcript,
+            words: nil,
+            speakers: nil,
+            cleanup: .cleaned
+        )
+        let verbatim = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: transcript,
+            words: nil,
+            speakers: nil,
+            cleanup: .verbatim
+        )
+
+        XCTAssertEqual(cleaned.turns.map(\.id), verbatim.turns.map(\.id))
+        XCTAssertEqual(cleaned.turns[0].paragraphs.count, verbatim.turns[0].paragraphs.count)
+        XCTAssertEqual(cleaned.turns[0].paragraphs.map(\.text), ["", "Speech remains."])
+    }
+
     func testFallsBackToUntimedTextWithoutClaimingSourceOrTimePrecision() {
         let document = MeetingTranscriptPresentationBuilder.build(
             transcriptText: "  A useful legacy transcript.  ",

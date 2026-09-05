@@ -156,6 +156,7 @@ struct MainWindowView: View {
                                 chatViewModel: chatViewModel,
                                 promptResultsViewModel: promptResultsViewModel,
                                 promptsViewModel: promptsViewModel,
+                                customWords: customWordsViewModel.words,
                                 onBack: {
                                     transcriptionViewModel.showInputPortal()
                                 },
