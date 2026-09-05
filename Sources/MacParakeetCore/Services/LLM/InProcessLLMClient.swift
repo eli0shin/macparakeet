@@ -106,6 +106,10 @@ public final class InProcessLLMClient: LLMClientProtocol, Sendable {
         [context.providerConfig.modelName].filter { !$0.isEmpty }
     }
 
+    func hasQueuedGeneration() async -> Bool {
+        await lifetimeCoordinator.hasWaitingGeneration
+    }
+
     public func withInProcessLocalModelRemoval(_ operation: @Sendable () async throws -> Void) async throws {
         try Task.checkCancellation()
         let lease = try await lifetimeCoordinator.beginGeneration()
@@ -552,6 +556,10 @@ private actor LocalLLMLifetimeCoordinator {
     private var unloadInProgress = false
     private var activeGenerationID: UUID?
     private var waitingGenerations: [WaitingGeneration] = []
+
+    var hasWaitingGeneration: Bool {
+        !waitingGenerations.isEmpty
+    }
 
     func beginGeneration() async throws -> LocalLLMGenerationLease {
         try Task.checkCancellation()

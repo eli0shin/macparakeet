@@ -303,7 +303,12 @@ final class InProcessLLMClientTests: XCTestCase {
             context: LLMExecutionContext(providerConfig: .inProcessLocal(model: "queued-test")),
             options: .default
         )
-        await Task.yield()
+        try await withTimeout {
+            while !(await client.hasQueuedGeneration()) {
+                try Task.checkCancellation()
+                await Task.yield()
+            }
+        }
         await firstGenerationGate.open()
 
         let firstResponse = try await first
