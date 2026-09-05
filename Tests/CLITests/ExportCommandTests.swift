@@ -75,14 +75,21 @@ final class ExportCommandTests: XCTestCase {
         let repository = TranscriptionRepository(dbQueue: manager.dbQueue)
         let transcription = Transcription(
             fileName: "meeting.m4a",
-            rawTranscript: "Hello there.",
+            rawTranscript: "Uh, Hello there. Yes.",
             wordTimestamps: [
                 WordTimestamp(
-                    word: "Hello there.",
+                    word: "Uh, Hello there.",
                     startMs: 0,
                     endMs: 1_000,
                     confidence: 0.9,
                     speakerId: "microphone"
+                ),
+                WordTimestamp(
+                    word: "Yes.",
+                    startMs: 500,
+                    endMs: 900,
+                    confidence: 0.9,
+                    speakerId: "system:S1"
                 )
             ],
             status: .completed,
@@ -100,8 +107,9 @@ final class ExportCommandTests: XCTestCase {
             try await command.run()
         }
 
-        XCTAssertEqual(output, "Hello there.\n")
+        XCTAssertEqual(output, "Uh, Hello there. Yes.\n")
         XCTAssertFalse(output.contains("**"))
+        XCTAssertFalse(output.contains("Simultaneous speech"))
     }
 
     func testDAPTStdoutUsesSharedRenderer() async throws {

@@ -80,14 +80,7 @@ struct ExportCommand: AsyncParsableCommand {
     private func formatContent(transcription: Transcription, exportService: ExportService) throws -> String {
         switch format {
         case .txt:
-            return exportService.formatPlainText(
-                transcription: transcription,
-                options: TranscriptExportOptions(
-                    includeTimestamps: false,
-                    includeSpeakerLabels: false,
-                    includeMetadata: false
-                )
-            )
+            return exportService.formatTranscriptOnly(transcription: transcription)
         case .markdown:
             return exportService.formatMarkdown(transcription: transcription)
         case .srt:

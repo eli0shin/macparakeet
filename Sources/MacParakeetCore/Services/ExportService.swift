@@ -433,6 +433,12 @@ public final class ExportService: ExportServiceProtocol, Sendable {
         return lines.joined(separator: "\n")
     }
 
+    /// Return only the preferred stored transcript. This preserves the public
+    /// CLI stdout contract without adding metadata or readable-document markers.
+    public func formatTranscriptOnly(transcription: Transcription) -> String {
+        preferredText(transcription: transcription)
+    }
+
     /// Format transcription text for clipboard copy
     public func formatForClipboard(transcription: Transcription) -> String {
         guard let document = readingDocument(transcription: transcription) else {
