@@ -1,7 +1,7 @@
 import Foundation
 
 /// Capture-source identity used by the completed-meeting reading surface.
-public enum ReadingTurnSource: String, Sendable, Equatable, Hashable {
+public enum ReadingTurnSource: String, Codable, Sendable, Equatable, Hashable {
     case microphone
     case system
     case unknown
@@ -10,7 +10,7 @@ public enum ReadingTurnSource: String, Sendable, Equatable, Hashable {
 /// Stable identity derived from canonical transcript evidence. Speaker renames do
 /// not change this identity. Retranscription can create a new identity because it
 /// creates new word evidence.
-public struct ReadingTurnIdentity: Sendable, Equatable, Hashable {
+public struct ReadingTurnIdentity: Codable, Sendable, Equatable, Hashable {
     public let source: ReadingTurnSource
     public let speakerId: String
     public let firstWordIndex: Int?
@@ -64,6 +64,9 @@ public struct ReadingTurn: Sendable, Equatable, Identifiable {
     public let timeRange: ReadingTurnTimeRange?
     public let overlap: ReadingTurnOverlap?
     public let paragraphs: [ReadingTurnParagraph]
+    /// Validated optional AI presentation. Paragraphs retain deterministic text
+    /// and canonical word references for recovery and playback.
+    public let formattedText: String?
     public let wordReferences: [Int]
 
     public init(
@@ -74,6 +77,7 @@ public struct ReadingTurn: Sendable, Equatable, Identifiable {
         timeRange: ReadingTurnTimeRange?,
         overlap: ReadingTurnOverlap? = nil,
         paragraphs: [ReadingTurnParagraph],
+        formattedText: String? = nil,
         wordReferences: [Int]
     ) {
         self.id = id
@@ -83,11 +87,16 @@ public struct ReadingTurn: Sendable, Equatable, Identifiable {
         self.timeRange = timeRange
         self.overlap = overlap
         self.paragraphs = paragraphs
+        self.formattedText = formattedText
         self.wordReferences = wordReferences
     }
 
-    public var text: String {
+    public var deterministicText: String {
         paragraphs.map(\.text).joined(separator: "\n\n")
+    }
+
+    public var text: String {
+        formattedText ?? deterministicText
     }
 }
 
@@ -197,13 +206,17 @@ public enum MeetingTranscriptPresentationBuilder {
         speakers: [SpeakerInfo]?,
         diarizationSegments: [DiarizationSegmentRecord]? = nil,
         customWords: [CustomWord] = [],
-        cleanup: MeetingTranscriptCleanup = .cleaned
+        cleanup: MeetingTranscriptCleanup = .cleaned,
+        formatting: [MeetingReadingTurnFormatting] = []
     ) -> MeetingTranscriptPresentationDocument {
         guard let words, !words.isEmpty else {
-            return fallbackDocument(
+            let fallback = fallbackDocument(
                 transcriptText: transcriptText,
                 customWords: customWords,
                 cleanup: cleanup
+            )
+            return MeetingTranscriptPresentationDocument(
+                turns: applyFormatting(formatting, to: fallback.turns)
             )
         }
 
@@ -237,8 +250,12 @@ public enum MeetingTranscriptPresentationBuilder {
             return lhs.speakerId < rhs.speakerId
         }
 
+        let overlapping = markOverlaps(
+            in: assembled,
+            diarizationSegments: diarizationSegments ?? []
+        )
         return MeetingTranscriptPresentationDocument(
-            turns: markOverlaps(in: assembled, diarizationSegments: diarizationSegments ?? [])
+            turns: applyFormatting(formatting, to: overlapping)
         )
     }
 
@@ -703,6 +720,34 @@ public enum MeetingTranscriptPresentationBuilder {
                 timeRange: turn.timeRange,
                 overlap: overlap,
                 paragraphs: turn.paragraphs,
+                formattedText: turn.formattedText,
+                wordReferences: turn.wordReferences
+            )
+        }
+    }
+
+    private static func applyFormatting(
+        _ formatting: [MeetingReadingTurnFormatting],
+        to turns: [ReadingTurn]
+    ) -> [ReadingTurn] {
+        let byIdentity = Dictionary(
+            formatting.map { ($0.turnID, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        return turns.map { turn in
+            guard let formatted = byIdentity[turn.id],
+                formatted.deterministicText == turn.deterministicText,
+                formatted.formattedText.contains(where: { !$0.isWhitespace })
+            else { return turn }
+            return ReadingTurn(
+                id: turn.id,
+                speakerId: turn.speakerId,
+                speakerLabel: turn.speakerLabel,
+                source: turn.source,
+                timeRange: turn.timeRange,
+                overlap: turn.overlap,
+                paragraphs: turn.paragraphs,
+                formattedText: formatted.formattedText,
                 wordReferences: turn.wordReferences
             )
         }

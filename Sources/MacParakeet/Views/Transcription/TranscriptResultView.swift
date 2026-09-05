@@ -3547,7 +3547,8 @@ struct TranscriptResultView: View {
             speakers: activeTranscription.speakers,
             diarizationSegments: activeTranscription.diarizationSegments,
             customWords: activeTranscription.hasWordTimestamps ? readingTurnCustomWords : [],
-            cleanup: meetingTranscriptCleanup
+            cleanup: meetingTranscriptCleanup,
+            formatting: activeTranscription.meetingReadingTurnFormatting ?? []
         )
         cachedReadingTurns = identifiedReadingTurns(readingDocument.turns)
 

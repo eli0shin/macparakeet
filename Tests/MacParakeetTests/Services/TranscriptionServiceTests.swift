@@ -1894,6 +1894,143 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertFalse(markdown.contains(assistantReply))
     }
 
+    func testLongMeetingUsesBoundedReadingTurnFormattingRequestsAndPersistsOverrides() async throws {
+        let turnTexts = (0..<3).map { index in
+            "turn\(index)" + String(repeating: "a", count: 7_000) + "."
+        }
+        XCTAssertGreaterThan(
+            turnTexts.joined(separator: " ").count,
+            AIFormatter.maxTranscriptionInputChars
+        )
+        await mockSTT.configure(result: STTResult(
+            text: turnTexts.joined(separator: " "),
+            words: turnTexts.enumerated().map { index, text in
+                TimestampedWord(
+                    word: text,
+                    startMs: index * 4_000,
+                    endMs: index * 4_000 + 500,
+                    confidence: 0.95
+                )
+            }
+        ))
+        let llm = MockLLMService()
+        llm.formatTranscriptTransform = { $0.uppercased() }
+        let service = TranscriptionService(
+            audioProcessor: mockAudio,
+            sttTranscriber: mockSTT,
+            transcriptionRepo: transcriptionRepo,
+            llmService: llm,
+            llmRunRepo: llmRunRepo,
+            shouldUseAIFormatter: { true },
+            meetingAutomationHookRunner: nil
+        )
+        let recording = try makeOneSourceMeetingRecording(displayName: "Long Meeting")
+        defer { try? FileManager.default.removeItem(at: recording.folderURL) }
+        let progress = OSAllocatedUnfairLock(initialState: [TranscriptionProgress]())
+
+        let result = try await service.transcribeMeeting(
+            recording: recording,
+            onProgress: { update in progress.withLock { $0.append(update) } }
+        )
+
+        XCTAssertEqual(llm.formatTranscriptCallCount, 3)
+        XCTAssertTrue(llm.formattedTranscripts.allSatisfy {
+            $0.count <= AIFormatter.maxTranscriptionInputChars
+        })
+        XCTAssertEqual(result.meetingReadingTurnFormatting?.count, 3)
+        XCTAssertEqual(result.cleanTranscript, turnTexts.map { $0.uppercased() }.joined(separator: "\n\n"))
+        XCTAssertEqual(result.rawTranscript, turnTexts.joined(separator: " "))
+        XCTAssertEqual(result.wordTimestamps?.map(\.word), turnTexts)
+        XCTAssertTrue(progress.withLock { updates in
+            updates.contains { update in
+                if case .formatting(completed: 3, total: 3) = update { return true }
+                return false
+            }
+        })
+
+        let persisted = try XCTUnwrap(transcriptionRepo.fetch(id: result.id))
+        XCTAssertEqual(persisted.meetingReadingTurnFormatting, result.meetingReadingTurnFormatting)
+        XCTAssertEqual(try llmRunRepo.fetchForTranscription(id: result.id).count, 3)
+    }
+
+    func testMeetingCancellationDuringFormattingThrowsAndPersistsCancelledStatus() async throws {
+        await mockSTT.configure(result: STTResult(
+            text: "Cancel during formatting.",
+            words: [
+                TimestampedWord(
+                    word: "Cancel during formatting.",
+                    startMs: 0,
+                    endMs: 500,
+                    confidence: 0.95
+                )
+            ]
+        ))
+        let llm = MockLLMService()
+        llm.formatTranscriptTransform = { input in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return input.uppercased()
+        }
+        let service = TranscriptionService(
+            audioProcessor: mockAudio,
+            sttTranscriber: mockSTT,
+            transcriptionRepo: transcriptionRepo,
+            llmService: llm,
+            llmRunRepo: llmRunRepo,
+            shouldUseAIFormatter: { true },
+            meetingAutomationHookRunner: nil
+        )
+        let recording = try makeOneSourceMeetingRecording(displayName: "Cancelled Meeting")
+        defer { try? FileManager.default.removeItem(at: recording.folderURL) }
+
+        do {
+            _ = try await Task {
+                try await service.transcribeMeeting(recording: recording)
+            }.value
+            XCTFail("Expected meeting formatting cancellation to throw.")
+        } catch is CancellationError {
+            // Expected: the meeting-level cancellation handler persists status.
+        } catch {
+            XCTFail("Expected CancellationError, got \(error).")
+        }
+
+        XCTAssertEqual(llm.formatTranscriptCallCount, 1)
+        let persisted = try XCTUnwrap(transcriptionRepo.fetchAll(limit: nil).first)
+        XCTAssertEqual(persisted.status, .cancelled)
+        XCTAssertNil(persisted.meetingReadingTurnFormatting)
+    }
+
+    func testMeetingWithAIFormattingDisabledDoesNotBuildFormattingRequests() async throws {
+        await mockSTT.configure(result: STTResult(
+            text: "deterministic meeting text.",
+            words: [
+                TimestampedWord(
+                    word: "deterministic meeting text.",
+                    startMs: 0,
+                    endMs: 500,
+                    confidence: 0.95
+                )
+            ]
+        ))
+        let llm = MockLLMService()
+        let service = TranscriptionService(
+            audioProcessor: mockAudio,
+            sttTranscriber: mockSTT,
+            transcriptionRepo: transcriptionRepo,
+            llmService: llm,
+            llmRunRepo: llmRunRepo,
+            shouldUseAIFormatter: { false },
+            meetingAutomationHookRunner: nil
+        )
+        let recording = try makeOneSourceMeetingRecording(displayName: "Local Meeting")
+        defer { try? FileManager.default.removeItem(at: recording.folderURL) }
+
+        let result = try await service.transcribeMeeting(recording: recording)
+
+        XCTAssertEqual(llm.formatTranscriptCallCount, 0)
+        XCTAssertNil(result.meetingReadingTurnFormatting)
+        XCTAssertEqual(result.rawTranscript, "deterministic meeting text.")
+    }
+
     func testTranscribeMeetingAppliesEnabledCustomWordsToTextAndWordTokens() async throws {
         // Seed the user's Vocabulary with company-context corrections (issue #550).
         let dbManager = try DatabaseManager()

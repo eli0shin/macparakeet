@@ -1333,6 +1333,17 @@ public final class DatabaseManager: Sendable {
             }
         }
 
+        // v0.31 — Validated AI text overrides for stable meeting Reading Turns.
+        // This derived presentation never replaces raw words or deterministic text.
+        migrator.registerMigration("v0.31-meeting-reading-turn-formatting") { db in
+            let columns = try db.columns(in: "transcriptions").map(\.name)
+            if !columns.contains("meetingReadingTurnFormatting") {
+                try db.execute(
+                    sql: "ALTER TABLE transcriptions ADD COLUMN meetingReadingTurnFormatting TEXT"
+                )
+            }
+        }
+
         return migrator
     }
 

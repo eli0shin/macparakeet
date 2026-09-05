@@ -1115,6 +1115,45 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         XCTAssertTrue(document.turns[0].wordReferences.isEmpty)
     }
 
+    func testAppliesOnlyFormattingThatMatchesStableIdentityAndDeterministicText() {
+        let words = [word("hello.", 0, 300, "system:S1")]
+        let baseline = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "hello.",
+            words: words,
+            speakers: [SpeakerInfo(id: "system:S1", label: "Avery")]
+        )
+        let turn = baseline.turns[0]
+        let valid = MeetingReadingTurnFormatting(
+            turnID: turn.id,
+            deterministicText: turn.deterministicText,
+            formattedText: "Hello."
+        )
+        let stale = MeetingReadingTurnFormatting(
+            turnID: turn.id,
+            deterministicText: "different evidence",
+            formattedText: "Wrong."
+        )
+
+        let formatted = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "hello.",
+            words: words,
+            speakers: [SpeakerInfo(id: "system:S1", label: "Avery")],
+            formatting: [valid]
+        )
+        let rejected = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "hello.",
+            words: words,
+            speakers: [SpeakerInfo(id: "system:S1", label: "Avery")],
+            formatting: [stale]
+        )
+
+        XCTAssertEqual(formatted.turns[0].text, "Hello.")
+        XCTAssertEqual(formatted.turns[0].deterministicText, "hello.")
+        XCTAssertEqual(formatted.turns[0].timeRange, turn.timeRange)
+        XCTAssertEqual(formatted.turns[0].wordReferences, turn.wordReferences)
+        XCTAssertEqual(rejected.turns[0].text, "hello.")
+    }
+
     func testStableIdentityDoesNotDependOnDisplayLabel() {
         let words = [word("Hello.", 0, 300, "system:S1")]
 

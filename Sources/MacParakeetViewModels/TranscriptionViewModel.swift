@@ -988,7 +988,8 @@ public final class TranscriptionViewModel {
         case .converting: return "Preparing saved system audio…"
         case .identifyingSpeakers: return "Identifying remote speakers…"
         case .finalizing: return "Rebuilding Reading Turns…"
-        case .downloading, .preparingSpeechModel, .transcribing: return "Preparing speaker attribution…"
+        case .downloading, .preparingSpeechModel, .transcribing, .formatting:
+            return "Preparing speaker attribution…"
         }
     }
 
@@ -1468,6 +1469,7 @@ public final class TranscriptionViewModel {
         case .preparingSpeechModel: return .preparingSpeechModel
         case .transcribing: return .transcribing
         case .identifyingSpeakers: return .identifyingSpeakers
+        case .formatting: return .finalizing
         case .finalizing: return .finalizing
         }
     }
@@ -1484,6 +1486,8 @@ public final class TranscriptionViewModel {
             return "Transcribing... \(percent)%"
         case .identifyingSpeakers:
             return "Identifying speakers..."
+        case .formatting(let completed, let total):
+            return "Formatting meeting... \(completed)/\(total)"
         case .finalizing:
             return "Finalizing..."
         }

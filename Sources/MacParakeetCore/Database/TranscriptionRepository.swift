@@ -556,6 +556,7 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
         try dbQueue.write { db in
             guard var transcription = try Transcription.fetchOne(db, key: id) else { return nil }
             transcription.cleanTranscript = cleanTranscript
+            transcription.meetingReadingTurnFormatting = nil
             transcription.isTranscriptEdited = isTranscriptEdited
             transcription.updatedAt = Date()
             try transcription.update(db)

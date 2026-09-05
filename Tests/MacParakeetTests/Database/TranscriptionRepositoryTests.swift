@@ -82,6 +82,75 @@ final class TranscriptionRepositoryTests: XCTestCase {
         )
     }
 
+    func testMeetingReadingTurnFormattingRoundTripsWithoutReplacingEvidence() throws {
+        let turnID = ReadingTurnIdentity(
+            source: .system,
+            speakerId: "system:S1",
+            firstWordIndex: 4
+        )
+        let formatting = MeetingReadingTurnFormatting(
+            turnID: turnID,
+            deterministicText: "we ship at 5.",
+            formattedText: "We ship at 5."
+        )
+        let words = [
+            WordTimestamp(
+                word: "we",
+                startMs: 100,
+                endMs: 200,
+                confidence: 0.9,
+                speakerId: "system:S1"
+            )
+        ]
+        let transcription = Transcription(
+            fileName: "Review",
+            rawTranscript: "we ship at 5.",
+            wordTimestamps: words,
+            meetingReadingTurnFormatting: [formatting],
+            status: .completed,
+            sourceType: .meeting
+        )
+
+        try repo.save(transcription)
+        let fetched = try XCTUnwrap(repo.fetch(id: transcription.id))
+
+        XCTAssertEqual(fetched.meetingReadingTurnFormatting, [formatting])
+        XCTAssertEqual(fetched.rawTranscript, transcription.rawTranscript)
+        XCTAssertEqual(fetched.wordTimestamps, words)
+    }
+
+    func testTranscriptEditClearsMeetingReadingTurnFormattingAtomically() throws {
+        let formatting = MeetingReadingTurnFormatting(
+            turnID: ReadingTurnIdentity(
+                source: .system,
+                speakerId: "system:S1",
+                firstWordIndex: 0
+            ),
+            deterministicText: "Original transcript.",
+            formattedText: "Original transcript."
+        )
+        let transcription = Transcription(
+            fileName: "Review",
+            rawTranscript: "Original transcript.",
+            meetingReadingTurnFormatting: [formatting],
+            status: .completed,
+            sourceType: .meeting
+        )
+        try repo.save(transcription)
+
+        let updated = try XCTUnwrap(repo.updateTranscriptText(
+            id: transcription.id,
+            cleanTranscript: "Edited transcript.",
+            isTranscriptEdited: true
+        ))
+
+        XCTAssertEqual(updated.cleanTranscript, "Edited transcript.")
+        XCTAssertTrue(updated.isTranscriptEdited)
+        XCTAssertNil(updated.meetingReadingTurnFormatting)
+        let fetched = try XCTUnwrap(repo.fetch(id: transcription.id))
+        XCTAssertNil(fetched.meetingReadingTurnFormatting)
+    }
+
     func testMeetingCalendarEventSnapshotRoundTrips() throws {
         let snapshot = MeetingCalendarSnapshot(
             confidence: .confirmed,

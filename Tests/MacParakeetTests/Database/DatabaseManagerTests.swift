@@ -453,6 +453,40 @@ final class DatabaseManagerTests: XCTestCase {
         XCTAssertNil(upgraded.meetingCaptureReport)
     }
 
+    func testMeetingReadingTurnFormattingMigrationPreservesExistingRows() throws {
+        let dbPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("meeting_turn_formatting_upgrade_\(UUID().uuidString).db")
+            .path
+        defer { cleanupDatabaseFiles(atPath: dbPath) }
+
+        let previousVersionManager = try DatabaseManager(path: dbPath)
+        let existing = Transcription(
+            fileName: "Existing meeting",
+            rawTranscript: "Recoverable evidence.",
+            status: .completed,
+            sourceType: .meeting
+        )
+        try TranscriptionRepository(dbQueue: previousVersionManager.dbQueue).save(existing)
+        try previousVersionManager.dbQueue.write { db in
+            try db.execute(sql: "ALTER TABLE transcriptions DROP COLUMN meetingReadingTurnFormatting")
+            try db.execute(
+                sql: "DELETE FROM grdb_migrations WHERE identifier = ?",
+                arguments: ["v0.31-meeting-reading-turn-formatting"]
+            )
+        }
+
+        let upgradedManager = try DatabaseManager(path: dbPath)
+        let columns = try upgradedManager.dbQueue.read { db in
+            try db.columns(in: "transcriptions").map(\.name)
+        }
+        let upgraded = try XCTUnwrap(
+            TranscriptionRepository(dbQueue: upgradedManager.dbQueue).fetch(id: existing.id)
+        )
+        XCTAssertTrue(columns.contains("meetingReadingTurnFormatting"))
+        XCTAssertEqual(upgraded.rawTranscript, existing.rawTranscript)
+        XCTAssertNil(upgraded.meetingReadingTurnFormatting)
+    }
+
     // MARK: - ADR-020 v0.8 schema additions
 
     func testUserNotesColumnExistsOnTranscriptions() throws {

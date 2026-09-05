@@ -79,6 +79,10 @@ with human progress/status kept off stdout.
   (`is_built_in`, `created_at`), which predates this convention; its keys are
   frozen for v1 and would only change at a major boundary. New commands use
   camelCase.
+- Generic transcription JSON exports may include optional
+  `meetingReadingTurnFormatting` for completed meeting rows. Each entry is a
+  validated presentation override with `turnID`, `deterministicText`, and
+  `formattedText`; raw transcript words, speakers, and timings remain canonical.
 - `meetings show --json` and `meetings transcript --format json` expose
   `transcriptSegments` when the meeting row has durable segments. Each segment
   contains `id`, `startMs`, `endMs`, `speakerId`, `speakerLabel`, `text`, and

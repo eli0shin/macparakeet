@@ -42,6 +42,12 @@ mode.
   references without changing canonical transcript evidence. Its `.verbatim`
   policy, selected for Raw processing mode by the completed-meeting surface,
   keeps the same document structure without presentation cleanup.
+- `MeetingReadingTurnFormatter.swift` — optional AI formatting module for completed
+  meetings. It makes serial requests from complete deterministic paragraphs,
+  validates content preservation, and commits overrides one stable Reading Turn
+  at a time. Failures leave affected turns deterministic. Cancellation is
+  reported to the meeting workflow, which aborts completion without publishing
+  partial overrides.
 
 ## Cross-references
 
@@ -117,6 +123,16 @@ concurrent remote-speaker regions, receive one stable overlap-group identity.
 Same-speaker sentence utterances merge across gaps shorter than 2.5 seconds;
 long pauses and completed source exchanges stay as boundaries. This local policy
 does not rewrite words or diarization regions.
+
+**Meeting AI formatting never owns transcript structure.** The formatter sends
+only text from one stable Reading Turn at a time and never sends speaker labels,
+timestamps, overlap state, or word references. It does not split a deterministic
+paragraph to meet a request bound. Each turn commits atomically only after all
+responses are non-empty, bounded, preserve numbers/URLs/email-like values, and
+stay within the accepted lexical-change ratio. Durable overrides include the
+turn identity and deterministic source text; stale overrides fail closed. The
+existing transcript-formatter toggle, provider, model, and prompt remain the only
+routing controls, so this module adds no implicit network path.
 
 **Meetings reuse only the custom-word step, not the whole dictation pipeline.**
 `MeetingTranscriptVocabularyApplier` (in `Services/MeetingRecording/`)
