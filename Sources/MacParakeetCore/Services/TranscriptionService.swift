@@ -742,14 +742,15 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
 
         try Task.checkCancellation()
         onProgress?(.finalizing)
-        try segmentRepo?.deleteSegments(transcriptionId: original.id)
         guard let committed = try transcriptionRepo.applyMeetingSpeakerAttribution(
             id: original.id,
+            expectedWordTimestamps: words,
             update: update
         ) else {
             throw MeetingSpeakerCountCorrectionError.transcriptionUnavailable
         }
         do {
+            try segmentRepo?.deleteSegments(transcriptionId: original.id)
             if let knowledgeLayerMutator {
                 try knowledgeLayerMutator.replaceSegmentsAndInvalidateCard(for: committed)
             } else {

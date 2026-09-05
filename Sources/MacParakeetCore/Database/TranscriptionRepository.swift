@@ -27,6 +27,7 @@ public protocol TranscriptionRepositoryProtocol: Sendable {
     func updateSpeakerLabel(id: UUID, speakerID: String, label: String) throws -> Transcription?
     func applyMeetingSpeakerAttribution(
         id: UUID,
+        expectedWordTimestamps: [WordTimestamp],
         update: MeetingSpeakerAttributionUpdate
     ) throws -> Transcription?
     func updateFilePath(id: UUID, filePath: String?) throws
@@ -132,6 +133,7 @@ extension TranscriptionRepositoryProtocol {
     public func updateSpeakerLabel(id: UUID, speakerID: String, label: String) throws -> Transcription? { nil }
     public func applyMeetingSpeakerAttribution(
         id: UUID,
+        expectedWordTimestamps: [WordTimestamp],
         update: MeetingSpeakerAttributionUpdate
     ) throws -> Transcription? { nil }
     public func updateFilePath(id: UUID, filePath: String?) throws {}
@@ -598,12 +600,16 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
 
     public func applyMeetingSpeakerAttribution(
         id: UUID,
+        expectedWordTimestamps: [WordTimestamp],
         update: MeetingSpeakerAttributionUpdate
     ) throws -> Transcription? {
         try dbQueue.write { db in
             guard var transcription = try Transcription.fetchOne(db, key: id),
                 transcription.sourceType == .meeting
             else { return nil }
+            guard transcription.wordTimestamps == expectedWordTimestamps else {
+                throw MeetingSpeakerCountCorrectionError.canonicalWordsChanged
+            }
             let currentLabels = Dictionary(
                 uniqueKeysWithValues: (transcription.speakers ?? []).map { ($0.id, $0.label) }
             )

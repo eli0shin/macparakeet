@@ -125,6 +125,55 @@ final class MeetingSpeakerCountCorrectionTests: XCTestCase {
         }
     }
 
+    func testCorrectionRejectsCommitWhenRetranscriptionReplacesCanonicalWords() async throws {
+        let fixture = try await makeFixture(includeMicrophone: true)
+        defer { fixture.cleanup() }
+        await fixture.diarization.configureDiarizeDelay(.seconds(1))
+
+        let correction = Task {
+            try await fixture.service.correctMeetingSpeakerAttribution(
+                existing: fixture.original,
+                recording: fixture.recording,
+                selection: .exact(totalPeople: 3)
+            )
+        }
+        while !(await fixture.diarization.diarizeCalled) {
+            await Task.yield()
+        }
+
+        var retranscribed = try XCTUnwrap(fixture.repository.fetch(id: fixture.original.id))
+        retranscribed.rawTranscript = "Replacement words."
+        retranscribed.cleanTranscript = nil
+        retranscribed.wordTimestamps = [
+            WordTimestamp(
+                word: "Replacement", startMs: 0, endMs: 400, confidence: 0.97,
+                speakerId: AudioSource.microphone.rawValue
+            ),
+            WordTimestamp(
+                word: "words.", startMs: 450, endMs: 800, confidence: 0.96,
+                speakerId: AudioSource.microphone.rawValue
+            ),
+        ]
+        retranscribed.speakers = [SpeakerInfo(id: AudioSource.microphone.rawValue, label: "Me")]
+        retranscribed.speakerCount = 1
+        retranscribed.diarizationSegments = nil
+        retranscribed.transcriptSegments = nil
+        try fixture.repository.save(retranscribed)
+
+        do {
+            _ = try await correction.value
+            XCTFail("Expected stale correction to be rejected")
+        } catch let error as MeetingSpeakerCountCorrectionError {
+            XCTAssertEqual(error, .canonicalWordsChanged)
+        }
+
+        let persisted = try XCTUnwrap(fixture.repository.fetch(id: fixture.original.id))
+        XCTAssertEqual(persisted.rawTranscript, retranscribed.rawTranscript)
+        XCTAssertEqual(persisted.wordTimestamps, retranscribed.wordTimestamps)
+        XCTAssertEqual(persisted.speakers, retranscribed.speakers)
+        XCTAssertEqual(persisted.speakerCount, retranscribed.speakerCount)
+    }
+
     func testCorrectionPreservesConcurrentSpeakerRenameWhenIdentityRemains() async throws {
         let fixture = try await makeFixture(includeMicrophone: true)
         defer { fixture.cleanup() }

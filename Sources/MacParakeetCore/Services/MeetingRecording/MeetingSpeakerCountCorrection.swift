@@ -77,6 +77,7 @@ public enum MeetingSpeakerCountCorrectionError: LocalizedError, Equatable, Senda
     case unsupportedService
     case retainedAudioUnavailable
     case transcriptionUnavailable
+    case canonicalWordsChanged
 
     public var errorDescription: String? {
         switch self {
@@ -96,6 +97,8 @@ public enum MeetingSpeakerCountCorrectionError: LocalizedError, Equatable, Senda
             return "Saved meeting audio is not available, so speaker attribution cannot be rerun."
         case .transcriptionUnavailable:
             return "The meeting is no longer available. The speaker correction was not saved."
+        case .canonicalWordsChanged:
+            return "The transcript changed while speaker attribution was running. Run Adjust Speakers again."
         }
     }
 }

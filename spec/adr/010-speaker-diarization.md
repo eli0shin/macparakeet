@@ -174,7 +174,9 @@ Skip diarization for: dictation (single speaker by design), or when the correspo
 > counts. Total counts include Me and are converted to remote-speaker constraints
 > before calling this same offline diarization boundary. Progress, cancellation,
 > and failure preserve the last successful transcript; success updates only
-> speaker evidence and derived Reading Turns.
+> speaker evidence and derived Reading Turns. The persistence boundary applies
+> correction only when the current canonical words still match its input, so a
+> concurrent retranscription makes stale correction work fail without mutation.
 >
 > **2. The FluidAudio dependency surface has grown.** The core decision above
 > still stands — MacParakeet ships only the offline batch pipeline and uses
