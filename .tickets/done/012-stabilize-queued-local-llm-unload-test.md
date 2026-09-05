@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@012-stabilize-queued-local-llm-unload-test
 Tags:
   - ready-for-agent
 Parent:
