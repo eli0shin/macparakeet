@@ -114,8 +114,11 @@ Successful `main` and manual CI runs upload a GitHub Actions artifact named
 `MacParakeet-unsigned-non-notarized`. It contains
 `MacParakeet-unsigned-non-notarized.zip`, which wraps `MacParakeet.app` with
 macOS `ditto` so bundle metadata, symlinks, and executable permissions are
-preserved. The artifact is retained for seven days. Pull request runs do not
-publish it.
+preserved. The app contains the normal portable FFmpeg, yt-dlp helper seed, and
+Node runtime. CI executes safe version checks for these helpers before packaging
+and again after archive extraction. The artifact is retained for seven days.
+Pull request runs use a separate fixture-only bundle smoke and do not publish
+its output.
 
 This artifact is an **unsigned, non-notarized development build** for testing.
 It is not the stable MacParakeet release and does not replace the Developer ID,
