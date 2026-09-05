@@ -882,7 +882,9 @@ public enum MeetingTranscriptPresentationBuilder {
                     customWords: customWords
                 )
             case .verbatim:
-                text = renderedText(from: tokens)
+                text = CustomWordReplacer(words: customWords).apply(
+                    to: renderedText(from: tokens)
+                )
             }
             return ReadingTurnParagraph(text: text, wordReferences: [])
         }
@@ -1032,7 +1034,9 @@ public enum MeetingTranscriptPresentationBuilder {
                 customWords: customWords
             )
         case .verbatim:
-            return renderedText(from: words.map { $0.word.word })
+            return CustomWordReplacer(words: customWords).apply(
+                to: renderedText(from: words.map { $0.word.word })
+            )
         }
     }
 
@@ -1076,6 +1080,16 @@ public enum MeetingTranscriptPresentationBuilder {
         if sentenceEndings.contains(incoming) {
             while let last = base.last?.unicodeScalars.first, separators.contains(last) {
                 base.removeLast()
+            }
+            if base.contains(where: isWordCharacter),
+                let last = base.last?.unicodeScalars.first,
+                sentenceEndings.contains(last)
+            {
+                while let first = addition.first?.unicodeScalars.first,
+                    sentenceEndings.contains(first)
+                {
+                    addition.removeFirst()
+                }
             }
         } else if separators.contains(incoming),
             let last = base.last?.unicodeScalars.first,

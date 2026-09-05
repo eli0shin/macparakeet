@@ -832,6 +832,24 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
     }
 
+    func testTransferredSentencePunctuationDoesNotDuplicateExistingSentenceEnding() {
+        let words = [
+            word("Okay!", 0, 200, "microphone"),
+            word("uh.", 220, 300, "microphone"),
+            word("Next", 320, 430, "microphone"),
+            word("topic.", 450, 600, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["Okay! Next topic."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
     func testTransferredSentencePunctuationReplacesExistingSeparatorInFinalDocument() {
         let words = [
             word("Keep", 0, 100, "microphone"),
@@ -849,7 +867,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
     }
 
-    func testCleanupModeChangesOnlyReadableText() {
+    func testCleanupModeChangesOnlyCleanupArtifacts() {
         let words = [
             word("uh", 0, 100, "system:S1"),
             word("acme", 120, 250, "system:S1"),
@@ -873,7 +891,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         )
 
         XCTAssertEqual(cleaned.turns.map(\.text), ["ACME works."])
-        XCTAssertEqual(verbatim.turns.map(\.text), ["uh acme works."])
+        XCTAssertEqual(verbatim.turns.map(\.text), ["uh ACME works."])
         XCTAssertEqual(cleaned.turns.map(\.id), verbatim.turns.map(\.id))
         XCTAssertEqual(cleaned.turns.map(\.speakerId), verbatim.turns.map(\.speakerId))
         XCTAssertEqual(cleaned.turns.map(\.source), verbatim.turns.map(\.source))
@@ -883,6 +901,25 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
             cleaned.turns.flatMap(\.paragraphs).map(\.wordReferences),
             verbatim.turns.flatMap(\.paragraphs).map(\.wordReferences)
         )
+    }
+
+    func testVerbatimModeAppliesPhraseVocabularyAcrossTimedWords() {
+        let words = [
+            word("mac", 0, 100, "microphone"),
+            word("parakeet", 120, 250, "microphone"),
+            word("works.", 270, 500, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil,
+            customWords: [CustomWord(word: "mac parakeet", replacement: "MacParakeet")],
+            cleanup: .verbatim
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["MacParakeet works."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
     }
 
     func testParagraphsUseNaturalSentenceBoundsAndKeepOneReadingTurn() {
