@@ -2,102 +2,152 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-    paths-ignore:
-      - "docs/**"
-      - "plans/**"
+    branches: [main]
   pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "plans/**"
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  swift-test:
-    runs-on: macos-14
-    timeout-minutes: 45
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+      release: ${{ steps.classify.outputs.release }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+      - uses: actions/checkout@v6
         with:
-          xcode-version: "16.1"
-
-      - name: Toolchain Versions
-        timeout-minutes: 2
-        run: |
-          xcodebuild -version
-          swift --version
-
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check CI scripts
+        run: python3 -m unittest discover -s scripts/ci -p 'test_*.py'
       - name: Check Subsystem README References
-        timeout-minutes: 1
-        run: |
-          mkdir -p .ci-logs
-          set -o pipefail
-          ./scripts/check-readme-references.sh 2>&1 | tee .ci-logs/check-readme-references.log
+        run: bash scripts/check-readme-references.sh
+      - name: Classify changes
+        id: classify
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/ci/classify_changes.py
 
+  debug-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: macos-14
+    # Five minutes is the normal-PR target, not a timeout that hides slow runs.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-swift
+        with:
+          lane: debug-tests
+      - name: Verify restored SwiftPM build behavior
+        if: needs.changes.outputs.release == 'true'
+        timeout-minutes: 2
+        env:
+          CI_SWIFT_CACHE_INTEGRATION: "1"
+        run: |
+          set -o pipefail
+          python3 -m unittest discover -s scripts/ci -p 'test_build_cache.py' 2>&1 | tee .ci-logs/cache-integration.log
+      - name: Build app, CLI, and tests with concurrency diagnostics
+        timeout-minutes: 7
+        run: |
+          set -o pipefail
+          SECONDS=0
+          swift build --build-tests -Xswiftc -warn-concurrency 2>&1 | tee .ci-logs/build-tests.log
+          echo "Debug build: ${SECONDS}s" >> "$GITHUB_STEP_SUMMARY"
+      - name: All tests (class-grouped XCTest and native Swift Testing)
+        timeout-minutes: 5
+        run: |
+          set -o pipefail
+          SECONDS=0
+          python3 scripts/ci/run_tests.py --workers 3 2>&1 | tee .ci-logs/swift-test.log
+          echo "All tests: ${SECONDS}s" >> "$GITHUB_STEP_SUMMARY"
+      - name: CLI Contract Smoke
+        timeout-minutes: 1
+        run: bash scripts/ci/cli_smoke.sh .build/debug/macparakeet-cli
+      - name: Upload debug logs and test counts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: swift-debug-logs
+          path: .ci-logs/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+  swift6:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: macos-14
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-swift
+        with:
+          lane: swift6
+      - name: Swift 6 Language Mode
+        timeout-minutes: 7
+        env:
+          # Argmax 0.18.0 is not Swift 6 clean. The debug and release lanes
+          # retain WhisperKit; this lane checks first-party language mode.
+          MACPARAKEET_SKIP_WHISPERKIT: "1"
+        run: |
+          set -o pipefail
+          SECONDS=0
+          swift build -Xswiftc -swift-version -Xswiftc 6 2>&1 | tee .ci-logs/swift-6-language-mode.log
+          echo "Swift 6 build: ${SECONDS}s" >> "$GITHUB_STEP_SUMMARY"
       - name: Swift Format Lint (informational)
         continue-on-error: true
         timeout-minutes: 3
         run: |
-          mkdir -p .ci-logs
           set -o pipefail
           xcrun swift-format lint --recursive --configuration .swift-format Sources Tests 2>&1 | tee .ci-logs/swift-format-lint.log
-
-      - name: Cache SwiftPM Dependencies
-        uses: actions/cache@v5
+      - name: Upload Swift 6 logs
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
-          path: |
-            .build/checkouts
-            .build/repositories
-            ~/Library/Caches/org.swift.swiftpm
-          key: ${{ runner.os }}-spm-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-spm-
+          name: swift6-logs
+          path: .ci-logs/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
 
+  release:
+    needs: changes
+    # Release validation stays on main/manual runs and release-input PRs.
+    # Ordinary source PRs intentionally do not wait for whole-module optimization.
+    if: needs.changes.outputs.release == 'true'
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-swift
+        with:
+          lane: release
       - name: Swift Build (Release)
         timeout-minutes: 15
         run: |
-          mkdir -p .ci-logs
           set -o pipefail
+          SECONDS=0
           swift build -c release 2>&1 | tee .ci-logs/swift-build-release.log
-
+          echo "Release build: ${SECONDS}s" >> "$GITHUB_STEP_SUMMARY"
       - name: CLI Contract Smoke
-        timeout-minutes: 2
-        env:
-          MACPARAKEET_TELEMETRY: "0"
-        run: |
-          mkdir -p .ci-logs
-          set -o pipefail
-          .build/release/macparakeet-cli --help > .ci-logs/cli-help.txt
-          .build/release/macparakeet-cli spec --json > .ci-logs/cli-spec.json
-          python3 -m json.tool .ci-logs/cli-spec.json > /dev/null
-          python3 - <<'PY'
-          import json
-
-          with open(".ci-logs/cli-spec.json", encoding="utf-8") as f:
-              spec = json.load(f)
-
-          commands = {
-              tuple(command["path"]): command
-              for command in spec["commands"]
-          }
-          export = commands[("meetings", "export")]
-          if export["jsonMode"] != "--stdout --format json":
-              raise SystemExit(
-                  f"Unexpected meetings export jsonMode: {export['jsonMode']!r}"
-              )
-          PY
-
+        timeout-minutes: 1
+        run: bash scripts/ci/cli_smoke.sh .build/release/macparakeet-cli
       - name: Release Bundle Smoke
-        timeout-minutes: 15
+        timeout-minutes: 3
         env:
           BUILD_SYSTEM: swiftpm
           BUNDLE_YTDLP: "0"
@@ -106,42 +156,30 @@ jobs:
           VERSION: 0.0.0
           BUILD_NUMBER: ci
         run: |
-          mkdir -p .ci-logs
           set -o pipefail
-          ./scripts/dist/build_app_bundle.sh 2>&1 | tee .ci-logs/release-bundle-smoke.log
-
-      - name: Swift Concurrency Safety
-        timeout-minutes: 15
-        run: |
-          mkdir -p .ci-logs
-          set -o pipefail
-          swift build -Xswiftc -warn-concurrency 2>&1 | tee .ci-logs/swift-concurrency-safety.log
-
-      - name: Swift 6 Language Mode
-        timeout-minutes: 15
-        env:
-          # Argmax/WhisperKit v0.18.0 is required for real builds but is not
-          # Swift 6 language-mode clean yet. Keep this step focused on
-          # first-party MacParakeet sources while release/test builds compile
-          # the full WhisperKit dependency graph.
-          MACPARAKEET_SKIP_WHISPERKIT: "1"
-        run: |
-          mkdir -p .ci-logs
-          set -o pipefail
-          swift build --build-path .build-swift6-no-whisper -Xswiftc -swift-version -Xswiftc 6 2>&1 | tee .ci-logs/swift-6-language-mode.log
-
-      - name: Swift Test
-        timeout-minutes: 20
-        run: |
-          mkdir -p .ci-logs
-          set -o pipefail
-          swift test --parallel 2>&1 | tee .ci-logs/swift-test.log
-
-      - name: Upload CI Logs
+          bash scripts/dist/build_app_bundle.sh 2>&1 | tee .ci-logs/release-bundle-smoke.log
+      - name: Upload release logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: swift-ci-logs
+          name: swift-release-logs
           path: .ci-logs/
-          if-no-files-found: ignore
+          include-hidden-files: true
+          if-no-files-found: warn
           retention-days: 7
+
+  # Preserve the previous check name as a stable, fail-closed merge gate.
+  # Do not use workflow-level path ignores: prose PRs also need a final status.
+  swift-test:
+    needs: [changes, debug-tests, swift6, release]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check required results
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci/check_results.py

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Local CI parity check: clean release build + full parallel test run.
+# Local release-path check: clean release build + full parallel test run.
+# For the fast PR path and grouped tests, see scripts/ci/README.md.
 #
 # The type-check budget flags surface expressions that compile slowly. CI
 # runners are much slower than local Apple Silicon, so an expression that
