@@ -26,3 +26,7 @@ Make each Reading Turn read like edited meeting prose with conservative, determi
 ## Blocked by
 
 - 003 — Ship the minimum Reading Turn experience
+
+## Resolution
+
+Shipped deterministic meeting cleanup and bounded paragraphing with stable Reading Turn structure, conservative punctuation and repetition handling, vocabulary corrections, Raw/Clean structural parity, and recoverable canonical evidence. Reviewed and merged in PR #3 at commit `5c7cc15930149e097fdddd54bdabff6ec53e075a`.
