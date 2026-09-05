@@ -29,3 +29,7 @@ Qualify the complete Reading Turn experience with consented real meetings record
 - 007 — Format long meetings with bounded AI requests
 - 008 — Use Reading Turns in copy, export, and AI context
 - 009 — Add non-blocking speaker-count correction
+
+## Resolution
+
+Qualified Reading Turns with authorized dual-track headset and speaker-mode meetings through an opt-in private harness. Aggregate results confirm reduced fragmentation, preserved acoustic-bleed evidence, complete consumer and correction paths, and bounded one-hour performance. Conversation-style Reading Turns remain the default. Reviewed and merged in PR #10 at commit `9c762aa6a0666ea2dee4b92f5bf9382a1b846cf8`.

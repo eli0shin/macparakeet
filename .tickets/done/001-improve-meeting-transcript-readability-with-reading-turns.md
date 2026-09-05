@@ -202,3 +202,7 @@ The current codebase already contains several foundations that should be reused:
 Meetily establishes the minimum acceptable behavior with source-specific VAD utterances, utterance-level overlap assignment, exact speaker-count support, adjacent same-speaker merging, and conversation blocks. The desired MacParakeet result adds denser long-form reading paragraphs and conservative uncertainty handling.
 
 Research context is available in the repository's meeting transcript comparison and state-of-the-art research notes.
+
+## Resolution
+
+Completed the Reading Turn program through tickets 002–010. The delivered system includes the selected Conversation layout, pure presentation boundary, utterance-level remote attribution, explicit overlap and interjections, conservative cleanup and paragraphing, bounded optional AI formatting, shared copy/export/AI consumers, non-blocking speaker-count correction, and private real-meeting qualification. Authorized headset and speaker-mode results support keeping Conversation-style Reading Turns as the default. Final qualification merged in PR #10 at commit `9c762aa6a0666ea2dee4b92f5bf9382a1b846cf8`.
