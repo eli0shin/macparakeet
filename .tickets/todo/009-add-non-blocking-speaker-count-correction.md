@@ -3,8 +3,7 @@ Assigned-To:
 Tags:
   - ready-for-agent
 Parent: 001-improve-meeting-transcript-readability-with-reading-turns
-Blocked-By:
-  - 004-stabilize-remote-speaker-attribution-by-utterance
+Blocked-By: []
 ---
 
 ## What to build
