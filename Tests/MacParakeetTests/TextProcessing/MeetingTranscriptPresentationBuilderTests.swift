@@ -862,6 +862,23 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
     }
 
+    func testTransferredPunctuationAccountsForStandaloneEndingToken() {
+        let words = [
+            word("Okay", 0, 180, "microphone"),
+            word("!", 180, 200, "microphone"),
+            word("uh.", 220, 300, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["Okay!"])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
     func testTransferredSentencePunctuationDoesNotDuplicateExistingSentenceEnding() {
         let words = [
             word("Okay!", 0, 200, "microphone"),

@@ -1059,9 +1059,10 @@ public enum MeetingTranscriptPresentationBuilder {
         guard !suffix.isEmpty else { return }
         guard let lastIndex = retained.lastIndex(where: { $0.contains(where: isWordCharacter) })
         else { return }
-        retained[lastIndex] = mergingPunctuationSuffix(
-            suffix,
-            into: retained[lastIndex]
+        let receiver = renderedText(from: Array(retained[lastIndex...]))
+        retained.replaceSubrange(
+            lastIndex...,
+            with: [mergingPunctuationSuffix(suffix, into: receiver)]
         )
     }
 
