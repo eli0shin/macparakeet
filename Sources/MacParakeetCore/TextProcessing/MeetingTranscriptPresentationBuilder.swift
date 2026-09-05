@@ -878,7 +878,7 @@ public enum MeetingTranscriptPresentationBuilder {
             switch cleanup {
             case .cleaned:
                 text = cleanReadableText(
-                    renderedText(from: tokens.filter { !isAlwaysSafeFiller($0) }),
+                    renderedText(from: removingFillersPreservingPunctuation(tokens)),
                     customWords: customWords
                 )
             case .verbatim:
@@ -1012,22 +1012,84 @@ public enum MeetingTranscriptPresentationBuilder {
     ) -> String {
         switch cleanup {
         case .cleaned:
-            var retained: [IndexedWord] = []
-            for word in words where !isAlwaysSafeFiller(word.word.word) {
-                if let previous = retained.last,
-                    isObviousAdjacentRepetition(previous, word)
+            var retainedTokens: [String] = []
+            var lastRetainedEvidence: IndexedWord?
+            for word in words {
+                let token = word.word.word
+                if isAlwaysSafeFiller(token) {
+                    preservePunctuationSuffix(of: token, in: &retainedTokens)
+                } else if let lastRetainedEvidence,
+                    isObviousAdjacentRepetition(lastRetainedEvidence, word)
                 {
-                    continue
+                    preservePunctuationSuffix(of: token, in: &retainedTokens)
+                } else {
+                    retainedTokens.append(token)
+                    lastRetainedEvidence = word
                 }
-                retained.append(word)
             }
             return cleanReadableText(
-                renderedText(from: retained.map { $0.word.word }),
+                renderedText(from: retainedTokens),
                 customWords: customWords
             )
         case .verbatim:
             return renderedText(from: words.map { $0.word.word })
         }
+    }
+
+    private static func removingFillersPreservingPunctuation(_ tokens: [String]) -> [String] {
+        var retained: [String] = []
+        for token in tokens {
+            if isAlwaysSafeFiller(token) {
+                preservePunctuationSuffix(of: token, in: &retained)
+            } else {
+                retained.append(token)
+            }
+        }
+        return retained
+    }
+
+    private static func preservePunctuationSuffix(of token: String, in retained: inout [String]) {
+        guard let lastWordCharacter = token.lastIndex(where: isWordCharacter) else { return }
+        let suffixStart = token.index(after: lastWordCharacter)
+        let suffix = String(token[suffixStart...])
+        guard !suffix.isEmpty else { return }
+        if retained.isEmpty {
+            let sentenceEndings = CharacterSet(charactersIn: ".!?")
+            guard suffix.unicodeScalars.contains(where: sentenceEndings.contains) else { return }
+            retained.append(suffix)
+        } else {
+            let lastIndex = retained.count - 1
+            retained[lastIndex] = mergingPunctuationSuffix(
+                suffix,
+                into: retained[lastIndex]
+            )
+        }
+    }
+
+    private static func mergingPunctuationSuffix(_ suffix: String, into token: String) -> String {
+        let sentenceEndings = CharacterSet(charactersIn: ".!?")
+        let separators = CharacterSet(charactersIn: ",;:")
+        guard let incoming = suffix.first?.unicodeScalars.first else { return token }
+
+        var base = token
+        var addition = suffix
+        if sentenceEndings.contains(incoming) {
+            while let last = base.last?.unicodeScalars.first, separators.contains(last) {
+                base.removeLast()
+            }
+        } else if separators.contains(incoming),
+            let last = base.last?.unicodeScalars.first,
+            sentenceEndings.contains(last)
+        {
+            while let first = addition.first?.unicodeScalars.first, separators.contains(first) {
+                addition.removeFirst()
+            }
+        }
+        return base + addition
+    }
+
+    private static func isWordCharacter(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) }
     }
 
     private static func isAlwaysSafeFiller(_ token: String) -> Bool {

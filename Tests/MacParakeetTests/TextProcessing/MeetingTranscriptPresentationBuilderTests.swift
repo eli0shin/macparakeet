@@ -716,7 +716,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
 
     func testFinalDocumentCleansConservativeArtifactsAndKeepsAllEvidenceReferences() {
         let words = [
-            word("  We", 0, 100, "microphone"),
+            word("  Well,", 0, 100, "microphone"),
             word("uh,", 120, 180, "microphone"),
             word("use", 200, 300, "microphone"),
             word("mac", 320, 400, "microphone"),
@@ -737,7 +737,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         )
 
         XCTAssertEqual(document.turns.count, 1)
-        XCTAssertEqual(document.turns[0].paragraphs.map(\.text), ["We use MacParakeet today. Done."])
+        XCTAssertEqual(document.turns[0].paragraphs.map(\.text), ["Well, use MacParakeet today. Done."])
         XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
         XCTAssertEqual(document.turns[0].paragraphs[0].wordReferences, Array(words.indices))
         XCTAssertEqual(
@@ -745,6 +745,108 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
             words,
             "Readable cleanup must retain a path to every verbatim word and timing"
         )
+    }
+
+    func testTimedSentenceInitialFillerDoesNotLeaveAnOrphanSeparator() {
+        let words = [
+            word("Uh,", 0, 100, "microphone"),
+            word("we", 120, 220, "microphone"),
+            word("can", 240, 340, "microphone"),
+            word("ship.", 360, 500, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["we can ship."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testUntimedSentenceInitialFillerDoesNotLeaveAnOrphanSeparator() {
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "Uh, we can ship.",
+            words: nil,
+            speakers: nil,
+            cleanup: .cleaned
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["we can ship."])
+    }
+
+    func testPunctuatedFillerPreservesSentenceBoundaryInFinalDocument() {
+        let words = [
+            word("We", 0, 100, "microphone"),
+            word("can", 120, 220, "microphone"),
+            word("ship", 240, 360, "microphone"),
+            word("uh.", 380, 450, "microphone"),
+            word("Next", 470, 580, "microphone"),
+            word("topic.", 600, 750, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["We can ship. Next topic."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testPunctuatedOverlappingRepetitionPreservesSentenceBoundaryInFinalDocument() {
+        let words = [
+            word("Keep", 0, 100, "microphone"),
+            word("that", 120, 250, "microphone"),
+            word("that.", 200, 300, "microphone"),
+            word("Next", 320, 430, "microphone"),
+            word("topic.", 450, 600, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["Keep that. Next topic."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testRemovedFillerDoesNotHideOverlappingRepetitionInFinalDocument() {
+        let words = [
+            word("that", 0, 300, "microphone"),
+            word("uh", 100, 200, "microphone"),
+            word("that.", 250, 350, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["that."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testTransferredSentencePunctuationReplacesExistingSeparatorInFinalDocument() {
+        let words = [
+            word("Keep", 0, 100, "microphone"),
+            word("that,", 120, 300, "microphone"),
+            word("that.", 250, 350, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["Keep that."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
     }
 
     func testCleanupModeChangesOnlyReadableText() {
@@ -861,6 +963,17 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         XCTAssertEqual(document.turns.map(\.text), ["um like very very clear..."])
     }
 
+    func testUntimedFallbackPreservesValidMixedPunctuation() {
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "Use examples, e.g., this one.",
+            words: nil,
+            speakers: nil,
+            cleanup: .cleaned
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["Use examples, e.g., this one."])
+    }
+
     func testUntimedFallbackUsesBoundedParagraphsAndConservativeCleanup() {
         let sentences = (0..<7).map { "uh sentence\($0)." }.joined(separator: " ")
 
@@ -900,7 +1013,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
 
         XCTAssertEqual(cleaned.turns.map(\.id), verbatim.turns.map(\.id))
         XCTAssertEqual(cleaned.turns[0].paragraphs.count, verbatim.turns[0].paragraphs.count)
-        XCTAssertEqual(cleaned.turns[0].paragraphs.map(\.text), ["", "Speech remains."])
+        XCTAssertEqual(cleaned.turns[0].paragraphs.map(\.text), ["...", "Speech remains."])
     }
 
     func testFallsBackToUntimedTextWithoutClaimingSourceOrTimePrecision() {
