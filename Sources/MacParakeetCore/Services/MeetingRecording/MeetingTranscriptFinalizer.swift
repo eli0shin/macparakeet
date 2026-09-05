@@ -68,7 +68,11 @@ struct MeetingTranscriptFinalizer {
         }
 
         let speakers = activeSpeakers(from: mergedWords, systemDiarization: systemDiarization)
-        let diarizationSegments = buildDiarizationSegments(from: mergedWords)
+        let diarizationSegments = diarizationEvidence(
+            microphoneWords: microphoneWords,
+            mergedWords: mergedWords,
+            systemDiarization: systemDiarization
+        )
         let rawTranscript = finalTranscriptText(
             from: normalized,
             mergedWords: mergedWords,
@@ -104,7 +108,9 @@ struct MeetingTranscriptFinalizer {
         from words: [WordTimestamp],
         systemDiarization: SystemDiarization?
     ) -> [SpeakerInfo] {
-        let activeIDs = Set(words.compactMap(\.speakerId))
+        let wordSpeakerIDs = Set(words.compactMap(\.speakerId))
+        let regionSpeakerIDs = Set(systemDiarization?.segments.map(\.speakerId) ?? [])
+        let activeIDs = wordSpeakerIDs.union(regionSpeakerIDs)
         var speakers: [SpeakerInfo] = []
 
         if activeIDs.contains(AudioSource.microphone.rawValue) {
@@ -122,6 +128,29 @@ struct MeetingTranscriptFinalizer {
         }
 
         return speakers
+    }
+
+    private static func diarizationEvidence(
+        microphoneWords: [WordTimestamp],
+        mergedWords: [WordTimestamp],
+        systemDiarization: SystemDiarization?
+    ) -> [DiarizationSegmentRecord] {
+        guard let systemDiarization else {
+            return buildDiarizationSegments(from: mergedWords)
+        }
+
+        let microphoneSegments = buildDiarizationSegments(from: microphoneWords)
+        let rawSystemSegments = systemDiarization.segments.map {
+            DiarizationSegmentRecord(
+                speakerId: $0.speakerId,
+                startMs: $0.startMs,
+                endMs: $0.endMs
+            )
+        }
+        return (microphoneSegments + rawSystemSegments).sorted {
+            if $0.startMs == $1.startMs { return $0.speakerId < $1.speakerId }
+            return $0.startMs < $1.startMs
+        }
     }
 
     private static func buildDiarizationSegments(from words: [WordTimestamp]) -> [DiarizationSegmentRecord] {

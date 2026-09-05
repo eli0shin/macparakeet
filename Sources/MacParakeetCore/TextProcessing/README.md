@@ -36,8 +36,10 @@ mode.
   live preview. It does not replace subtitle cues or persisted transcript
   segments.
 - `MeetingTranscriptPresentationBuilder.swift` — pure completed-meeting boundary
-  that derives source-aware Reading Turns, paragraphs, time ranges, and raw-word
-  references without changing canonical transcript evidence.
+  that forms source utterances, assigns remote speakers from aggregate diarization
+  overlap, smooths weak isolated changes, and derives Reading Turns, readability
+  metrics, paragraphs, time ranges, and raw-word references without changing
+  canonical transcript evidence.
 
 ## Cross-references
 
@@ -99,6 +101,15 @@ post-paste action) first; dictation and transcription services may
 then invoke the opt-in AI formatter through `LLMService`. Don't
 conflate those two stages — the deterministic pipeline must remain
 LLM-free per ADR-004.
+
+**Reading Turn speaker attribution is presentation-only.** The builder forms
+utterances per capture source before it reads remote-speaker evidence. Microphone
+utterances remain `Me`. System utterances use aggregate overlap with retained
+diarization regions, with aggregate word labels only as a legacy fallback. An
+isolated remote-speaker run shorter than one second is absorbed when the same
+stable speaker surrounds it. Same-speaker sentence utterances merge across gaps
+shorter than 2.5 seconds; long pauses and completed source exchanges stay as
+boundaries. This local policy does not rewrite words or diarization regions.
 
 **Meetings reuse only the custom-word step, not the whole pipeline.**
 `MeetingTranscriptVocabularyApplier` (in `Services/MeetingRecording/`)

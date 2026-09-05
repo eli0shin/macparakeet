@@ -297,6 +297,38 @@ final class MeetingTranscriptSourceReconcilerTests: XCTestCase {
         )
     }
 
+    func testFinalizeRetainsRawSystemDiarizationRegionInsteadOfExpandingItToWordBounds() {
+        let finalized = MeetingTranscriptFinalizer.finalize(
+            sourceTranscripts: [
+                .init(
+                    source: .system,
+                    result: STTResult(
+                        text: "Hello.",
+                        words: [
+                            TimestampedWord(
+                                word: "Hello.",
+                                startMs: 0,
+                                endMs: 1_000,
+                                confidence: 0.95
+                            )
+                        ]
+                    ),
+                    startOffsetMs: 0
+                )
+            ],
+            systemDiarization: .init(
+                speakers: [SpeakerInfo(id: "system:S2", label: "Others 2")],
+                segments: [SpeakerSegment(speakerId: "system:S2", startMs: 400, endMs: 1_000)]
+            )
+        )
+
+        XCTAssertEqual(finalized.words.map(\.speakerId), ["system:S2"])
+        XCTAssertEqual(
+            finalized.diarizationSegments,
+            [DiarizationSegmentRecord(speakerId: "system:S2", startMs: 400, endMs: 1_000)]
+        )
+    }
+
     func testFinalizePreservesSimultaneousDifferentSpeech() {
         let finalized = MeetingTranscriptFinalizer.finalize(sourceTranscripts: [
             .init(

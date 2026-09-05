@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@004-stabilize-remote-speaker-attribution-by-utterance
 Tags:
   - ready-for-agent
 Parent: 001-improve-meeting-transcript-readability-with-reading-turns
