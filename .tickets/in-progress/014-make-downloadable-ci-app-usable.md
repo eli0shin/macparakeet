@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@014-make-downloadable-ci-app-usable
 Tags:
   - ready-for-agent
 Parent:

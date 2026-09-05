@@ -146,7 +146,8 @@ jobs:
       - name: CLI Contract Smoke
         timeout-minutes: 1
         run: bash scripts/ci/cli_smoke.sh .build/release/macparakeet-cli
-      - name: Release Bundle Smoke
+      - name: Release Bundle Fixture Smoke
+        if: github.event_name == 'pull_request'
         timeout-minutes: 3
         env:
           BUILD_SYSTEM: swiftpm
@@ -158,6 +159,19 @@ jobs:
         run: |
           set -o pipefail
           bash scripts/dist/build_app_bundle.sh 2>&1 | tee .ci-logs/release-bundle-smoke.log
+      - name: Build downloadable unsigned app
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        timeout-minutes: 5
+        env:
+          BUILD_SYSTEM: swiftpm
+          SKIP_BUILD: "1"
+          BUILD_SOURCE: github-actions-unsigned-development
+          VERSION: 0.0.0
+          BUILD_NUMBER: ci
+        run: |
+          set -o pipefail
+          bash scripts/dist/build_app_bundle.sh 2>&1 | tee .ci-logs/downloadable-app-build.log
+          bash scripts/ci/verify_downloadable_app.sh dist/MacParakeet.app 2>&1 | tee .ci-logs/downloadable-app-helpers.log
       - name: Package unsigned app archive
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         run: |
@@ -171,6 +185,7 @@ jobs:
           test -d "$INSPECTION_DIR/MacParakeet.app/Contents"
           test -x "$INSPECTION_DIR/MacParakeet.app/Contents/MacOS/MacParakeet"
           test -x "$INSPECTION_DIR/MacParakeet.app/Contents/MacOS/macparakeet-cli"
+          bash scripts/ci/verify_downloadable_app.sh "$INSPECTION_DIR/MacParakeet.app" 2>&1 | tee -a .ci-logs/downloadable-app-helpers.log
           while IFS= read -r -d '' SOURCE_PATH; do
             RELATIVE_PATH="${SOURCE_PATH#dist/MacParakeet.app}"
             EXTRACTED_PATH="$INSPECTION_DIR/MacParakeet.app$RELATIVE_PATH"

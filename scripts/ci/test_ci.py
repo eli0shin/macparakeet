@@ -2,6 +2,8 @@ from contextlib import redirect_stdout
 import io
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -68,6 +70,32 @@ class WorkflowTests(unittest.TestCase):
         debug_job = self.workflow.split("\n  debug-tests:\n", 1)[1].split("\n  swift6:\n", 1)[0]
         self.assertIn("\n    timeout-minutes: 20\n", debug_job)
 
+    def test_fixture_bundle_inputs_cannot_reach_published_app(self):
+        fixture = self.release_job.split("      - name: Release Bundle Fixture Smoke\n", 1)[1]
+        fixture = fixture.split("      - name:", 1)[0]
+        self.assertIn("if: github.event_name == 'pull_request'", fixture)
+        self.assertIn('BUNDLE_YTDLP: "0"', fixture)
+        self.assertIn('BUNDLE_NODE: "0"', fixture)
+        self.assertIn("FFMPEG_PATH: /usr/bin/true", fixture)
+
+        downloadable = self.release_job.split("      - name: Build downloadable unsigned app\n", 1)[1]
+        downloadable = downloadable.split("      - name:", 1)[0]
+        self.assertIn("github.event_name == 'workflow_dispatch'", downloadable)
+        self.assertIn("github.ref == 'refs/heads/main'", downloadable)
+        self.assertIn("BUILD_SOURCE: github-actions-unsigned-development", downloadable)
+        self.assertIn("bash scripts/ci/verify_downloadable_app.sh dist/MacParakeet.app", downloadable)
+        self.assertNotIn("BUNDLE_YTDLP", downloadable)
+        self.assertNotIn("BUNDLE_NODE", downloadable)
+        self.assertNotIn("FFMPEG_PATH", downloadable)
+        self.assertLess(
+            self.release_job.index("Release Bundle Fixture Smoke"),
+            self.release_job.index("Build downloadable unsigned app"),
+        )
+        self.assertLess(
+            self.release_job.index("Build downloadable unsigned app"),
+            self.release_job.index("Package unsigned app archive"),
+        )
+
     def test_release_job_packages_app_only_for_main_and_manual_runs(self):
         package = self.release_job.split("      - name: Package unsigned app archive\n", 1)[1]
         package = package.split("      - name:", 1)[0]
@@ -86,6 +114,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("test -x", package)
         self.assertIn("stat -f '%p'", package)
         self.assertIn("readlink", package)
+        self.assertIn(
+            'bash scripts/ci/verify_downloadable_app.sh "$INSPECTION_DIR/MacParakeet.app"',
+            package,
+        )
 
     def test_release_job_uploads_named_archive_fail_closed_with_retention(self):
         upload = self.release_job.split("      - name: Upload unsigned non-notarized app\n", 1)[1]
@@ -105,6 +137,59 @@ class WorkflowTests(unittest.TestCase):
     def test_release_log_artifact_remains_available(self):
         self.assertIn("name: swift-release-logs", self.release_job)
         self.assertIn("if: always()", self.release_job)
+
+
+class DownloadableAppVerificationTests(unittest.TestCase):
+    def make_app(self, root, ffmpeg_output="ffmpeg version fixture", include_ytdlp=True,
+                 include_node=True):
+        resources = Path(root) / "MacParakeet.app" / "Contents" / "Resources"
+        resources.mkdir(parents=True)
+
+        helpers = {"ffmpeg": ffmpeg_output}
+        if include_ytdlp:
+            helpers["yt-dlp"] = "2026.01.01"
+        if include_node:
+            helpers["node"] = "v24.13.1"
+        for name, output in helpers.items():
+            helper = resources / name
+            helper.write_text(f"#!/bin/sh\nprintf '%s\\n' '{output}'\n")
+            helper.chmod(0o755)
+        return resources.parent.parent
+
+    def verify(self, app):
+        return subprocess.run(
+            ["bash", "scripts/ci/verify_downloadable_app.sh", str(app)],
+            text=True,
+            capture_output=True,
+        )
+
+    def test_accepts_required_helpers_and_executes_version_smokes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.verify(self.make_app(directory))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("FFmpeg: ffmpeg version fixture", result.stdout)
+        self.assertIn("yt-dlp: 2026.01.01", result.stdout)
+        self.assertIn("node: v24.13.1", result.stdout)
+
+    def test_rejects_missing_runtime_helpers(self):
+        for helper in ["yt-dlp", "node"]:
+            with self.subTest(helper=helper), tempfile.TemporaryDirectory() as directory:
+                app = self.make_app(
+                    directory,
+                    include_ytdlp=helper != "yt-dlp",
+                    include_node=helper != "node",
+                )
+                self.assertNotEqual(self.verify(app).returncode, 0)
+
+    def test_rejects_true_and_non_ffmpeg_fixtures(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(directory)
+            shutil.copyfile("/usr/bin/true", app / "Contents" / "Resources" / "ffmpeg")
+            self.assertNotEqual(self.verify(app).returncode, 0)
+
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(directory, ffmpeg_output="")
+            self.assertNotEqual(self.verify(app).returncode, 0)
 
 
 class GateTests(unittest.TestCase):
