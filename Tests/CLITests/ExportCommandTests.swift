@@ -68,6 +68,50 @@ final class ExportCommandTests: XCTestCase {
         )
     }
 
+    func testMeetingTxtStdoutRemainsPlainWhileReadableFileExportsCanUseHeaders() async throws {
+        let dbURL = temporaryDatabaseURL()
+        defer { try? FileManager.default.removeItem(at: dbURL) }
+        let manager = try DatabaseManager(path: dbURL.path)
+        let repository = TranscriptionRepository(dbQueue: manager.dbQueue)
+        let transcription = Transcription(
+            fileName: "meeting.m4a",
+            rawTranscript: "Uh, Hello there. Yes.",
+            wordTimestamps: [
+                WordTimestamp(
+                    word: "Uh, Hello there.",
+                    startMs: 0,
+                    endMs: 1_000,
+                    confidence: 0.9,
+                    speakerId: "microphone"
+                ),
+                WordTimestamp(
+                    word: "Yes.",
+                    startMs: 500,
+                    endMs: 900,
+                    confidence: 0.9,
+                    speakerId: "system:S1"
+                )
+            ],
+            status: .completed,
+            sourceType: .meeting
+        )
+        try repository.save(transcription)
+        let command = try ExportCommand.parse([
+            transcription.id.uuidString,
+            "--format", "txt",
+            "--stdout",
+            "--database", dbURL.path,
+        ])
+
+        let output = try await captureStandardOutput {
+            try await command.run()
+        }
+
+        XCTAssertEqual(output, "Uh, Hello there. Yes.\n")
+        XCTAssertFalse(output.contains("**"))
+        XCTAssertFalse(output.contains("Simultaneous speech"))
+    }
+
     func testDAPTStdoutUsesSharedRenderer() async throws {
         let dbURL = temporaryDatabaseURL()
         defer { try? FileManager.default.removeItem(at: dbURL) }

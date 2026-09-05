@@ -3,13 +3,33 @@ import Foundation
 public enum TranscriptAIContextFormatter {
     public static func format(
         transcription: Transcription,
-        mode: TranscriptAIContextMode = .richTranscript
+        mode: TranscriptAIContextMode = .richTranscript,
+        meetingReadingConfiguration: CompletedMeetingReadingConfiguration? = nil
     ) -> String {
         switch mode {
         case .plainTranscript:
             return preferredText(transcription)
         case .richTranscript:
+            let document = meetingReadingConfiguration.flatMap {
+                CompletedMeetingReadingDocument.build(from: transcription, configuration: $0)
+            } ?? CompletedMeetingReadingDocument.build(from: transcription)
+            if let document {
+                return MeetingTranscriptDocumentRenderer.markdown(document)
+            }
             return richText(transcription) ?? preferredText(transcription)
+        }
+    }
+
+    public static func format(
+        document: MeetingTranscriptPresentationDocument,
+        plainTranscript: String,
+        mode: TranscriptAIContextMode = .richTranscript
+    ) -> String {
+        switch mode {
+        case .plainTranscript:
+            return plainTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .richTranscript:
+            return MeetingTranscriptDocumentRenderer.markdown(document)
         }
     }
 

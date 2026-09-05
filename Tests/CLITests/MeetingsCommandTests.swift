@@ -286,7 +286,7 @@ final class MeetingsCommandTests: XCTestCase {
 
         XCTAssertTrue(output.contains("## Transcript"))
         XCTAssertTrue(output.contains("speakerLabelsIncluded: true"))
-        XCTAssertTrue(output.contains("**Alice**"))
+        XCTAssertTrue(output.contains("**Alice · [0:00]**"))
         XCTAssertTrue(output.contains("Hello there."))
         XCTAssertFalse(output.contains("Stored plain transcript."))
     }
@@ -630,7 +630,7 @@ final class MeetingsCommandTests: XCTestCase {
 
         XCTAssertEqual(exportedMarkdown, materializedMarkdown)
         XCTAssertTrue(exportedMarkdown.contains("speakerLabelsIncluded: true"))
-        XCTAssertTrue(exportedMarkdown.contains("**Speaker 1**"))
+        XCTAssertTrue(exportedMarkdown.contains("**Speaker 1 · [0:00]**"))
     }
 
     func testPromptResultAddRefreshesMaterializedMarkdownAndExportParity() async throws {
@@ -719,12 +719,12 @@ final class MeetingsCommandTests: XCTestCase {
 
         let initialMarkdown = try await markdownExport(for: meeting.id, database: dbURL)
         XCTAssertTrue(initialMarkdown.contains("speakerLabelsIncluded: true"))
-        XCTAssertTrue(initialMarkdown.contains("**Speaker 1**"))
+        XCTAssertTrue(initialMarkdown.contains("**Speaker 1 · [0:00]**"))
 
         try transcriptionRepo.updateSpeakers(id: meeting.id, speakers: [SpeakerInfo(id: "S1", label: "Dana")])
         let renamedMarkdown = try await markdownExport(for: meeting.id, database: dbURL)
-        XCTAssertTrue(renamedMarkdown.contains("**Dana**"))
-        XCTAssertFalse(renamedMarkdown.contains("**Speaker 1**"))
+        XCTAssertTrue(renamedMarkdown.contains("**Dana · [0:00]**"))
+        XCTAssertFalse(renamedMarkdown.contains("**Speaker 1 · [0:00]**"))
 
         var edited = try XCTUnwrap(try transcriptionRepo.fetch(id: meeting.id))
         edited.cleanTranscript = "Edited transcript."

@@ -49,19 +49,22 @@ public final class CardGenerationService: CardGenerating, @unchecked Sendable {
     private let cardRepository: CardRepositoryProtocol
     private let completionProvider: CardCompletionProviding
     private let now: @Sendable () -> Date
+    private let meetingReadingConfigurationProvider: (@Sendable () -> CompletedMeetingReadingConfiguration)?
 
     public init(
         transcriptionRepository: TranscriptionRepositoryProtocol,
         segmentRepository: SegmentRepositoryProtocol,
         cardRepository: CardRepositoryProtocol,
         completionProvider: CardCompletionProviding,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        meetingReadingConfigurationProvider: (@Sendable () -> CompletedMeetingReadingConfiguration)? = nil
     ) {
         self.transcriptionRepository = transcriptionRepository
         self.segmentRepository = segmentRepository
         self.cardRepository = cardRepository
         self.completionProvider = completionProvider
         self.now = now
+        self.meetingReadingConfigurationProvider = meetingReadingConfigurationProvider
     }
 
     public func generate(transcriptionId: UUID, force: Bool) async throws -> CardGenerationOutcome {
@@ -71,12 +74,15 @@ public final class CardGenerationService: CardGenerating, @unchecked Sendable {
         guard transcription.status == .completed else {
             throw CardGenerationError.transcriptionIncomplete
         }
-        let context = TranscriptAIContextFormatter.format(transcription: transcription)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let context = TranscriptAIContextFormatter.format(
+            transcription: transcription,
+            meetingReadingConfiguration: meetingReadingConfigurationProvider?()
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !context.isEmpty else { throw CardGenerationError.emptyTranscript }
 
+        let contextHash = CardContentFingerprint.transcriptHash(for: context)
         let provenance = CardProvenance(
-            transcriptHash: CardContentFingerprint.transcriptHash(for: context),
+            transcriptHash: CardContentFingerprint.transcriptHash(for: transcription),
             segmenterVersion: KnowledgeSegmenter.currentVersion,
             promptVersion: Card.currentPromptVersion,
             cardSchemaVersion: Card.currentSchemaVersion
@@ -98,10 +104,12 @@ public final class CardGenerationService: CardGenerating, @unchecked Sendable {
         else {
             throw CardGenerationError.sourceChangedDuringGeneration
         }
-        let currentContext = TranscriptAIContextFormatter.format(transcription: currentTranscription)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentContext = TranscriptAIContextFormatter.format(
+            transcription: currentTranscription,
+            meetingReadingConfiguration: meetingReadingConfigurationProvider?()
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !currentContext.isEmpty,
-            CardContentFingerprint.transcriptHash(for: currentContext) == provenance.transcriptHash
+            CardContentFingerprint.transcriptHash(for: currentContext) == contextHash
         else {
             throw CardGenerationError.sourceChangedDuringGeneration
         }
@@ -125,7 +133,7 @@ public final class CardGenerationService: CardGenerating, @unchecked Sendable {
             segments = try segmentRepository.fetch(transcriptionId: transcriptionId)
         }
         let generationSnapshot = CardGenerationSnapshot(
-            transcriptHash: provenance.transcriptHash,
+            transcriptHash: CardContentFingerprint.transcriptHash(for: currentTranscription),
             segmentsHash: CardContentFingerprint.segmentsHash(segments)
         )
         let decisions =

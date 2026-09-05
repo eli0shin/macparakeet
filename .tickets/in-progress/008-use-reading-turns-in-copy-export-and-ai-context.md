@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@008-use-reading-turns-in-copy-export-and-ai-context
 Tags:
   - ready-for-agent
 Parent: 001-improve-meeting-transcript-readability-with-reading-turns

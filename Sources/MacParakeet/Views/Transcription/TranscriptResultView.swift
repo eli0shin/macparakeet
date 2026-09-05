@@ -373,14 +373,17 @@ struct TranscriptResultView: View {
         }
         .onChange(of: activeTranscription.speakers) {
             rebuildSegmentCache()
+            reloadAIContext()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: activeTranscription.wordTimestamps) {
             rebuildSegmentCache()
+            reloadAIContext()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: activeTranscription.diarizationSegments) {
             rebuildSegmentCache()
+            reloadAIContext()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: activeTranscription.status) {
@@ -396,14 +399,17 @@ struct TranscriptResultView: View {
         }
         .onChange(of: transcriptText) {
             rebuildSegmentCache()
+            reloadAIContext()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: processingModeRaw) {
             rebuildSegmentCache()
+            reloadAIContext()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: customWordsRevision) {
             rebuildSegmentCache()
+            reloadAIContext()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: transcriptAIContextModeRaw) {
@@ -1058,9 +1064,28 @@ struct TranscriptResultView: View {
     }
 
     private var currentAIContextText: String {
-        TranscriptAIContextFormatter.format(
+        if usesMeetingReadingSurface,
+            !activeTranscription.isTranscriptEdited,
+            !cachedReadingTurns.isEmpty
+        {
+            return TranscriptAIContextFormatter.format(
+                document: MeetingTranscriptPresentationDocument(
+                    turns: cachedReadingTurns.map(\.turn)
+                ),
+                plainTranscript: transcriptText,
+                mode: currentAIContextMode
+            )
+        }
+        return TranscriptAIContextFormatter.format(
             transcription: activeTranscription,
             mode: currentAIContextMode
+        )
+    }
+
+    private func reloadAIContext() {
+        chatViewModel.loadTranscript(
+            currentAIContextText,
+            transcriptionId: viewModel.currentTranscription?.id
         )
     }
 
@@ -3325,6 +3350,14 @@ struct TranscriptResultView: View {
                 autoScrollPaused = false
                 scrollPauseTask?.cancel()
             },
+            onCopyTurn: { turn in
+                let passage = MeetingTranscriptPresentationDocument(turns: [turn])
+                TranscriptResultActions.copyText(
+                    MeetingTranscriptDocumentRenderer.markdown(passage),
+                    source: .meeting
+                )
+                showCopiedFeedback()
+            },
             bodyFont: scaledTranscriptFont,
             highlightRangesByScrollID: highlights,
             currentHighlight: current
@@ -3725,15 +3758,32 @@ struct TranscriptResultView: View {
     // MARK: - Actions
 
     private func copyMeetingToClipboard() {
+        let document = cachedReadingTurns.isEmpty
+            ? nil
+            : MeetingTranscriptPresentationDocument(turns: cachedReadingTurns.map(\.turn))
         let markdown = MeetingMarkdownRenderer().renderForClipboard(
-            transcription: activeTranscription
+            transcription: activeTranscription,
+            readingDocument: document
         )
         TranscriptResultActions.copyText(markdown, source: .meeting)
         showCopiedFeedback()
     }
 
     private func copyTranscriptToClipboard() {
-        TranscriptResultActions.copyText(transcriptText)
+        if usesMeetingReadingSurface,
+            !activeTranscription.isTranscriptEdited,
+            !cachedReadingTurns.isEmpty
+        {
+            let document = MeetingTranscriptPresentationDocument(
+                turns: cachedReadingTurns.map(\.turn)
+            )
+            TranscriptResultActions.copyText(
+                MeetingTranscriptDocumentRenderer.markdown(document),
+                source: .meeting
+            )
+        } else {
+            TranscriptResultActions.copyText(transcriptText)
+        }
         showCopiedFeedback()
     }
 
@@ -4019,10 +4069,14 @@ struct TranscriptResultView: View {
         // Use the ViewModel's copy which reflects any in-flight renames
         let source = activeTranscription
         do {
+            let readingDocument = usesMeetingReadingSurface && !cachedReadingTurns.isEmpty
+                ? MeetingTranscriptPresentationDocument(turns: cachedReadingTurns.map(\.turn))
+                : nil
             let fileURL = try TranscriptResultActions.exportTranscriptToDownloads(
                 transcription: source,
                 format: format,
-                options: format.supportsTranscriptOptions ? resolvedTranscriptExportOptions : .default
+                options: format.supportsTranscriptOptions ? resolvedTranscriptExportOptions : .default,
+                meetingReadingDocument: readingDocument
             )
             exportErrorMessage = nil
             SoundManager.shared.play(.transcriptionComplete)

@@ -9,6 +9,7 @@ final class MeetingMarkdownRendererClipboardTests: XCTestCase {
             cleanTranscript: "Edited transcript.",
             status: .completed,
             sourceType: .meeting,
+            isTranscriptEdited: true,
             userNotes: "  Decision: Ship Friday.\nOwner: Dana.  "
         )
 
@@ -97,7 +98,7 @@ final class MeetingMarkdownRendererClipboardTests: XCTestCase {
 
             ## Transcript
 
-            **Dana**
+            **Dana · [0:00]**
 
             Ship it.
 

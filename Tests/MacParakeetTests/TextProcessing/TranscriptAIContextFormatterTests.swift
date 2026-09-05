@@ -28,8 +28,13 @@ final class TranscriptAIContextFormatterTests: XCTestCase {
         XCTAssertEqual(
             formatted,
             """
-            [0:00] Me: Hello there.
-            [0:02] Others: Thanks.
+            **Me · [0:00]**
+
+            Hello there.
+
+            **Others · [0:02]**
+
+            Thanks.
             """
         )
     }
@@ -53,7 +58,14 @@ final class TranscriptAIContextFormatterTests: XCTestCase {
             mode: .richTranscript
         )
 
-        XCTAssertEqual(formatted, "[0:00] microphone: Hello there.")
+        XCTAssertEqual(
+            formatted,
+            """
+            **Me · [0:00]**
+
+            Hello there.
+            """
+        )
     }
 
     func testPlainTranscriptUsesCleanTextWithoutTimingOrSpeakerLabels() {

@@ -160,7 +160,7 @@ final class TranscriptExportOptionsTests: XCTestCase {
         )
 
         XCTAssertTrue(markdown.contains("speakerLabelsIncluded: true"))
-        XCTAssertTrue(markdown.contains("## Transcript\n\n**Speaker 1**\n\nHello world."))
+        XCTAssertTrue(markdown.contains("## Transcript\n\n**Speaker 1 · [0:00]**\n\nHello world."))
     }
 
     func testMeetingMarkdownUsesRenamedSpeakerLabels() {
@@ -185,8 +185,8 @@ final class TranscriptExportOptionsTests: XCTestCase {
             artifactPaths: .init()
         )
 
-        XCTAssertTrue(markdown.contains("**Dana**"))
-        XCTAssertFalse(markdown.contains("**Speaker 1**"))
+        XCTAssertTrue(markdown.contains("**Dana · [0:00]**"))
+        XCTAssertFalse(markdown.contains("**Speaker 1 · [0:00]**"))
     }
 
     func testMeetingMarkdownFallsBackToPlainEditedTranscript() {
@@ -217,5 +217,17 @@ final class TranscriptExportOptionsTests: XCTestCase {
         XCTAssertTrue(markdown.contains("## Transcript\n\nEdited transcript."))
         XCTAssertFalse(markdown.contains("**Speaker 1**"))
         XCTAssertFalse(markdown.contains("Old words."))
+
+        let staleDocument = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: t.rawTranscript ?? "",
+            words: t.wordTimestamps,
+            speakers: t.speakers
+        )
+        let clipboard = MeetingMarkdownRenderer().renderForClipboard(
+            transcription: t,
+            readingDocument: staleDocument
+        )
+        XCTAssertTrue(clipboard.contains("## Transcript\n\nEdited transcript."))
+        XCTAssertFalse(clipboard.contains("Old words."))
     }
 }

@@ -419,11 +419,15 @@ extension PromptsCommand {
                 let promptRepo = PromptRepository(dbQueue: db.dbQueue)
                 let transcriptionRepo = TranscriptionRepository(dbQueue: db.dbQueue)
                 let resultRepo = PromptResultRepository(dbQueue: db.dbQueue)
+                let customWordRepo = CustomWordRepository(dbQueue: db.dbQueue)
 
                 let prompt = try findPrompt(idOrName: promptIdOrName, repo: promptRepo)
                 let transcript = try findTranscription(id: transcription, repo: transcriptionRepo)
 
-                let transcriptText = transcript.cleanTranscript ?? transcript.rawTranscript ?? ""
+                let transcriptText = try promptRunTranscriptContext(
+                    transcription: transcript,
+                    customWordRepository: customWordRepo
+                )
                 guard !transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw PromptCLIError.emptyTranscript(transcript.fileName)
                 }
@@ -482,7 +486,8 @@ extension PromptsCommand {
                     try resultRepo.save(result)
                     await refreshMeetingArtifacts(
                         transcription: transcript,
-                        resultRepo: resultRepo
+                        resultRepo: resultRepo,
+                        customWordRepo: customWordRepo
                     )
                     // Status messages on stderr so stdout stays grep-able as the prompt output.
                     FileHandle.standardError.write(Data("\nSaved PromptResult \(result.id.uuidString.prefix(8))\n".utf8))
@@ -496,16 +501,43 @@ extension PromptsCommand {
     }
 }
 
+func promptRunTranscriptContext(
+    transcription: Transcription,
+    customWordRepository: CustomWordRepositoryProtocol,
+    defaults: UserDefaults = macParakeetAppDefaults()
+) throws -> String {
+    guard transcription.sourceType == .meeting,
+          transcription.status == .completed
+    else {
+        return transcription.cleanTranscript ?? transcription.rawTranscript ?? ""
+    }
+
+    let readingConfiguration = try completedMeetingReadingConfiguration(
+        customWordRepository: customWordRepository,
+        defaults: defaults
+    )
+    return TranscriptAIContextFormatter.format(
+        transcription: transcription,
+        meetingReadingConfiguration: readingConfiguration
+    )
+}
+
 /// Refreshes meeting artifacts; failures are logged and never surfaced or thrown, and refresh never blocks or fails the triggering user action.
 private func refreshMeetingArtifacts(
     transcription: Transcription,
-    resultRepo: PromptResultRepositoryProtocol
+    resultRepo: PromptResultRepositoryProtocol,
+    customWordRepo: CustomWordRepositoryProtocol
 ) async {
     guard transcription.sourceType == .meeting else { return }
 
     do {
         let promptResults = try resultRepo.fetchAll(transcriptionId: transcription.id)
-        _ = try await MeetingArtifactStore().materialize(
+        let readingConfiguration = try completedMeetingReadingConfiguration(
+            customWordRepository: customWordRepo
+        )
+        _ = try await MeetingArtifactStore(
+            readingConfigurationProvider: { readingConfiguration }
+        ).materialize(
             transcription: transcription,
             promptResults: promptResults
         )

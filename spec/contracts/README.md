@@ -36,6 +36,7 @@ Each contract document should include:
 ## Current Contracts
 
 - [Meeting Artifacts v1](meeting-artifacts-v1.md)
+- [Completed-Meeting Reading Turn Consumers](meeting-reading-turn-consumers.md)
 - [Meeting Recovery and Retention Safety](meeting-recovery-retention.md)
 - [CLI JSON v1](cli-json-v1.md)
 - [DAPT Export v1](dapt-export-v1.md)

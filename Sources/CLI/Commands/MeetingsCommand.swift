@@ -467,7 +467,8 @@ struct MeetingsCommand: AsyncParsableCommand {
                     let updatedResults = try repositories.promptResults.fetchAll(transcriptionId: transcription.id)
                     let snapshot = await refreshMeetingArtifactBestEffort(
                         transcription: transcription,
-                        promptResults: updatedResults
+                        promptResults: updatedResults,
+                        readingConfiguration: repositories.readingConfiguration
                     )
                     let record = MeetingPromptResultRecord(
                         result: promptResult,
@@ -515,7 +516,8 @@ struct MeetingsCommand: AsyncParsableCommand {
                 let promptResults = try repositories.promptResults.fetchAll(transcriptionId: transcription.id)
                 let snapshot = try await materializeMeetingArtifact(
                     transcription: transcription,
-                    promptResults: promptResults
+                    promptResults: promptResults,
+                    readingConfiguration: repositories.readingConfiguration
                 )
 
                 if envelope {
@@ -564,7 +566,8 @@ struct MeetingsCommand: AsyncParsableCommand {
                 let content = try exportContent(
                     for: transcription,
                     format: format,
-                    promptResults: promptResults
+                    promptResults: promptResults,
+                    readingConfiguration: repositories.readingConfiguration
                 )
 
                 if stdout {
@@ -795,13 +798,18 @@ private struct MeetingPromptResultRecord: Encodable {
 private struct MeetingResultRepositories {
     let transcriptions: TranscriptionRepository
     let promptResults: PromptResultRepositoryProtocol
+    let readingConfiguration: CompletedMeetingReadingConfiguration
 }
 
 private func makeMeetingResultRepositories(database: String?) throws -> MeetingResultRepositories {
     let dbManager = try makeDatabaseManager(database: database)
+    let customWords = CustomWordRepository(dbQueue: dbManager.dbQueue)
     return MeetingResultRepositories(
         transcriptions: TranscriptionRepository(dbQueue: dbManager.dbQueue),
-        promptResults: PromptResultRepository(dbQueue: dbManager.dbQueue)
+        promptResults: PromptResultRepository(dbQueue: dbManager.dbQueue),
+        readingConfiguration: try completedMeetingReadingConfiguration(
+            customWordRepository: customWords
+        )
     )
 }
 
@@ -812,9 +820,12 @@ private func makeTranscriptionRepository(database: String?) throws -> Transcript
 
 private func materializeMeetingArtifact(
     transcription: Transcription,
-    promptResults: [PromptResult]
+    promptResults: [PromptResult],
+    readingConfiguration: CompletedMeetingReadingConfiguration
 ) async throws -> MeetingArtifactSnapshot {
-    try await MeetingArtifactStore().materialize(
+    try await MeetingArtifactStore(
+        readingConfigurationProvider: { readingConfiguration }
+    ).materialize(
         transcription: transcription,
         promptResults: promptResults
     )
@@ -828,7 +839,8 @@ private func refreshMeetingArtifactBestEffort(
         let promptResults = try repositories.promptResults.fetchAll(transcriptionId: transcription.id)
         return try await materializeMeetingArtifact(
             transcription: transcription,
-            promptResults: promptResults
+            promptResults: promptResults,
+            readingConfiguration: repositories.readingConfiguration
         )
     } catch {
         printErr("Warning: meeting artifact refresh failed: \(error.localizedDescription)")
@@ -838,12 +850,14 @@ private func refreshMeetingArtifactBestEffort(
 
 private func refreshMeetingArtifactBestEffort(
     transcription: Transcription,
-    promptResults: [PromptResult]
+    promptResults: [PromptResult],
+    readingConfiguration: CompletedMeetingReadingConfiguration
 ) async -> MeetingArtifactSnapshot? {
     do {
         return try await materializeMeetingArtifact(
             transcription: transcription,
-            promptResults: promptResults
+            promptResults: promptResults,
+            readingConfiguration: readingConfiguration
         )
     } catch {
         printErr("Warning: meeting artifact refresh failed: \(error.localizedDescription)")
@@ -937,7 +951,8 @@ private func emitNotesUpdate(
 private func exportContent(
     for transcription: Transcription,
     format: MeetingExportFormat,
-    promptResults: [PromptResult]
+    promptResults: [PromptResult],
+    readingConfiguration: CompletedMeetingReadingConfiguration
 ) throws -> String {
     switch format {
     case .md:
@@ -948,7 +963,11 @@ private func exportContent(
         return MeetingMarkdownRenderer().render(
             transcription: transcription,
             promptResults: promptResults,
-            artifactPaths: artifactPaths
+            artifactPaths: artifactPaths,
+            readingDocument: CompletedMeetingReadingDocument.build(
+                from: transcription,
+                configuration: readingConfiguration
+            )
         )
     case .json:
         let data = try cliJSONEncoder.encode(MeetingRecord(

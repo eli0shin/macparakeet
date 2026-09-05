@@ -120,13 +120,20 @@ enum TranscriptResultActions {
     static func exportTranscriptToDownloads(
         transcription: Transcription,
         format: TranscriptExportFormat,
-        options: TranscriptExportOptions = .default
+        options: TranscriptExportOptions = .default,
+        meetingReadingDocument: MeetingTranscriptPresentationDocument? = nil
     ) throws -> URL {
         do {
             let stem = TranscriptSegmenter.sanitizedExportStem(from: transcription.effectiveDisplayTitle)
             let downloadsURL = try downloadsDirectory()
             let fileURL = nextAvailableURL(in: downloadsURL, stem: stem, format: format)
-            try exportTranscript(transcription: transcription, format: format, options: options, to: fileURL)
+            try exportTranscript(
+                transcription: transcription,
+                format: format,
+                options: options,
+                meetingReadingDocument: meetingReadingDocument,
+                to: fileURL
+            )
 
             Telemetry.send(.exportUsed(format: format.rawValue))
             return fileURL
@@ -146,6 +153,7 @@ enum TranscriptResultActions {
         format: TranscriptExportFormat,
         options: TranscriptExportOptions = .default,
         directory: URL,
+        meetingReadingConfiguration: CompletedMeetingReadingConfiguration? = nil,
         onFileExported: (@Sendable (URL) async -> Void)? = nil
     ) async throws -> BulkTranscriptExportResult {
         try Task.checkCancellation()
@@ -170,7 +178,9 @@ enum TranscriptResultActions {
         }
 
         do {
-            let exportService = ExportService()
+            let exportService = ExportService(
+                meetingReadingConfiguration: meetingReadingConfiguration
+            )
             for transcription in transcriptions {
                 try Task.checkCancellation()
                 await Task.yield()
@@ -248,6 +258,7 @@ enum TranscriptResultActions {
         transcription: Transcription,
         format: TranscriptExportFormat,
         options: TranscriptExportOptions,
+        meetingReadingDocument: MeetingTranscriptPresentationDocument?,
         to fileURL: URL
     ) throws {
         try exportTranscriptOnMainActor(
@@ -255,7 +266,7 @@ enum TranscriptResultActions {
             format: format,
             options: options,
             to: fileURL,
-            using: ExportService()
+            using: ExportService(meetingReadingDocument: meetingReadingDocument)
         )
     }
 
