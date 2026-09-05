@@ -450,6 +450,73 @@ final class PromptsCommandTests: XCTestCase {
         )
     }
 
+    // MARK: - Run context
+
+    func testRunContextUsesConfiguredReadingTurnsForCompletedMeeting() throws {
+        let db = try DatabaseManager()
+        let customWordRepo = CustomWordRepository(dbQueue: db.dbQueue)
+        try customWordRepo.save(
+            CustomWord(word: "mac parakeet", replacement: "MacParakeet")
+        )
+        let suiteName = "PromptsCommandTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(
+            Dictation.ProcessingMode.raw.rawValue,
+            forKey: UserDefaultsAppRuntimePreferences.processingModeKey
+        )
+        let transcription = Transcription(
+            fileName: "Reading Turn Review",
+            rawTranscript: "We agree. Yes. uh mac parakeet First. Second. Third. Fourth.",
+            cleanTranscript: "We agree. Yes. MacParakeet First. Second. Third. Fourth.",
+            wordTimestamps: [
+                promptContextWord("We", 0, 400, "microphone"),
+                promptContextWord("Yes.", 100, 300, "system:S1"),
+                promptContextWord("agree.", 450, 800, "microphone"),
+                promptContextWord("uh", 900, 1_000, "microphone"),
+                promptContextWord("mac", 1_100, 1_300, "microphone"),
+                promptContextWord("parakeet", 1_350, 1_600, "microphone"),
+                promptContextWord("First.", 3_000, 3_300, "system:S1"),
+                promptContextWord("Second.", 3_500, 3_800, "system:S1"),
+                promptContextWord("Third.", 4_000, 4_300, "system:S1"),
+                promptContextWord("Fourth.", 4_500, 4_800, "system:S1"),
+            ],
+            speakers: [
+                SpeakerInfo(id: "microphone", label: "Me"),
+                SpeakerInfo(id: "system:S1", label: "Dana"),
+            ],
+            status: .completed,
+            sourceType: .meeting
+        )
+
+        let context = try promptRunTranscriptContext(
+            transcription: transcription,
+            customWordRepository: customWordRepo,
+            defaults: defaults
+        )
+
+        XCTAssertTrue(context.contains("> Simultaneous speech"))
+        XCTAssertTrue(context.contains("**Dana · [0:00]**"))
+        XCTAssertTrue(context.contains("uh MacParakeet"))
+        XCTAssertTrue(context.contains("First. Second. Third.\n\nFourth."))
+    }
+
+    func testRunContextPreservesPlainNonMeetingTranscript() throws {
+        let db = try DatabaseManager()
+        let context = try promptRunTranscriptContext(
+            transcription: Transcription(
+                fileName: "File",
+                rawTranscript: "raw",
+                cleanTranscript: "  plain file context  ",
+                status: .completed,
+                sourceType: .file
+            ),
+            customWordRepository: CustomWordRepository(dbQueue: db.dbQueue)
+        )
+
+        XCTAssertEqual(context, "  plain file context  ")
+    }
+
     // MARK: - JSON encoder
 
     func testCLIJSONEncoderEmitsParseableJSON() throws {
@@ -466,5 +533,20 @@ final class PromptsCommandTests: XCTestCase {
         XCTAssertNotNil(parsed)
         let names = parsed?.compactMap { $0["name"] as? String } ?? []
         XCTAssertTrue(names.contains("JSON Test"), "Expected 'JSON Test' in encoded names; got: \(names)")
+    }
+
+    private func promptContextWord(
+        _ word: String,
+        _ startMs: Int,
+        _ endMs: Int,
+        _ speakerID: String
+    ) -> WordTimestamp {
+        WordTimestamp(
+            word: word,
+            startMs: startMs,
+            endMs: endMs,
+            confidence: 0.9,
+            speakerId: speakerID
+        )
     }
 }

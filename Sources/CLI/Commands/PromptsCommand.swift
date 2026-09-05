@@ -424,7 +424,10 @@ extension PromptsCommand {
                 let prompt = try findPrompt(idOrName: promptIdOrName, repo: promptRepo)
                 let transcript = try findTranscription(id: transcription, repo: transcriptionRepo)
 
-                let transcriptText = transcript.cleanTranscript ?? transcript.rawTranscript ?? ""
+                let transcriptText = try promptRunTranscriptContext(
+                    transcription: transcript,
+                    customWordRepository: customWordRepo
+                )
                 guard !transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw PromptCLIError.emptyTranscript(transcript.fileName)
                 }
@@ -496,6 +499,27 @@ extension PromptsCommand {
             }
         }
     }
+}
+
+func promptRunTranscriptContext(
+    transcription: Transcription,
+    customWordRepository: CustomWordRepositoryProtocol,
+    defaults: UserDefaults = macParakeetAppDefaults()
+) throws -> String {
+    guard transcription.sourceType == .meeting,
+          transcription.status == .completed
+    else {
+        return transcription.cleanTranscript ?? transcription.rawTranscript ?? ""
+    }
+
+    let readingConfiguration = try completedMeetingReadingConfiguration(
+        customWordRepository: customWordRepository,
+        defaults: defaults
+    )
+    return TranscriptAIContextFormatter.format(
+        transcription: transcription,
+        meetingReadingConfiguration: readingConfiguration
+    )
 }
 
 /// Refreshes meeting artifacts; failures are logged and never surfaced or thrown, and refresh never blocks or fails the triggering user action.

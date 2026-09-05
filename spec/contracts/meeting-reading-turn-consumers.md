@@ -25,7 +25,7 @@ ranges must not drift.
 - Full meeting and transcript clipboard actions.
 - TXT and Markdown exports.
 - `meeting.md` artifact rendering.
-- Rich summary, prompt, and chat context.
+- Rich summary, prompt, and chat context, including all `prompts run` output modes.
 - Search and citation navigation that needs a containing seek target.
 
 ## Stable Semantics
@@ -64,6 +64,7 @@ fixture in one change.
 - `TranscriptAIContextFormatterTests`
 - `MeetingMarkdownRendererClipboardTests`
 - `ExportServiceTests`
+- `PromptsCommandTests`
 
 The shared consumer fixture compares readable exports, clipboard output,
 meeting Markdown, and AI context with one derived Reading Turn document. Its Raw
