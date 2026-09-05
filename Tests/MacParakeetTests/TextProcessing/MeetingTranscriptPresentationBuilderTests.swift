@@ -66,24 +66,69 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         XCTAssertEqual(words, originalWords, "Presentation must not rewrite raw evidence")
     }
 
-    func testSourceExchangeCreatesConversationTurnsWithoutWordLevelInterleaving() {
+    func testUnpunctuatedSourceExchangePreservesChronologicalConversationTurns() {
         let words = [
-            word("My", 0, 200, "microphone"),
-            word("question.", 250, 500, "microphone"),
-            word("The", 600, 800, "system"),
-            word("answer.", 850, 1_100, "system"),
-            word("Thanks.", 1_200, 1_500, "microphone"),
+            word("Question", 0, 200, "microphone"),
+            word("Answer", 300, 500, "system"),
+            word("Thanks", 600, 800, "microphone"),
         ]
 
         let document = MeetingTranscriptPresentationBuilder.build(
-            transcriptText: "My question. The answer. Thanks.",
+            transcriptText: "Question Answer Thanks",
             words: words,
             speakers: nil
         )
 
-        XCTAssertEqual(document.turns.map(\.speakerLabel), ["Me", "Others", "Me"])
-        XCTAssertEqual(document.turns.map(\.text), ["My question.", "The answer.", "Thanks."])
-        XCTAssertEqual(document.turns.map(\.wordReferences), [[0, 1], [2, 3], [4]])
+        XCTAssertEqual(
+            document,
+            MeetingTranscriptPresentationDocument(turns: [
+                readingTurn(
+                    source: .microphone,
+                    speakerId: "microphone",
+                    speakerLabel: "Me",
+                    wordIndex: 0,
+                    text: "Question",
+                    startMs: 0,
+                    endMs: 200
+                ),
+                readingTurn(
+                    source: .system,
+                    speakerId: "system",
+                    speakerLabel: "Others",
+                    wordIndex: 1,
+                    text: "Answer",
+                    startMs: 300,
+                    endMs: 500
+                ),
+                readingTurn(
+                    source: .microphone,
+                    speakerId: "microphone",
+                    speakerLabel: "Me",
+                    wordIndex: 2,
+                    text: "Thanks",
+                    startMs: 600,
+                    endMs: 800
+                ),
+            ])
+        )
+    }
+
+    func testOverlappingSourceSpeechDoesNotCreateACompletedExchangeBoundary() {
+        let words = [
+            word("Question", 0, 400, "microphone"),
+            word("Answer", 200, 700, "system"),
+            word("Thanks", 600, 900, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "Question Answer Thanks",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.speakerLabel), ["Me", "Others"])
+        XCTAssertEqual(document.turns.map(\.text), ["Question Thanks", "Answer"])
+        XCTAssertEqual(document.turns.map(\.wordReferences), [[0, 2], [1]])
     }
 
     func testLegacyBareRemoteSpeakerIDsRemainSystemSourceWithFallbackWords() {
@@ -180,6 +225,32 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         XCTAssertEqual(document.turns.count, 60)
         XCTAssertLessThan(document.turns.count, words.count / 100)
         XCTAssertEqual(document.turns.flatMap(\.wordReferences).count, words.count)
+    }
+
+    private func readingTurn(
+        source: ReadingTurnSource,
+        speakerId: String,
+        speakerLabel: String,
+        wordIndex: Int,
+        text: String,
+        startMs: Int,
+        endMs: Int
+    ) -> ReadingTurn {
+        ReadingTurn(
+            id: ReadingTurnIdentity(
+                source: source,
+                speakerId: speakerId,
+                firstWordIndex: wordIndex
+            ),
+            speakerId: speakerId,
+            speakerLabel: speakerLabel,
+            source: source,
+            timeRange: ReadingTurnTimeRange(startMs: startMs, endMs: endMs),
+            paragraphs: [
+                ReadingTurnParagraph(text: text, wordReferences: [wordIndex])
+            ],
+            wordReferences: [wordIndex]
+        )
     }
 
     private func word(_ text: String, _ startMs: Int, _ endMs: Int, _ speakerId: String?) -> WordTimestamp {

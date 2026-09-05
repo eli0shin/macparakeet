@@ -64,6 +64,14 @@ private enum TranscriptDisplayMode: String, CaseIterable, Hashable {
     case timed = "Timed"
 }
 
+func shouldDefaultToMeetingReadingSurface(
+    isCompletedMeeting: Bool,
+    isTranscriptEdited: Bool,
+    hasReadingTurns: Bool
+) -> Bool {
+    isCompletedMeeting && !isTranscriptEdited && hasReadingTurns
+}
+
 /// Records the user's engine choice from the retranscribe popover so the
 /// confirmation alert can be presented in a *separate* render cycle from
 /// the popover dismissal — chaining popover → alert in the same cycle on
@@ -3459,7 +3467,11 @@ struct TranscriptResultView: View {
     }
 
     private func syncTranscriptDisplayMode() {
-        if usesMeetingReadingSurface, !cachedReadingTurns.isEmpty {
+        if shouldDefaultToMeetingReadingSurface(
+            isCompletedMeeting: usesMeetingReadingSurface,
+            isTranscriptEdited: activeTranscription.isTranscriptEdited,
+            hasReadingTurns: !cachedReadingTurns.isEmpty
+        ) {
             transcriptDisplayMode = .timed
         } else {
             transcriptDisplayMode = (hasCleanTranscriptText || !hasTimestamps) ? .text : .timed

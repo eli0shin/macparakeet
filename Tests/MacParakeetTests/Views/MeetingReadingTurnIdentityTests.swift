@@ -3,6 +3,21 @@ import MacParakeetCore
 @testable import MacParakeet
 
 final class MeetingReadingTurnIdentityTests: XCTestCase {
+    func testCompletedMeetingDefaultsToTextWhenTranscriptWasEdited() {
+        XCTAssertFalse(
+            shouldDefaultToMeetingReadingSurface(
+                isCompletedMeeting: true,
+                isTranscriptEdited: true,
+                hasReadingTurns: true
+            ))
+        XCTAssertTrue(
+            shouldDefaultToMeetingReadingSurface(
+                isCompletedMeeting: true,
+                isTranscriptEdited: false,
+                hasReadingTurns: true
+            ))
+    }
+
     func testScrollIdentityIsOnePerReadingTurnAndPlaybackSelectsTheLatestStart() {
         let turns = identifiedReadingTurns([
             turn(speaker: "microphone", source: .microphone, firstWord: 0, startMs: 0),

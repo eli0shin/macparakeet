@@ -156,10 +156,12 @@ public enum MeetingTranscriptPresentationBuilder {
                 {
                     otherSourceCursor += 1
                 }
-                let sourceExchange =
-                    sentenceBoundary
-                    && otherSourceCursor < otherSourceWords.count
-                    && otherSourceWords[otherSourceCursor].word.startMs < indexedWord.word.startMs
+                let sourceExchange = hasCompletedSourceExchange(
+                    between: previous.word.endMs,
+                    and: indexedWord.word.startMs,
+                    in: otherSourceWords,
+                    startingAt: otherSourceCursor
+                )
                 if longPause || sentenceSpeakerChange || sourceExchange {
                     utterances.append(current)
                     current = []
@@ -289,6 +291,34 @@ public enum MeetingTranscriptPresentationBuilder {
                 wordReferences: []
             )
         ])
+    }
+
+    /// A source exchange is complete only when other-source speech starts after
+    /// the preceding source word and ends before the next one. Speech crossing
+    /// either boundary is overlap and must not split the surrounding utterance.
+    private static func hasCompletedSourceExchange(
+        between startMs: Int,
+        and endMs: Int,
+        in otherSourceWords: [IndexedWord],
+        startingAt startIndex: Int
+    ) -> Bool {
+        guard endMs > startMs else { return false }
+
+        var foundCompletedSpeech = false
+        var index = startIndex
+        while index < otherSourceWords.count,
+            otherSourceWords[index].word.startMs < endMs
+        {
+            let word = otherSourceWords[index].word
+            if word.endMs > startMs {
+                guard word.startMs >= startMs, word.endMs <= endMs else {
+                    return false
+                }
+                foundCompletedSpeech = true
+            }
+            index += 1
+        }
+        return foundCompletedSpeech
     }
 
     private static func readingSource(for speakerId: String?) -> ReadingTurnSource {
