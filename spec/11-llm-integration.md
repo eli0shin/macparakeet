@@ -432,8 +432,9 @@ Reading Turns first and send serial requests bounded by that same character
 cap. Requests never cross a turn or split a deterministic paragraph. A turn is
 published only after all of its requests pass non-empty, protected-value,
 content-change, and output-size validation; otherwise only that turn uses its
-deterministic text. Cancellation keeps completed turn overrides and leaves the
-current and remaining turns deterministic. These validated text overrides are
+deterministic text. Cancellation propagates through the meeting workflow, which
+marks the operation cancelled and publishes no partial formatting overrides.
+These validated text overrides are
 keyed to turn identity and deterministic source text, so the model cannot alter
 speaker labels, overlap, playback timing, paragraphs, or raw word evidence.
 Formatting runs only through the provider and prompt already selected by the

@@ -1971,7 +1971,6 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         )
         let baseText = refinement.text ?? rawText
         var formatterRuns: [LLMRun] = []
-        var formattingWasCancelled = false
 
         if transcription.sourceType == .meeting, shouldUseAIFormatter(), llmService != nil {
             let cleanup: MeetingTranscriptCleanup = mode.usesDeterministicPipeline
@@ -2020,7 +2019,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                     ))
                 }
             )
-            formattingWasCancelled = result.wasCancelled
+            guard !result.wasCancelled else { throw CancellationError() }
             transcription.meetingReadingTurnFormatting = result.formatting.isEmpty
                 ? nil
                 : result.formatting
@@ -2079,7 +2078,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             transcription.transcriptSegments = durableSegments.isEmpty ? nil : durableSegments
         }
 
-        if persistResult, source == .meeting, !formattingWasCancelled,
+        if persistResult, source == .meeting,
            let generatedTitle = try await generateMeetingTitleIfNeeded(
                transcriptText: derivationSource,
                currentTitle: transcription.fileName

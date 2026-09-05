@@ -45,7 +45,9 @@ mode.
 - `MeetingReadingTurnFormatter.swift` — optional AI formatting module for completed
   meetings. It makes serial requests from complete deterministic paragraphs,
   validates content preservation, and commits overrides one stable Reading Turn
-  at a time. Failures and cancellation leave affected turns deterministic.
+  at a time. Failures leave affected turns deterministic. Cancellation is
+  reported to the meeting workflow, which aborts completion without publishing
+  partial overrides.
 
 ## Cross-references
 

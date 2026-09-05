@@ -1953,6 +1953,52 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(try llmRunRepo.fetchForTranscription(id: result.id).count, 3)
     }
 
+    func testMeetingCancellationDuringFormattingThrowsAndPersistsCancelledStatus() async throws {
+        await mockSTT.configure(result: STTResult(
+            text: "Cancel during formatting.",
+            words: [
+                TimestampedWord(
+                    word: "Cancel during formatting.",
+                    startMs: 0,
+                    endMs: 500,
+                    confidence: 0.95
+                )
+            ]
+        ))
+        let llm = MockLLMService()
+        llm.formatTranscriptTransform = { input in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return input.uppercased()
+        }
+        let service = TranscriptionService(
+            audioProcessor: mockAudio,
+            sttTranscriber: mockSTT,
+            transcriptionRepo: transcriptionRepo,
+            llmService: llm,
+            llmRunRepo: llmRunRepo,
+            shouldUseAIFormatter: { true },
+            meetingAutomationHookRunner: nil
+        )
+        let recording = try makeOneSourceMeetingRecording(displayName: "Cancelled Meeting")
+        defer { try? FileManager.default.removeItem(at: recording.folderURL) }
+
+        do {
+            _ = try await Task {
+                try await service.transcribeMeeting(recording: recording)
+            }.value
+            XCTFail("Expected meeting formatting cancellation to throw.")
+        } catch is CancellationError {
+            // Expected: the meeting-level cancellation handler persists status.
+        } catch {
+            XCTFail("Expected CancellationError, got \(error).")
+        }
+
+        XCTAssertEqual(llm.formatTranscriptCallCount, 1)
+        let persisted = try XCTUnwrap(transcriptionRepo.fetchAll(limit: nil).first)
+        XCTAssertEqual(persisted.status, .cancelled)
+        XCTAssertNil(persisted.meetingReadingTurnFormatting)
+    }
+
     func testMeetingWithAIFormattingDisabledDoesNotBuildFormattingRequests() async throws {
         await mockSTT.configure(result: STTResult(
             text: "deterministic meeting text.",
