@@ -158,6 +158,37 @@ jobs:
         run: |
           set -o pipefail
           bash scripts/dist/build_app_bundle.sh 2>&1 | tee .ci-logs/release-bundle-smoke.log
+      - name: Package unsigned app archive
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        run: |
+          set -euo pipefail
+          test -d dist/MacParakeet.app
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent dist/MacParakeet.app dist/MacParakeet-unsigned-non-notarized.zip
+          test -s dist/MacParakeet-unsigned-non-notarized.zip
+          INSPECTION_DIR="$(mktemp -d)"
+          trap 'rm -rf "$INSPECTION_DIR"' EXIT
+          /usr/bin/ditto -x -k dist/MacParakeet-unsigned-non-notarized.zip "$INSPECTION_DIR"
+          test -d "$INSPECTION_DIR/MacParakeet.app/Contents"
+          test -x "$INSPECTION_DIR/MacParakeet.app/Contents/MacOS/MacParakeet"
+          test -x "$INSPECTION_DIR/MacParakeet.app/Contents/MacOS/macparakeet-cli"
+          while IFS= read -r -d '' SOURCE_PATH; do
+            RELATIVE_PATH="${SOURCE_PATH#dist/MacParakeet.app}"
+            EXTRACTED_PATH="$INSPECTION_DIR/MacParakeet.app$RELATIVE_PATH"
+            test -e "$EXTRACTED_PATH" || test -L "$EXTRACTED_PATH"
+            test "$(stat -f '%p' "$SOURCE_PATH")" = "$(stat -f '%p' "$EXTRACTED_PATH")"
+            if test -L "$SOURCE_PATH"; then
+              test "$(readlink "$SOURCE_PATH")" = "$(readlink "$EXTRACTED_PATH")"
+            fi
+          done < <(find dist/MacParakeet.app -print0)
+          /usr/bin/unzip -l dist/MacParakeet-unsigned-non-notarized.zip | tee .ci-logs/unsigned-app-archive-contents.log
+      - name: Upload unsigned non-notarized app
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        uses: actions/upload-artifact@v7
+        with:
+          name: MacParakeet-unsigned-non-notarized
+          path: dist/MacParakeet-unsigned-non-notarized.zip
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload release logs
         if: always()
         uses: actions/upload-artifact@v7

@@ -16,7 +16,7 @@ The workflow runs:
 | `changes` | Every PR, main push, manual run | Script tests, subsystem README references, change classification |
 | `debug-tests` | Code/input changes | One app/CLI/test build with concurrency warnings; all XCTest and Swift Testing cases; debug CLI smoke |
 | `swift6` | Code/input changes, parallel with debug | First-party Swift 6 compilation without WhisperKit; informational format lint |
-| `release` | Release-input PRs, every main push, manual run | Optimized release build, release CLI smoke, bundle smoke |
+| `release` | Release-input PRs, every main push, manual run | Optimized release build, release CLI smoke, bundle smoke; main/manual runs also publish a seven-day unsigned, non-notarized app artifact |
 | `swift-test` | Always | Stable, fail-closed result for all required lanes |
 
 Release inputs include package manifests/lockfile, `.github/`, `scripts/ci/`,
@@ -25,6 +25,14 @@ entitlements, and xcconfig files. Ordinary source PRs deliberately do not
 wait for release optimization. This accepts the risk that another release-only
 compiler/linker error can first appear on main. Run manual CI before releasing;
 the bundle smoke is not signing/notarization or complete distribution validation.
+
+After a successful `release` job on `main` or a manual run, CI packages
+`dist/MacParakeet.app` with macOS `ditto` and uploads
+`MacParakeet-unsigned-non-notarized` for seven days. CI extracts and inspects the
+archive before upload. Pull requests run applicable release validation but do
+not publish this app artifact. The artifact is only a development build; it is
+not signed, notarized, published to the stable download channel, or suitable as
+an official release.
 
 Only known prose paths skip compilation: root Markdown, Markdown under docs,
 plans, spec, integrations, and source README files. The CLI changelog remains a

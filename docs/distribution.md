@@ -108,6 +108,28 @@ into `Info.plist` as:
 - `MacParakeetCheckoutURL`
 - `MacParakeetLemonSqueezyVariantID`
 
+### Downloadable CI development build
+
+Successful `main` and manual CI runs upload a GitHub Actions artifact named
+`MacParakeet-unsigned-non-notarized`. It contains
+`MacParakeet-unsigned-non-notarized.zip`, which wraps `MacParakeet.app` with
+macOS `ditto` so bundle metadata, symlinks, and executable permissions are
+preserved. The artifact is retained for seven days. Pull request runs do not
+publish it.
+
+This artifact is an **unsigned, non-notarized development build** for testing.
+It is not the stable MacParakeet release and does not replace the Developer ID,
+notarization, DMG, R2, Sparkle, or GitHub release steps below. macOS can warn or
+block the app because it has no release signature. CI does not receive signing
+credentials and does not publish this archive outside GitHub Actions.
+
+After downloading the Actions artifact, extract its inner archive on macOS with
+Finder or:
+
+```bash
+ditto -x -k MacParakeet-unsigned-non-notarized.zip .
+```
+
 ## 2) Sign + notarize (recommended)
 
 Prereqs:

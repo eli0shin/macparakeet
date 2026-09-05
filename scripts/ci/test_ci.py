@@ -60,10 +60,51 @@ class ClassificationTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def setUp(self):
+        self.workflow = Path(".github/workflows/ci.yml").read_text()
+        self.release_job = self.workflow.split("\n  release:\n", 1)[1].split("\n  # Preserve", 1)[0]
+
     def test_debug_tests_job_has_twenty_minute_timeout(self):
-        workflow = Path(".github/workflows/ci.yml").read_text()
-        debug_job = workflow.split("\n  debug-tests:\n", 1)[1].split("\n  swift6:\n", 1)[0]
+        debug_job = self.workflow.split("\n  debug-tests:\n", 1)[1].split("\n  swift6:\n", 1)[0]
         self.assertIn("\n    timeout-minutes: 20\n", debug_job)
+
+    def test_release_job_packages_app_only_for_main_and_manual_runs(self):
+        package = self.release_job.split("      - name: Package unsigned app archive\n", 1)[1]
+        package = package.split("      - name:", 1)[0]
+        publish_condition = (
+            "if: github.event_name == 'workflow_dispatch' || "
+            "(github.event_name == 'push' && github.ref == 'refs/heads/main')"
+        )
+        self.assertIn(publish_condition, package)
+        self.assertIn("test -d dist/MacParakeet.app", package)
+        self.assertIn(
+            "/usr/bin/ditto -c -k --sequesterRsrc --keepParent "
+            "dist/MacParakeet.app dist/MacParakeet-unsigned-non-notarized.zip",
+            package,
+        )
+        self.assertIn("/usr/bin/ditto -x -k", package)
+        self.assertIn("test -x", package)
+        self.assertIn("stat -f '%p'", package)
+        self.assertIn("readlink", package)
+
+    def test_release_job_uploads_named_archive_fail_closed_with_retention(self):
+        upload = self.release_job.split("      - name: Upload unsigned non-notarized app\n", 1)[1]
+        upload = upload.split("      - name:", 1)[0]
+        publish_condition = (
+            "if: github.event_name == 'workflow_dispatch' || "
+            "(github.event_name == 'push' && github.ref == 'refs/heads/main')"
+        )
+        self.assertIn(publish_condition, upload)
+        self.assertIn("uses: actions/upload-artifact@v7", upload)
+        self.assertIn("name: MacParakeet-unsigned-non-notarized", upload)
+        self.assertIn("path: dist/MacParakeet-unsigned-non-notarized.zip", upload)
+        self.assertIn("if-no-files-found: error", upload)
+        self.assertIn("retention-days: 7", upload)
+        self.assertNotIn("continue-on-error", upload)
+
+    def test_release_log_artifact_remains_available(self):
+        self.assertIn("name: swift-release-logs", self.release_job)
+        self.assertIn("if: always()", self.release_job)
 
 
 class GateTests(unittest.TestCase):
