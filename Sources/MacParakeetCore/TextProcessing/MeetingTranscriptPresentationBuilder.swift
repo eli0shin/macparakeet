@@ -85,17 +85,91 @@ public struct MeetingTranscriptPresentationDocument: Sendable, Equatable {
     }
 }
 
+/// Content-free measures for comparing Reading Turn fixture output. These
+/// values describe presentation structure and never include transcript text.
+public struct ReadingTurnReadabilityMetrics: Sendable, Equatable {
+    public let turnsPerMinute: Double
+    public let blocksShorterThanThreeWords: Int
+    public let isolatedSpeakerFlips: Int
+    public let fallbackSpeakerTransitions: Int
+    public let medianWordsPerTurn: Double
+
+    public init(
+        turnsPerMinute: Double,
+        blocksShorterThanThreeWords: Int,
+        isolatedSpeakerFlips: Int,
+        fallbackSpeakerTransitions: Int,
+        medianWordsPerTurn: Double
+    ) {
+        self.turnsPerMinute = turnsPerMinute
+        self.blocksShorterThanThreeWords = blocksShorterThanThreeWords
+        self.isolatedSpeakerFlips = isolatedSpeakerFlips
+        self.fallbackSpeakerTransitions = fallbackSpeakerTransitions
+        self.medianWordsPerTurn = medianWordsPerTurn
+    }
+
+    public static func measure(_ document: MeetingTranscriptPresentationDocument) -> Self {
+        let turns = document.turns
+        guard !turns.isEmpty else {
+            return Self(
+                turnsPerMinute: 0,
+                blocksShorterThanThreeWords: 0,
+                isolatedSpeakerFlips: 0,
+                fallbackSpeakerTransitions: 0,
+                medianWordsPerTurn: 0
+            )
+        }
+
+        let starts = turns.compactMap { $0.timeRange?.startMs }
+        let ends = turns.compactMap { $0.timeRange?.endMs }
+        let durationMs = max(1, (ends.max() ?? 0) - (starts.min() ?? 0))
+        let wordCounts = turns.map { $0.wordReferences.count }.sorted()
+        let middle = wordCounts.count / 2
+        let median =
+            wordCounts.count.isMultiple(of: 2)
+            ? Double(wordCounts[middle - 1] + wordCounts[middle]) / 2
+            : Double(wordCounts[middle])
+        let flips = turns.indices.dropFirst().dropLast().reduce(into: 0) { count, index in
+            if turns[index - 1].speakerId == turns[index + 1].speakerId,
+                turns[index].speakerId != turns[index - 1].speakerId
+            {
+                count += 1
+            }
+        }
+        let fallbackTransitions = zip(turns, turns.dropFirst()).reduce(into: 0) { count, pair in
+            guard pair.0.speakerId != pair.1.speakerId else { return }
+            if pair.0.speakerId == AudioSource.system.rawValue
+                || pair.1.speakerId == AudioSource.system.rawValue
+            {
+                count += 1
+            }
+        }
+
+        return Self(
+            turnsPerMinute: Double(turns.count) * 60_000 / Double(durationMs),
+            blocksShorterThanThreeWords: wordCounts.count { $0 < 3 },
+            isolatedSpeakerFlips: flips,
+            fallbackSpeakerTransitions: fallbackTransitions,
+            medianWordsPerTurn: median
+        )
+    }
+}
+
 /// Pure presentation boundary from canonical meeting transcript evidence to a
 /// readable document. It never writes back to words, source IDs, or diarization.
 public enum MeetingTranscriptPresentationBuilder {
     private static let utterancePauseMs = 2_500
+    /// A new remote speaker needs this much exclusive aggregate evidence when
+    /// the stable speaker before and after it is the same.
+    private static let minimumSpeakerChangeEvidenceMs = 1_000
     private static let maximumParagraphSentenceCount = 3
     private static let maximumParagraphWordCount = 80
 
     public static func build(
         transcriptText: String,
         words: [WordTimestamp]?,
-        speakers: [SpeakerInfo]?
+        speakers: [SpeakerInfo]?,
+        diarizationSegments: [DiarizationSegmentRecord]? = nil
     ) -> MeetingTranscriptPresentationDocument {
         guard let words, !words.isEmpty else {
             return fallbackDocument(transcriptText: transcriptText)
@@ -112,7 +186,8 @@ public enum MeetingTranscriptPresentationBuilder {
                 from: indexedWords.filter { readingSource(for: $0.word.speakerId) == source },
                 allWords: indexedWords,
                 source: source,
-                labels: labels
+                labels: labels,
+                diarizationSegments: diarizationSegments ?? []
             )
         }
         .sorted { lhs, rhs in
@@ -131,52 +206,26 @@ public enum MeetingTranscriptPresentationBuilder {
         from words: [IndexedWord],
         allWords: [IndexedWord],
         source: ReadingTurnSource,
-        labels: [String: String]
+        labels: [String: String],
+        diarizationSegments: [DiarizationSegmentRecord]
     ) -> [ReadingTurn] {
         guard !words.isEmpty else { return [] }
 
-        let sortedWords = words.sorted(by: evidenceOrder)
-        let otherSourceWords =
-            allWords
-            .filter { readingSource(for: $0.word.speakerId) != source }
-            .sorted(by: evidenceOrder)
-        var otherSourceCursor = 0
-        var utterances: [[IndexedWord]] = []
-        var current: [IndexedWord] = []
-
-        for indexedWord in sortedWords {
-            if let previous = current.last {
-                let longPause = indexedWord.word.startMs - previous.word.endMs >= utterancePauseMs
-                let sentenceBoundary = endsSentence(previous.word.word)
-                let sentenceSpeakerChange =
-                    sentenceBoundary
-                    && indexedWord.word.speakerId != previous.word.speakerId
-                while otherSourceCursor < otherSourceWords.count,
-                    otherSourceWords[otherSourceCursor].word.endMs <= previous.word.endMs
-                {
-                    otherSourceCursor += 1
-                }
-                let sourceExchange = hasCompletedSourceExchange(
-                    between: previous.word.endMs,
-                    and: indexedWord.word.startMs,
-                    in: otherSourceWords,
-                    startingAt: otherSourceCursor
-                )
-                if longPause || sentenceSpeakerChange || sourceExchange {
-                    utterances.append(current)
-                    current = []
-                }
-            }
-            current.append(indexedWord)
-        }
-        if !current.isEmpty { utterances.append(current) }
-
-        let resolved = utterances.map { utterance in
-            ResolvedUtterance(
-                words: utterance,
-                speakerId: resolvedSpeakerId(for: utterance, source: source)
+        let utterances = formUtterances(from: words, allWords: allWords, source: source)
+        let attributed = utterances.map { utterance in
+            let evidence = speakerEvidence(
+                for: utterance.words,
+                source: source,
+                diarizationSegments: diarizationSegments
+            )
+            return ResolvedUtterance(
+                words: utterance.words,
+                speakerId: evidence.speakerId,
+                speakerEvidenceMs: evidence.durationMs,
+                allowsMergeWithPrevious: utterance.allowsMergeWithPrevious
             )
         }
+        let resolved = mergeAdjacentUtterances(smoothWeakSpeakerRuns(attributed, source: source))
 
         return resolved.map { group in
             let speakerId = group.speakerId
@@ -210,32 +259,170 @@ public enum MeetingTranscriptPresentationBuilder {
         }
     }
 
-    private static func resolvedSpeakerId(
-        for words: [IndexedWord],
+    private static func formUtterances(
+        from words: [IndexedWord],
+        allWords: [IndexedWord],
         source: ReadingTurnSource
-    ) -> String {
-        if source == .microphone { return AudioSource.microphone.rawValue }
+    ) -> [SourceUtterance] {
+        let sortedWords = words.sorted(by: evidenceOrder)
+        let otherSourceWords =
+            allWords
+            .filter { readingSource(for: $0.word.speakerId) != source }
+            .sorted(by: evidenceOrder)
+        var otherSourceCursor = 0
+        var utterances: [SourceUtterance] = []
+        var current: [IndexedWord] = []
+        var currentAllowsMergeWithPrevious = false
 
-        var durationBySpeaker: [String: Int] = [:]
-        for indexedWord in words {
-            guard let speakerId = indexedWord.word.speakerId else { continue }
-            let duration = max(1, indexedWord.word.endMs - indexedWord.word.startMs)
-            durationBySpeaker[speakerId, default: 0] += duration
+        for indexedWord in sortedWords {
+            if let previous = current.last {
+                let longPause = indexedWord.word.startMs - previous.word.endMs >= utterancePauseMs
+                while otherSourceCursor < otherSourceWords.count,
+                    otherSourceWords[otherSourceCursor].word.endMs <= previous.word.endMs
+                {
+                    otherSourceCursor += 1
+                }
+                let sourceExchange = hasCompletedSourceExchange(
+                    between: previous.word.endMs,
+                    and: indexedWord.word.startMs,
+                    in: otherSourceWords,
+                    startingAt: otherSourceCursor
+                )
+                let sentenceBoundary = endsSentence(previous.word.word)
+                if longPause || sourceExchange || sentenceBoundary {
+                    utterances.append(
+                        SourceUtterance(
+                            words: current,
+                            allowsMergeWithPrevious: currentAllowsMergeWithPrevious
+                        ))
+                    current = []
+                    currentAllowsMergeWithPrevious = sentenceBoundary && !longPause && !sourceExchange
+                }
+            }
+            current.append(indexedWord)
         }
-
-        if source == .system {
-            let refined = durationBySpeaker.filter { $0.key != AudioSource.system.rawValue }
-            if let dominant = dominantSpeaker(in: refined) { return dominant }
-            return AudioSource.system.rawValue
+        if !current.isEmpty {
+            utterances.append(
+                SourceUtterance(
+                    words: current,
+                    allowsMergeWithPrevious: currentAllowsMergeWithPrevious
+                ))
         }
-        return dominantSpeaker(in: durationBySpeaker) ?? "unknown"
+        return utterances
     }
 
-    private static func dominantSpeaker(in durations: [String: Int]) -> String? {
-        durations.max { lhs, rhs in
-            if lhs.value == rhs.value { return lhs.key > rhs.key }
-            return lhs.value < rhs.value
-        }?.key
+    private static func speakerEvidence(
+        for words: [IndexedWord],
+        source: ReadingTurnSource,
+        diarizationSegments: [DiarizationSegmentRecord]
+    ) -> SpeakerEvidence {
+        if source == .microphone {
+            return SpeakerEvidence(speakerId: AudioSource.microphone.rawValue, durationMs: 0)
+        }
+
+        var durationBySpeaker: [String: Int] = [:]
+        if source == .system, let startMs = words.first?.word.startMs {
+            let endMs = words.map { $0.word.endMs }.max() ?? startMs
+            for segment in diarizationSegments where isRefinedSystemSpeaker(segment.speakerId) {
+                let overlapMs = max(0, min(endMs, segment.endMs) - max(startMs, segment.startMs))
+                if overlapMs > 0 {
+                    durationBySpeaker[segment.speakerId, default: 0] += overlapMs
+                }
+            }
+        }
+
+        // Legacy meetings may not retain diarization regions. Keep aggregate
+        // word evidence as a compatibility fallback, never as a visible split.
+        if durationBySpeaker.isEmpty {
+            for indexedWord in words {
+                guard let speakerId = indexedWord.word.speakerId else { continue }
+                if source == .system, !isRefinedSystemSpeaker(speakerId) { continue }
+                let durationMs = max(1, indexedWord.word.endMs - indexedWord.word.startMs)
+                durationBySpeaker[speakerId, default: 0] += durationMs
+            }
+        }
+
+        let fallback = source == .system ? AudioSource.system.rawValue : "unknown"
+        guard let dominant = unambiguousDominantSpeaker(in: durationBySpeaker) else {
+            let utteranceSpeechMs = words.reduce(0) {
+                $0 + max(1, $1.word.endMs - $1.word.startMs)
+            }
+            return SpeakerEvidence(speakerId: fallback, durationMs: utteranceSpeechMs)
+        }
+        return SpeakerEvidence(speakerId: dominant.key, durationMs: dominant.value)
+    }
+
+    private static func unambiguousDominantSpeaker(
+        in durations: [String: Int]
+    ) -> (key: String, value: Int)? {
+        let ranked = durations.sorted {
+            if $0.value == $1.value { return $0.key < $1.key }
+            return $0.value > $1.value
+        }
+        guard let first = ranked.first else { return nil }
+        guard ranked.count == 1 || first.value > ranked[1].value else { return nil }
+        return first
+    }
+
+    private static func smoothWeakSpeakerRuns(
+        _ utterances: [ResolvedUtterance],
+        source: ReadingTurnSource
+    ) -> [ResolvedUtterance] {
+        guard source == .system, utterances.count >= 3 else { return utterances }
+        var smoothed = utterances
+        var runStart = 0
+
+        while runStart < smoothed.count {
+            var runEnd = runStart + 1
+            while runEnd < smoothed.count,
+                smoothed[runEnd].speakerId == smoothed[runStart].speakerId
+            {
+                runEnd += 1
+            }
+
+            if runStart > 0, runEnd < smoothed.count {
+                let previousSpeaker = smoothed[runStart - 1].speakerId
+                let nextSpeaker = smoothed[runEnd].speakerId
+                let runSpeaker = smoothed[runStart].speakerId
+                let evidenceMs = smoothed[runStart..<runEnd].reduce(0) {
+                    $0 + $1.speakerEvidenceMs
+                }
+                if previousSpeaker == nextSpeaker,
+                    runSpeaker != previousSpeaker,
+                    evidenceMs < minimumSpeakerChangeEvidenceMs
+                {
+                    for index in runStart..<runEnd {
+                        smoothed[index].speakerId = previousSpeaker
+                    }
+                }
+            }
+            runStart = runEnd
+        }
+        return smoothed
+    }
+
+    private static func mergeAdjacentUtterances(
+        _ utterances: [ResolvedUtterance]
+    ) -> [ResolvedUtterance] {
+        var merged: [ResolvedUtterance] = []
+        for utterance in utterances {
+            if let previous = merged.last,
+                utterance.allowsMergeWithPrevious,
+                utterance.speakerId == previous.speakerId,
+                utterance.startMs - previous.endMs < utterancePauseMs
+            {
+                merged[merged.count - 1].words.append(contentsOf: utterance.words)
+                merged[merged.count - 1].speakerEvidenceMs += utterance.speakerEvidenceMs
+            } else {
+                merged.append(utterance)
+            }
+        }
+        return merged
+    }
+
+    private static func isRefinedSystemSpeaker(_ speakerId: String) -> Bool {
+        speakerId != AudioSource.microphone.rawValue
+            && speakerId != AudioSource.system.rawValue
     }
 
     private static func makeParagraphs(from words: [IndexedWord]) -> [ReadingTurnParagraph] {
@@ -385,9 +572,21 @@ private struct IndexedWord {
     let word: WordTimestamp
 }
 
-private struct ResolvedUtterance {
+private struct SourceUtterance {
     let words: [IndexedWord]
+    let allowsMergeWithPrevious: Bool
+}
+
+private struct SpeakerEvidence {
     let speakerId: String
+    let durationMs: Int
+}
+
+private struct ResolvedUtterance {
+    var words: [IndexedWord]
+    var speakerId: String
+    var speakerEvidenceMs: Int
+    let allowsMergeWithPrevious: Bool
 
     var startMs: Int { words.first?.word.startMs ?? 0 }
     var endMs: Int { words.map { $0.word.endMs }.max() ?? startMs }

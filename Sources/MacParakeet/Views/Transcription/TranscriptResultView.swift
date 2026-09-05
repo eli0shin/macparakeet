@@ -3362,7 +3362,8 @@ struct TranscriptResultView: View {
         let readingDocument = MeetingTranscriptPresentationBuilder.build(
             transcriptText: transcriptText,
             words: activeTranscription.wordTimestamps,
-            speakers: activeTranscription.speakers
+            speakers: activeTranscription.speakers,
+            diarizationSegments: activeTranscription.diarizationSegments
         )
         cachedReadingTurns = identifiedReadingTurns(readingDocument.turns)
 
