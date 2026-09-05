@@ -88,6 +88,46 @@ struct MeetingTranscriptFinalizer {
         )
     }
 
+    /// Replaces only system-speaker attribution on canonical meeting words.
+    /// Word text, timing, confidence, order, and microphone identity stay intact.
+    static func reattributeSystemWords(
+        _ words: [WordTimestamp],
+        systemDiarization: SystemDiarization
+    ) -> FinalizedTranscript {
+        let resetWords = words.map { word in
+            guard source(for: word.speakerId) == .system else { return word }
+            return WordTimestamp(
+                word: word.word,
+                startMs: word.startMs,
+                endMs: word.endMs,
+                confidence: word.confidence,
+                speakerId: AudioSource.system.rawValue
+            )
+        }
+        let systemWords = resetWords.filter { source(for: $0.speakerId) == .system }
+        let attributedSystemWords = SpeakerMerger.mergeWordTimestampsWithSpeakers(
+            words: systemWords,
+            segments: systemDiarization.segments
+        )
+        var attributedIterator = attributedSystemWords.makeIterator()
+        let mergedWords = resetWords.map { word in
+            source(for: word.speakerId) == .system ? (attributedIterator.next() ?? word) : word
+        }
+        let microphoneWords = mergedWords.filter { source(for: $0.speakerId) == .microphone }
+
+        return FinalizedTranscript(
+            rawTranscript: transcriptText(from: mergedWords),
+            words: mergedWords,
+            speakers: activeSpeakers(from: mergedWords, systemDiarization: systemDiarization),
+            diarizationSegments: diarizationEvidence(
+                microphoneWords: microphoneWords,
+                mergedWords: mergedWords,
+                systemDiarization: systemDiarization
+            ),
+            durationMs: mergedWords.map(\.endMs).max()
+        )
+    }
+
     private static func shiftedWords(
         for result: STTResult,
         source: AudioSource,

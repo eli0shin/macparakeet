@@ -94,6 +94,12 @@ public final class TranscriptionViewModel {
         case error(String)
     }
 
+    public enum SpeakerAttributionCorrectionState: Equatable, Sendable {
+        case idle
+        case running(message: String)
+        case failed(message: String)
+    }
+
     public var transcriptions: [Transcription] = []
     public var currentTranscription: Transcription? {
         didSet {
@@ -109,6 +115,7 @@ public final class TranscriptionViewModel {
     }
     public var pendingDeleteTranscription: Transcription?
     public var isTranscribing = false
+    public private(set) var speakerAttributionCorrectionState: SpeakerAttributionCorrectionState = .idle
     public var progress: String = ""
     public var transcriptionProgress: Double?
     public private(set) var sourceKind: SourceKind = .localFile
@@ -213,6 +220,8 @@ public final class TranscriptionViewModel {
     private var transcriptionRepo: TranscriptionRepositoryProtocol?
     private var promptResultRepo: PromptResultRepositoryProtocol?
     private var transcriptionTask: Task<Void, Never>?
+    private var speakerAttributionTask: Task<Void, Never>?
+    private var activeSpeakerAttributionTaskID: UUID?
     private var activeTranscriptionTaskID: UUID?
     private var audioTrackPreflightID: UUID?
     private var pendingAudioTrackFiles: [URL] = []
@@ -897,6 +906,82 @@ public final class TranscriptionViewModel {
             } catch {
                 completeFailedTranscription(taskID: taskID, error: error)
             }
+        }
+    }
+
+    public func correctMeetingSpeakerAttribution(_ original: Transcription, selection: MeetingSpeakerCountSelection) {
+        guard let service = transcriptionService as? any MeetingSpeakerAttributionCorrectingTranscriptionService else {
+            speakerAttributionCorrectionState = .failed(message: MeetingSpeakerCountCorrectionError.unsupportedService.localizedDescription)
+            return
+        }
+        guard let filePath = original.filePath,
+              FileManager.default.fileExists(atPath: filePath),
+              let recording = archivedMeetingRecording(for: original, mixedAudioURL: URL(fileURLWithPath: filePath)) else {
+            speakerAttributionCorrectionState = .failed(message: MeetingSpeakerCountCorrectionError.retainedAudioUnavailable.localizedDescription)
+            return
+        }
+        do {
+            _ = try selection.remoteDiarizationConstraint(hasSystemAudio: recording.sourceAlignment.system != nil)
+        } catch {
+            speakerAttributionCorrectionState = .failed(message: error.localizedDescription)
+            return
+        }
+
+        speakerAttributionTask?.cancel()
+        let taskID = UUID()
+        activeSpeakerAttributionTaskID = taskID
+        speakerAttributionCorrectionState = .running(message: "Preparing saved system audio…")
+        speakerAttributionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let progressHandler: @Sendable (TranscriptionProgress) -> Void = { [weak self] progress in
+                    Task { @MainActor [weak self] in
+                        guard self?.activeSpeakerAttributionTaskID == taskID else { return }
+                        self?.speakerAttributionCorrectionState = .running(message: Self.speakerAttributionProgressMessage(progress))
+                    }
+                }
+                let result = try await service.correctMeetingSpeakerAttribution(existing: original, recording: recording, selection: selection, onProgress: progressHandler)
+                guard activeSpeakerAttributionTaskID == taskID else { return }
+                speakerAttributionTask = nil
+                activeSpeakerAttributionTaskID = nil
+                speakerAttributionCorrectionState = .idle
+                if currentTranscription?.id == result.id { currentTranscription = result }
+                loadTranscriptions()
+            } catch is CancellationError {
+                guard activeSpeakerAttributionTaskID == taskID else { return }
+                speakerAttributionTask = nil
+                activeSpeakerAttributionTaskID = nil
+                speakerAttributionCorrectionState = .idle
+            } catch {
+                guard activeSpeakerAttributionTaskID == taskID else { return }
+                speakerAttributionTask = nil
+                activeSpeakerAttributionTaskID = nil
+                speakerAttributionCorrectionState = .failed(message: error.localizedDescription)
+            }
+        }
+    }
+
+    public func cancelMeetingSpeakerAttributionCorrection() {
+        guard speakerAttributionTask != nil else { return }
+        speakerAttributionTask?.cancel()
+        // Keep the task identity until the service reaches its commit boundary.
+        // A cancellation before persistence returns CancellationError. If the
+        // durable save already started, completion wins and refreshes the visible
+        // transcript so UI and database state cannot diverge.
+        speakerAttributionCorrectionState = .running(message: "Cancelling…")
+    }
+
+    public func clearMeetingSpeakerAttributionCorrectionError() {
+        guard case .failed = speakerAttributionCorrectionState else { return }
+        speakerAttributionCorrectionState = .idle
+    }
+
+    private static func speakerAttributionProgressMessage(_ progress: TranscriptionProgress) -> String {
+        switch progress {
+        case .converting: return "Preparing saved system audio…"
+        case .identifyingSpeakers: return "Identifying remote speakers…"
+        case .finalizing: return "Rebuilding Reading Turns…"
+        case .downloading, .preparingSpeechModel, .transcribing: return "Preparing speaker attribution…"
         }
     }
 
