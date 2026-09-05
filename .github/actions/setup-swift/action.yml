@@ -1,0 +1,24 @@
+name: Set up Swift CI
+description: Select the pinned toolchain and restore dependency inputs, not compiled outputs.
+runs:
+  using: composite
+  steps:
+    - uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: "16.1"
+    - shell: bash
+      run: |
+        xcodebuild -version
+        swift --version
+        mkdir -p .ci-logs
+    - uses: actions/cache@v5
+      with:
+        path: |
+          .build/checkouts
+          .build/repositories
+          .build/artifacts
+          .build/workspace-state.json
+          ~/Library/Caches/org.swift.swiftpm
+        key: ${{ runner.os }}-${{ runner.arch }}-xcode16.1-spm-v2-${{ hashFiles('Package.swift', 'Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-xcode16.1-spm-v2-

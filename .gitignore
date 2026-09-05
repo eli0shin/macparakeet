@@ -75,6 +75,7 @@ diagnostics/
 logs/
 
 # Test artifacts
+.ci-logs/
 test-results/
 coverage/
 

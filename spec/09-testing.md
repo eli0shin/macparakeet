@@ -187,6 +187,20 @@ swift test --filter WhisperLanguageCatalogTests
 
 **Note:** `swift test` works for all tests because tests don't need Metal shaders. The app itself requires `xcodebuild` (see CLAUDE.md).
 
+## PR CI
+
+Normal code PRs target a five-minute end-to-end run. Debug build/tests and the
+first-party Swift 6 compile run in parallel. CI runs all default XCTest cases
+in class groups and runs native Swift Testing once; it checks executed counts
+against discovery. No default regression tests are removed.
+
+Optimized release and bundle checks run on main, manual runs, and release-input
+PRs instead of every source PR. Known prose-only PRs skip Swift compilation but
+still report the final `swift-test` status. See
+[`scripts/ci/README.md`](../scripts/ci/README.md) for classification, local
+commands, failure checks, measurements, and the release-mode coverage tradeoff.
+The target must be verified on hosted runners; local timing is not a CI claim.
+
 ## AI Agent Testing Loop
 
 AI agents working on this codebase must follow this loop:
