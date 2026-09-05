@@ -107,9 +107,14 @@ utterances per capture source before it reads remote-speaker evidence. Microphon
 utterances remain `Me`. System utterances use aggregate overlap with retained
 diarization regions, with aggregate word labels only as a legacy fallback. An
 isolated remote-speaker run shorter than one second is absorbed when the same
-stable speaker surrounds it. Same-speaker sentence utterances merge across gaps
-shorter than 2.5 seconds; long pauses and completed source exchanges stay as
-boundaries. This local policy does not rewrite words or diarization regions.
+stable speaker surrounds it, unless at least 200 ms of concurrent diarization
+supports a genuine interjection. A supported interjection remains a separate,
+seekable contribution while the surrounding stable statement stays one turn.
+Cross-source overlap of at least 200 ms, and same-source overlap backed by
+concurrent remote-speaker regions, receive one stable overlap-group identity.
+Same-speaker sentence utterances merge across gaps shorter than 2.5 seconds;
+long pauses and completed source exchanges stay as boundaries. This local policy
+does not rewrite words or diarization regions.
 
 **Meetings reuse only the custom-word step, not the whole pipeline.**
 `MeetingTranscriptVocabularyApplier` (in `Services/MeetingRecording/`)

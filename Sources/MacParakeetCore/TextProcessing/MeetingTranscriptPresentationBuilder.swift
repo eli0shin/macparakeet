@@ -22,6 +22,17 @@ public struct ReadingTurnIdentity: Sendable, Equatable, Hashable {
     }
 }
 
+/// Stable membership for contributions that happened at the same time. The
+/// earliest contribution supplies the group identity, so presentation order and
+/// accessibility order do not depend on dictionary or speaker-ID ordering.
+public struct ReadingTurnOverlap: Sendable, Equatable, Hashable {
+    public let groupId: ReadingTurnIdentity
+
+    public init(groupId: ReadingTurnIdentity) {
+        self.groupId = groupId
+    }
+}
+
 public struct ReadingTurnTimeRange: Sendable, Equatable {
     public let startMs: Int
     public let endMs: Int
@@ -51,6 +62,7 @@ public struct ReadingTurn: Sendable, Equatable, Identifiable {
     public let speakerLabel: String
     public let source: ReadingTurnSource
     public let timeRange: ReadingTurnTimeRange?
+    public let overlap: ReadingTurnOverlap?
     public let paragraphs: [ReadingTurnParagraph]
     public let wordReferences: [Int]
 
@@ -60,6 +72,7 @@ public struct ReadingTurn: Sendable, Equatable, Identifiable {
         speakerLabel: String,
         source: ReadingTurnSource,
         timeRange: ReadingTurnTimeRange?,
+        overlap: ReadingTurnOverlap? = nil,
         paragraphs: [ReadingTurnParagraph],
         wordReferences: [Int]
     ) {
@@ -68,6 +81,7 @@ public struct ReadingTurn: Sendable, Equatable, Identifiable {
         self.speakerLabel = speakerLabel
         self.source = source
         self.timeRange = timeRange
+        self.overlap = overlap
         self.paragraphs = paragraphs
         self.wordReferences = wordReferences
     }
@@ -162,6 +176,9 @@ public enum MeetingTranscriptPresentationBuilder {
     /// A new remote speaker needs this much exclusive aggregate evidence when
     /// the stable speaker before and after it is the same.
     private static let minimumSpeakerChangeEvidenceMs = 1_000
+    /// Shorter intersections are commonly timestamp-boundary noise rather than
+    /// useful evidence that two complete contributions were simultaneous.
+    private static let minimumOverlapEvidenceMs = 200
     private static let maximumParagraphSentenceCount = 3
     private static let maximumParagraphWordCount = 80
 
@@ -193,13 +210,19 @@ public enum MeetingTranscriptPresentationBuilder {
         .sorted { lhs, rhs in
             let lhsStart = lhs.timeRange?.startMs ?? .max
             let rhsStart = rhs.timeRange?.startMs ?? .max
-            if lhsStart == rhsStart {
-                return sourceRank(lhs.source) < sourceRank(rhs.source)
-            }
-            return lhsStart < rhsStart
+            guard lhsStart == rhsStart else { return lhsStart < rhsStart }
+            let lhsSourceRank = sourceRank(lhs.source)
+            let rhsSourceRank = sourceRank(rhs.source)
+            guard lhsSourceRank == rhsSourceRank else { return lhsSourceRank < rhsSourceRank }
+            let lhsFirstWord = lhs.id.firstWordIndex ?? .max
+            let rhsFirstWord = rhs.id.firstWordIndex ?? .max
+            guard lhsFirstWord == rhsFirstWord else { return lhsFirstWord < rhsFirstWord }
+            return lhs.speakerId < rhs.speakerId
         }
 
-        return MeetingTranscriptPresentationDocument(turns: assembled)
+        return MeetingTranscriptPresentationDocument(
+            turns: markOverlaps(in: assembled, diarizationSegments: diarizationSegments ?? [])
+        )
     }
 
     private static func makeTurns(
@@ -211,7 +234,12 @@ public enum MeetingTranscriptPresentationBuilder {
     ) -> [ReadingTurn] {
         guard !words.isEmpty else { return [] }
 
-        let utterances = formUtterances(from: words, allWords: allWords, source: source)
+        let utterances = formUtterances(
+            from: words,
+            allWords: allWords,
+            source: source,
+            diarizationSegments: diarizationSegments
+        )
         let attributed = utterances.map { utterance in
             let evidence = speakerEvidence(
                 for: utterance.words,
@@ -222,10 +250,13 @@ public enum MeetingTranscriptPresentationBuilder {
                 words: utterance.words,
                 speakerId: evidence.speakerId,
                 speakerEvidenceMs: evidence.durationMs,
+                hasStrongOverlapEvidence: evidence.hasStrongOverlapEvidence,
                 allowsMergeWithPrevious: utterance.allowsMergeWithPrevious
             )
         }
-        let resolved = mergeAdjacentUtterances(smoothWeakSpeakerRuns(attributed, source: source))
+        let smoothed = smoothWeakSpeakerRuns(attributed, source: source)
+        let continuous = mergeAroundOverlappingInterjections(smoothed, source: source)
+        let resolved = mergeAdjacentUtterances(continuous)
 
         return resolved.map { group in
             let speakerId = group.speakerId
@@ -262,7 +293,8 @@ public enum MeetingTranscriptPresentationBuilder {
     private static func formUtterances(
         from words: [IndexedWord],
         allWords: [IndexedWord],
-        source: ReadingTurnSource
+        source: ReadingTurnSource,
+        diarizationSegments: [DiarizationSegmentRecord]
     ) -> [SourceUtterance] {
         let sortedWords = words.sorted(by: evidenceOrder)
         let otherSourceWords =
@@ -308,7 +340,76 @@ public enum MeetingTranscriptPresentationBuilder {
                     allowsMergeWithPrevious: currentAllowsMergeWithPrevious
                 ))
         }
-        return utterances
+        guard source == .system else { return utterances }
+        return utterances.flatMap {
+            splitDiarizationSupportedOverlap($0, diarizationSegments: diarizationSegments)
+        }
+    }
+
+    /// A sentence can contain a complete backchannel before its final
+    /// punctuation. Extract only word-label lanes that concurrent diarization
+    /// independently supports; ordinary label jitter stays in the aggregate
+    /// utterance attribution path.
+    private static func splitDiarizationSupportedOverlap(
+        _ utterance: SourceUtterance,
+        diarizationSegments: [DiarizationSegmentRecord]
+    ) -> [SourceUtterance] {
+        let speakerIds = Set(
+            utterance.words.compactMap(\.word.speakerId).filter(isRefinedSystemSpeaker)
+        )
+        guard speakerIds.count >= 2 else { return [utterance] }
+
+        let supportedSpeakerIds = speakerIds.filter { speakerId in
+            speakerIds.contains { peerId in
+                peerId != speakerId
+                    && remoteSegmentOverlapMs(
+                        lhsSpeakerId: speakerId,
+                        rhsSpeakerId: peerId,
+                        startMs: utterance.startMs,
+                        endMs: utterance.endMs,
+                        diarizationSegments: diarizationSegments
+                    ) >= minimumOverlapEvidenceMs
+            }
+        }
+        guard supportedSpeakerIds.count >= 2 else { return [utterance] }
+
+        let primarySpeakerId = supportedSpeakerIds.sorted { lhs, rhs in
+            let lhsDuration = wordEvidenceDurationMs(for: lhs, in: utterance.words)
+            let rhsDuration = wordEvidenceDurationMs(for: rhs, in: utterance.words)
+            if lhsDuration == rhsDuration { return lhs < rhs }
+            return lhsDuration > rhsDuration
+        }[0]
+        var wordsBySpeaker: [String: [IndexedWord]] = [:]
+        for word in utterance.words {
+            let speakerId =
+                word.word.speakerId.flatMap { supportedSpeakerIds.contains($0) ? $0 : nil }
+                ?? primarySpeakerId
+            wordsBySpeaker[speakerId, default: []].append(word)
+        }
+
+        return wordsBySpeaker.map { speakerId, words in
+            SourceUtterance(
+                words: words,
+                allowsMergeWithPrevious: speakerId == primarySpeakerId
+                    && utterance.allowsMergeWithPrevious
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.startMs == rhs.startMs {
+                return (lhs.words.first?.index ?? .max) < (rhs.words.first?.index ?? .max)
+            }
+            return lhs.startMs < rhs.startMs
+        }
+    }
+
+    private static func wordEvidenceDurationMs(
+        for speakerId: String,
+        in words: [IndexedWord]
+    ) -> Int {
+        words.reduce(0) { duration, word in
+            guard word.word.speakerId == speakerId else { return duration }
+            return duration + max(1, word.word.endMs - word.word.startMs)
+        }
     }
 
     private static func speakerEvidence(
@@ -317,7 +418,11 @@ public enum MeetingTranscriptPresentationBuilder {
         diarizationSegments: [DiarizationSegmentRecord]
     ) -> SpeakerEvidence {
         if source == .microphone {
-            return SpeakerEvidence(speakerId: AudioSource.microphone.rawValue, durationMs: 0)
+            return SpeakerEvidence(
+                speakerId: AudioSource.microphone.rawValue,
+                durationMs: 0,
+                hasStrongOverlapEvidence: false
+            )
         }
 
         var durationBySpeaker: [String: Int] = [:]
@@ -344,12 +449,43 @@ public enum MeetingTranscriptPresentationBuilder {
 
         let fallback = source == .system ? AudioSource.system.rawValue : "unknown"
         guard let dominant = unambiguousDominantSpeaker(in: durationBySpeaker) else {
+            let wordSpeakerIds = Set(
+                words.compactMap(\.word.speakerId).filter(isRefinedSystemSpeaker)
+            )
+            if source == .system, wordSpeakerIds.count == 1,
+                let wordSpeakerId = wordSpeakerIds.first,
+                hasStrongRemoteOverlap(
+                    speakerId: wordSpeakerId,
+                    startMs: words.map { $0.word.startMs }.min() ?? 0,
+                    endMs: words.map { $0.word.endMs }.max() ?? 0,
+                    diarizationSegments: diarizationSegments
+                )
+            {
+                return SpeakerEvidence(
+                    speakerId: wordSpeakerId,
+                    durationMs: durationBySpeaker[wordSpeakerId] ?? 0,
+                    hasStrongOverlapEvidence: true
+                )
+            }
             let utteranceSpeechMs = words.reduce(0) {
                 $0 + max(1, $1.word.endMs - $1.word.startMs)
             }
-            return SpeakerEvidence(speakerId: fallback, durationMs: utteranceSpeechMs)
+            return SpeakerEvidence(
+                speakerId: fallback,
+                durationMs: utteranceSpeechMs,
+                hasStrongOverlapEvidence: false
+            )
         }
-        return SpeakerEvidence(speakerId: dominant.key, durationMs: dominant.value)
+        return SpeakerEvidence(
+            speakerId: dominant.key,
+            durationMs: dominant.value,
+            hasStrongOverlapEvidence: hasStrongRemoteOverlap(
+                speakerId: dominant.key,
+                startMs: words.map { $0.word.startMs }.min() ?? 0,
+                endMs: words.map { $0.word.endMs }.max() ?? 0,
+                diarizationSegments: diarizationSegments
+            )
+        )
     }
 
     private static func unambiguousDominantSpeaker(
@@ -387,9 +523,13 @@ public enum MeetingTranscriptPresentationBuilder {
                 let evidenceMs = smoothed[runStart..<runEnd].reduce(0) {
                     $0 + $1.speakerEvidenceMs
                 }
+                let hasStrongOverlapEvidence = smoothed[runStart..<runEnd].contains {
+                    $0.hasStrongOverlapEvidence
+                }
                 if previousSpeaker == nextSpeaker,
                     runSpeaker != previousSpeaker,
-                    evidenceMs < minimumSpeakerChangeEvidenceMs
+                    evidenceMs < minimumSpeakerChangeEvidenceMs,
+                    !hasStrongOverlapEvidence
                 {
                     for index in runStart..<runEnd {
                         smoothed[index].speakerId = previousSpeaker
@@ -399,6 +539,68 @@ public enum MeetingTranscriptPresentationBuilder {
             runStart = runEnd
         }
         return smoothed
+    }
+
+    /// Keep a short, well-supported backchannel as its own contribution while
+    /// joining the stable speaker's words on either side into one visual turn.
+    private static func mergeAroundOverlappingInterjections(
+        _ utterances: [ResolvedUtterance],
+        source: ReadingTurnSource
+    ) -> [ResolvedUtterance] {
+        guard source == .system, utterances.count >= 3 else { return utterances }
+        var result: [ResolvedUtterance] = []
+        var index = 0
+
+        while index < utterances.count {
+            var continuous = utterances[index]
+            var interjections: [ResolvedUtterance] = []
+            var cursor = index
+
+            while cursor + 2 < utterances.count {
+                let interjection = utterances[cursor + 1]
+                let next = utterances[cursor + 2]
+                let overlapWithStableSpeech =
+                    intervalOverlapMs(
+                        continuous.startMs,
+                        continuous.endMs,
+                        interjection.startMs,
+                        interjection.endMs
+                    ) > 0
+                    || intervalOverlapMs(
+                        next.startMs,
+                        next.endMs,
+                        interjection.startMs,
+                        interjection.endMs
+                    ) > 0
+                guard continuous.speakerId == next.speakerId,
+                    interjection.speakerId != continuous.speakerId,
+                    interjection.speakerEvidenceMs < minimumSpeakerChangeEvidenceMs,
+                    interjection.hasStrongOverlapEvidence,
+                    overlapWithStableSpeech,
+                    next.startMs - continuous.endMs < utterancePauseMs
+                else { break }
+
+                continuous.words.append(contentsOf: next.words)
+                continuous.speakerEvidenceMs += next.speakerEvidenceMs
+                continuous.hasStrongOverlapEvidence =
+                    continuous.hasStrongOverlapEvidence || next.hasStrongOverlapEvidence
+                interjections.append(
+                    ResolvedUtterance(
+                        words: interjection.words,
+                        speakerId: interjection.speakerId,
+                        speakerEvidenceMs: interjection.speakerEvidenceMs,
+                        hasStrongOverlapEvidence: interjection.hasStrongOverlapEvidence,
+                        allowsMergeWithPrevious: false
+                    )
+                )
+                cursor += 2
+            }
+
+            result.append(continuous)
+            result.append(contentsOf: interjections)
+            index = cursor + 1
+        }
+        return result
     }
 
     private static func mergeAdjacentUtterances(
@@ -413,11 +615,147 @@ public enum MeetingTranscriptPresentationBuilder {
             {
                 merged[merged.count - 1].words.append(contentsOf: utterance.words)
                 merged[merged.count - 1].speakerEvidenceMs += utterance.speakerEvidenceMs
+                merged[merged.count - 1].hasStrongOverlapEvidence =
+                    previous.hasStrongOverlapEvidence || utterance.hasStrongOverlapEvidence
             } else {
                 merged.append(utterance)
             }
         }
         return merged
+    }
+
+    private static func markOverlaps(
+        in turns: [ReadingTurn],
+        diarizationSegments: [DiarizationSegmentRecord]
+    ) -> [ReadingTurn] {
+        guard turns.count >= 2 else { return turns }
+        var parent = Array(turns.indices)
+
+        func root(of index: Int) -> Int {
+            var value = index
+            while parent[value] != value { value = parent[value] }
+            return value
+        }
+
+        for left in turns.indices {
+            for right in turns.indices where right > left {
+                guard
+                    contributionsOverlap(
+                        turns[left],
+                        turns[right],
+                        diarizationSegments: diarizationSegments
+                    )
+                else { continue }
+                let leftRoot = root(of: left)
+                let rightRoot = root(of: right)
+                if leftRoot != rightRoot { parent[rightRoot] = leftRoot }
+            }
+        }
+
+        let membersByRoot = Dictionary(grouping: turns.indices, by: { root(of: $0) })
+        var overlapByIndex: [Int: ReadingTurnOverlap] = [:]
+        for members in membersByRoot.values where members.count > 1 {
+            guard let anchorIndex = members.min() else { continue }
+            let overlap = ReadingTurnOverlap(groupId: turns[anchorIndex].id)
+            for index in members { overlapByIndex[index] = overlap }
+        }
+
+        return turns.enumerated().map { index, turn in
+            guard let overlap = overlapByIndex[index] else { return turn }
+            return ReadingTurn(
+                id: turn.id,
+                speakerId: turn.speakerId,
+                speakerLabel: turn.speakerLabel,
+                source: turn.source,
+                timeRange: turn.timeRange,
+                overlap: overlap,
+                paragraphs: turn.paragraphs,
+                wordReferences: turn.wordReferences
+            )
+        }
+    }
+
+    private static func contributionsOverlap(
+        _ lhs: ReadingTurn,
+        _ rhs: ReadingTurn,
+        diarizationSegments: [DiarizationSegmentRecord]
+    ) -> Bool {
+        guard let lhsRange = lhs.timeRange, let rhsRange = rhs.timeRange,
+            intervalOverlapMs(
+                lhsRange.startMs, lhsRange.endMs, rhsRange.startMs, rhsRange.endMs
+            ) >= minimumOverlapEvidenceMs
+        else { return false }
+
+        if lhs.source != rhs.source {
+            return lhs.source != .unknown && rhs.source != .unknown
+        }
+        guard lhs.source == .system,
+            lhs.speakerId != rhs.speakerId,
+            isRefinedSystemSpeaker(lhs.speakerId),
+            isRefinedSystemSpeaker(rhs.speakerId)
+        else { return false }
+
+        return remoteSegmentOverlapMs(
+            lhsSpeakerId: lhs.speakerId,
+            rhsSpeakerId: rhs.speakerId,
+            startMs: max(lhsRange.startMs, rhsRange.startMs),
+            endMs: min(lhsRange.endMs, rhsRange.endMs),
+            diarizationSegments: diarizationSegments
+        ) >= minimumOverlapEvidenceMs
+    }
+
+    private static func hasStrongRemoteOverlap(
+        speakerId: String,
+        startMs: Int,
+        endMs: Int,
+        diarizationSegments: [DiarizationSegmentRecord]
+    ) -> Bool {
+        guard isRefinedSystemSpeaker(speakerId) else { return false }
+        let peers = Set(
+            diarizationSegments.lazy
+                .map(\.speakerId)
+                .filter { isRefinedSystemSpeaker($0) && $0 != speakerId }
+        )
+        return peers.contains { peer in
+            remoteSegmentOverlapMs(
+                lhsSpeakerId: speakerId,
+                rhsSpeakerId: peer,
+                startMs: startMs,
+                endMs: endMs,
+                diarizationSegments: diarizationSegments
+            ) >= minimumOverlapEvidenceMs
+        }
+    }
+
+    private static func remoteSegmentOverlapMs(
+        lhsSpeakerId: String,
+        rhsSpeakerId: String,
+        startMs: Int,
+        endMs: Int,
+        diarizationSegments: [DiarizationSegmentRecord]
+    ) -> Int {
+        guard endMs > startMs else { return 0 }
+        var total = 0
+        for lhs in diarizationSegments where lhs.speakerId == lhsSpeakerId {
+            for rhs in diarizationSegments where rhs.speakerId == rhsSpeakerId {
+                total += intervalOverlapMs(
+                    max(startMs, lhs.startMs),
+                    min(endMs, lhs.endMs),
+                    rhs.startMs,
+                    rhs.endMs
+                )
+            }
+        }
+        return total
+    }
+
+    private static func intervalOverlapMs(
+        _ lhsStartMs: Int,
+        _ lhsEndMs: Int,
+        _ rhsStartMs: Int,
+        _ rhsEndMs: Int
+    ) -> Int {
+        max(0, min(lhsEndMs, rhsEndMs) - max(lhsStartMs, rhsStartMs))
     }
 
     private static func isRefinedSystemSpeaker(_ speakerId: String) -> Bool {
@@ -575,17 +913,22 @@ private struct IndexedWord {
 private struct SourceUtterance {
     let words: [IndexedWord]
     let allowsMergeWithPrevious: Bool
+
+    var startMs: Int { words.map { $0.word.startMs }.min() ?? 0 }
+    var endMs: Int { words.map { $0.word.endMs }.max() ?? startMs }
 }
 
 private struct SpeakerEvidence {
     let speakerId: String
     let durationMs: Int
+    let hasStrongOverlapEvidence: Bool
 }
 
 private struct ResolvedUtterance {
     var words: [IndexedWord]
     var speakerId: String
     var speakerEvidenceMs: Int
+    var hasStrongOverlapEvidence: Bool
     let allowsMergeWithPrevious: Bool
 
     var startMs: Int { words.first?.word.startMs ?? 0 }
