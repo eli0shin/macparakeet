@@ -59,6 +59,13 @@ class ClassificationTests(unittest.TestCase):
                 ["git", "diff", "--name-only", "--no-renames", "-z", "abc123...HEAD"])
 
 
+class WorkflowTests(unittest.TestCase):
+    def test_debug_tests_job_has_twenty_minute_timeout(self):
+        workflow = Path(".github/workflows/ci.yml").read_text()
+        debug_job = workflow.split("\n  debug-tests:\n", 1)[1].split("\n  swift6:\n", 1)[0]
+        self.assertIn("\n    timeout-minutes: 20\n", debug_job)
+
+
 class GateTests(unittest.TestCase):
     def results(self, code="true", release="false"):
         return {"changes": {"result": "success", "outputs": {"code": code, "release": release}},

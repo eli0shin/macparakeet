@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@011-remove-debug-ci-job-timeout
 Tags:
   - ready-for-agent
 Parent:
