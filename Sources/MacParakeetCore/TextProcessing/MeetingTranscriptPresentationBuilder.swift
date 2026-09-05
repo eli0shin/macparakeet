@@ -1057,17 +1057,12 @@ public enum MeetingTranscriptPresentationBuilder {
         let suffixStart = token.index(after: lastWordCharacter)
         let suffix = String(token[suffixStart...])
         guard !suffix.isEmpty else { return }
-        if retained.isEmpty {
-            let sentenceEndings = CharacterSet(charactersIn: ".!?")
-            guard suffix.unicodeScalars.contains(where: sentenceEndings.contains) else { return }
-            retained.append(suffix)
-        } else {
-            let lastIndex = retained.count - 1
-            retained[lastIndex] = mergingPunctuationSuffix(
-                suffix,
-                into: retained[lastIndex]
-            )
-        }
+        guard let lastIndex = retained.lastIndex(where: { $0.contains(where: isWordCharacter) })
+        else { return }
+        retained[lastIndex] = mergingPunctuationSuffix(
+            suffix,
+            into: retained[lastIndex]
+        )
     }
 
     private static func mergingPunctuationSuffix(_ suffix: String, into token: String) -> String {

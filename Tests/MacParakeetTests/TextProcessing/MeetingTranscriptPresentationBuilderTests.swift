@@ -776,6 +776,36 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         XCTAssertEqual(document.turns.map(\.text), ["we can ship."])
     }
 
+    func testTimedSentenceInitialFillerDoesNotLeaveStandalonePunctuation() {
+        let words = [
+            word("Uh.", 0, 100, "microphone"),
+            word("We", 120, 220, "microphone"),
+            word("can", 240, 340, "microphone"),
+            word("ship.", 360, 500, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil,
+            cleanup: .cleaned
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["We can ship."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testUntimedSentenceInitialFillerDoesNotLeaveStandalonePunctuation() {
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "Uh. We can ship.",
+            words: nil,
+            speakers: nil,
+            cleanup: .cleaned
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["We can ship."])
+    }
+
     func testPunctuatedFillerPreservesSentenceBoundaryInFinalDocument() {
         let words = [
             word("We", 0, 100, "microphone"),
@@ -1050,7 +1080,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
 
         XCTAssertEqual(cleaned.turns.map(\.id), verbatim.turns.map(\.id))
         XCTAssertEqual(cleaned.turns[0].paragraphs.count, verbatim.turns[0].paragraphs.count)
-        XCTAssertEqual(cleaned.turns[0].paragraphs.map(\.text), ["...", "Speech remains."])
+        XCTAssertEqual(cleaned.turns[0].paragraphs.map(\.text), ["", "Speech remains."])
     }
 
     func testFallsBackToUntimedTextWithoutClaimingSourceOrTimePrecision() {
