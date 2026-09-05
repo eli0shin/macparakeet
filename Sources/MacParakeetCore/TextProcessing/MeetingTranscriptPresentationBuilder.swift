@@ -244,6 +244,7 @@ public enum MeetingTranscriptPresentationBuilder {
             let evidence = speakerEvidence(
                 for: utterance.words,
                 source: source,
+                supportedOverlapSpeakerId: utterance.supportedOverlapSpeakerId,
                 diarizationSegments: diarizationSegments
             )
             return ResolvedUtterance(
@@ -391,7 +392,8 @@ public enum MeetingTranscriptPresentationBuilder {
             SourceUtterance(
                 words: words,
                 allowsMergeWithPrevious: speakerId == primarySpeakerId
-                    && utterance.allowsMergeWithPrevious
+                    && utterance.allowsMergeWithPrevious,
+                supportedOverlapSpeakerId: speakerId
             )
         }
         .sorted { lhs, rhs in
@@ -415,6 +417,7 @@ public enum MeetingTranscriptPresentationBuilder {
     private static func speakerEvidence(
         for words: [IndexedWord],
         source: ReadingTurnSource,
+        supportedOverlapSpeakerId: String?,
         diarizationSegments: [DiarizationSegmentRecord]
     ) -> SpeakerEvidence {
         if source == .microphone {
@@ -422,6 +425,13 @@ public enum MeetingTranscriptPresentationBuilder {
                 speakerId: AudioSource.microphone.rawValue,
                 durationMs: 0,
                 hasStrongOverlapEvidence: false
+            )
+        }
+        if source == .system, let supportedOverlapSpeakerId {
+            return SpeakerEvidence(
+                speakerId: supportedOverlapSpeakerId,
+                durationMs: wordEvidenceDurationMs(for: supportedOverlapSpeakerId, in: words),
+                hasStrongOverlapEvidence: true
             )
         }
 
@@ -913,6 +923,17 @@ private struct IndexedWord {
 private struct SourceUtterance {
     let words: [IndexedWord]
     let allowsMergeWithPrevious: Bool
+    let supportedOverlapSpeakerId: String?
+
+    init(
+        words: [IndexedWord],
+        allowsMergeWithPrevious: Bool,
+        supportedOverlapSpeakerId: String? = nil
+    ) {
+        self.words = words
+        self.allowsMergeWithPrevious = allowsMergeWithPrevious
+        self.supportedOverlapSpeakerId = supportedOverlapSpeakerId
+    }
 
     var startMs: Int { words.map { $0.word.startMs }.min() ?? 0 }
     var endMs: Int { words.map { $0.word.endMs }.max() ?? startMs }

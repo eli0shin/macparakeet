@@ -200,6 +200,59 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         )
     }
 
+    func testRepeatedUnpunctuatedBackchannelsKeepSupportedOverlapSpeaker() {
+        let words = [
+            word("We", 0, 200, "system:S1"),
+            word("yeah", 250, 400, "system:S2"),
+            word("can", 420, 600, "system:S1"),
+            word("right", 620, 780, "system:S2"),
+            word("ship.", 800, 1_000, "system:S1"),
+        ]
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: remoteSpeakers,
+            diarizationSegments: [
+                segment("system:S1", 0, 1_000),
+                segment("system:S2", 250, 400),
+                segment("system:S2", 620, 780),
+            ]
+        )
+        let overlap = ReadingTurnOverlap(
+            groupId: ReadingTurnIdentity(
+                source: .system,
+                speakerId: "system:S1",
+                firstWordIndex: 0
+            )
+        )
+
+        XCTAssertEqual(
+            document,
+            MeetingTranscriptPresentationDocument(turns: [
+                readingTurn(
+                    source: .system,
+                    speakerId: "system:S1",
+                    speakerLabel: "Avery",
+                    wordIndexes: [0, 2, 4],
+                    text: "We can ship.",
+                    startMs: 0,
+                    endMs: 1_000,
+                    overlap: overlap
+                ),
+                readingTurn(
+                    source: .system,
+                    speakerId: "system:S2",
+                    speakerLabel: "Blake",
+                    wordIndexes: [1, 3],
+                    text: "yeah right",
+                    startMs: 250,
+                    endMs: 780,
+                    overlap: overlap
+                ),
+            ])
+        )
+    }
+
     func testRemoteBackchannelRemainsVisibleWithoutSplittingSurroundingTurn() {
         let words = [
             word("The", 0, 250, "system:S1"),
