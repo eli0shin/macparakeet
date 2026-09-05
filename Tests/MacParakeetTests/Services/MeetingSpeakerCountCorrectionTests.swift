@@ -89,6 +89,63 @@ final class MeetingSpeakerCountCorrectionTests: XCTestCase {
         XCTAssertEqual(convertCallCount, 1)
     }
 
+    func testCorrectionPreservesUserEditsMadeWhileDiarizationRuns() async throws {
+        let fixture = try await makeFixture(includeMicrophone: true)
+        defer { fixture.cleanup() }
+        await fixture.diarization.configureDiarizeDelay(.seconds(1))
+
+        let task = Task {
+            try await fixture.service.correctMeetingSpeakerAttribution(
+                existing: fixture.original,
+                recording: fixture.recording,
+                selection: .exact(totalPeople: 3)
+            )
+        }
+        while !(await fixture.diarization.diarizeCalled) {
+            await Task.yield()
+        }
+
+        var userEdited = try XCTUnwrap(fixture.repository.fetch(id: fixture.original.id))
+        userEdited.fileName = "Renamed during correction"
+        userEdited.cleanTranscript = "Transcript edited during correction."
+        userEdited.isTranscriptEdited = true
+        userEdited.userNotes = "Notes added during correction."
+        userEdited.isFavorite = true
+        try fixture.repository.save(userEdited)
+
+        let result = try await task.value
+        let persisted = try XCTUnwrap(fixture.repository.fetch(id: fixture.original.id))
+        for corrected in [result, persisted] {
+            XCTAssertEqual(corrected.fileName, "Renamed during correction")
+            XCTAssertEqual(corrected.cleanTranscript, "Transcript edited during correction.")
+            XCTAssertTrue(corrected.isTranscriptEdited)
+            XCTAssertEqual(corrected.userNotes, "Notes added during correction.")
+            XCTAssertTrue(corrected.isFavorite)
+            XCTAssertEqual(corrected.wordTimestamps?.map(\.speakerId), ["microphone", "system:S1", "system:S2"])
+        }
+    }
+
+    func testPostCommitSearchRefreshFailureReturnsCorrectionAndRemovesStaleSegments() async throws {
+        let fixture = try await makeFixture(
+            includeMicrophone: true,
+            knowledgeLayerMutator: ThrowingKnowledgeLayerMutator()
+        )
+        defer { fixture.cleanup() }
+        try fixture.segmentRepository.replaceSegments(for: fixture.original)
+        XCTAssertFalse(try fixture.segmentRepository.fetch(transcriptionId: fixture.original.id).isEmpty)
+
+        let result = try await fixture.service.correctMeetingSpeakerAttribution(
+            existing: fixture.original,
+            recording: fixture.recording,
+            selection: .exact(totalPeople: 3)
+        )
+
+        XCTAssertEqual(result.wordTimestamps?.map(\.speakerId), ["microphone", "system:S1", "system:S2"])
+        let persisted = try XCTUnwrap(fixture.repository.fetch(id: fixture.original.id))
+        XCTAssertEqual(persisted.wordTimestamps, result.wordTimestamps)
+        XCTAssertTrue(try fixture.segmentRepository.fetch(transcriptionId: fixture.original.id).isEmpty)
+    }
+
     func testFailureKeepsLastSuccessfulTranscriptPersisted() async throws {
         let fixture = try await makeFixture(includeMicrophone: true)
         defer { fixture.cleanup() }
@@ -159,7 +216,8 @@ final class MeetingSpeakerCountCorrectionTests: XCTestCase {
 
     private func makeFixture(
         includeMicrophone: Bool,
-        includeSystem: Bool = true
+        includeSystem: Bool = true,
+        knowledgeLayerMutator: KnowledgeLayerMutating? = nil
     ) async throws -> Fixture {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -249,6 +307,7 @@ final class MeetingSpeakerCountCorrectionTests: XCTestCase {
             sttTranscriber: MockSTTClient(),
             transcriptionRepo: repository,
             segmentRepo: segmentRepository,
+            knowledgeLayerMutator: knowledgeLayerMutator,
             diarizationService: diarization
         )
         return Fixture(
@@ -257,6 +316,7 @@ final class MeetingSpeakerCountCorrectionTests: XCTestCase {
             audio: audio,
             diarization: diarization,
             repository: repository,
+            segmentRepository: segmentRepository,
             service: service,
             recording: recording,
             original: original
@@ -272,11 +332,22 @@ private struct Fixture {
     let audio: MockAudioProcessor
     let diarization: MockDiarizationService
     let repository: TranscriptionRepository
+    let segmentRepository: SegmentRepository
     let service: TranscriptionService
     let recording: MeetingRecordingOutput
     let original: Transcription
 
     func cleanup() {
         try? FileManager.default.removeItem(at: folder)
+    }
+}
+
+private struct ThrowingKnowledgeLayerMutator: KnowledgeLayerMutating {
+    func replaceSegmentsAndInvalidateCard(for transcription: Transcription) throws {
+        throw TestError.refreshFailed
+    }
+
+    private enum TestError: Error {
+        case refreshFailed
     }
 }

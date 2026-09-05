@@ -46,6 +46,28 @@ public enum MeetingSpeakerCountSelection: Equatable, Sendable {
     }
 }
 
+public struct MeetingSpeakerAttributionUpdate: Equatable, Sendable {
+    public let wordTimestamps: [WordTimestamp]
+    public let speakers: [SpeakerInfo]
+    public let speakerCount: Int?
+    public let diarizationSegments: [DiarizationSegmentRecord]
+    public let transcriptSegments: [TranscriptSegmentRecord]?
+
+    public init(
+        wordTimestamps: [WordTimestamp],
+        speakers: [SpeakerInfo],
+        speakerCount: Int?,
+        diarizationSegments: [DiarizationSegmentRecord],
+        transcriptSegments: [TranscriptSegmentRecord]?
+    ) {
+        self.wordTimestamps = wordTimestamps
+        self.speakers = speakers
+        self.speakerCount = speakerCount
+        self.diarizationSegments = diarizationSegments
+        self.transcriptSegments = transcriptSegments
+    }
+}
+
 public enum MeetingSpeakerCountCorrectionError: LocalizedError, Equatable, Sendable {
     case systemAudioUnavailable
     case totalMustIncludeRemoteSpeaker
@@ -54,6 +76,7 @@ public enum MeetingSpeakerCountCorrectionError: LocalizedError, Equatable, Senda
     case noRemoteSpeechDetected
     case unsupportedService
     case retainedAudioUnavailable
+    case transcriptionUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -71,6 +94,8 @@ public enum MeetingSpeakerCountCorrectionError: LocalizedError, Equatable, Senda
             return "Speaker attribution correction is not available."
         case .retainedAudioUnavailable:
             return "Saved meeting audio is not available, so speaker attribution cannot be rerun."
+        case .transcriptionUnavailable:
+            return "The meeting is no longer available. The speaker correction was not saved."
         }
     }
 }

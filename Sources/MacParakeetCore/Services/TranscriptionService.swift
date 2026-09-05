@@ -731,26 +731,35 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
 
         let systemDiarization = mappedMeetingSystemDiarization(diarResult, systemStartOffsetMs: systemTrack.startOffsetMs)
         let finalized = MeetingTranscriptFinalizer.reattributeSystemWords(words, systemDiarization: systemDiarization)
-        var updated = original
-        updated.wordTimestamps = finalized.words
-        updated.speakers = finalized.speakers
-        updated.speakerCount = finalized.speakers.isEmpty ? nil : finalized.speakers.count
-        updated.diarizationSegments = finalized.diarizationSegments
         let transcriptSegments = TranscriptSegmenter.materializeSegments(words: finalized.words, speakers: finalized.speakers)
-        updated.transcriptSegments = transcriptSegments.isEmpty ? nil : transcriptSegments
-        updated.updatedAt = Date()
+        let update = MeetingSpeakerAttributionUpdate(
+            wordTimestamps: finalized.words,
+            speakers: finalized.speakers,
+            speakerCount: finalized.speakers.isEmpty ? nil : finalized.speakers.count,
+            diarizationSegments: finalized.diarizationSegments,
+            transcriptSegments: transcriptSegments.isEmpty ? nil : transcriptSegments
+        )
 
         try Task.checkCancellation()
         onProgress?(.finalizing)
-        try segmentRepo?.deleteSegments(transcriptionId: updated.id)
-        try transcriptionRepo.save(updated)
-        if let knowledgeLayerMutator {
-            try knowledgeLayerMutator.replaceSegmentsAndInvalidateCard(for: updated)
-        } else {
-            try segmentRepo?.replaceSegments(for: updated)
+        try segmentRepo?.deleteSegments(transcriptionId: original.id)
+        guard let committed = try transcriptionRepo.applyMeetingSpeakerAttribution(
+            id: original.id,
+            update: update
+        ) else {
+            throw MeetingSpeakerCountCorrectionError.transcriptionUnavailable
         }
-        await materializeMeetingArtifactIfPossible(updated, runAutomationHook: false)
-        return updated
+        do {
+            if let knowledgeLayerMutator {
+                try knowledgeLayerMutator.replaceSegmentsAndInvalidateCard(for: committed)
+            } else {
+                try segmentRepo?.replaceSegments(for: committed)
+            }
+        } catch {
+            logger.error("Speaker correction committed but derived search refresh failed error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+        }
+        await materializeMeetingArtifactIfPossible(committed, runAutomationHook: false)
+        return committed
     }
 
     private func transcribe(

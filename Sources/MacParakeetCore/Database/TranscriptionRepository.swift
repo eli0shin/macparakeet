@@ -19,6 +19,10 @@ public protocol TranscriptionRepositoryProtocol: Sendable {
     func updateTitleOverride(id: UUID, titleOverride: String?) throws
     func updateChatMessages(id: UUID, chatMessages: [ChatMessage]?) throws
     func updateSpeakers(id: UUID, speakers: [SpeakerInfo]?) throws
+    func applyMeetingSpeakerAttribution(
+        id: UUID,
+        update: MeetingSpeakerAttributionUpdate
+    ) throws -> Transcription?
     func updateFilePath(id: UUID, filePath: String?) throws
     func updateMeetingArtifactFolderPath(id: UUID, folderPath: String?) throws
     func clearStoredAudioPathsForURLTranscriptions() throws
@@ -114,6 +118,10 @@ extension TranscriptionRepositoryProtocol {
     public func updateTitleOverride(id: UUID, titleOverride: String?) throws {}
     public func updateChatMessages(id: UUID, chatMessages: [ChatMessage]?) throws {}
     public func updateSpeakers(id: UUID, speakers: [SpeakerInfo]?) throws {}
+    public func applyMeetingSpeakerAttribution(
+        id: UUID,
+        update: MeetingSpeakerAttributionUpdate
+    ) throws -> Transcription? { nil }
     public func updateFilePath(id: UUID, filePath: String?) throws {}
     public func updateMeetingArtifactFolderPath(id: UUID, folderPath: String?) throws {}
     public func updateFavorite(id: UUID, isFavorite: Bool) throws {}
@@ -536,6 +544,25 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
             )
             transcription.updatedAt = Date()
             try transcription.update(db)
+        }
+    }
+
+    public func applyMeetingSpeakerAttribution(
+        id: UUID,
+        update: MeetingSpeakerAttributionUpdate
+    ) throws -> Transcription? {
+        try dbQueue.write { db in
+            guard var transcription = try Transcription.fetchOne(db, key: id),
+                transcription.sourceType == .meeting
+            else { return nil }
+            transcription.wordTimestamps = update.wordTimestamps
+            transcription.speakers = update.speakers
+            transcription.speakerCount = update.speakerCount
+            transcription.diarizationSegments = update.diarizationSegments
+            transcription.transcriptSegments = update.transcriptSegments
+            transcription.updatedAt = Date()
+            try transcription.update(db)
+            return transcription
         }
     }
 
