@@ -22,3 +22,7 @@ Build a throwaway transcript presentation prototype that compares Conversation, 
 ## Blocked by
 
 None — can start immediately.
+
+## Resolution
+
+Selected Conversation as the production layout after comparing all three variants against the same noisy fixture. The isolated prototype, decision record, accessibility check, and readability metrics were reviewed and merged in PR #1 at commit `50124b714a0f0889a30e4a0f00b7e9625c9831eb`.
