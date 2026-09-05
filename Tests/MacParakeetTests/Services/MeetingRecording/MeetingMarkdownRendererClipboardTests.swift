@@ -97,7 +97,7 @@ final class MeetingMarkdownRendererClipboardTests: XCTestCase {
 
             ## Transcript
 
-            **Dana**
+            **Dana · [0:00]**
 
             Ship it.
 

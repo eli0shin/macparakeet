@@ -107,7 +107,7 @@ final class MeetingArtifactStoreTests: XCTestCase {
         XCTAssertTrue(markdown.contains("promptResultCount: 1"))
         XCTAssertTrue(markdown.contains("# Design Review"))
         XCTAssertTrue(markdown.contains("## Notes\n\nDecision: ship\nOwner: Dana"))
-        XCTAssertTrue(markdown.contains("## Transcript\n\n**Speaker 1**\n\nClean"))
+        XCTAssertTrue(markdown.contains("## Transcript\n\n**Speaker 1 · [0:00]**\n\nClean"))
         XCTAssertTrue(markdown.contains("## Prompt Results"))
         XCTAssertTrue(markdown.contains("Executive Summary"))
         XCTAssertTrue(markdown.contains("## Artifacts"))

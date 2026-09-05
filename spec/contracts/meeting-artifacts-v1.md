@@ -82,9 +82,10 @@ The v1 folder can contain these stable filenames:
 - `meeting.md`: deterministic Markdown view for users and local agents. It
   keeps YAML frontmatter with local metadata and stable sections for title,
   notes when present, transcript, prompt results when present, and artifact
-  paths. Speaker labels are included only when word-level speaker alignment is
-  still valid; otherwise `speakerLabelsIncluded` is `false` and the transcript
-  section uses plain transcript text.
+  paths. Completed, unedited meetings project the same Reading Turn document as
+  the app, readable exports, and AI context, including one start time per turn.
+  Edited meetings use plain edited transcript text because word alignment is no
+  longer valid. Untimed fallback text does not fabricate a speaker or time.
 - `transcript.json`: transcript view.
 - `notes.md`: optional user notes view. Removed when notes are empty or nil.
 - `prompt-results.json`: JSON array of prompt-result records.

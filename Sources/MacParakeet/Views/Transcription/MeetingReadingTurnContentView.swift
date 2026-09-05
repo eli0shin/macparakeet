@@ -67,6 +67,7 @@ struct MeetingReadingTurnContentView<SpeakerLabelContent: View>: View {
     let timestampLabel: (Int) -> String
     let isTimestampSeekable: Bool
     let onTimestampTap: (Int) -> Void
+    let onCopyTurn: (ReadingTurn) -> Void
     var bodyFont: Font = DesignSystem.Typography.bodyLarge
     var highlightRangesByScrollID: [Int: [NSRange]] = [:]
     var currentHighlight: (id: Int, range: NSRange)?
@@ -111,6 +112,7 @@ struct MeetingReadingTurnContentView<SpeakerLabelContent: View>: View {
             timestampLabel: timestampLabel,
             isTimestampSeekable: isTimestampSeekable,
             onTimestampTap: onTimestampTap,
+            onCopyTurn: onCopyTurn,
             bodyFont: bodyFont,
             highlightRanges: highlightRangesByScrollID[identified.scrollID] ?? [],
             currentRange: currentHighlight?.id == identified.scrollID
@@ -140,6 +142,7 @@ private struct MeetingReadingTurnCard<SpeakerLabelContent: View>: View {
     let timestampLabel: (Int) -> String
     let isTimestampSeekable: Bool
     let onTimestampTap: (Int) -> Void
+    let onCopyTurn: (ReadingTurn) -> Void
     let bodyFont: Font
     let highlightRanges: [NSRange]
     let currentRange: NSRange?
@@ -195,6 +198,11 @@ private struct MeetingReadingTurnCard<SpeakerLabelContent: View>: View {
         .onHover { hovering in
             withAnimation(DesignSystem.Animation.hoverTransition) {
                 isHovering = hovering
+            }
+        }
+        .contextMenu {
+            Button("Copy Reading Turn") {
+                onCopyTurn(turn)
             }
         }
         .accessibilityElement(children: .contain)

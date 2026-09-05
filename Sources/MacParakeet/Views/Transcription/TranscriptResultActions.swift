@@ -120,13 +120,20 @@ enum TranscriptResultActions {
     static func exportTranscriptToDownloads(
         transcription: Transcription,
         format: TranscriptExportFormat,
-        options: TranscriptExportOptions = .default
+        options: TranscriptExportOptions = .default,
+        meetingReadingDocument: MeetingTranscriptPresentationDocument? = nil
     ) throws -> URL {
         do {
             let stem = TranscriptSegmenter.sanitizedExportStem(from: transcription.effectiveDisplayTitle)
             let downloadsURL = try downloadsDirectory()
             let fileURL = nextAvailableURL(in: downloadsURL, stem: stem, format: format)
-            try exportTranscript(transcription: transcription, format: format, options: options, to: fileURL)
+            try exportTranscript(
+                transcription: transcription,
+                format: format,
+                options: options,
+                meetingReadingDocument: meetingReadingDocument,
+                to: fileURL
+            )
 
             Telemetry.send(.exportUsed(format: format.rawValue))
             return fileURL
@@ -248,6 +255,7 @@ enum TranscriptResultActions {
         transcription: Transcription,
         format: TranscriptExportFormat,
         options: TranscriptExportOptions,
+        meetingReadingDocument: MeetingTranscriptPresentationDocument?,
         to fileURL: URL
     ) throws {
         try exportTranscriptOnMainActor(
@@ -255,7 +263,7 @@ enum TranscriptResultActions {
             format: format,
             options: options,
             to: fileURL,
-            using: ExportService()
+            using: ExportService(meetingReadingDocument: meetingReadingDocument)
         )
     }
 

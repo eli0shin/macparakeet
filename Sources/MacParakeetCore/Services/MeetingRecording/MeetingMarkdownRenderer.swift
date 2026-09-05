@@ -135,8 +135,11 @@ public struct MeetingMarkdownRenderer: Sendable {
 
     public init() {}
 
-    public func renderForClipboard(transcription: Transcription) -> String {
-        let transcript = renderedTranscript(transcription)
+    public func renderForClipboard(
+        transcription: Transcription,
+        readingDocument: MeetingTranscriptPresentationDocument? = nil
+    ) -> String {
+        let transcript = renderedTranscript(transcription, readingDocument: readingDocument)
         let sections = meetingContentSections(
             transcription: transcription,
             transcript: transcript.text
@@ -149,7 +152,7 @@ public struct MeetingMarkdownRenderer: Sendable {
         promptResults: [PromptResult],
         artifactPaths: MeetingMarkdownArtifactPaths = .init()
     ) -> String {
-        let transcript = renderedTranscript(transcription)
+        let transcript = renderedTranscript(transcription, readingDocument: nil)
         var sections = [
             frontmatter(
                 transcription: transcription,
@@ -224,59 +227,24 @@ public struct MeetingMarkdownRenderer: Sendable {
         return lines.joined(separator: "\n")
     }
 
-    private func renderedTranscript(_ transcription: Transcription) -> (text: String, speakerLabelsIncluded: Bool) {
-        guard transcription.hasSpeakerLabeledWords,
-              !transcription.isTranscriptEdited,
-              let words = transcription.wordTimestamps,
-              !words.isEmpty
+    private func renderedTranscript(
+        _ transcription: Transcription,
+        readingDocument: MeetingTranscriptPresentationDocument?
+    ) -> (text: String, speakerLabelsIncluded: Bool) {
+        guard !transcription.isTranscriptEdited else {
+            return (preferredTranscriptText(transcription), false)
+        }
+        guard let document = readingDocument ?? CompletedMeetingReadingDocument.build(from: transcription),
+            !document.turns.isEmpty
         else {
             return (preferredTranscriptText(transcription), false)
         }
 
-        let cues = TranscriptCueBuilder.build(from: words)
-        let paragraphs = speakerParagraphs(from: cues, speakers: transcription.speakers)
-        guard !paragraphs.isEmpty else {
-            return (preferredTranscriptText(transcription), false)
-        }
-
-        let text = paragraphs.map { paragraph in
-            if let label = paragraph.label {
-                return "**\(label)**\n\n\(paragraph.text)"
-            }
-            return paragraph.text
-        }
-        .joined(separator: "\n\n")
-        return (text, true)
-    }
-
-    private struct SpeakerParagraph {
-        var speakerId: String?
-        var label: String?
-        var text: String
-    }
-
-    private func speakerParagraphs(from cues: [TranscriptCue], speakers: [SpeakerInfo]?) -> [SpeakerParagraph] {
-        var paragraphs: [SpeakerParagraph] = []
-        for cue in cues {
-            let label = speakerLabel(for: cue.speakerId, in: speakers)
-            if let last = paragraphs.indices.last,
-               paragraphs[last].speakerId == cue.speakerId {
-                paragraphs[last].text += " \(cue.text)"
-            } else {
-                paragraphs.append(SpeakerParagraph(
-                    speakerId: cue.speakerId,
-                    label: label,
-                    text: cue.text
-                ))
-            }
-        }
-        return paragraphs
-    }
-
-    private func speakerLabel(for speakerId: String?, in speakers: [SpeakerInfo]?) -> String? {
-        guard let speakerId else { return nil }
-        guard let speakers, !speakers.isEmpty else { return speakerId }
-        return speakers.first(where: { $0.id == speakerId })?.label ?? speakerId
+        let includesLabels = document.turns.contains { $0.source != .unknown }
+        return (
+            MeetingTranscriptDocumentRenderer.markdown(document),
+            includesLabels
+        )
     }
 
     private func promptResultsSection(

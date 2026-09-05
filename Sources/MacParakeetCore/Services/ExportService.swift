@@ -99,10 +99,27 @@ public struct TranscriptExportOptions: Sendable, Equatable {
 /// PDF/DOCX paths stay on MainActor because they use NSTextStorage/NSLayoutManager
 /// (AppKit, not thread-safe). Text, subtitle, and JSON exports are safe off-main.
 public final class ExportService: ExportServiceProtocol, Sendable {
-    public init() {}
+    private let suppliedMeetingReadingDocument: MeetingTranscriptPresentationDocument?
+
+    public init(meetingReadingDocument: MeetingTranscriptPresentationDocument? = nil) {
+        suppliedMeetingReadingDocument = meetingReadingDocument
+    }
 
     private func preferredText(transcription: Transcription) -> String {
         transcription.cleanTranscript ?? transcription.rawTranscript ?? ""
+    }
+
+    private func readingDocument(transcription: Transcription) -> MeetingTranscriptPresentationDocument? {
+        guard transcription.sourceType == .meeting,
+            transcription.status == .completed,
+            !transcription.isTranscriptEdited,
+            let document = suppliedMeetingReadingDocument
+                ?? CompletedMeetingReadingDocument.build(from: transcription),
+            !document.turns.isEmpty
+        else {
+            return nil
+        }
+        return document
     }
 
     private func editedTranscriptText(transcription: Transcription) -> String? {
@@ -365,6 +382,15 @@ public final class ExportService: ExportServiceProtocol, Sendable {
         if let text = editedTranscriptText(transcription: transcription) {
             lines.append(text)
             lines.append("")
+        } else if let document = readingDocument(transcription: transcription) {
+            lines.append(
+                MeetingTranscriptDocumentRenderer.markdown(
+                    document,
+                    includeTimestamps: options.includeTimestamps,
+                    includeSpeakerLabels: options.includeSpeakerLabels
+                )
+            )
+            lines.append("")
         } else if let timestamps = transcription.wordTimestamps, !timestamps.isEmpty {
             let paragraphs = TranscriptParagraphBuilder.build(from: timestamps)
             if options.includeTimestamps || options.includeSpeakerLabels {
@@ -409,7 +435,10 @@ public final class ExportService: ExportServiceProtocol, Sendable {
 
     /// Format transcription text for clipboard copy
     public func formatForClipboard(transcription: Transcription) -> String {
-        preferredText(transcription: transcription)
+        guard let document = readingDocument(transcription: transcription) else {
+            return preferredText(transcription: transcription)
+        }
+        return MeetingTranscriptDocumentRenderer.markdown(document)
     }
 
     // MARK: - Subtitle Cue Building
@@ -479,6 +508,14 @@ public final class ExportService: ExportServiceProtocol, Sendable {
 
         if let text = editedTranscriptText(transcription: transcription) {
             lines.append(text)
+        } else if let document = readingDocument(transcription: transcription) {
+            lines.append(
+                MeetingTranscriptDocumentRenderer.plainText(
+                    document,
+                    includeTimestamps: options.includeTimestamps,
+                    includeSpeakerLabels: options.includeSpeakerLabels
+                )
+            )
         } else if let timestamps = transcription.wordTimestamps, !timestamps.isEmpty {
             let paragraphs = TranscriptParagraphBuilder.build(from: timestamps)
             if options.includeTimestamps || options.includeSpeakerLabels {

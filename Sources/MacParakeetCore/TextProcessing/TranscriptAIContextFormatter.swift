@@ -9,7 +9,23 @@ public enum TranscriptAIContextFormatter {
         case .plainTranscript:
             return preferredText(transcription)
         case .richTranscript:
+            if let document = CompletedMeetingReadingDocument.build(from: transcription) {
+                return MeetingTranscriptDocumentRenderer.markdown(document)
+            }
             return richText(transcription) ?? preferredText(transcription)
+        }
+    }
+
+    public static func format(
+        document: MeetingTranscriptPresentationDocument,
+        plainTranscript: String,
+        mode: TranscriptAIContextMode = .richTranscript
+    ) -> String {
+        switch mode {
+        case .plainTranscript:
+            return plainTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .richTranscript:
+            return MeetingTranscriptDocumentRenderer.markdown(document)
         }
     }
 

@@ -48,6 +48,10 @@ mode.
   at a time. Failures leave affected turns deterministic. Cancellation is
   reported to the meeting workflow, which aborts completion without publishing
   partial overrides.
+- `MeetingTranscriptDocumentRenderer.swift` — shared completed-meeting boundary
+  and plain-text/Markdown projections for copy, readable exports, meeting
+  artifacts, rich AI context, and containing-turn navigation. It does not
+  replace subtitle cues or evidence-focused exports.
 
 ## Cross-references
 

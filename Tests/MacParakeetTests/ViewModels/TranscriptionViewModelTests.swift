@@ -3603,8 +3603,13 @@ final class TranscriptionViewModelTests: XCTestCase {
         XCTAssertEqual(
             promptResultsVM.pendingGenerations.first?.transcript,
             """
-            [0:00] Me: Hello there.
-            [0:02] Others: Thanks.
+            **Me · [0:00]**
+
+            Hello there.
+
+            **Others · [0:02]**
+
+            Thanks.
             """
         )
     }
