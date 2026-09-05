@@ -35,6 +35,9 @@ mode.
   deterministic reading paragraphs for TXT/Markdown exports and the meeting
   live preview. It does not replace subtitle cues or persisted transcript
   segments.
+- `MeetingTranscriptPresentationBuilder.swift` — pure completed-meeting boundary
+  that derives source-aware Reading Turns, paragraphs, time ranges, and raw-word
+  references without changing canonical transcript evidence.
 
 ## Cross-references
 

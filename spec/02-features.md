@@ -1363,6 +1363,10 @@ new scheduling architecture.
 - Per-speaker analytics: speaking time, word count
 - On by default where supported for file/URL transcription and meeting finalization with a system-audio track; the Settings toggle remains available, and the CLI follows the saved preference — `--speaker-detection off` / `--no-diarize` forces it off, while speaker-count constraints keep forcing it on for that run
 
+**Completed-meeting Reading Turns:**
+
+Completed meetings use a pure local presentation builder over the existing source-aware word evidence. It forms microphone and system blocks independently so chronological word interleaving does not become one visible card per source change. Microphone turns are always labelled **Me**. System turns use an available remote-speaker label or the **Others** fallback. Each card has one speaker header, one quiet seekable start timestamp when timing exists, and one or more paragraphs. The original words, source IDs, times, and diarization regions remain canonical and unchanged. Untimed meetings show a useful text-only Reading Turn without a timestamp or precise speaker claim. The prior Text surface remains available for plain-text editing.
+
 **Transcript with speakers:**
 
 ```
