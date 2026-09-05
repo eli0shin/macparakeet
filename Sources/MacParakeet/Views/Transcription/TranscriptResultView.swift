@@ -172,6 +172,7 @@ struct TranscriptResultView: View {
     var chatViewModel: TranscriptChatViewModel
     @Bindable var promptResultsViewModel: PromptResultsViewModel
     @Bindable var promptsViewModel: PromptsViewModel
+    let customWords: [CustomWord]
     var onBack: (() -> Void)?
     var onStartNew: (() -> Void)?
     var onRetranscribe: ((Transcription, SpeechEngineSelection?) -> Void)?
@@ -179,6 +180,9 @@ struct TranscriptResultView: View {
 
     @AppStorage(UserDefaultsAppRuntimePreferences.transcriptAIContextModeKey)
     private var transcriptAIContextModeRaw = TranscriptAIContextMode.richTranscript.rawValue
+
+    @AppStorage(UserDefaultsAppRuntimePreferences.processingModeKey)
+    private var processingModeRaw = Dictation.ProcessingMode.raw.rawValue
 
     @State private var backHovered = false
     @State private var headerExpanded = false
@@ -364,6 +368,14 @@ struct TranscriptResultView: View {
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: transcriptText) {
+            rebuildSegmentCache()
+            if findBarVisible { rebuildFindBlocks() }
+        }
+        .onChange(of: processingModeRaw) {
+            rebuildSegmentCache()
+            if findBarVisible { rebuildFindBlocks() }
+        }
+        .onChange(of: customWordsRevision) {
             rebuildSegmentCache()
             if findBarVisible { rebuildFindBlocks() }
         }
@@ -3356,14 +3368,33 @@ struct TranscriptResultView: View {
     // MARK: - Segment Cache
 
     /// Rebuild cached segment data. Called once on appear and when transcription.id changes.
+    private var customWordsRevision: [String] {
+        customWords.map {
+            "\($0.id.uuidString)|\($0.word)|\($0.replacement ?? "")|\($0.isEnabled)|\($0.updatedAt.timeIntervalSinceReferenceDate)"
+        }
+    }
+
+    private var meetingTranscriptCleanup: MeetingTranscriptCleanup {
+        Dictation.ProcessingMode(rawValue: processingModeRaw) == .clean ? .cleaned : .verbatim
+    }
+
+    /// Finalization already applies single-token vocabulary to meeting words.
+    /// Phrase rules cannot span those tokens, so the Reading Turn presentation
+    /// applies only phrase rules and avoids applying token rules twice.
+    private var readingTurnCustomWords: [CustomWord] {
+        customWords.filter { $0.word.contains(where: { $0.isWhitespace }) }
+    }
+
     private func rebuildSegmentCache() {
         cachedSpeakerColorMap = buildSpeakerColorMap()
         cachedSpeakerLabelMap = buildSpeakerLabelMap()
         let readingDocument = MeetingTranscriptPresentationBuilder.build(
-            transcriptText: transcriptText,
+            transcriptText: activeTranscription.rawTranscript ?? "",
             words: activeTranscription.wordTimestamps,
             speakers: activeTranscription.speakers,
-            diarizationSegments: activeTranscription.diarizationSegments
+            diarizationSegments: activeTranscription.diarizationSegments,
+            customWords: activeTranscription.hasWordTimestamps ? readingTurnCustomWords : [],
+            cleanup: meetingTranscriptCleanup
         )
         cachedReadingTurns = identifiedReadingTurns(readingDocument.turns)
 

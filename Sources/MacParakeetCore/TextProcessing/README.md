@@ -38,8 +38,10 @@ mode.
 - `MeetingTranscriptPresentationBuilder.swift` — pure completed-meeting boundary
   that forms source utterances, assigns remote speakers from aggregate diarization
   overlap, smooths weak isolated changes, and derives Reading Turns, readability
-  metrics, paragraphs, time ranges, and raw-word references without changing
-  canonical transcript evidence.
+  metrics, bounded paragraphs, cleaned readable text, time ranges, and raw-word
+  references without changing canonical transcript evidence. Its `.verbatim`
+  policy, selected for Raw processing mode by the completed-meeting surface,
+  keeps the same document structure without presentation cleanup.
 
 ## Cross-references
 
@@ -116,15 +118,14 @@ Same-speaker sentence utterances merge across gaps shorter than 2.5 seconds;
 long pauses and completed source exchanges stay as boundaries. This local policy
 does not rewrite words or diarization regions.
 
-**Meetings reuse only the custom-word step, not the whole pipeline.**
+**Meetings reuse only the custom-word step, not the whole dictation pipeline.**
 `MeetingTranscriptVocabularyApplier` (in `Services/MeetingRecording/`)
-applies `CustomWordReplacer` to a finalized meeting transcript's plain
-text and word tokens (REQ-PIPE-003). It deliberately does **not** run
-filler removal, snippet expansion, or insertion styling — those are
-dictation-paste concerns that would corrupt a verbatim meeting record.
-Meeting correction is always-on (not gated on Raw/Clean) because the
-default processing mode is Raw and the word tokens it fixes drive the
-speaker-segmented view and exports. Keep custom-word semantics in
+applies `CustomWordReplacer` to finalized meeting text and word tokens
+(REQ-PIPE-003). The Reading Turn builder also accepts custom words for its
+read-only presentation. Its dedicated cleanup removes only the always-safe
+fillers and overlapping adjacent repetitions, then normalizes whitespace and
+punctuation. It deliberately does **not** run snippet expansion, trailing paste
+actions, or insertion styling. Keep custom-word semantics in
 `CustomWordReplacer` so dictation, file/URL, and meetings stay in sync.
 
 ## How to verify a change

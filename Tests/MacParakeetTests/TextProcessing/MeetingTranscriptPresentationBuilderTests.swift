@@ -714,6 +714,392 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         )
     }
 
+    func testFinalDocumentCleansConservativeArtifactsAndKeepsAllEvidenceReferences() {
+        let words = [
+            word("  Well,", 0, 100, "microphone"),
+            word("uh,", 120, 180, "microphone"),
+            word("use", 200, 300, "microphone"),
+            word("mac", 320, 400, "microphone"),
+            word("parakeet", 420, 520, "microphone"),
+            word("today", 540, 650, "microphone"),
+            word("today", 600, 650, "microphone"),
+            word(".", 670, 700, "microphone"),
+            word("umm", 720, 780, "microphone"),
+            word("Done", 800, 900, "microphone"),
+            word("..", 920, 950, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil,
+            customWords: [CustomWord(word: "mac parakeet", replacement: "MacParakeet")]
+        )
+
+        XCTAssertEqual(document.turns.count, 1)
+        XCTAssertEqual(document.turns[0].paragraphs.map(\.text), ["Well, use MacParakeet today. Done."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+        XCTAssertEqual(document.turns[0].paragraphs[0].wordReferences, Array(words.indices))
+        XCTAssertEqual(
+            document.turns[0].wordReferences.map { words[$0] },
+            words,
+            "Readable cleanup must retain a path to every verbatim word and timing"
+        )
+    }
+
+    func testTimedSentenceInitialFillerDoesNotLeaveAnOrphanSeparator() {
+        let words = [
+            word("Uh,", 0, 100, "microphone"),
+            word("we", 120, 220, "microphone"),
+            word("can", 240, 340, "microphone"),
+            word("ship.", 360, 500, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["we can ship."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testUntimedSentenceInitialFillerDoesNotLeaveAnOrphanSeparator() {
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "Uh, we can ship.",
+            words: nil,
+            speakers: nil,
+            cleanup: .cleaned
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["we can ship."])
+    }
+
+    func testTimedSentenceInitialFillerDoesNotLeaveStandalonePunctuation() {
+        let words = [
+            word("Uh.", 0, 100, "microphone"),
+            word("We", 120, 220, "microphone"),
+            word("can", 240, 340, "microphone"),
+            word("ship.", 360, 500, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil,
+            cleanup: .cleaned
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["We can ship."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testUntimedSentenceInitialFillerDoesNotLeaveStandalonePunctuation() {
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "Uh. We can ship.",
+            words: nil,
+            speakers: nil,
+            cleanup: .cleaned
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["We can ship."])
+    }
+
+    func testPunctuatedFillerPreservesSentenceBoundaryInFinalDocument() {
+        let words = [
+            word("We", 0, 100, "microphone"),
+            word("can", 120, 220, "microphone"),
+            word("ship", 240, 360, "microphone"),
+            word("uh.", 380, 450, "microphone"),
+            word("Next", 470, 580, "microphone"),
+            word("topic.", 600, 750, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["We can ship. Next topic."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testPunctuatedOverlappingRepetitionPreservesSentenceBoundaryInFinalDocument() {
+        let words = [
+            word("Keep", 0, 100, "microphone"),
+            word("that", 120, 250, "microphone"),
+            word("that.", 200, 300, "microphone"),
+            word("Next", 320, 430, "microphone"),
+            word("topic.", 450, 600, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["Keep that. Next topic."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testRemovedFillerDoesNotHideOverlappingRepetitionInFinalDocument() {
+        let words = [
+            word("that", 0, 300, "microphone"),
+            word("uh", 100, 200, "microphone"),
+            word("that.", 250, 350, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["that."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testTransferredPunctuationAccountsForStandaloneEndingToken() {
+        let words = [
+            word("Okay", 0, 180, "microphone"),
+            word("!", 180, 200, "microphone"),
+            word("uh.", 220, 300, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["Okay!"])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testTransferredSentencePunctuationDoesNotDuplicateExistingSentenceEnding() {
+        let words = [
+            word("Okay!", 0, 200, "microphone"),
+            word("uh.", 220, 300, "microphone"),
+            word("Next", 320, 430, "microphone"),
+            word("topic.", 450, 600, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["Okay! Next topic."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testTransferredSentencePunctuationReplacesExistingSeparatorInFinalDocument() {
+        let words = [
+            word("Keep", 0, 100, "microphone"),
+            word("that,", 120, 300, "microphone"),
+            word("that.", 250, 350, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["Keep that."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testCleanupModeChangesOnlyCleanupArtifacts() {
+        let words = [
+            word("uh", 0, 100, "system:S1"),
+            word("acme", 120, 250, "system:S1"),
+            word("works.", 270, 500, "system:S1"),
+        ]
+        let vocabulary = [CustomWord(word: "acme", replacement: "ACME")]
+
+        let cleaned = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: [SpeakerInfo(id: "system:S1", label: "Avery")],
+            customWords: vocabulary,
+            cleanup: .cleaned
+        )
+        let verbatim = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: [SpeakerInfo(id: "system:S1", label: "Avery")],
+            customWords: vocabulary,
+            cleanup: .verbatim
+        )
+
+        XCTAssertEqual(cleaned.turns.map(\.text), ["ACME works."])
+        XCTAssertEqual(verbatim.turns.map(\.text), ["uh ACME works."])
+        XCTAssertEqual(cleaned.turns.map(\.id), verbatim.turns.map(\.id))
+        XCTAssertEqual(cleaned.turns.map(\.speakerId), verbatim.turns.map(\.speakerId))
+        XCTAssertEqual(cleaned.turns.map(\.source), verbatim.turns.map(\.source))
+        XCTAssertEqual(cleaned.turns.map(\.timeRange), verbatim.turns.map(\.timeRange))
+        XCTAssertEqual(cleaned.turns.map(\.wordReferences), verbatim.turns.map(\.wordReferences))
+        XCTAssertEqual(
+            cleaned.turns.flatMap(\.paragraphs).map(\.wordReferences),
+            verbatim.turns.flatMap(\.paragraphs).map(\.wordReferences)
+        )
+    }
+
+    func testVerbatimModeAppliesPhraseVocabularyAcrossTimedWords() {
+        let words = [
+            word("mac", 0, 100, "microphone"),
+            word("parakeet", 120, 250, "microphone"),
+            word("works.", 270, 500, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil,
+            customWords: [CustomWord(word: "mac parakeet", replacement: "MacParakeet")],
+            cleanup: .verbatim
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["MacParakeet works."])
+        XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
+    }
+
+    func testParagraphsUseNaturalSentenceBoundsAndKeepOneReadingTurn() {
+        var words: [WordTimestamp] = []
+        var time = 0
+        for sentence in 0..<4 {
+            for index in 0..<30 {
+                let suffix = index == 29 ? "." : ""
+                words.append(word("s\(sentence)w\(index)\(suffix)", time, time + 50, "microphone"))
+                time += 100
+            }
+        }
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.count, 1, "Paragraphs must not repeat the Reading Turn header")
+        XCTAssertEqual(document.turns[0].paragraphs.map { $0.wordReferences.count }, [60, 60])
+        XCTAssertTrue(document.turns[0].paragraphs.allSatisfy { $0.wordReferences.count <= 80 })
+    }
+
+    func testLongPauseKeepsClearReadingTurnBoundary() {
+        let words = [
+            word("Before", 0, 200, "microphone"),
+            word("the", 300, 450, "microphone"),
+            word("pause", 500, 700, "microphone"),
+            word("After", 3_200, 3_400, "microphone"),
+            word("the", 3_500, 3_650, "microphone"),
+            word("pause", 3_700, 3_900, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.count, 2)
+        XCTAssertEqual(document.turns.flatMap(\.paragraphs).map(\.text), ["Before the pause", "After the pause"])
+        XCTAssertEqual(document.turns.map(\.speakerLabel), ["Me", "Me"])
+    }
+
+    func testShortPauseAndMissingPunctuationStayTogetherWhenNoSafeBoundaryExists() {
+        let words = (0..<81).map { index in
+            let start = index < 40 ? index * 100 : index * 100 + 2_400
+            return word("word\(index)", start, start + 50, "microphone")
+        }
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.count, 1)
+        XCTAssertEqual(document.turns[0].paragraphs.count, 1)
+        XCTAssertEqual(document.turns[0].paragraphs[0].wordReferences.count, 81)
+    }
+
+    func testMeaningSensitiveFillersAndNonOverlappingRepetitionArePreserved() {
+        let words = [
+            word("um", 0, 100, "microphone"),
+            word("like", 150, 250, "microphone"),
+            word("very", 300, 400, "microphone"),
+            word("very", 500, 600, "microphone"),
+            word("clear...", 650, 800, "microphone"),
+        ]
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "",
+            words: words,
+            speakers: nil
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["um like very very clear..."])
+    }
+
+    func testUntimedFallbackPreservesValidMixedPunctuation() {
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "Use examples, e.g., this one.",
+            words: nil,
+            speakers: nil,
+            cleanup: .cleaned
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["Use examples, e.g., this one."])
+    }
+
+    func testUntimedFallbackUsesBoundedParagraphsAndConservativeCleanup() {
+        let sentences = (0..<7).map { "uh sentence\($0)." }.joined(separator: " ")
+
+        let document = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: sentences,
+            words: nil,
+            speakers: nil,
+            customWords: [CustomWord(word: "sentence3", replacement: "SectionThree")]
+        )
+
+        XCTAssertEqual(document.turns.count, 1)
+        XCTAssertNil(document.turns[0].timeRange)
+        XCTAssertEqual(document.turns[0].paragraphs.count, 3)
+        XCTAssertEqual(
+            document.turns[0].paragraphs.map { $0.text.split(separator: " ").count },
+            [3, 3, 1]
+        )
+        XCTAssertFalse(document.turns[0].text.contains("uh"))
+        XCTAssertTrue(document.turns[0].text.contains("SectionThree"))
+    }
+
+    func testUntimedCleanupKeepsFillerOnlyParagraphStructure() {
+        let transcript = "uh. uhh. umm. Speech remains."
+
+        let cleaned = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: transcript,
+            words: nil,
+            speakers: nil,
+            cleanup: .cleaned
+        )
+        let verbatim = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: transcript,
+            words: nil,
+            speakers: nil,
+            cleanup: .verbatim
+        )
+
+        XCTAssertEqual(cleaned.turns.map(\.id), verbatim.turns.map(\.id))
+        XCTAssertEqual(cleaned.turns[0].paragraphs.count, verbatim.turns[0].paragraphs.count)
+        XCTAssertEqual(cleaned.turns[0].paragraphs.map(\.text), ["", "Speech remains."])
+    }
+
     func testFallsBackToUntimedTextWithoutClaimingSourceOrTimePrecision() {
         let document = MeetingTranscriptPresentationBuilder.build(
             transcriptText: "  A useful legacy transcript.  ",

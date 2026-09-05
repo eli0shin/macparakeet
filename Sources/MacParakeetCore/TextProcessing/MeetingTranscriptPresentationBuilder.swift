@@ -91,6 +91,13 @@ public struct ReadingTurn: Sendable, Equatable, Identifiable {
     }
 }
 
+/// Wording policy for derived Reading Turns. Both modes keep the same turn and
+/// paragraph structure and retain references to all canonical word evidence.
+public enum MeetingTranscriptCleanup: Sendable, Equatable {
+    case cleaned
+    case verbatim
+}
+
 public struct MeetingTranscriptPresentationDocument: Sendable, Equatable {
     public let turns: [ReadingTurn]
 
@@ -173,6 +180,7 @@ public struct ReadingTurnReadabilityMetrics: Sendable, Equatable {
 /// readable document. It never writes back to words, source IDs, or diarization.
 public enum MeetingTranscriptPresentationBuilder {
     private static let utterancePauseMs = 2_500
+    private static let paragraphPauseMs = 2_500
     /// A new remote speaker needs this much exclusive aggregate evidence when
     /// the stable speaker before and after it is the same.
     private static let minimumSpeakerChangeEvidenceMs = 1_000
@@ -181,15 +189,22 @@ public enum MeetingTranscriptPresentationBuilder {
     private static let minimumOverlapEvidenceMs = 200
     private static let maximumParagraphSentenceCount = 3
     private static let maximumParagraphWordCount = 80
+    private static let alwaysSafeFillers: Set<String> = ["uh", "umm", "uhh"]
 
     public static func build(
         transcriptText: String,
         words: [WordTimestamp]?,
         speakers: [SpeakerInfo]?,
-        diarizationSegments: [DiarizationSegmentRecord]? = nil
+        diarizationSegments: [DiarizationSegmentRecord]? = nil,
+        customWords: [CustomWord] = [],
+        cleanup: MeetingTranscriptCleanup = .cleaned
     ) -> MeetingTranscriptPresentationDocument {
         guard let words, !words.isEmpty else {
-            return fallbackDocument(transcriptText: transcriptText)
+            return fallbackDocument(
+                transcriptText: transcriptText,
+                customWords: customWords,
+                cleanup: cleanup
+            )
         }
 
         let labels = Dictionary(
@@ -204,7 +219,9 @@ public enum MeetingTranscriptPresentationBuilder {
                 allWords: indexedWords,
                 source: source,
                 labels: labels,
-                diarizationSegments: diarizationSegments ?? []
+                diarizationSegments: diarizationSegments ?? [],
+                customWords: customWords,
+                cleanup: cleanup
             )
         }
         .sorted { lhs, rhs in
@@ -230,7 +247,9 @@ public enum MeetingTranscriptPresentationBuilder {
         allWords: [IndexedWord],
         source: ReadingTurnSource,
         labels: [String: String],
-        diarizationSegments: [DiarizationSegmentRecord]
+        diarizationSegments: [DiarizationSegmentRecord],
+        customWords: [CustomWord],
+        cleanup: MeetingTranscriptCleanup
     ) -> [ReadingTurn] {
         guard !words.isEmpty else { return [] }
 
@@ -285,7 +304,11 @@ public enum MeetingTranscriptPresentationBuilder {
                 speakerLabel: label,
                 source: source,
                 timeRange: ReadingTurnTimeRange(startMs: group.startMs, endMs: group.endMs),
-                paragraphs: makeParagraphs(from: group.words),
+                paragraphs: makeParagraphs(
+                    from: group.words,
+                    customWords: customWords,
+                    cleanup: cleanup
+                ),
                 wordReferences: references
             )
         }
@@ -773,46 +796,99 @@ public enum MeetingTranscriptPresentationBuilder {
             && speakerId != AudioSource.system.rawValue
     }
 
-    private static func makeParagraphs(from words: [IndexedWord]) -> [ReadingTurnParagraph] {
-        var paragraphs: [ReadingTurnParagraph] = []
-        var current: [IndexedWord] = []
-        var sentenceCount = 0
+    private static func makeParagraphs(
+        from words: [IndexedWord],
+        customWords: [CustomWord],
+        cleanup: MeetingTranscriptCleanup
+    ) -> [ReadingTurnParagraph] {
+        let pauseGroups = words.reduce(into: [[IndexedWord]]()) { groups, word in
+            if let previous = groups.last?.last,
+                word.word.startMs - previous.word.endMs < paragraphPauseMs
+            {
+                groups[groups.count - 1].append(word)
+            } else {
+                groups.append([word])
+            }
+        }
 
-        func appendCurrent() {
-            guard !current.isEmpty else { return }
-            paragraphs.append(
+        return pauseGroups.flatMap { group in
+            let sentences = splitIntoSentences(group)
+            var paragraphGroups: [[IndexedWord]] = []
+            var current: [IndexedWord] = []
+            var sentenceCount = 0
+
+            func appendCurrent() {
+                guard !current.isEmpty else { return }
+                paragraphGroups.append(current)
+                current = []
+                sentenceCount = 0
+            }
+
+            for sentence in sentences {
+                let exceedsWordLimit =
+                    !current.isEmpty
+                    && current.count + sentence.count > maximumParagraphWordCount
+                if sentenceCount >= maximumParagraphSentenceCount || exceedsWordLimit {
+                    appendCurrent()
+                }
+                current.append(contentsOf: sentence)
+                sentenceCount += 1
+            }
+            appendCurrent()
+
+            return paragraphGroups.map { paragraphWords in
                 ReadingTurnParagraph(
-                    text: renderedText(from: current.map { $0.word.word }),
-                    wordReferences: current.map(\.index)
-                ))
-        }
-
-        for indexedWord in words {
-            if let previous = current.last,
-                indexedWord.word.startMs - previous.word.endMs >= utterancePauseMs
-            {
-                appendCurrent()
-                current = []
-                sentenceCount = 0
-            }
-
-            current.append(indexedWord)
-            if endsSentence(indexedWord.word.word) { sentenceCount += 1 }
-            if sentenceCount >= maximumParagraphSentenceCount
-                || current.count >= maximumParagraphWordCount
-            {
-                appendCurrent()
-                current = []
-                sentenceCount = 0
+                    text: presentedText(
+                        from: paragraphWords,
+                        customWords: customWords,
+                        cleanup: cleanup
+                    ),
+                    wordReferences: paragraphWords.map(\.index)
+                )
             }
         }
-        appendCurrent()
-        return paragraphs
     }
 
-    private static func fallbackDocument(transcriptText: String) -> MeetingTranscriptPresentationDocument {
-        let text = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return MeetingTranscriptPresentationDocument(turns: []) }
+    private static func splitIntoSentences(_ words: [IndexedWord]) -> [[IndexedWord]] {
+        var sentences: [[IndexedWord]] = []
+        var current: [IndexedWord] = []
+        for word in words {
+            current.append(word)
+            if endsSentence(word.word.word) {
+                sentences.append(current)
+                current = []
+            }
+        }
+        if !current.isEmpty { sentences.append(current) }
+        return sentences
+    }
+
+    private static func fallbackDocument(
+        transcriptText: String,
+        customWords: [CustomWord],
+        cleanup: MeetingTranscriptCleanup
+    ) -> MeetingTranscriptPresentationDocument {
+        let tokens =
+            transcriptText
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+        let paragraphTokens = makeUntimedParagraphTokens(from: tokens)
+        let paragraphs = paragraphTokens.map { tokens -> ReadingTurnParagraph in
+            let text: String
+            switch cleanup {
+            case .cleaned:
+                text = cleanReadableText(
+                    renderedText(from: removingFillersPreservingPunctuation(tokens)),
+                    customWords: customWords
+                )
+            case .verbatim:
+                text = CustomWordReplacer(words: customWords).apply(
+                    to: renderedText(from: tokens)
+                )
+            }
+            return ReadingTurnParagraph(text: text, wordReferences: [])
+        }
+        guard !paragraphs.isEmpty else { return MeetingTranscriptPresentationDocument(turns: []) }
         let source = ReadingTurnSource.unknown
         let speakerId = "unknown"
         return MeetingTranscriptPresentationDocument(turns: [
@@ -822,10 +898,41 @@ public enum MeetingTranscriptPresentationBuilder {
                 speakerLabel: "Transcript",
                 source: source,
                 timeRange: nil,
-                paragraphs: [ReadingTurnParagraph(text: text, wordReferences: [])],
+                paragraphs: paragraphs,
                 wordReferences: []
             )
         ])
+    }
+
+    private static func makeUntimedParagraphTokens(from tokens: [String]) -> [[String]] {
+        var sentences: [[String]] = []
+        var sentence: [String] = []
+        for token in tokens {
+            sentence.append(token)
+            if endsSentence(token) {
+                sentences.append(sentence)
+                sentence = []
+            }
+        }
+        if !sentence.isEmpty { sentences.append(sentence) }
+
+        var paragraphs: [[String]] = []
+        var paragraph: [String] = []
+        var sentenceCount = 0
+        for sentence in sentences {
+            let exceedsWordLimit =
+                !paragraph.isEmpty
+                && paragraph.count + sentence.count > maximumParagraphWordCount
+            if sentenceCount >= maximumParagraphSentenceCount || exceedsWordLimit {
+                paragraphs.append(paragraph)
+                paragraph = []
+                sentenceCount = 0
+            }
+            paragraph.append(contentsOf: sentence)
+            sentenceCount += 1
+        }
+        if !paragraph.isEmpty { paragraphs.append(paragraph) }
+        return paragraphs
     }
 
     /// A source exchange is complete only when other-source speech starts after
@@ -898,6 +1005,144 @@ public enum MeetingTranscriptPresentationBuilder {
             return false
         }
         return ".!?".contains(last)
+    }
+
+    private static func presentedText(
+        from words: [IndexedWord],
+        customWords: [CustomWord],
+        cleanup: MeetingTranscriptCleanup
+    ) -> String {
+        switch cleanup {
+        case .cleaned:
+            var retainedTokens: [String] = []
+            var lastRetainedEvidence: IndexedWord?
+            for word in words {
+                let token = word.word.word
+                if isAlwaysSafeFiller(token) {
+                    preservePunctuationSuffix(of: token, in: &retainedTokens)
+                } else if let lastRetainedEvidence,
+                    isObviousAdjacentRepetition(lastRetainedEvidence, word)
+                {
+                    preservePunctuationSuffix(of: token, in: &retainedTokens)
+                } else {
+                    retainedTokens.append(token)
+                    lastRetainedEvidence = word
+                }
+            }
+            return cleanReadableText(
+                renderedText(from: retainedTokens),
+                customWords: customWords
+            )
+        case .verbatim:
+            return CustomWordReplacer(words: customWords).apply(
+                to: renderedText(from: words.map { $0.word.word })
+            )
+        }
+    }
+
+    private static func removingFillersPreservingPunctuation(_ tokens: [String]) -> [String] {
+        var retained: [String] = []
+        for token in tokens {
+            if isAlwaysSafeFiller(token) {
+                preservePunctuationSuffix(of: token, in: &retained)
+            } else {
+                retained.append(token)
+            }
+        }
+        return retained
+    }
+
+    private static func preservePunctuationSuffix(of token: String, in retained: inout [String]) {
+        guard let lastWordCharacter = token.lastIndex(where: isWordCharacter) else { return }
+        let suffixStart = token.index(after: lastWordCharacter)
+        let suffix = String(token[suffixStart...])
+        guard !suffix.isEmpty else { return }
+        guard let lastIndex = retained.lastIndex(where: { $0.contains(where: isWordCharacter) })
+        else { return }
+        let receiver = renderedText(from: Array(retained[lastIndex...]))
+        retained.replaceSubrange(
+            lastIndex...,
+            with: [mergingPunctuationSuffix(suffix, into: receiver)]
+        )
+    }
+
+    private static func mergingPunctuationSuffix(_ suffix: String, into token: String) -> String {
+        let sentenceEndings = CharacterSet(charactersIn: ".!?")
+        let separators = CharacterSet(charactersIn: ",;:")
+        guard let incoming = suffix.first?.unicodeScalars.first else { return token }
+
+        var base = token
+        var addition = suffix
+        if sentenceEndings.contains(incoming) {
+            while let last = base.last?.unicodeScalars.first, separators.contains(last) {
+                base.removeLast()
+            }
+            if base.contains(where: isWordCharacter),
+                let last = base.last?.unicodeScalars.first,
+                sentenceEndings.contains(last)
+            {
+                while let first = addition.first?.unicodeScalars.first,
+                    sentenceEndings.contains(first)
+                {
+                    addition.removeFirst()
+                }
+            }
+        } else if separators.contains(incoming),
+            let last = base.last?.unicodeScalars.first,
+            sentenceEndings.contains(last)
+        {
+            while let first = addition.first?.unicodeScalars.first, separators.contains(first) {
+                addition.removeFirst()
+            }
+        }
+        return base + addition
+    }
+
+    private static func isWordCharacter(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) }
+    }
+
+    private static func isAlwaysSafeFiller(_ token: String) -> Bool {
+        guard let key = lexicalKey(token) else { return false }
+        return alwaysSafeFillers.contains(key)
+    }
+
+    private static func isObviousAdjacentRepetition(
+        _ previous: IndexedWord,
+        _ current: IndexedWord
+    ) -> Bool {
+        guard lexicalKey(previous.word.word) == lexicalKey(current.word.word),
+            lexicalKey(current.word.word) != nil
+        else { return false }
+        return current.word.startMs <= previous.word.endMs
+    }
+
+    private static func lexicalKey(_ token: String) -> String? {
+        let key =
+            token
+            .trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+            .lowercased()
+        return key.isEmpty ? nil : key
+    }
+
+    private static func cleanReadableText(_ text: String, customWords: [CustomWord]) -> String {
+        var result = CustomWordReplacer(words: customWords).apply(to: text)
+        result = replacing(#"\s+"#, in: result, with: " ")
+        result = replacing(#"\s+([.!?,;:%)\]}])"#, in: result, with: "$1")
+        result = replacing(#"([({\[])\s+"#, in: result, with: "$1")
+        result = replacing(#"([,;:])\1+"#, in: result, with: "$1")
+        result = replacing(#"([!?])(?:\s*\1)+"#, in: result, with: "$1")
+        result = replacing(#"(?<!\.)\.\.(?!\.)"#, in: result, with: ".")
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func replacing(_ pattern: String, in text: String, with template: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+        return regex.stringByReplacingMatches(
+            in: text,
+            range: NSRange(text.startIndex..., in: text),
+            withTemplate: template
+        )
     }
 
     private static func renderedText(from tokens: [String]) -> String {
