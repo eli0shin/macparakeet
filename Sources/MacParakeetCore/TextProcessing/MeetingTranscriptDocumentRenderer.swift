@@ -116,7 +116,8 @@ public enum CompletedMeetingReadingDocument {
             speakers: transcription.speakers,
             diarizationSegments: transcription.diarizationSegments,
             customWords: transcription.hasWordTimestamps ? customWords : [],
-            cleanup: cleanup
+            cleanup: cleanup,
+            formatting: transcription.meetingReadingTurnFormatting ?? []
         )
     }
 }
@@ -193,7 +194,9 @@ public enum MeetingTranscriptDocumentRenderer {
         if !header.isEmpty {
             sections.append(markdown ? "**\(header)**" : "\(header):")
         }
-        sections.append(contentsOf: turn.paragraphs.map(\.text).filter { !$0.isEmpty })
+        if !turn.text.isEmpty {
+            sections.append(turn.text)
+        }
         return sections.joined(separator: "\n\n")
     }
 

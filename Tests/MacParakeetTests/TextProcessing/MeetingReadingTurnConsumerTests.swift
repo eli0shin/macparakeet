@@ -98,6 +98,32 @@ final class MeetingReadingTurnConsumerTests: XCTestCase {
         )
     }
 
+    func testValidatedReadingTurnFormattingFlowsThroughReadableConsumers() throws {
+        var transcription = fixture()
+        let deterministic = try XCTUnwrap(
+            CompletedMeetingReadingDocument.build(from: transcription)?.turns.first
+        )
+        transcription.meetingReadingTurnFormatting = [
+            MeetingReadingTurnFormatting(
+                turnID: deterministic.id,
+                deterministicText: deterministic.deterministicText,
+                formattedText: "We reached agreement."
+            )
+        ]
+
+        let document = try XCTUnwrap(CompletedMeetingReadingDocument.build(from: transcription))
+        let expected = MeetingTranscriptDocumentRenderer.markdown(document)
+
+        XCTAssertTrue(expected.contains("We reached agreement."))
+        XCTAssertFalse(expected.contains("We agree."))
+        XCTAssertEqual(TranscriptAIContextFormatter.format(transcription: transcription), expected)
+        XCTAssertTrue(exportService.formatMarkdown(transcription: transcription).contains(expected))
+        XCTAssertTrue(
+            MeetingMarkdownRenderer().renderForClipboard(transcription: transcription)
+                .contains(expected)
+        )
+    }
+
     func testSpeakerRenameFlowsThroughEveryReadableConsumer() throws {
         let renamed = fixture(remoteLabel: "Alex")
         let document = try XCTUnwrap(CompletedMeetingReadingDocument.build(from: renamed))
