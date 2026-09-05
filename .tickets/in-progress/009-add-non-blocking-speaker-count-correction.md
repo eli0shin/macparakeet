@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@009-add-non-blocking-speaker-count-correction
 Tags:
   - ready-for-agent
 Parent: 001-improve-meeting-transcript-readability-with-reading-turns

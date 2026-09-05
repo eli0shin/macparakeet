@@ -64,6 +64,13 @@ private enum TranscriptDisplayMode: String, CaseIterable, Hashable {
     case timed = "Timed"
 }
 
+private enum SpeakerCountEditorMode: String, CaseIterable, Identifiable {
+    case auto = "Auto"
+    case exact = "Exact"
+    case bounded = "Range"
+    var id: String { rawValue }
+}
+
 func shouldDefaultToMeetingReadingSurface(
     isCompletedMeeting: Bool,
     isTranscriptEdited: Bool,
@@ -255,6 +262,13 @@ struct TranscriptResultView: View {
     @State private var retranscriptionConfirmation: RetranscriptionConfirmation?
     @State private var showingRetranscribeOptions = false
     @State private var pendingRetranscribePick: RetranscribePick?
+    @State private var showingSpeakerCountCorrection = false
+    @State private var speakerCountEditorMode: SpeakerCountEditorMode = .auto
+    @State private var exactTotalPeople = ""
+    @State private var minimumTotalPeople = ""
+    @State private var maximumTotalPeople = ""
+    @State private var speakerCountEditorError: String?
+    @State private var speakerCorrectionSubmitted = false
     @State private var pendingDeleteMeetingAudio = false
     @State private var showingCancelGenerationAlert: UUID?
     @FocusState private var chatInputFocused: Bool
@@ -333,6 +347,13 @@ struct TranscriptResultView: View {
             editingSpeakerLabel = ""
             showConversationPopover = false
             hoveredConversationId = nil
+            showingSpeakerCountCorrection = false
+            speakerCountEditorMode = .auto
+            exactTotalPeople = ""
+            minimumTotalPeople = ""
+            maximumTotalPeople = ""
+            speakerCountEditorError = nil
+            speakerCorrectionSubmitted = false
             lastScrolledSegmentMs = -1
             autoScrollPaused = false
             scrollPauseTask?.cancel()
@@ -366,6 +387,12 @@ struct TranscriptResultView: View {
             rebuildSegmentCache()
             syncTranscriptDisplayMode()
             if findBarVisible { rebuildFindBlocks() }
+        }
+        .onChange(of: viewModel.speakerAttributionCorrectionState) { _, state in
+            if case .idle = state, speakerCorrectionSubmitted {
+                showingSpeakerCountCorrection = false
+                speakerCorrectionSubmitted = false
+            }
         }
         .onChange(of: transcriptText) {
             rebuildSegmentCache()
@@ -708,6 +735,22 @@ struct TranscriptResultView: View {
                 }
             }
 
+            if activeTranscription.sourceType == .meeting,
+               activeTranscription.status == .completed {
+                Button {
+                    speakerCountEditorError = nil
+                    viewModel.clearMeetingSpeakerAttributionCorrectionError()
+                    showingSpeakerCountCorrection.toggle()
+                } label: {
+                    Label("Adjust Speakers", systemImage: "person.2.badge.gearshape")
+                }
+                .parakeetAction(.secondary)
+                .help("Rerun remote-speaker attribution without changing transcript words")
+                .popover(isPresented: $showingSpeakerCountCorrection, arrowEdge: .top) {
+                    speakerCountCorrectionPopover
+                }
+            }
+
             Spacer()
 
             if let onStartNew {
@@ -869,6 +912,113 @@ struct TranscriptResultView: View {
         .frame(width: 390)
     }
 
+    private var speakerCountCorrectionPopover: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Adjust speaker count").font(DesignSystem.Typography.body.weight(.semibold))
+                    if let detected = MeetingSpeakerCountSelection.detectedTotalPeople(in: activeTranscription) {
+                        Text("Detected: \(detected) total \(detected == 1 ? "person" : "people")")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                }
+                Spacer()
+                Button { showingSpeakerCountCorrection = false } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close speaker count options")
+            }
+            Text("Counts are total people in the meeting, including Me. MacParakeet applies the remaining count to remote speakers in system audio.")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Picker("Speaker count", selection: $speakerCountEditorMode) {
+                ForEach(SpeakerCountEditorMode.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            switch speakerCountEditorMode {
+            case .auto:
+                Text("Detect the remote-speaker count automatically.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            case .exact:
+                TextField("Total people", text: $exactTotalPeople)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Exact total people including Me")
+            case .bounded:
+                HStack {
+                    TextField("Minimum total", text: $minimumTotalPeople)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Minimum total people including Me")
+                    TextField("Maximum total", text: $maximumTotalPeople)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Maximum total people including Me")
+                }
+            }
+            if let message = speakerCountCorrectionMessage {
+                Text(message)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.errorRed)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                if case .running(let message) = viewModel.speakerAttributionCorrectionState {
+                    ProgressView().controlSize(.small)
+                    Text(message).font(DesignSystem.Typography.caption).foregroundStyle(DesignSystem.Colors.textSecondary)
+                    Spacer()
+                    Button("Cancel") { viewModel.cancelMeetingSpeakerAttributionCorrection() }
+                        .parakeetAction(.secondary)
+                } else {
+                    Spacer()
+                    Button("Rerun Attribution") { startSpeakerCountCorrection() }
+                        .parakeetAction(.primary)
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .frame(width: 390)
+        .onChange(of: speakerCountEditorMode) {
+            speakerCountEditorError = nil
+            viewModel.clearMeetingSpeakerAttributionCorrectionError()
+        }
+    }
+
+    private var speakerCountCorrectionMessage: String? {
+        if let speakerCountEditorError { return speakerCountEditorError }
+        if case .failed(let message) = viewModel.speakerAttributionCorrectionState { return message }
+        return nil
+    }
+
+    private func startSpeakerCountCorrection() {
+        let selection: MeetingSpeakerCountSelection
+        switch speakerCountEditorMode {
+        case .auto:
+            selection = .auto
+        case .exact:
+            guard let total = Int(exactTotalPeople.trimmingCharacters(in: .whitespaces)) else {
+                speakerCountEditorError = "Enter a whole-number total speaker count."
+                return
+            }
+            selection = .exact(totalPeople: total)
+        case .bounded:
+            guard let minimum = Int(minimumTotalPeople.trimmingCharacters(in: .whitespaces)),
+                  let maximum = Int(maximumTotalPeople.trimmingCharacters(in: .whitespaces)) else {
+                speakerCountEditorError = "Enter whole-number minimum and maximum speaker counts."
+                return
+            }
+            selection = .bounded(minTotalPeople: minimum, maxTotalPeople: maximum)
+        }
+        do {
+            _ = try selection.remoteDiarizationConstraint(hasSystemAudio: true)
+        } catch {
+            speakerCountEditorError = error.localizedDescription
+            return
+        }
+        speakerCountEditorError = nil
+        speakerCorrectionSubmitted = true
+        viewModel.correctMeetingSpeakerAttribution(activeTranscription, selection: selection)
+    }
+
     private func selectRetranscribeEngine(
         _ choice: TranscriptionViewModel.RetranscriptionEngineOption.Choice,
         reflectsTranscriptEngine: Bool
@@ -936,7 +1086,10 @@ struct TranscriptResultView: View {
     }
 
     private var speakerCountValue: Int {
-        activeTranscription.speakers?.count ?? activeTranscription.speakerCount ?? 0
+        MeetingSpeakerCountSelection.detectedTotalPeople(in: activeTranscription)
+            ?? activeTranscription.speakers?.count
+            ?? activeTranscription.speakerCount
+            ?? 0
     }
 
     /// User-facing engine attribution string for the metadata chip, or `nil`

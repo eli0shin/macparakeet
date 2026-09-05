@@ -18,7 +18,18 @@ public protocol TranscriptionRepositoryProtocol: Sendable {
     func updateFileName(id: UUID, fileName: String) throws
     func updateTitleOverride(id: UUID, titleOverride: String?) throws
     func updateChatMessages(id: UUID, chatMessages: [ChatMessage]?) throws
+    func updateTranscriptText(
+        id: UUID,
+        cleanTranscript: String?,
+        isTranscriptEdited: Bool
+    ) throws -> Transcription?
     func updateSpeakers(id: UUID, speakers: [SpeakerInfo]?) throws
+    func updateSpeakerLabel(id: UUID, speakerID: String, label: String) throws -> Transcription?
+    func applyMeetingSpeakerAttribution(
+        id: UUID,
+        expectedWordTimestamps: [WordTimestamp],
+        update: MeetingSpeakerAttributionUpdate
+    ) throws -> Transcription?
     func updateFilePath(id: UUID, filePath: String?) throws
     func updateMeetingArtifactFolderPath(id: UUID, folderPath: String?) throws
     func clearStoredAudioPathsForURLTranscriptions() throws
@@ -113,7 +124,18 @@ extension TranscriptionRepositoryProtocol {
     public func updateFileName(id: UUID, fileName: String) throws {}
     public func updateTitleOverride(id: UUID, titleOverride: String?) throws {}
     public func updateChatMessages(id: UUID, chatMessages: [ChatMessage]?) throws {}
+    public func updateTranscriptText(
+        id: UUID,
+        cleanTranscript: String?,
+        isTranscriptEdited: Bool
+    ) throws -> Transcription? { nil }
     public func updateSpeakers(id: UUID, speakers: [SpeakerInfo]?) throws {}
+    public func updateSpeakerLabel(id: UUID, speakerID: String, label: String) throws -> Transcription? { nil }
+    public func applyMeetingSpeakerAttribution(
+        id: UUID,
+        expectedWordTimestamps: [WordTimestamp],
+        update: MeetingSpeakerAttributionUpdate
+    ) throws -> Transcription? { nil }
     public func updateFilePath(id: UUID, filePath: String?) throws {}
     public func updateMeetingArtifactFolderPath(id: UUID, folderPath: String?) throws {}
     public func updateFavorite(id: UUID, isFavorite: Bool) throws {}
@@ -526,6 +548,21 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
         }
     }
 
+    public func updateTranscriptText(
+        id: UUID,
+        cleanTranscript: String?,
+        isTranscriptEdited: Bool
+    ) throws -> Transcription? {
+        try dbQueue.write { db in
+            guard var transcription = try Transcription.fetchOne(db, key: id) else { return nil }
+            transcription.cleanTranscript = cleanTranscript
+            transcription.isTranscriptEdited = isTranscriptEdited
+            transcription.updatedAt = Date()
+            try transcription.update(db)
+            return transcription
+        }
+    }
+
     public func updateSpeakers(id: UUID, speakers: [SpeakerInfo]?) throws {
         try dbQueue.write { db in
             guard var transcription = try Transcription.fetchOne(db, key: id) else { return }
@@ -536,6 +573,60 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
             )
             transcription.updatedAt = Date()
             try transcription.update(db)
+        }
+    }
+
+    public func updateSpeakerLabel(
+        id: UUID,
+        speakerID: String,
+        label: String
+    ) throws -> Transcription? {
+        try dbQueue.write { db in
+            guard var transcription = try Transcription.fetchOne(db, key: id),
+                var speakers = transcription.speakers,
+                let index = speakers.firstIndex(where: { $0.id == speakerID })
+            else { return try Transcription.fetchOne(db, key: id) }
+            speakers[index].label = label
+            transcription.speakers = speakers
+            transcription.transcriptSegments = TranscriptSegmentRecord.updatingSpeakerLabels(
+                in: transcription.transcriptSegments,
+                using: speakers
+            )
+            transcription.updatedAt = Date()
+            try transcription.update(db)
+            return transcription
+        }
+    }
+
+    public func applyMeetingSpeakerAttribution(
+        id: UUID,
+        expectedWordTimestamps: [WordTimestamp],
+        update: MeetingSpeakerAttributionUpdate
+    ) throws -> Transcription? {
+        try dbQueue.write { db in
+            guard var transcription = try Transcription.fetchOne(db, key: id),
+                transcription.sourceType == .meeting
+            else { return nil }
+            guard transcription.wordTimestamps == expectedWordTimestamps else {
+                throw MeetingSpeakerCountCorrectionError.canonicalWordsChanged
+            }
+            let currentLabels = Dictionary(
+                uniqueKeysWithValues: (transcription.speakers ?? []).map { ($0.id, $0.label) }
+            )
+            let speakers = update.speakers.map { speaker in
+                SpeakerInfo(id: speaker.id, label: currentLabels[speaker.id] ?? speaker.label)
+            }
+            transcription.wordTimestamps = update.wordTimestamps
+            transcription.speakers = speakers
+            transcription.speakerCount = update.speakerCount
+            transcription.diarizationSegments = update.diarizationSegments
+            transcription.transcriptSegments = TranscriptSegmentRecord.updatingSpeakerLabels(
+                in: update.transcriptSegments,
+                using: speakers
+            )
+            transcription.updatedAt = Date()
+            try transcription.update(db)
+            return transcription
         }
     }
 

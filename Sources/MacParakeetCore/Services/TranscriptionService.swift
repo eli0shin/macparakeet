@@ -42,6 +42,15 @@ public protocol TranscriptionServiceProtocol: Sendable {
     func transcribeURLTransient(urlString: String, onProgress: (@Sendable (TranscriptionProgress) -> Void)?) async throws -> Transcription
 }
 
+public protocol MeetingSpeakerAttributionCorrectingTranscriptionService: Sendable {
+    func correctMeetingSpeakerAttribution(
+        existing transcription: Transcription,
+        recording: MeetingRecordingOutput,
+        selection: MeetingSpeakerCountSelection,
+        onProgress: (@Sendable (TranscriptionProgress) -> Void)?
+    ) async throws -> Transcription
+}
+
 public protocol SpeechEngineOverrideTranscriptionService: TranscriptionServiceProtocol {
     func retranscribe(
         existing transcription: Transcription,
@@ -230,7 +239,7 @@ private struct TranscriptionOperationContext: Sendable {
     }
 }
 
-public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, AudioTrackSelectingTranscriptionService {
+public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, AudioTrackSelectingTranscriptionService, MeetingSpeakerAttributionCorrectingTranscriptionService {
     private let logger = Logger(subsystem: "com.macparakeet.core", category: "TranscriptionService")
     private let audioProcessor: AudioProcessorProtocol
     private let sttTranscriber: STTTranscribing
@@ -698,6 +707,60 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 onProgress: onProgress
             )
         }
+    }
+
+    public func correctMeetingSpeakerAttribution(
+        existing original: Transcription,
+        recording: MeetingRecordingOutput,
+        selection: MeetingSpeakerCountSelection,
+        onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil
+    ) async throws -> Transcription {
+        guard original.sourceType == .meeting else { throw MeetingSpeakerCountCorrectionError.systemAudioUnavailable }
+        let constraint = try selection.remoteDiarizationConstraint(hasSystemAudio: recording.sourceAlignment.system != nil)
+        guard let words = original.wordTimestamps, !words.isEmpty else { throw MeetingSpeakerCountCorrectionError.timedWordsUnavailable }
+        guard let diarizationService, let systemTrack = recording.sourceAlignment.system else { throw MeetingSpeakerCountCorrectionError.systemAudioUnavailable }
+
+        onProgress?(.converting)
+        let wavURL = try await audioProcessor.convert(fileURL: recording.systemAudioURL)
+        defer { try? FileManager.default.removeItem(at: wavURL) }
+        try Task.checkCancellation()
+        onProgress?(.identifyingSpeakers)
+        let diarResult = try await diarizationService.diarize(audioURL: wavURL, speakerConstraint: constraint)
+        try Task.checkCancellation()
+        guard !diarResult.segments.isEmpty else { throw MeetingSpeakerCountCorrectionError.noRemoteSpeechDetected }
+
+        let systemDiarization = mappedMeetingSystemDiarization(diarResult, systemStartOffsetMs: systemTrack.startOffsetMs)
+        let finalized = MeetingTranscriptFinalizer.reattributeSystemWords(words, systemDiarization: systemDiarization)
+        let transcriptSegments = TranscriptSegmenter.materializeSegments(words: finalized.words, speakers: finalized.speakers)
+        let update = MeetingSpeakerAttributionUpdate(
+            wordTimestamps: finalized.words,
+            speakers: finalized.speakers,
+            speakerCount: finalized.speakers.isEmpty ? nil : finalized.speakers.count,
+            diarizationSegments: finalized.diarizationSegments,
+            transcriptSegments: transcriptSegments.isEmpty ? nil : transcriptSegments
+        )
+
+        try Task.checkCancellation()
+        onProgress?(.finalizing)
+        guard let committed = try transcriptionRepo.applyMeetingSpeakerAttribution(
+            id: original.id,
+            expectedWordTimestamps: words,
+            update: update
+        ) else {
+            throw MeetingSpeakerCountCorrectionError.transcriptionUnavailable
+        }
+        do {
+            try segmentRepo?.deleteSegments(transcriptionId: original.id)
+            if let knowledgeLayerMutator {
+                try knowledgeLayerMutator.replaceSegmentsAndInvalidateCard(for: committed)
+            } else {
+                try segmentRepo?.replaceSegments(for: committed)
+            }
+        } catch {
+            logger.error("Speaker correction committed but derived search refresh failed error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+        }
+        await materializeMeetingArtifactIfPossible(committed, runAutomationHook: false)
+        return committed
     }
 
     private func transcribe(
@@ -1513,28 +1576,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
 
             guard !diarResult.segments.isEmpty else { return nil }
 
-            let mappedSpeakers = diarResult.speakers.enumerated().map { index, speaker in
-                SpeakerInfo(
-                    id: "\(AudioSource.system.rawValue):\(speaker.id)",
-                    label: "\(AudioSource.system.displayLabel) \(index + 1)"
-                )
-            }
-            let speakerIDMap = Dictionary(uniqueKeysWithValues: zip(
-                diarResult.speakers.map(\.id),
-                mappedSpeakers.map(\.id)
-            ))
-            let mappedSegments = diarResult.segments.map { segment in
-                SpeakerSegment(
-                    speakerId: speakerIDMap[segment.speakerId] ?? "\(AudioSource.system.rawValue):\(segment.speakerId)",
-                    startMs: segment.startMs + systemTrack.startOffsetMs,
-                    endMs: segment.endMs + systemTrack.startOffsetMs
-                )
-            }
-
-            return MeetingTranscriptFinalizer.SystemDiarization(
-                speakers: mappedSpeakers,
-                segments: mappedSegments
-            )
+            return mappedMeetingSystemDiarization(diarResult, systemStartOffsetMs: systemTrack.startOffsetMs)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -1546,6 +1588,24 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             ))
             return nil
         }
+    }
+
+    private func mappedMeetingSystemDiarization(
+        _ diarResult: MacParakeetDiarizationResult,
+        systemStartOffsetMs: Int
+    ) -> MeetingTranscriptFinalizer.SystemDiarization {
+        let mappedSpeakers = diarResult.speakers.enumerated().map { index, speaker in
+            SpeakerInfo(id: "\(AudioSource.system.rawValue):\(speaker.id)", label: "\(AudioSource.system.displayLabel) \(index + 1)")
+        }
+        let speakerIDMap = Dictionary(uniqueKeysWithValues: zip(diarResult.speakers.map(\.id), mappedSpeakers.map(\.id)))
+        let mappedSegments = diarResult.segments.map { segment in
+            SpeakerSegment(
+                speakerId: speakerIDMap[segment.speakerId] ?? "\(AudioSource.system.rawValue):\(segment.speakerId)",
+                startMs: segment.startMs + systemStartOffsetMs,
+                endMs: segment.endMs + systemStartOffsetMs
+            )
+        }
+        return MeetingTranscriptFinalizer.SystemDiarization(speakers: mappedSpeakers, segments: mappedSegments)
     }
 
     private func resolveMeetingMicrophoneSource(
@@ -2035,7 +2095,10 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         )
     }
 
-    private func materializeMeetingArtifactIfPossible(_ transcription: Transcription) async {
+    private func materializeMeetingArtifactIfPossible(
+        _ transcription: Transcription,
+        runAutomationHook: Bool = true
+    ) async {
         guard let meetingArtifactStore else { return }
         do {
             let promptResults = try promptResultRepo?.fetchAll(transcriptionId: transcription.id) ?? []
@@ -2043,7 +2106,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 transcription: transcription,
                 promptResults: promptResults
             )
-            runMeetingAutomationHookIfConfigured(transcription: transcription, artifact: artifact)
+            if runAutomationHook {
+                runMeetingAutomationHookIfConfigured(transcription: transcription, artifact: artifact)
+            }
         } catch {
             logger.warning("meeting_artifact_materialize_failed id=\(transcription.id.uuidString, privacy: .public) error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
         }

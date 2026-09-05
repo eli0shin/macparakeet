@@ -94,6 +94,12 @@ public final class TranscriptionViewModel {
         case error(String)
     }
 
+    public enum SpeakerAttributionCorrectionState: Equatable, Sendable {
+        case idle
+        case running(message: String)
+        case failed(message: String)
+    }
+
     public var transcriptions: [Transcription] = []
     public var currentTranscription: Transcription? {
         didSet {
@@ -109,6 +115,7 @@ public final class TranscriptionViewModel {
     }
     public var pendingDeleteTranscription: Transcription?
     public var isTranscribing = false
+    public private(set) var speakerAttributionCorrectionState: SpeakerAttributionCorrectionState = .idle
     public var progress: String = ""
     public var transcriptionProgress: Double?
     public private(set) var sourceKind: SourceKind = .localFile
@@ -213,6 +220,8 @@ public final class TranscriptionViewModel {
     private var transcriptionRepo: TranscriptionRepositoryProtocol?
     private var promptResultRepo: PromptResultRepositoryProtocol?
     private var transcriptionTask: Task<Void, Never>?
+    private var speakerAttributionTask: Task<Void, Never>?
+    private var activeSpeakerAttributionTaskID: UUID?
     private var activeTranscriptionTaskID: UUID?
     private var audioTrackPreflightID: UUID?
     private var pendingAudioTrackFiles: [URL] = []
@@ -900,6 +909,89 @@ public final class TranscriptionViewModel {
         }
     }
 
+    public func correctMeetingSpeakerAttribution(_ original: Transcription, selection: MeetingSpeakerCountSelection) {
+        guard let service = transcriptionService as? any MeetingSpeakerAttributionCorrectingTranscriptionService else {
+            speakerAttributionCorrectionState = .failed(message: MeetingSpeakerCountCorrectionError.unsupportedService.localizedDescription)
+            return
+        }
+        guard let filePath = original.filePath,
+              FileManager.default.fileExists(atPath: filePath),
+              let recording = archivedMeetingRecording(for: original, mixedAudioURL: URL(fileURLWithPath: filePath)) else {
+            speakerAttributionCorrectionState = .failed(message: MeetingSpeakerCountCorrectionError.retainedAudioUnavailable.localizedDescription)
+            return
+        }
+        do {
+            _ = try selection.remoteDiarizationConstraint(hasSystemAudio: recording.sourceAlignment.system != nil)
+        } catch {
+            speakerAttributionCorrectionState = .failed(message: error.localizedDescription)
+            return
+        }
+
+        speakerAttributionTask?.cancel()
+        let taskID = UUID()
+        activeSpeakerAttributionTaskID = taskID
+        speakerAttributionCorrectionState = .running(message: "Preparing saved system audio…")
+        speakerAttributionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let progressHandler: @Sendable (TranscriptionProgress) -> Void = { [weak self] progress in
+                    Task { @MainActor [weak self] in
+                        guard self?.activeSpeakerAttributionTaskID == taskID else { return }
+                        self?.speakerAttributionCorrectionState = .running(message: Self.speakerAttributionProgressMessage(progress))
+                    }
+                }
+                let result = try await service.correctMeetingSpeakerAttribution(existing: original, recording: recording, selection: selection, onProgress: progressHandler)
+                guard activeSpeakerAttributionTaskID == taskID else { return }
+                let latest: Transcription
+                do {
+                    latest = try transcriptionRepo?.fetch(id: result.id) ?? result
+                } catch {
+                    logger.error("Speaker correction committed but latest-row refresh failed error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+                    latest = result
+                }
+                speakerAttributionTask = nil
+                activeSpeakerAttributionTaskID = nil
+                speakerAttributionCorrectionState = .idle
+                if currentTranscription?.id == result.id { currentTranscription = latest }
+                loadTranscriptions()
+            } catch is CancellationError {
+                guard activeSpeakerAttributionTaskID == taskID else { return }
+                speakerAttributionTask = nil
+                activeSpeakerAttributionTaskID = nil
+                speakerAttributionCorrectionState = .idle
+            } catch {
+                guard activeSpeakerAttributionTaskID == taskID else { return }
+                speakerAttributionTask = nil
+                activeSpeakerAttributionTaskID = nil
+                speakerAttributionCorrectionState = .failed(message: error.localizedDescription)
+            }
+        }
+    }
+
+    public func cancelMeetingSpeakerAttributionCorrection() {
+        guard speakerAttributionTask != nil else { return }
+        speakerAttributionTask?.cancel()
+        // Keep the task identity until the service reaches its commit boundary.
+        // A cancellation before persistence returns CancellationError. If the
+        // durable save already started, completion wins and refreshes the visible
+        // transcript so UI and database state cannot diverge.
+        speakerAttributionCorrectionState = .running(message: "Cancelling…")
+    }
+
+    public func clearMeetingSpeakerAttributionCorrectionError() {
+        guard case .failed = speakerAttributionCorrectionState else { return }
+        speakerAttributionCorrectionState = .idle
+    }
+
+    private static func speakerAttributionProgressMessage(_ progress: TranscriptionProgress) -> String {
+        switch progress {
+        case .converting: return "Preparing saved system audio…"
+        case .identifyingSpeakers: return "Identifying remote speakers…"
+        case .finalizing: return "Rebuilding Reading Turns…"
+        case .downloading, .preparingSpeechModel, .transcribing: return "Preparing speaker attribution…"
+        }
+    }
+
     private func archivedMeetingRecording(
         for original: Transcription,
         mixedAudioURL: URL,
@@ -1487,7 +1579,7 @@ public final class TranscriptionViewModel {
 
     @discardableResult
     public func updateCurrentTranscriptText(to newText: String) -> Bool {
-        guard var transcription = currentTranscription else { return false }
+        guard let transcription = currentTranscription else { return false }
         guard let repo = transcriptionRepo else {
             reportMissingConfiguration("transcriptionRepo", action: "updateCurrentTranscriptText")
             return false
@@ -1497,16 +1589,17 @@ public final class TranscriptionViewModel {
 
         let currentText = transcription.cleanTranscript ?? transcription.rawTranscript ?? ""
         guard trimmed != currentText else { return false }
-
-        transcription.cleanTranscript = trimmed == transcription.rawTranscript ? nil : trimmed
-        transcription.isTranscriptEdited = transcription.cleanTranscript != nil
-        transcription.updatedAt = Date()
+        let cleanTranscript = trimmed == transcription.rawTranscript ? nil : trimmed
 
         do {
-            try repo.save(transcription)
-            currentTranscription = transcription
+            guard let persisted = try repo.updateTranscriptText(
+                id: transcription.id,
+                cleanTranscript: cleanTranscript,
+                isTranscriptEdited: cleanTranscript != nil
+            ) else { return false }
+            currentTranscription = persisted
             if let index = transcriptions.firstIndex(where: { $0.id == transcription.id }) {
-                transcriptions[index] = transcription
+                transcriptions[index] = persisted
             }
             return true
         } catch {
@@ -1517,7 +1610,7 @@ public final class TranscriptionViewModel {
 
     @discardableResult
     public func revertCurrentTranscriptToOriginal() -> Bool {
-        guard var transcription = currentTranscription,
+        guard let transcription = currentTranscription,
               transcription.cleanTranscript != nil
         else { return false }
         guard let repo = transcriptionRepo else {
@@ -1525,15 +1618,15 @@ public final class TranscriptionViewModel {
             return false
         }
 
-        transcription.cleanTranscript = nil
-        transcription.isTranscriptEdited = false
-        transcription.updatedAt = Date()
-
         do {
-            try repo.save(transcription)
-            currentTranscription = transcription
+            guard let persisted = try repo.updateTranscriptText(
+                id: transcription.id,
+                cleanTranscript: nil,
+                isTranscriptEdited: false
+            ) else { return false }
+            currentTranscription = persisted
             if let index = transcriptions.firstIndex(where: { $0.id == transcription.id }) {
-                transcriptions[index] = transcription
+                transcriptions[index] = persisted
             }
             return true
         } catch {
@@ -1578,7 +1671,8 @@ public final class TranscriptionViewModel {
             weak self,
             transcriptionRepo,
             transcriptionID,
-            speakers,
+            speakerId,
+            trimmed,
             previousCurrentSpeakers,
             previousCurrentSegments,
             previousCurrentUpdatedAt,
@@ -1588,9 +1682,18 @@ public final class TranscriptionViewModel {
             renameGeneration
         ] in
             do {
-                try await Task.detached(priority: .utility) {
-                    try transcriptionRepo.updateSpeakers(id: transcriptionID, speakers: speakers)
+                let persisted = try await Task.detached(priority: .utility) {
+                    try transcriptionRepo.updateSpeakerLabel(
+                        id: transcriptionID,
+                        speakerID: speakerId,
+                        label: trimmed
+                    )
                 }.value
+                self?.reconcileSpeakerRenamePersistence(
+                    transcriptionID: transcriptionID,
+                    generation: renameGeneration,
+                    persisted: persisted
+                )
                 self?.enqueueMeetingArtifactRefresh(
                     transcriptionID: transcriptionID,
                     generation: renameGeneration
@@ -1613,6 +1716,22 @@ public final class TranscriptionViewModel {
                     generation: renameGeneration
                 )
             }
+        }
+    }
+
+    private func reconcileSpeakerRenamePersistence(
+        transcriptionID: UUID,
+        generation: Int,
+        persisted: Transcription?
+    ) {
+        guard speakerRenameGenerations[transcriptionID] == generation,
+            let persisted
+        else { return }
+        if currentTranscription?.id == transcriptionID {
+            currentTranscription = persisted
+        }
+        if let index = transcriptions.firstIndex(where: { $0.id == transcriptionID }) {
+            transcriptions[index] = persisted
         }
     }
 

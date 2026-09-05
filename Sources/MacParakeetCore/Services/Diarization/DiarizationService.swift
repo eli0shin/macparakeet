@@ -32,12 +32,17 @@ public enum SpeakerDiarizationConstraint: Equatable, Sendable {
 
 public protocol DiarizationServiceProtocol: Sendable {
     func diarize(audioURL: URL) async throws -> MacParakeetDiarizationResult
+    func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult
     func prepareModels(onProgress: (@Sendable (String) -> Void)?) async throws
     func isReady() async -> Bool
     func hasCachedModels() async -> Bool
 }
 
 extension DiarizationServiceProtocol {
+    public func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult {
+        try await diarize(audioURL: audioURL)
+    }
+
     public func prepareModels() async throws {
         try await prepareModels(onProgress: nil)
     }
@@ -67,6 +72,7 @@ extension OfflineDiarizerManager: @retroactive @unchecked Sendable {}
 
 public actor DiarizationService: DiarizationServiceProtocol {
     private let manager: any OfflineDiarizerManaging
+    private let constrainedManagerFactory: (@Sendable (SpeakerDiarizationConstraint) -> any OfflineDiarizerManaging)?
     private let modelsDirectory: URL
     private var modelsReady = false
 
@@ -76,6 +82,9 @@ public actor DiarizationService: DiarizationServiceProtocol {
     ) {
         self.init(
             manager: OfflineDiarizerManager(config: config),
+            constrainedManagerFactory: { constraint in
+                OfflineDiarizerManager(config: Self.offlineConfig(speakerConstraint: constraint))
+            },
             modelsDirectory: modelsDirectory ?? AppPaths.fluidAudioModelsDirURL
         )
     }
@@ -92,17 +101,30 @@ public actor DiarizationService: DiarizationServiceProtocol {
 
     init(
         manager: any OfflineDiarizerManaging,
+        constrainedManagerFactory: (@Sendable (SpeakerDiarizationConstraint) -> any OfflineDiarizerManaging)? = nil,
         modelsDirectory: URL
     ) {
         self.manager = manager
+        self.constrainedManagerFactory = constrainedManagerFactory
         self.modelsDirectory = modelsDirectory.standardizedFileURL
     }
 
     public func diarize(audioURL: URL) async throws -> MacParakeetDiarizationResult {
-        try await ensureModelsPrepared()
+        try await diarize(audioURL: audioURL, speakerConstraint: nil)
+    }
+
+    public func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult {
+        let selectedManager: any OfflineDiarizerManaging
+        if let speakerConstraint, let constrainedManagerFactory {
+            selectedManager = constrainedManagerFactory(speakerConstraint)
+            try await selectedManager.prepareModels(at: modelsDirectory)
+        } else {
+            try await ensureModelsPrepared()
+            selectedManager = manager
+        }
 
         let fluidResult: DiarizationResult
-        let manager = self.manager
+        let manager = selectedManager
         do {
             // Serialize Neural Engine inference on macOS 14 (no-op on macOS 15+):
             // offline diarization runs its own CoreML models outside the STT
@@ -225,6 +247,8 @@ public actor MockDiarizationService: DiarizationServiceProtocol {
     public var diarizeResult: MacParakeetDiarizationResult?
     public var diarizeError: Error?
     public var diarizeCalled = false
+    public var diarizeDelay: Duration?
+    public var lastSpeakerConstraint: SpeakerDiarizationConstraint?
     public var prepareModelsCalled = false
     public var prepareModelsError: Error?
     public var ready = false
@@ -242,6 +266,10 @@ public actor MockDiarizationService: DiarizationServiceProtocol {
         self.diarizeResult = nil
     }
 
+    public func configureDiarizeDelay(_ delay: Duration?) {
+        diarizeDelay = delay
+    }
+
     public func configurePrepareModels(error: Error?) {
         self.prepareModelsError = error
     }
@@ -255,7 +283,13 @@ public actor MockDiarizationService: DiarizationServiceProtocol {
     }
 
     public func diarize(audioURL: URL) async throws -> MacParakeetDiarizationResult {
+        try await diarize(audioURL: audioURL, speakerConstraint: nil)
+    }
+
+    public func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult {
         diarizeCalled = true
+        lastSpeakerConstraint = speakerConstraint
+        if let diarizeDelay { try await Task.sleep(for: diarizeDelay) }
         if let error = diarizeError { throw error }
         return diarizeResult ?? MacParakeetDiarizationResult(segments: [], speakerCount: 0, speakers: [])
     }

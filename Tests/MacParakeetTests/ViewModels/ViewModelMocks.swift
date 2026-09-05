@@ -250,6 +250,21 @@ final class MockTranscriptionRepository: TranscriptionRepositoryProtocol, @unche
         }
     }
 
+    func updateTranscriptText(
+        id: UUID,
+        cleanTranscript: String?,
+        isTranscriptEdited: Bool
+    ) throws -> Transcription? {
+        if let saveError {
+            throw saveError
+        }
+        guard let index = transcriptions.firstIndex(where: { $0.id == id }) else { return nil }
+        transcriptions[index].cleanTranscript = cleanTranscript
+        transcriptions[index].isTranscriptEdited = isTranscriptEdited
+        transcriptions[index].updatedAt = Date()
+        return transcriptions[index]
+    }
+
     func updateSpeakers(id: UUID, speakers: [SpeakerInfo]?) throws {
         updateSpeakersCalls.append((id: id, speakers: speakers))
         if let updateSpeakersHandler {
@@ -266,6 +281,15 @@ final class MockTranscriptionRepository: TranscriptionRepositoryProtocol, @unche
             )
             transcriptions[idx].updatedAt = Date()
         }
+    }
+
+    func updateSpeakerLabel(id: UUID, speakerID: String, label: String) throws -> Transcription? {
+        guard let transcription = try fetch(id: id), var speakers = transcription.speakers,
+            let index = speakers.firstIndex(where: { $0.id == speakerID })
+        else { return try fetch(id: id) }
+        speakers[index].label = label
+        try updateSpeakers(id: id, speakers: speakers)
+        return try fetch(id: id)
     }
 
     func updateFilePath(id: UUID, filePath: String?) throws {
