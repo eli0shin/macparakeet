@@ -56,10 +56,49 @@ public extension MeetingTranscriptPresentationDocument {
     }
 }
 
+/// The active presentation policy for completed-meeting Reading Turns.
+/// Meeting word timestamps already contain single-token vocabulary corrections,
+/// so only phrase rules are applied when the readable document is rebuilt.
+public struct CompletedMeetingReadingConfiguration: Sendable {
+    public let customWords: [CustomWord]
+    public let cleanup: MeetingTranscriptCleanup
+
+    public init(
+        processingMode: Dictation.ProcessingMode,
+        customWords: [CustomWord]
+    ) {
+        self.customWords = customWords.filter {
+            $0.word.contains(where: { $0.isWhitespace })
+        }
+        cleanup = processingMode == .clean ? .cleaned : .verbatim
+    }
+
+    public init(
+        customWords: [CustomWord] = [],
+        cleanup: MeetingTranscriptCleanup = .cleaned
+    ) {
+        self.customWords = customWords.filter {
+            $0.word.contains(where: { $0.isWhitespace })
+        }
+        self.cleanup = cleanup
+    }
+}
+
 /// Builds the completed-meeting Reading Turn document used by copy, readable
 /// exports, meeting artifacts, summaries, and chat. Edited transcripts keep the
 /// existing plain-text contract because their word alignment is no longer valid.
 public enum CompletedMeetingReadingDocument {
+    public static func build(
+        from transcription: Transcription,
+        configuration: CompletedMeetingReadingConfiguration
+    ) -> MeetingTranscriptPresentationDocument? {
+        build(
+            from: transcription,
+            customWords: configuration.customWords,
+            cleanup: configuration.cleanup
+        )
+    }
+
     public static func build(
         from transcription: Transcription,
         customWords: [CustomWord] = [],
@@ -72,11 +111,11 @@ public enum CompletedMeetingReadingDocument {
             return nil
         }
         return MeetingTranscriptPresentationBuilder.build(
-            transcriptText: transcription.cleanTranscript ?? transcription.rawTranscript ?? "",
+            transcriptText: transcription.rawTranscript ?? transcription.cleanTranscript ?? "",
             words: transcription.wordTimestamps,
             speakers: transcription.speakers,
             diarizationSegments: transcription.diarizationSegments,
-            customWords: customWords,
+            customWords: transcription.hasWordTimestamps ? customWords : [],
             cleanup: cleanup
         )
     }

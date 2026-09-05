@@ -59,6 +59,18 @@ func makeDatabaseManager(database: String?) throws -> DatabaseManager {
     return try DatabaseManager(path: resolvedDatabasePath(database))
 }
 
+func completedMeetingReadingConfiguration(
+    customWordRepository: CustomWordRepositoryProtocol,
+    defaults: UserDefaults = macParakeetAppDefaults()
+) throws -> CompletedMeetingReadingConfiguration {
+    let rawMode = defaults.string(forKey: UserDefaultsAppRuntimePreferences.processingModeKey)
+    let mode = Dictation.ProcessingMode(rawValue: rawMode ?? Dictation.ProcessingMode.raw.rawValue) ?? .raw
+    return CompletedMeetingReadingConfiguration(
+        processingMode: mode,
+        customWords: try customWordRepository.fetchEnabled()
+    )
+}
+
 func validateJSONEnvelopeFlags(json: Bool, envelope: Bool) throws {
     if json && envelope {
         throw ValidationError("--json and --envelope are mutually exclusive.")

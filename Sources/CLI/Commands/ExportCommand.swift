@@ -49,9 +49,15 @@ struct ExportCommand: AsyncParsableCommand {
             try AppPaths.ensureDirectories()
             let dbManager = try DatabaseManager(path: resolvedDatabasePath(database))
             let repo = TranscriptionRepository(dbQueue: dbManager.dbQueue)
+            let customWordRepo = CustomWordRepository(dbQueue: dbManager.dbQueue)
 
             let transcription = try findTranscription(id: id, repo: repo)
-            let exportService = ExportService()
+            let readingConfiguration = try completedMeetingReadingConfiguration(
+                customWordRepository: customWordRepo
+            )
+            let exportService = ExportService(
+                meetingReadingConfiguration: readingConfiguration
+            )
 
             if stdout {
                 let content = try formatContent(transcription: transcription, exportService: exportService)

@@ -97,9 +97,14 @@ public final class MeetingArtifactStore: MeetingArtifactStoring, @unchecked Send
 
     private let fileManager: FileManager
     private let markdownWriter: @Sendable (String, String) throws -> Void
+    private let readingConfigurationProvider: (@Sendable () -> CompletedMeetingReadingConfiguration)?
 
-    public init(fileManager: FileManager = .default) {
+    public init(
+        fileManager: FileManager = .default,
+        readingConfigurationProvider: (@Sendable () -> CompletedMeetingReadingConfiguration)? = nil
+    ) {
         self.fileManager = fileManager
+        self.readingConfigurationProvider = readingConfigurationProvider
         markdownWriter = { content, path in
             try content.write(
                 toFile: path,
@@ -111,9 +116,11 @@ public final class MeetingArtifactStore: MeetingArtifactStoring, @unchecked Send
 
     init(
         fileManager: FileManager = .default,
+        readingConfigurationProvider: (@Sendable () -> CompletedMeetingReadingConfiguration)? = nil,
         markdownWriter: @escaping @Sendable (String, String) throws -> Void
     ) {
         self.fileManager = fileManager
+        self.readingConfigurationProvider = readingConfigurationProvider
         self.markdownWriter = markdownWriter
     }
 
@@ -184,10 +191,20 @@ public final class MeetingArtifactStore: MeetingArtifactStoring, @unchecked Send
             meetingCaptureReport: transcription.meetingCaptureReport
         )
         if let markdownPath = artifactPaths.markdownPath {
+            let readingDocument: MeetingTranscriptPresentationDocument?
+            if let configuration = readingConfigurationProvider?() {
+                readingDocument = CompletedMeetingReadingDocument.build(
+                    from: transcription,
+                    configuration: configuration
+                )
+            } else {
+                readingDocument = nil
+            }
             let markdown = MeetingMarkdownRenderer().render(
                 transcription: transcription,
                 promptResults: promptResults,
-                artifactPaths: artifactPaths
+                artifactPaths: artifactPaths,
+                readingDocument: readingDocument
             )
             try markdownWriter(markdown, markdownPath)
         }

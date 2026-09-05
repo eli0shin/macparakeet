@@ -32,6 +32,7 @@ final class AppEnvironment {
     let meetingRecordingLockFileStore: MeetingRecordingLockFileStore
     let meetingRecordingService: MeetingRecordingService
     let meetingRecordingSettlement: MeetingRecordingSettlement
+    let meetingArtifactStore: MeetingArtifactStore
     let meetingRecordingRecoveryService: MeetingRecordingRecoveryService
     let dictationService: DictationService
     let transcriptionService: TranscriptionService
@@ -70,7 +71,8 @@ final class AppEnvironment {
         segmentRepo = SegmentRepository(dbQueue: databaseManager.dbQueue)
         cardRepo = CardRepository(dbQueue: databaseManager.dbQueue)
         knowledgeLayerMutator = KnowledgeLayerMutationService(dbQueue: databaseManager.dbQueue)
-        customWordRepo = CustomWordRepository(dbQueue: databaseManager.dbQueue)
+        let customWordRepository = CustomWordRepository(dbQueue: databaseManager.dbQueue)
+        customWordRepo = customWordRepository
         snippetRepo = TextSnippetRepository(dbQueue: databaseManager.dbQueue)
         chatConversationRepo = ChatConversationRepository(dbQueue: databaseManager.dbQueue)
         promptRepo = PromptRepository(dbQueue: databaseManager.dbQueue)
@@ -88,6 +90,16 @@ final class AppEnvironment {
         )
         let runtimePreferences = UserDefaultsAppRuntimePreferences()
         self.runtimePreferences = runtimePreferences
+        let processingModeClosure: @Sendable () -> Dictation.ProcessingMode = { [runtimePreferences] in
+            runtimePreferences.processingMode
+        }
+        let readingConfigurationProvider: @Sendable () -> CompletedMeetingReadingConfiguration = {
+            let customWords = (try? customWordRepository.fetchEnabled()) ?? []
+            return CompletedMeetingReadingConfiguration(
+                processingMode: processingModeClosure(),
+                customWords: customWords
+            )
+        }
         let selectedInputDeviceUIDProvider: @Sendable () -> String? = { [runtimePreferences] in
             runtimePreferences.selectedMicrophoneDeviceUID
         }
@@ -172,6 +184,9 @@ final class AppEnvironment {
             lockFileStore: meetingRecordingLockFileStore,
             transcriptionRepo: transcriptionRepo
         )
+        meetingArtifactStore = MeetingArtifactStore(
+            readingConfigurationProvider: readingConfigurationProvider
+        )
         clipboardService = ClipboardService()
         systemMediaController = SystemMediaController()
         exportService = ExportService()
@@ -214,10 +229,6 @@ final class AppEnvironment {
             store: keychain,
             api: LemonSqueezyLicenseAPI()
         )
-
-        let processingModeClosure: @Sendable () -> Dictation.ProcessingMode = { [runtimePreferences] in
-            runtimePreferences.processingMode
-        }
 
         let dictationInsertionStyleClosure: @Sendable () -> DictationInsertionStyle = { [runtimePreferences] in
             runtimePreferences.dictationInsertionStyle
@@ -302,7 +313,8 @@ final class AppEnvironment {
             transcriptionRepository: transcriptionRepo,
             segmentRepository: segmentRepo,
             cardRepository: cardRepo,
-            completionProvider: llmService
+            completionProvider: llmService,
+            meetingReadingConfigurationProvider: readingConfigurationProvider
         )
 
         dictationService = DictationService(
@@ -378,7 +390,8 @@ final class AppEnvironment {
             podcastResolver: PodcastEpisodeResolver(),
             podcastSearchResolver: PodcastQueryResolver(),
             podcastAudioFetcher: PodcastAudioDownloader(),
-            diarizationService: diarizationService
+            diarizationService: diarizationService,
+            meetingArtifactStore: meetingArtifactStore
         )
 
         meetingRecordingRecoveryService = MeetingRecordingRecoveryService(

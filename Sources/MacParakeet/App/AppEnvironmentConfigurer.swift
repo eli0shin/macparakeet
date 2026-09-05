@@ -111,8 +111,10 @@ final class AppEnvironmentConfigurer {
         transcriptionViewModel.configure(
             transcriptionService: env.transcriptionService,
             transcriptionRepo: env.transcriptionRepo,
+            customWordRepo: env.customWordRepo,
             llmService: hasLLMConfig ? env.llmService : nil,
             promptResultRepo: env.promptResultRepo,
+            meetingArtifactStore: env.meetingArtifactStore,
             promptResultsViewModel: promptResultsViewModel
         )
         historyViewModel.configure(dictationRepo: env.dictationRepo)
@@ -210,7 +212,7 @@ final class AppEnvironmentConfigurer {
             // user-defined prompt that references it, and feed `nil` userNotes
             // into the chat path that ADR-020's 2026-05-02 amendment relies on.
             transcriptionRepo: env.transcriptionRepo,
-            meetingArtifactStore: MeetingArtifactStore(),
+            meetingArtifactStore: env.meetingArtifactStore,
             configStore: env.llmConfigStore,
             llmClient: env.llmClient,
             cardGenerator: hasLLMConfig ? env.cardGenerationService : nil

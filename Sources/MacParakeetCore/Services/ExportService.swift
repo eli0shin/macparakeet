@@ -100,9 +100,14 @@ public struct TranscriptExportOptions: Sendable, Equatable {
 /// (AppKit, not thread-safe). Text, subtitle, and JSON exports are safe off-main.
 public final class ExportService: ExportServiceProtocol, Sendable {
     private let suppliedMeetingReadingDocument: MeetingTranscriptPresentationDocument?
+    private let meetingReadingConfiguration: CompletedMeetingReadingConfiguration?
 
-    public init(meetingReadingDocument: MeetingTranscriptPresentationDocument? = nil) {
+    public init(
+        meetingReadingDocument: MeetingTranscriptPresentationDocument? = nil,
+        meetingReadingConfiguration: CompletedMeetingReadingConfiguration? = nil
+    ) {
         suppliedMeetingReadingDocument = meetingReadingDocument
+        self.meetingReadingConfiguration = meetingReadingConfiguration
     }
 
     private func preferredText(transcription: Transcription) -> String {
@@ -110,10 +115,20 @@ public final class ExportService: ExportServiceProtocol, Sendable {
     }
 
     private func readingDocument(transcription: Transcription) -> MeetingTranscriptPresentationDocument? {
+        let configuredDocument: MeetingTranscriptPresentationDocument?
+        if let meetingReadingConfiguration {
+            configuredDocument = CompletedMeetingReadingDocument.build(
+                from: transcription,
+                configuration: meetingReadingConfiguration
+            )
+        } else {
+            configuredDocument = nil
+        }
         guard transcription.sourceType == .meeting,
             transcription.status == .completed,
             !transcription.isTranscriptEdited,
             let document = suppliedMeetingReadingDocument
+                ?? configuredDocument
                 ?? CompletedMeetingReadingDocument.build(from: transcription),
             !document.turns.isEmpty
         else {

@@ -178,7 +178,8 @@ struct MainWindowView: View {
                                 onPrimaryAction: {
                                     transcriptionViewModel.showInputPortal()
                                     state.selectedItem = .transcribe
-                                }
+                                },
+                                customWords: customWordsViewModel.words
                             ) { transcription in
                                 transcriptionViewModel.currentTranscription = transcription
                             }

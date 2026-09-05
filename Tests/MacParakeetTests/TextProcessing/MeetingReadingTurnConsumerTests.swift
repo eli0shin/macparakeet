@@ -49,7 +49,7 @@ final class MeetingReadingTurnConsumerTests: XCTestCase {
         XCTAssertNil(document.navigationTarget(containingTimeMs: 2_000))
     }
 
-    func testSuppliedVerbatimVocabularyDocumentStaysIdenticalAcrossInteractiveConsumers() throws {
+    func testRawPhraseVocabularyPolicyStaysIdenticalAcrossDirectArtifactBackgroundAIAndCLIExport() throws {
         var transcription = fixture()
         transcription.rawTranscript = "uh mac parakeet"
         transcription.cleanTranscript = "MacParakeet"
@@ -58,32 +58,43 @@ final class MeetingReadingTurnConsumerTests: XCTestCase {
             word("mac", 200, 400, "microphone"),
             word("parakeet", 450, 800, "microphone"),
         ]
-        let customWord = CustomWord(word: "mac parakeet", replacement: "MacParakeet")
+        let configuration = CompletedMeetingReadingConfiguration(
+            processingMode: .raw,
+            customWords: [CustomWord(word: "mac parakeet", replacement: "MacParakeet")]
+        )
         let document = try XCTUnwrap(
             CompletedMeetingReadingDocument.build(
                 from: transcription,
-                customWords: [customWord],
-                cleanup: .verbatim
+                configuration: configuration
             )
         )
         let expected = MeetingTranscriptDocumentRenderer.markdown(document)
-        let suppliedExportService = ExportService(meetingReadingDocument: document)
+        let cliExportService = ExportService(
+            meetingReadingConfiguration: configuration
+        )
 
         XCTAssertTrue(expected.contains("uh MacParakeet"))
         XCTAssertEqual(
             TranscriptAIContextFormatter.format(
-                document: document,
-                plainTranscript: transcription.cleanTranscript ?? ""
+                transcription: transcription,
+                meetingReadingConfiguration: configuration
             ),
             expected
         )
-        XCTAssertEqual(suppliedExportService.formatForClipboard(transcription: transcription), expected)
-        XCTAssertTrue(suppliedExportService.formatMarkdown(transcription: transcription).contains(expected))
         XCTAssertTrue(
-            MeetingMarkdownRenderer().renderForClipboard(
+            MeetingMarkdownRenderer().render(
                 transcription: transcription,
+                promptResults: [],
                 readingDocument: document
-            ).contains(expected)
+            ).contains("## Transcript\n\n\(expected)")
+        )
+        XCTAssertTrue(
+            cliExportService.formatMarkdown(transcription: transcription)
+                .contains(expected)
+        )
+        XCTAssertEqual(
+            cliExportService.formatForClipboard(transcription: transcription),
+            expected
         )
     }
 
@@ -152,7 +163,7 @@ final class MeetingReadingTurnConsumerTests: XCTestCase {
         let untimed = Transcription(
             fileName: "Legacy Meeting",
             rawTranscript: "Uh, original words.",
-            cleanTranscript: nil,
+            cleanTranscript: "Stored clean substitute.",
             status: .completed,
             sourceType: .meeting
         )

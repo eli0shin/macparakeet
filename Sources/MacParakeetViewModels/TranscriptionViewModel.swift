@@ -218,6 +218,7 @@ public final class TranscriptionViewModel {
     private var transcriptionService: TranscriptionServiceProtocol?
     private var audioTrackService: AudioTrackSelectingTranscriptionService?
     private var transcriptionRepo: TranscriptionRepositoryProtocol?
+    private var customWordRepo: CustomWordRepositoryProtocol?
     private var promptResultRepo: PromptResultRepositoryProtocol?
     private var transcriptionTask: Task<Void, Never>?
     private var speakerAttributionTask: Task<Void, Never>?
@@ -243,7 +244,7 @@ public final class TranscriptionViewModel {
     private static let configurationError = "Transcription services are unavailable. Please try again."
     private let logger = Logger(subsystem: "com.macparakeet.viewmodels", category: "TranscriptionViewModel")
     private let defaults: UserDefaults
-    private let meetingArtifactStore: MeetingArtifactStoring
+    private var meetingArtifactStore: MeetingArtifactStoring
     private let isWhisperModelDownloaded: () -> Bool
     private let isNemotronModelDownloaded: () -> Bool
     private let isCohereModelDownloaded: () -> Bool
@@ -274,10 +275,22 @@ public final class TranscriptionViewModel {
         }
     }
 
+    private func meetingReadingConfiguration() -> CompletedMeetingReadingConfiguration {
+        let rawMode = defaults.string(forKey: UserDefaultsAppRuntimePreferences.processingModeKey)
+        let mode = Dictation.ProcessingMode(
+            rawValue: rawMode ?? Dictation.ProcessingMode.raw.rawValue
+        ) ?? .raw
+        return CompletedMeetingReadingConfiguration(
+            processingMode: mode,
+            customWords: (try? customWordRepo?.fetchEnabled()) ?? []
+        )
+    }
+
     private func aiContextText(for transcription: Transcription) -> String {
         TranscriptAIContextFormatter.format(
             transcription: transcription,
-            mode: TranscriptAIContextMode.current(defaults: defaults)
+            mode: TranscriptAIContextMode.current(defaults: defaults),
+            meetingReadingConfiguration: meetingReadingConfiguration()
         )
     }
 
@@ -285,16 +298,22 @@ public final class TranscriptionViewModel {
         transcriptionService: TranscriptionServiceProtocol,
         transcriptionRepo: TranscriptionRepositoryProtocol,
         audioTrackService: AudioTrackSelectingTranscriptionService? = nil,
+        customWordRepo: CustomWordRepositoryProtocol? = nil,
         llmService: LLMServiceProtocol? = nil,
         promptResultRepo: PromptResultRepositoryProtocol? = nil,
+        meetingArtifactStore: MeetingArtifactStoring? = nil,
         promptResultsViewModel: PromptResultsViewModel? = nil
     ) {
         self.transcriptionService = transcriptionService
         self.audioTrackService = audioTrackService
             ?? (transcriptionService as? any AudioTrackSelectingTranscriptionService)
         self.transcriptionRepo = transcriptionRepo
+        self.customWordRepo = customWordRepo
         self.llmAvailable = llmService != nil
         self.promptResultRepo = promptResultRepo
+        if let meetingArtifactStore {
+            self.meetingArtifactStore = meetingArtifactStore
+        }
         self.promptResultsViewModel = promptResultsViewModel
         isConfigured = true
         clearError()
@@ -1243,7 +1262,13 @@ public final class TranscriptionViewModel {
 
     private func autoSaveIfEnabled(_ transcription: Transcription) {
         let scope: AutoSaveScope = transcription.sourceType == .meeting ? .meeting : .transcription
-        let result = AutoSaveService(defaults: defaults).saveIfEnabled(transcription, scope: scope)
+        let exportService = ExportService(
+            meetingReadingConfiguration: meetingReadingConfiguration()
+        )
+        let result = AutoSaveService(
+            exportService: exportService,
+            defaults: defaults
+        ).saveIfEnabled(transcription, scope: scope)
         guard scope == .meeting else { return }
 
         let warning: String

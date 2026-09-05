@@ -30,6 +30,9 @@ ranges must not drift.
 
 ## Stable Semantics
 
+- All reconstructed documents use the active Raw/Clean policy and the current
+  enabled phrase vocabulary. Meeting word timestamps already contain
+  single-token vocabulary corrections.
 - Each rendered block follows Reading Turn order and uses the current speaker
   label.
 - A rendered turn has at most one start time. Word timestamps are not emitted in
@@ -63,6 +66,8 @@ fixture in one change.
 - `ExportServiceTests`
 
 The shared consumer fixture compares readable exports, clipboard output,
-meeting Markdown, and AI context with one derived Reading Turn document. It also
-pins rename propagation, overlap rendering, paragraph preservation, containing
-navigation, untimed fallback, verbatim availability, and SRT/VTT cue retention.
+meeting Markdown, and AI context with one derived Reading Turn document. Its Raw
+fixture includes a phrase-vocabulary replacement and compares direct artifact,
+background AI, and CLI-readable export reconstruction. It also pins rename
+propagation, overlap rendering, paragraph preservation, containing navigation,
+untimed fallback, verbatim availability, and SRT/VTT cue retention.

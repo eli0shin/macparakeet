@@ -153,6 +153,7 @@ enum TranscriptResultActions {
         format: TranscriptExportFormat,
         options: TranscriptExportOptions = .default,
         directory: URL,
+        meetingReadingConfiguration: CompletedMeetingReadingConfiguration? = nil,
         onFileExported: (@Sendable (URL) async -> Void)? = nil
     ) async throws -> BulkTranscriptExportResult {
         try Task.checkCancellation()
@@ -177,7 +178,9 @@ enum TranscriptResultActions {
         }
 
         do {
-            let exportService = ExportService()
+            let exportService = ExportService(
+                meetingReadingConfiguration: meetingReadingConfiguration
+            )
             for transcription in transcriptions {
                 try Task.checkCancellation()
                 await Task.yield()

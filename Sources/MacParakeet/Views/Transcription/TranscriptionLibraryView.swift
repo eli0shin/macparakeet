@@ -11,6 +11,7 @@ struct TranscriptionLibraryView: View {
     var onPrimaryAction: (() -> Void)? = nil
     var emptyTitle: String = "No transcriptions yet"
     var emptyMessage: String = "Transcribe a file or video link to get started."
+    var customWords: [CustomWord] = []
     var onSelect: (Transcription) -> Void
 
     @State private var pendingDelete: Transcription?
@@ -27,6 +28,8 @@ struct TranscriptionLibraryView: View {
     private var bulkExportIncludeSpeakerLabels = true
     @AppStorage("com.macparakeet.libraryBulkExportIncludeMetadata")
     private var bulkExportIncludeMetadata = true
+    @AppStorage(UserDefaultsAppRuntimePreferences.processingModeKey)
+    private var processingModeRaw = Dictation.ProcessingMode.raw.rawValue
     @State private var bulkExportInProgress = false
     @State private var bulkExportResult: BulkTranscriptExportResult?
     @State private var bulkExportErrorMessage: String?
@@ -735,6 +738,11 @@ struct TranscriptionLibraryView: View {
         let runID = UUID()
         let format = selectedBulkExportFormat
         let options = bulkExportOptions
+        let processingMode = Dictation.ProcessingMode(rawValue: processingModeRaw) ?? .raw
+        let readingConfiguration = CompletedMeetingReadingConfiguration(
+            processingMode: processingMode,
+            customWords: customWords
+        )
 
         bulkExportRunID = runID
         bulkExportInProgress = true
@@ -755,7 +763,8 @@ struct TranscriptionLibraryView: View {
                         transcriptions: targets,
                         format: format,
                         options: options,
-                        directory: directory
+                        directory: directory,
+                        meetingReadingConfiguration: readingConfiguration
                     )
                 }
                 bulkExportWorkerTask = exportTask

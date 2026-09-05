@@ -150,9 +150,10 @@ public struct MeetingMarkdownRenderer: Sendable {
     public func render(
         transcription: Transcription,
         promptResults: [PromptResult],
-        artifactPaths: MeetingMarkdownArtifactPaths = .init()
+        artifactPaths: MeetingMarkdownArtifactPaths = .init(),
+        readingDocument: MeetingTranscriptPresentationDocument? = nil
     ) -> String {
-        let transcript = renderedTranscript(transcription, readingDocument: nil)
+        let transcript = renderedTranscript(transcription, readingDocument: readingDocument)
         var sections = [
             frontmatter(
                 transcription: transcription,
