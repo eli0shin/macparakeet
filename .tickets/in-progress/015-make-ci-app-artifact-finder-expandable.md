@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@015-make-ci-app-artifact-finder-expandable
 Tags:
   - ready-for-agent
 Parent:
@@ -22,3 +22,13 @@ Diagnose the exact archive compatibility problem and publish a Finder-compatible
 - [ ] Workflow tests cover the archive format, artifact shape, failure behavior, and main/manual-only publication.
 - [ ] Documentation gives concise Finder download and installation instructions and states that the build is unsigned and non-notarized.
 - [ ] Applicable CI checks pass and the landing artifact is downloaded and inspected through the intended user path.
+
+## Implementation notes
+
+Artifact `9977391806` is a valid GitHub-generated ZIP that contains one
+`MacParakeet-unsigned-non-notarized.zip`. GitHub gives the downloaded outer ZIP
+the same name as that inner ZIP. Archive Utility must therefore rename or
+replace an archive while expanding it, and the user must expand two ZIPs. The
+inner `ditto` archive itself passes `unzip -t` and expands with Archive Utility.
+The fix replaces the inner ZIP with a compressed disk image, so the GitHub ZIP
+expands to one clearly different, Finder-mountable file.
