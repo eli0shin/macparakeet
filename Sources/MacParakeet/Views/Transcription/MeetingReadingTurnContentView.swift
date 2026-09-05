@@ -14,6 +14,41 @@ func identifiedReadingTurns(_ turns: [ReadingTurn]) -> [IdentifiedReadingTurn] {
     }
 }
 
+struct IdentifiedReadingTurnGroup: Identifiable {
+    let overlap: ReadingTurnOverlap?
+    let turns: [IdentifiedReadingTurn]
+
+    var id: Int { turns[0].scrollID }
+}
+
+func identifiedReadingTurnGroups(
+    _ turns: [IdentifiedReadingTurn]
+) -> [IdentifiedReadingTurnGroup] {
+    let overlapMembers = Dictionary(
+        grouping: turns.compactMap { turn in
+            turn.turn.overlap.map { ($0, turn) }
+        },
+        by: { $0.0 }
+    )
+    var emittedOverlaps: Set<ReadingTurnOverlap> = []
+    var groups: [IdentifiedReadingTurnGroup] = []
+
+    for turn in turns {
+        guard let overlap = turn.turn.overlap else {
+            groups.append(IdentifiedReadingTurnGroup(overlap: nil, turns: [turn]))
+            continue
+        }
+        guard emittedOverlaps.insert(overlap).inserted else { continue }
+        groups.append(
+            IdentifiedReadingTurnGroup(
+                overlap: overlap,
+                turns: overlapMembers[overlap, default: []].map(\.1)
+            )
+        )
+    }
+    return groups
+}
+
 func readingTurnScrollTarget(
     for currentMs: Int,
     in turns: [IdentifiedReadingTurn]
@@ -37,24 +72,52 @@ struct MeetingReadingTurnContentView<SpeakerLabelContent: View>: View {
     var currentHighlight: (id: Int, range: NSRange)?
 
     var body: some View {
-        ForEach(turns) { identified in
-            MeetingReadingTurnCard(
-                identified: identified,
-                speakerColor: speakerColorMap[identified.turn.speakerId]
-                    ?? sourceColor(for: identified.turn.source),
-                speakerLabelContent: speakerLabelContent,
-                isActive: activeScrollID == identified.scrollID,
-                timestampLabel: timestampLabel,
-                isTimestampSeekable: isTimestampSeekable,
-                onTimestampTap: onTimestampTap,
-                bodyFont: bodyFont,
-                highlightRanges: highlightRangesByScrollID[identified.scrollID] ?? [],
-                currentRange: currentHighlight?.id == identified.scrollID
-                    ? currentHighlight?.range
-                    : nil
-            )
-            .id(identified.scrollID)
+        ForEach(identifiedReadingTurnGroups(turns)) { group in
+            if group.overlap != nil {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    Label("Simultaneous speech", systemImage: "waveform.path")
+                        .font(DesignSystem.Typography.caption.weight(.semibold))
+                        .foregroundStyle(DesignSystem.Colors.speakerColor(for: 1))
+
+                    ForEach(group.turns) { identified in
+                        card(for: identified)
+                    }
+                }
+                .padding(DesignSystem.Spacing.sm)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
+                        .fill(DesignSystem.Colors.speakerColor(for: 1).opacity(0.06))
+                )
+                .overlay(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(DesignSystem.Colors.speakerColor(for: 1).opacity(0.75))
+                        .frame(width: 3)
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Simultaneous speech")
+            } else if let identified = group.turns.first {
+                card(for: identified)
+            }
         }
+    }
+
+    private func card(for identified: IdentifiedReadingTurn) -> some View {
+        MeetingReadingTurnCard(
+            identified: identified,
+            speakerColor: speakerColorMap[identified.turn.speakerId]
+                ?? sourceColor(for: identified.turn.source),
+            speakerLabelContent: speakerLabelContent,
+            isActive: activeScrollID == identified.scrollID,
+            timestampLabel: timestampLabel,
+            isTimestampSeekable: isTimestampSeekable,
+            onTimestampTap: onTimestampTap,
+            bodyFont: bodyFont,
+            highlightRanges: highlightRangesByScrollID[identified.scrollID] ?? [],
+            currentRange: currentHighlight?.id == identified.scrollID
+                ? currentHighlight?.range
+                : nil
+        )
+        .id(identified.scrollID)
     }
 
     private func sourceColor(for source: ReadingTurnSource) -> Color {
