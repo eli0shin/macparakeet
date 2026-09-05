@@ -3,7 +3,8 @@ Assigned-To: macparakeet@013-publish-downloadable-mac-app-from-ci
 Tags:
   - ready-for-agent
 Parent:
-Blocked-By: []
+Blocked-By:
+  - 014-make-downloadable-ci-app-usable
 ---
 
 ## What to build
@@ -22,3 +23,7 @@ This artifact is an unsigned, non-notarized development build, not an official M
 - [ ] CI workflow tests cover publication conditions, archive creation, artifact path/name, and retention.
 - [ ] Existing release validation, fast-PR behavior, signing/notarization documentation, and log artifacts remain intact.
 - [ ] Applicable CI checks pass and generated artifact contents are inspected.
+
+## Landing artifact finding
+
+Main run `33991054004` passed and published artifact `9976794725`, but direct archive inspection found an unusable media helper: `Contents/Resources/ffmpeg` is `/usr/bin/true`, while yt-dlp and Node are absent. Ticket 014 must correct the published bundle before this ticket can be completed.
