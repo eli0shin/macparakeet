@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@007-format-long-meetings-with-bounded-ai-requests
 Tags:
   - ready-for-agent
 Parent: 001-improve-meeting-transcript-readability-with-reading-turns

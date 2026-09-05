@@ -212,6 +212,10 @@ extension TranscriptionServiceProtocol {
     }
 }
 
+private enum MeetingReadingTurnFormattingError: Error {
+    case requestFailed
+}
+
 private struct TranscriptionOperationContext: Sendable {
     let operationContext: ObservabilityOperationContext
     let source: TelemetryTranscriptionSource
@@ -1418,7 +1422,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 rawText: finalized.rawTranscript,
                 processingStartedAt: processingStartedAt,
                 diarizationRequested: diarizationRequested,
-                diarizationApplied: systemDiarization != nil
+                diarizationApplied: systemDiarization != nil,
+                onProgress: onProgress
             )
 
             return completed
@@ -1890,6 +1895,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         transcription.speakers = nil
         transcription.diarizationSegments = nil
         transcription.transcriptSegments = nil
+        transcription.meetingReadingTurnFormatting = nil
         transcription.status = .processing
         transcription.errorMessage = nil
         transcription.exportPath = nil
@@ -1944,7 +1950,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         processingStartedAt: Date,
         diarizationRequested: Bool,
         diarizationApplied: Bool,
-        persistResult: Bool = true
+        persistResult: Bool = true,
+        onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil
     ) async throws -> Transcription {
         let mode = processingMode()
         var customWords: [CustomWord] = []
@@ -1963,20 +1970,93 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             snippets: snippets
         )
         let baseText = refinement.text ?? rawText
-        let transcriptFormatter = TranscriptFormatter(
-            llmService: llmService,
-            shouldUseAIFormatter: shouldUseAIFormatter,
-            logger: logger
-        )
-        let promptTemplateProvider = aiFormatterPromptTemplate
-        let formatterOutcome = try await transcriptFormatter.format(
-            baseText,
-            runSource: persistResult ? LLMRunSource(transcriptionId: transcription.id) : nil,
-            lane: .transcription,
-            resolvePrompt: { (promptTemplateProvider(), nil) }
-        )
-        let formattedTranscript = formatterOutcome.text
-        transcription.cleanTranscript = formattedTranscript ?? refinement.text
+        var formatterRuns: [LLMRun] = []
+        var formattingWasCancelled = false
+
+        if transcription.sourceType == .meeting, shouldUseAIFormatter(), llmService != nil {
+            let cleanup: MeetingTranscriptCleanup = mode.usesDeterministicPipeline
+                ? .cleaned
+                : .verbatim
+            let phraseVocabulary = fetchMeetingVocabulary().filter {
+                $0.word.contains(where: { $0.isWhitespace })
+            }
+            let deterministicDocument = MeetingTranscriptPresentationBuilder.build(
+                transcriptText: transcription.rawTranscript ?? rawText,
+                words: transcription.wordTimestamps,
+                speakers: transcription.speakers,
+                diarizationSegments: transcription.diarizationSegments,
+                customWords: phraseVocabulary,
+                cleanup: cleanup
+            )
+            let promptTemplate = aiFormatterPromptTemplate()
+            let transcriptFormatter = TranscriptFormatter(
+                llmService: llmService,
+                shouldUseAIFormatter: { true },
+                logger: logger
+            )
+            let runSource = persistResult
+                ? LLMRunSource(transcriptionId: transcription.id)
+                : nil
+            let meetingFormatter = MeetingReadingTurnFormatter()
+            let result = await meetingFormatter.format(
+                deterministicDocument,
+                using: { request in
+                    let outcome = try await transcriptFormatter.format(
+                        request,
+                        runSource: runSource,
+                        lane: .transcription,
+                        resolvePrompt: { (promptTemplate, nil) }
+                    )
+                    if let run = outcome.run { formatterRuns.append(run) }
+                    guard let text = outcome.text else {
+                        throw MeetingReadingTurnFormattingError.requestFailed
+                    }
+                    return text
+                },
+                onProgress: { progress in
+                    onProgress?(.formatting(
+                        completed: progress.completedRequests,
+                        total: progress.totalRequests
+                    ))
+                }
+            )
+            formattingWasCancelled = result.wasCancelled
+            transcription.meetingReadingTurnFormatting = result.formatting.isEmpty
+                ? nil
+                : result.formatting
+            if !result.formatting.isEmpty {
+                let formattedDocument = MeetingTranscriptPresentationBuilder.build(
+                    transcriptText: transcription.rawTranscript ?? rawText,
+                    words: transcription.wordTimestamps,
+                    speakers: transcription.speakers,
+                    diarizationSegments: transcription.diarizationSegments,
+                    customWords: phraseVocabulary,
+                    cleanup: cleanup,
+                    formatting: result.formatting
+                )
+                transcription.cleanTranscript = formattedDocument.turns
+                    .map(\.text)
+                    .joined(separator: "\n\n")
+            } else {
+                transcription.cleanTranscript = refinement.text
+            }
+        } else {
+            transcription.meetingReadingTurnFormatting = nil
+            let transcriptFormatter = TranscriptFormatter(
+                llmService: llmService,
+                shouldUseAIFormatter: shouldUseAIFormatter,
+                logger: logger
+            )
+            let promptTemplateProvider = aiFormatterPromptTemplate
+            let formatterOutcome = try await transcriptFormatter.format(
+                baseText,
+                runSource: persistResult ? LLMRunSource(transcriptionId: transcription.id) : nil,
+                lane: .transcription,
+                resolvePrompt: { (promptTemplateProvider(), nil) }
+            )
+            if let run = formatterOutcome.run { formatterRuns.append(run) }
+            transcription.cleanTranscript = formatterOutcome.text ?? refinement.text
+        }
 
         if persistResult, !refinement.expandedSnippetIDs.isEmpty {
             try? snippetRepo?.incrementUseCount(ids: refinement.expandedSnippetIDs)
@@ -1999,7 +2079,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             transcription.transcriptSegments = durableSegments.isEmpty ? nil : durableSegments
         }
 
-        if persistResult, source == .meeting,
+        if persistResult, source == .meeting, !formattingWasCancelled,
            let generatedTitle = try await generateMeetingTitleIfNeeded(
                transcriptText: derivationSource,
                currentTitle: transcription.fileName
@@ -2038,7 +2118,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 let transcriptionID = transcription.id
                 logger.error("segment_materialization_failed id=\(transcriptionID, privacy: .public) reindex_needed=true action=search-reindex error=\(error.localizedDescription, privacy: .public)")
             }
-            await llmRunRecorder.record(formatterOutcome.run)
+            for run in formatterRuns {
+                await llmRunRecorder.record(run)
+            }
         }
 
         if persistResult, source == .meeting {

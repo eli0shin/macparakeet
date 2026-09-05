@@ -8,6 +8,7 @@ public enum TranscriptionProgress: Sendable {
     case preparingSpeechModel
     case transcribing(percent: Int)
     case identifyingSpeakers
+    case formatting(completed: Int, total: Int)
     case finalizing
 
     /// The progress fraction (0.0–1.0) if this phase carries a percentage.
@@ -15,6 +16,9 @@ public enum TranscriptionProgress: Sendable {
         switch self {
         case .downloading(let percent), .transcribing(let percent):
             return min(Double(percent), 100) / 100
+        case .formatting(let completed, let total):
+            guard total > 0 else { return nil }
+            return min(Double(completed) / Double(total), 1)
         case .converting, .preparingSpeechModel, .identifyingSpeakers, .finalizing:
             return nil
         }

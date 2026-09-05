@@ -91,6 +91,10 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ### Added
 
+- Generic transcription JSON exports may include the additive optional
+  `meetingReadingTurnFormatting` field for completed meetings. It contains
+  validated AI text overrides keyed to stable Reading Turns; raw words,
+  speakers, and timing evidence remain canonical.
 - `meetings artifact --json` and envelope output may now include the additive
   optional `meetingCaptureReport` field with frame-derived meeting capture
   quality, elapsed/playable durations, and per-source coverage. Legacy meetings

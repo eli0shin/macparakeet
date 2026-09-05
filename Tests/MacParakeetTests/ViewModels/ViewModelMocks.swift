@@ -260,6 +260,7 @@ final class MockTranscriptionRepository: TranscriptionRepositoryProtocol, @unche
         }
         guard let index = transcriptions.firstIndex(where: { $0.id == id }) else { return nil }
         transcriptions[index].cleanTranscript = cleanTranscript
+        transcriptions[index].meetingReadingTurnFormatting = nil
         transcriptions[index].isTranscriptEdited = isTranscriptEdited
         transcriptions[index].updatedAt = Date()
         return transcriptions[index]
@@ -816,6 +817,7 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
     var summarizeResult = "Mock summary"
     var chatResult = "Mock chat response"
     var formatTranscriptResult = "Mock formatted transcript"
+    var formatTranscriptTransform: ((String) throws -> String)?
     var formatTranscriptProvider = "mock"
     var formatTranscriptModel = "mock-model"
     var formatTranscriptUsage: LLMUsage?
@@ -836,6 +838,7 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
     var lastChatSource: TelemetryChatSource?
     var lastSummarySystemPrompt: String?
     var lastFormattedTranscript: String?
+    var formattedTranscripts: [String] = []
     var lastFormatterPromptTemplate: String?
     var lastFormatterSource: TelemetryFormatterSource?
     var lastFormatterDefaultPromptUsed: Bool?
@@ -906,13 +909,15 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
     ) async throws -> LLMFormatterResult {
         formatTranscriptCallCount += 1
         lastFormattedTranscript = transcript
+        formattedTranscripts.append(transcript)
         lastFormatterPromptTemplate = promptTemplate
         lastFormatterSource = source
         lastFormatterDefaultPromptUsed = defaultPromptUsed
         if let error = errorToThrow { throw error }
+        let output = try formatTranscriptTransform?(transcript) ?? formatTranscriptResult
         return LLMFormatterResult(
             result: LLMResult(
-                output: formatTranscriptResult,
+                output: output,
                 provider: formatTranscriptProvider,
                 model: formatTranscriptModel,
                 usage: formatTranscriptUsage,
@@ -921,7 +926,7 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
             ),
             operationID: "mock-format-operation",
             inputChars: transcript.count,
-            outputChars: formatTranscriptResult.count,
+            outputChars: output.count,
             inputTruncated: false,
             defaultPromptUsed: defaultPromptUsed,
             messageCount: 2

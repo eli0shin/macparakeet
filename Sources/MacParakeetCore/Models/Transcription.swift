@@ -34,6 +34,9 @@ public struct Transcription: Codable, Identifiable, Sendable {
     public var speakers: [SpeakerInfo]?
     public var diarizationSegments: [DiarizationSegmentRecord]?
     public var transcriptSegments: [TranscriptSegmentRecord]?
+    /// Validated, presentation-only AI overrides keyed to stable Reading Turns.
+    /// Raw words and deterministic text remain the recovery sources.
+    public var meetingReadingTurnFormatting: [MeetingReadingTurnFormatting]?
     public var chatMessages: [ChatMessage]?
     public var status: TranscriptionStatus
     public var errorMessage: String?
@@ -107,6 +110,7 @@ public struct Transcription: Codable, Identifiable, Sendable {
         speakers: [SpeakerInfo]? = nil,
         diarizationSegments: [DiarizationSegmentRecord]? = nil,
         transcriptSegments: [TranscriptSegmentRecord]? = nil,
+        meetingReadingTurnFormatting: [MeetingReadingTurnFormatting]? = nil,
         chatMessages: [ChatMessage]? = nil,
         status: TranscriptionStatus = .processing,
         errorMessage: String? = nil,
@@ -146,6 +150,7 @@ public struct Transcription: Codable, Identifiable, Sendable {
         self.speakers = speakers
         self.diarizationSegments = diarizationSegments
         self.transcriptSegments = transcriptSegments
+        self.meetingReadingTurnFormatting = meetingReadingTurnFormatting
         self.chatMessages = chatMessages
         self.status = status
         self.errorMessage = errorMessage
@@ -331,7 +336,7 @@ extension Transcription: FetchableRecord, PersistableRecord {
     public enum Columns: String, ColumnExpression {
         case id, createdAt, fileName, filePath, audioTrackOrdinal, meetingArtifactFolderPath, fileSizeBytes, durationMs
         case rawTranscript, cleanTranscript, wordTimestamps, language
-        case speakerCount, speakers, diarizationSegments, transcriptSegments, chatMessages
+        case speakerCount, speakers, diarizationSegments, transcriptSegments, meetingReadingTurnFormatting, chatMessages
         case status, errorMessage, exportPath, sourceURL
         case thumbnailURL, channelName, videoDescription, isFavorite, sourceType, recoveredFromCrash, isTranscriptEdited, userNotes, meetingStartContext, meetingCaptureReport, engine, engineVariant, titleOverride, derivedTitle, derivedSnippet, updatedAt
         case calendarEventSnapshot
@@ -379,6 +384,10 @@ extension Transcription: FetchableRecord, PersistableRecord {
 
         diarizationSegments = try container.decodeIfPresent([DiarizationSegmentRecord].self, forKey: .diarizationSegments)
         transcriptSegments = try container.decodeIfPresent([TranscriptSegmentRecord].self, forKey: .transcriptSegments)
+        meetingReadingTurnFormatting = try container.decodeIfPresent(
+            [MeetingReadingTurnFormatting].self,
+            forKey: .meetingReadingTurnFormatting
+        )
         chatMessages = try container.decodeIfPresent([ChatMessage].self, forKey: .chatMessages)
         status = try container.decode(TranscriptionStatus.self, forKey: .status)
         errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)

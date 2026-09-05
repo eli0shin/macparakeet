@@ -829,6 +829,8 @@ struct TranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding {
             case .preparingSpeechModel: printProgressLine("Preparing speech model...")
             case .transcribing(let pct): printProgressLine("Transcribing... \(pct)%")
             case .identifyingSpeakers: printProgressLine("Identifying speakers...")
+            case .formatting(let completed, let total):
+                printProgressLine("Formatting meeting... \(completed)/\(total)")
             case .finalizing: printProgressLine("Finalizing...")
             }
         }
@@ -893,6 +895,8 @@ struct TranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding {
             case .preparingSpeechModel: line = "Preparing speech model..."
             case .transcribing(let pct): line = "Transcribing... \(pct)%"
             case .identifyingSpeakers: line = "Identifying speakers..."
+            case .formatting(let completed, let total):
+                line = "Formatting meeting... \(completed)/\(total)"
             case .finalizing: line = "Finalizing..."
             }
             let shouldPrint = lastProgressLine.withLock { last in

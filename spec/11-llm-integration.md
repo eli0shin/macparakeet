@@ -424,12 +424,20 @@ context and falling back to the start-time context when the finish context is
 missing or points at MacParakeet itself.
 
 Profiles apply only to Dictation AI Formatter in V1. File/URL and meeting
-transcription formatting continues to use the fallback formatter prompt
-(all transcription finalization paths share `completeTranscription`, which
-invokes the formatter). The transcripts-side formatter has its own
-"Use for transcripts" toggle (default on) and an input-length cap that
-skips formatting for transcripts too long to rewrite inside realistic
-provider timeouts (#493).
+transcription formatting continues to use the fallback formatter prompt. The
+transcripts-side formatter has its own "Use for transcripts" toggle (default
+on). File/URL formatting keeps the whole-input length cap used to avoid
+unrealistic provider timeouts (#493). Completed meetings instead derive stable
+Reading Turns first and send serial requests bounded by that same character
+cap. Requests never cross a turn or split a deterministic paragraph. A turn is
+published only after all of its requests pass non-empty, protected-value,
+content-change, and output-size validation; otherwise only that turn uses its
+deterministic text. Cancellation keeps completed turn overrides and leaves the
+current and remaining turns deterministic. These validated text overrides are
+keyed to turn identity and deterministic source text, so the model cannot alter
+speaker labels, overlap, playback timing, paragraphs, or raw word evidence.
+Formatting runs only through the provider and prompt already selected by the
+user and only when the existing transcript formatter toggle is enabled.
 
 Browser hostname/domain matching is intentionally deferred. In V1, Gmail in
 Chrome can match an exact Chrome profile or the coarse `browser` category, but

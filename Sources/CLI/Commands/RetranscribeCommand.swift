@@ -711,6 +711,8 @@ struct RetranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding 
                 printProgressLine("\(prefix)... \(percent)%")
             case .identifyingSpeakers:
                 printProgressLine("Identifying speakers...")
+            case .formatting(let completed, let total):
+                printProgressLine("Formatting meeting... \(completed)/\(total)")
             case .finalizing:
                 printProgressLine("Finalizing...")
             }

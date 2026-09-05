@@ -132,6 +132,7 @@ CREATE TABLE transcriptions (
     speakers TEXT,                                      -- JSON: [{"id":"S1","label":"Speaker 1"},{"id":"S2","label":"Sarah"}] (v0.4 diarization)
     diarizationSegments TEXT,                           -- JSON: [{"speakerId":"S1","startMs":0,"endMs":5000},...] (v0.4 diarization)
     transcriptSegments TEXT,                            -- v0.23: JSON durable meeting transcript segments with UUIDs and word ranges
+    meetingReadingTurnFormatting TEXT,                  -- v0.31: JSON validated AI text overrides for stable Reading Turns
     chatMessages TEXT,                                  -- v0.4: JSON array of LLM chat messages
     status TEXT NOT NULL DEFAULT 'processing',          -- 'processing', 'completed', 'error', 'cancelled'
     errorMessage TEXT,                                  -- Error details if status='error'
@@ -164,6 +165,7 @@ CREATE INDEX idx_transcriptions_status_created_at ON transcriptions(status, crea
 - `wordTimestamps` is a JSON text column, not a separate table. One transcription = one blob of timestamps. GRDB can decode this via `Codable`.
 - `transcriptSegments` is a JSON text column populated for finalized meeting, file, and URL recordings when timings exist. Each segment has a UUID, start/end times, speaker/source label, text, and a half-open `wordRange` (`startIndex`, `endIndexExclusive`) into the persisted `wordTimestamps` array. Segment IDs are stable for that transcript version; retranscription replaces the transcript version and may mint new segment IDs. Legacy and no-timing rows may leave this `NULL` and use deterministic derived pseudo-segments instead.
 - Completed-meeting **Reading Turns** are derived presentation values, not persisted evidence. Each turn keeps a stable identity derived from its capture source, speaker ID, and first underlying word index; a source, optional time range, optional overlap-group identity, paragraphs, and indexes back into `wordTimestamps`. An overlap-group identity is derived from the earliest contribution and groups complete independently seekable turns; it is not persisted acoustic evidence. Readable and verbatim wording policies retain the same identity, attribution, overlap grouping, paragraph structure, order, timing, and complete word-reference coverage. Building or displaying Reading Turns never rewrites `wordTimestamps`, `speakerId`, `diarizationSegments`, or `transcriptSegments`. Untimed legacy meetings get one text fallback with no claimed source or time precision.
+- `meetingReadingTurnFormatting` is an optional v0.31 JSON array of validated, presentation-only AI overrides. Each entry stores the stable Reading Turn identity, the deterministic source text used for validation, and the formatted text. A reader applies an override only when the current derived turn has the same identity and deterministic text. This prevents stale output from attaching after retranscription or rule changes. Speaker identity, timing, overlap state, paragraph evidence, raw words, and deterministic text stay outside the AI output and remain recoverable. `NULL` means formatting was disabled, unavailable, cancelled before a turn completed, or no output passed validation.
 - `language` stores the normalized detected/specified STT language code when available. New transcription service rows start unknown and are filled from the STT result; legacy/default rows may still contain `en`.
 - `speakerCount` and `speakers` are nullable, populated only when diarization is available (v0.4).
 - `filePath` is nullable because the original file may be moved or deleted after transcription.
@@ -715,6 +717,7 @@ struct Transcription: Codable, Identifiable {
     var speakers: [SpeakerInfo]?
     var diarizationSegments: [DiarizationSegmentRecord]?
     var transcriptSegments: [TranscriptSegmentRecord]? // v0.23 — Durable meeting citation segments
+    var meetingReadingTurnFormatting: [MeetingReadingTurnFormatting]? // v0.31 — Validated AI presentation overrides
     var chatMessages: [ChatMessage]?        // v0.4 — Legacy (migrated to chat_conversations in v0.5)
     var status: TranscriptionStatus
     var errorMessage: String?
