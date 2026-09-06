@@ -108,6 +108,39 @@ into `Info.plist` as:
 - `MacParakeetCheckoutURL`
 - `MacParakeetLemonSqueezyVariantID`
 
+### Owner-only development CI artifact
+
+Successful `main` pushes and manual CI runs publish the three-day artifact
+`MacParakeet-owner-development-build`. It contains exactly one Finder-mountable
+`MacParakeet-owner-development-build.dmg`. The DMG contains the complete app,
+including FFmpeg, yt-dlp, Node, the bundled CLI, Sparkle framework, and an
+Applications shortcut. CI verifies helper execution, relative bundle symlinks,
+and the app plus nested code with `codesign --verify --deep --strict` before it
+uploads the DMG. This path does not access release certificates or notary
+credentials.
+
+This is an **owner-testing development build**. Its signatures are ad-hoc and
+provide bundle structure only. It is not Developer ID signed, Apple-notarized,
+Gatekeeper-ready, an official release, or a Sparkle update. Do not distribute it
+to users or upload it to R2.
+
+To install it for owner testing:
+
+1. Download `MacParakeet-owner-development-build` from the workflow run's
+   **Artifacts** section.
+2. Expand GitHub's artifact ZIP with Archive Utility. Open the one DMG inside.
+3. Drag `MacParakeet.app` onto the Applications shortcut.
+4. If macOS blocks this known development build because it has quarantine
+   metadata, run this exact command, then open the installed app:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/MacParakeet.app
+   ```
+
+Removing quarantine bypasses a macOS safety check. Use this command only for an
+owner build downloaded from the expected repository workflow. Normal users must
+install the official notarized DMG instead.
+
 ### Signed and notarized CI test artifact
 
 CI can publish a Developer ID signed and Apple-notarized test DMG through one

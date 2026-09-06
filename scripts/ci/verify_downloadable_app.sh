@@ -8,8 +8,24 @@ if [[ -z "$APP_PATH" || ! -d "$APP_PATH/Contents" ]]; then
 fi
 
 RESOURCES="$APP_PATH/Contents/Resources"
+APP_EXECUTABLE="$APP_PATH/Contents/MacOS/MacParakeet"
+CLI="$APP_PATH/Contents/MacOS/macparakeet-cli"
+SPARKLE="$APP_PATH/Contents/Frameworks/Sparkle.framework"
 FFMPEG="$RESOURCES/ffmpeg"
 YTDLP="$RESOURCES/yt-dlp"
+
+[[ -x "$APP_EXECUTABLE" ]] || {
+  echo "Error: bundled app executable is missing or not executable: $APP_EXECUTABLE" >&2
+  exit 1
+}
+[[ -x "$CLI" ]] || {
+  echo "Error: bundled CLI is missing or not executable: $CLI" >&2
+  exit 1
+}
+[[ -d "$SPARKLE" ]] || {
+  echo "Error: Sparkle.framework is missing: $SPARKLE" >&2
+  exit 1
+}
 
 for helper in "$FFMPEG" "$YTDLP"; do
   if [[ ! -x "$helper" ]]; then
@@ -32,6 +48,12 @@ fi
 YTDLP_VERSION_OUTPUT="$("$YTDLP" --version 2>&1)"
 if [[ -z "${YTDLP_VERSION_OUTPUT//[[:space:]]/}" ]]; then
   echo "Error: bundled yt-dlp did not report a version" >&2
+  exit 1
+fi
+
+CLI_VERSION_OUTPUT="$("$CLI" --version 2>&1)"
+if [[ -z "${CLI_VERSION_OUTPUT//[[:space:]]/}" ]]; then
+  echo "Error: bundled CLI did not report a version" >&2
   exit 1
 fi
 
@@ -58,6 +80,7 @@ done
 
 printf 'FFmpeg: %s\n' "$(head -n 1 <<<"$FFMPEG_VERSION_OUTPUT")"
 printf 'yt-dlp: %s\n' "$(head -n 1 <<<"$YTDLP_VERSION_OUTPUT")"
+printf 'CLI: %s\n' "$(head -n 1 <<<"$CLI_VERSION_OUTPUT")"
 for helper in "${NODE_HELPERS[@]}"; do
   printf '%s: %s\n' "$(basename "$helper")" "$("$helper" --version)"
 done

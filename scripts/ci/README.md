@@ -17,6 +17,7 @@ The workflow runs:
 | `debug-tests` | Code/input changes | One app/CLI/test build with concurrency warnings; all XCTest and Swift Testing cases; debug CLI smoke |
 | `swift6` | Code/input changes, parallel with debug | First-party Swift 6 compilation without WhisperKit; informational format lint |
 | `release` | Release-input PRs, every main push, manual run | Optimized release build and release CLI smoke; PRs use a fast fixture bundle smoke |
+| `development-artifact` | Successful `main` pushes and manual runs | Build the complete app, apply structural ad-hoc signatures, verify it, and upload a three-day owner-only development DMG |
 | `signed-artifact` | Explicit manual request on `main`, after protected-environment approval | Build, Developer ID sign, notarize, staple, verify, and upload a seven-day CI test DMG |
 | `swift-test` | Always | Stable, fail-closed result for all required lanes |
 
@@ -28,10 +29,18 @@ compiler/linker error can first appear on main. Run manual CI before releasing;
 the bundle smoke is not signing/notarization or complete distribution validation.
 
 Pull requests use the fast `/usr/bin/true` bundle fixture with helper downloads
-disabled. Its output cannot reach publication. Main pushes and ordinary manual
-runs also do not publish an app.
+disabled. Its output cannot reach publication.
 
-A manual run on `main` publishes only when `publish_signed_artifact` is enabled
+After the complete CI gate passes, each `main` push and manual run publishes
+`MacParakeet-owner-development-build` for three days. This owner-only artifact
+contains one compressed DMG with the complete app and Applications shortcut.
+The app and nested code have structural ad-hoc signatures, and the landing gate
+executes FFmpeg, yt-dlp, Node, and the CLI. It uses no protected credentials and
+is not Developer ID signed, notarized, Gatekeeper-ready, or part of R2/Sparkle
+distribution. Installation instructions are in `docs/distribution.md`.
+
+A manual run on `main` publishes the protected artifact only when
+`publish_signed_artifact` is enabled
 and the `signed-ci-artifact` environment approves the job. The protected job
 requires a non-sentinel `X.Y.Z` input and environment secrets, uses a temporary
 keychain, builds the normal runtime helpers and required meeting echo assets,

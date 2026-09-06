@@ -64,7 +64,8 @@ class ClassificationTests(unittest.TestCase):
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
         self.workflow = Path(".github/workflows/ci.yml").read_text()
-        self.release_job = self.workflow.split("\n  release:\n", 1)[1].split("\n  signed-artifact:\n", 1)[0]
+        self.release_job = self.workflow.split("\n  release:\n", 1)[1].split("\n  development-artifact:\n", 1)[0]
+        self.development_job = self.workflow.split("\n  development-artifact:\n", 1)[1].split("\n  signed-artifact:\n", 1)[0]
         self.signed_job = self.workflow.split("\n  signed-artifact:\n", 1)[1].split("\n  # Preserve", 1)[0]
 
     def test_debug_tests_job_has_twenty_minute_timeout(self):
@@ -81,6 +82,28 @@ class WorkflowTests(unittest.TestCase):
 
         self.assertNotIn("MacParakeet-signed-notarized-ci-test", self.release_job)
         self.assertNotIn("unsigned-non-notarized", self.workflow)
+
+    def test_development_publication_waits_for_complete_gate_on_main_and_manual_runs(self):
+        self.assertIn("needs: swift-test", self.development_job)
+        self.assertIn("needs.swift-test.result == 'success'", self.development_job)
+        self.assertIn("github.event_name == 'workflow_dispatch'", self.development_job)
+        self.assertIn("github.event_name == 'push'", self.development_job)
+        self.assertIn("github.ref == 'refs/heads/main'", self.development_job)
+        self.assertNotIn("pull_request", self.development_job)
+        self.assertNotIn("environment:", self.development_job)
+        self.assertNotIn("secrets.", self.development_job)
+
+    def test_development_upload_is_unambiguous_fail_closed_and_short_lived(self):
+        self.assertIn("bash scripts/ci/publish_development_artifact.sh", self.development_job)
+        upload = self.development_job.split("      - name: Upload owner-only development DMG\n", 1)[1]
+        upload = upload.split("      - name:", 1)[0]
+        self.assertIn("uses: actions/upload-artifact@v7", upload)
+        self.assertIn("name: MacParakeet-owner-development-build", upload)
+        self.assertIn("path: dist/MacParakeet-owner-development-build.dmg", upload)
+        self.assertIn("if-no-files-found: error", upload)
+        self.assertIn("retention-days: 3", upload)
+        self.assertNotIn("continue-on-error", upload)
+        self.assertNotIn("MacParakeet-signed-notarized-ci-test", upload)
 
     def test_signed_publication_waits_for_complete_fail_closed_gate(self):
         self.assertIn("needs: swift-test", self.signed_job)
@@ -199,11 +222,55 @@ class SignedArtifactScriptTests(unittest.TestCase):
                 self.assertIn(command, self.verify)
 
 
+class DevelopmentArtifactScriptTests(unittest.TestCase):
+    def setUp(self):
+        self.publish = Path("scripts/ci/publish_development_artifact.sh").read_text()
+        self.verify = Path("scripts/ci/verify_development_dmg.sh").read_text()
+
+    def test_build_uses_complete_runtime_defaults_without_credentials(self):
+        self.assertIn("scripts/dist/build_app_bundle.sh", self.publish)
+        self.assertIn("BUILD_SOURCE=github-actions-owner-development", self.publish)
+        self.assertNotIn("BUNDLE_YTDLP=0", self.publish)
+        self.assertNotIn("BUNDLE_NODE=0", self.publish)
+        self.assertNotIn("FFMPEG_PATH", self.publish)
+        for sensitive_input in ["DEVELOPMENT_ID_CERTIFICATE", "NOTARY_APPLE_ID", "NOTARY_APP_SPECIFIC_PASSWORD"]:
+            self.assertNotIn(sensitive_input, self.publish)
+
+    def test_packaging_is_fail_closed_and_verifies_before_publication(self):
+        self.assertIn("codesign --force --sign -", self.publish)
+        self.assertIn("codesign --verify --deep --strict", self.publish)
+        self.assertIn("verify_downloadable_app.sh", self.publish)
+        self.assertIn("ln -s /Applications", self.publish)
+        self.assertIn("-format UDZO", self.publish)
+        self.assertIn("verify_development_dmg.sh", self.publish)
+        self.assertLess(self.publish.index("verify_development_dmg.sh"),
+                        self.publish.index("Owner-only development artifact is ready"))
+
+    def test_landing_verification_locks_shape_signatures_symlinks_and_helpers(self):
+        for expected in [
+            "hdiutil verify", "plutil -extract Format raw", "Applications",
+            "unexpected top-level item", "absolute bundle symlink",
+            "codesign --verify --deep --strict", "codesign --verify --strict",
+            "Signature=adhoc", "unexpectedly has a signing authority",
+            "verify_downloadable_app.sh",
+        ]:
+            with self.subTest(expected=expected):
+                self.assertIn(expected, self.verify)
+
+
 class DownloadableAppVerificationTests(unittest.TestCase):
     def make_app(self, root, ffmpeg_output="ffmpeg version fixture", include_ytdlp=True,
                  include_node=True):
-        resources = Path(root) / "MacParakeet.app" / "Contents" / "Resources"
+        contents = Path(root) / "MacParakeet.app" / "Contents"
+        resources = contents / "Resources"
         resources.mkdir(parents=True)
+        (contents / "Frameworks" / "Sparkle.framework").mkdir(parents=True)
+        macos = contents / "MacOS"
+        macos.mkdir()
+        for name, output in {"MacParakeet": "app", "macparakeet-cli": "macparakeet-cli 3.0.0"}.items():
+            executable = macos / name
+            executable.write_text(f"#!/bin/sh\nprintf '%s\\n' '{output}'\n")
+            executable.chmod(0o755)
 
         helpers = {"ffmpeg": ffmpeg_output}
         if include_ytdlp:
@@ -229,6 +296,7 @@ class DownloadableAppVerificationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("FFmpeg: ffmpeg version fixture", result.stdout)
         self.assertIn("yt-dlp: 2026.01.01", result.stdout)
+        self.assertIn("CLI: macparakeet-cli 3.0.0", result.stdout)
         self.assertIn("node: v24.13.1", result.stdout)
 
     def test_rejects_missing_runtime_helpers(self):
