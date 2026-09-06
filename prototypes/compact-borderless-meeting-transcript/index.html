@@ -78,7 +78,7 @@
     .speaker-name { font-weight: 690; }
     .time-button { padding: 1px 3px; border: 0; border-radius: 4px; background: transparent; color: var(--tertiary); font-size: 10px; font-variant-numeric: tabular-nums; cursor: pointer; }
     .time-button:hover, .time-button:focus-visible { outline: none; background: var(--accent-soft); color: var(--accent); }
-    .turn.playing { background: linear-gradient(90deg, var(--playing-soft), transparent 72%); box-shadow: inset 2px 0 var(--playing); }
+    .turn.playing { box-shadow: inset 2px 0 var(--playing); }
     .turn.playing .time-button { color: var(--playing); font-weight: 700; }
     .overlap-mark { color: var(--tertiary); font-size: 9px; cursor: help; }
 
@@ -87,7 +87,6 @@
     .byline .turn { padding: 7px 8px 8px; }
     .byline .turn + .turn { margin-top: 2px; }
     .byline .turn-head { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; font-size: 11px; }
-    .byline .turn-head::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--speaker); }
     .byline .turn-text { padding-left: 13px; }
 
     /* B: transcript rail. Identity is a stable left column; prose is continuous. */

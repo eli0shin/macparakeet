@@ -59,4 +59,8 @@ All three remove Reading Turn borders, bubble backgrounds, padded overlap wrappe
 
 ## Decision
 
-Pending owner review. Do not implement a production variant until the owner records the selected variant or exact combination.
+**Select A — Compact byline** for ticket `026`.
+
+Use one speaker dot beside the name. Playback focus uses the left border only, without a gradient background. Keep A's familiar speaker-before-text sequence and compact borderless spacing.
+
+Reject B because the fixed speaker rail takes width from long-form prose. Reject C because running names give speaker changes less separation than A. Both remain useful density references, but neither is the production base.

@@ -38,8 +38,8 @@ Variants must differ in information hierarchy or alignment, not only color or a 
 - [x] CI uploads a clearly named, self-contained prototype artifact that opens locally without a checkout or build tools.
 - [x] No private meeting content, local paths, production mutation, analytics, or network dependency enters the prototype or artifact.
 - [x] The PR and ticket record the artifact URL and concise review instructions.
-- [ ] The owner selects a variant, or a precise combination of variants, before this ticket is completed.
-- [ ] The selected design and rejected alternatives are recorded for ticket `026`.
+- [x] The owner selects a variant, or a precise combination of variants, before this ticket is completed.
+- [x] The selected design and rejected alternatives are recorded for ticket `026`.
 
 ## Review handoff
 
@@ -47,4 +47,6 @@ Artifact: [compact-borderless-meeting-transcript](https://artifacts.home.arpa/co
 
 Use the bottom switcher or Left and Right Arrow keys. Compare density, rename Nadia in the compact speaker overview, select long transcript text, select timestamps to move playback focus, inspect adjacent overlap-marked turns, and resize the window to check speaker wrapping. Record one selected variant or an exact combination here, then carry the decision and rejected alternatives into ticket `026`.
 
-Decision: pending owner review. This ticket must stay in progress until that selection is recorded.
+Decision: select **A — Compact byline** for ticket `026`. Show one speaker dot beside the name. Keep the left playback-focus border, but remove the gradient background. Reject B because its fixed rail reduces the width available for long prose. Reject C because running names separate speaker changes less clearly than A.
+
+The orchestrator still owns ticket completion; this ticket remains in progress.
