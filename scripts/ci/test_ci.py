@@ -322,6 +322,22 @@ class DownloadableAppVerificationTests(unittest.TestCase):
         return resources.parent.parent
 
     def install_foundation_state_executable(self, app):
+        executable = app / "Contents/MacOS/MacParakeet"
+        if sys.platform != "darwin":
+            # The changes job runs on Linux. Mirror Darwin Foundation's fixed-home
+            # contract there; macOS runs the real Foundation fixture below.
+            executable.write_text(
+                "#!/bin/sh\n"
+                "support=\"$CFFIXED_USER_HOME/Library/Application Support\"\n"
+                "mkdir -p \"$support/MacParakeet\"\n"
+                "touch \"$support/MacParakeet/launch-smoke-state\"\n"
+                "printf '%s\\n%s\\n' \"$CFFIXED_USER_HOME\" \"$support\" > \"$LAUNCH_STATE_REPORT\"\n"
+                "[ \"${LAUNCH_STATE_EXIT_AFTER_WRITE:-0}\" = 1 ] && exit 23\n"
+                "while :; do sleep 1; done\n"
+            )
+            executable.chmod(0o755)
+            return
+
         source = app.parent / "FoundationStateFixture.swift"
         source.write_text(
             "import Darwin\n"
@@ -340,7 +356,7 @@ class DownloadableAppVerificationTests(unittest.TestCase):
             "RunLoop.current.run()\n"
         )
         subprocess.run(
-            ["xcrun", "swiftc", str(source), "-o", str(app / "Contents/MacOS/MacParakeet")],
+            ["xcrun", "swiftc", str(source), "-o", str(executable)],
             check=True,
             capture_output=True,
             text=True,
