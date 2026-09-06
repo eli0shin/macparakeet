@@ -179,6 +179,42 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  development-artifact:
+    needs: swift-test
+    if: >-
+      needs.swift-test.result == 'success' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    runs-on: macos-14
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-swift
+        with:
+          lane: release
+      - name: Build, ad-hoc sign, package, and verify owner development DMG
+        timeout-minutes: 30
+        run: |
+          set -o pipefail
+          bash scripts/ci/publish_development_artifact.sh 2>&1 | tee development-artifact.log
+      - name: Upload owner-only development DMG
+        uses: actions/upload-artifact@v7
+        with:
+          name: MacParakeet-owner-development-build
+          path: dist/MacParakeet-owner-development-build.dmg
+          if-no-files-found: error
+          retention-days: 3
+      - name: Upload development artifact log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: development-artifact-log
+          path: development-artifact.log
+          if-no-files-found: warn
+          retention-days: 3
+
   signed-artifact:
     needs: swift-test
     if: >-
