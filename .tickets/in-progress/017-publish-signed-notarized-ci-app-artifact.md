@@ -3,8 +3,7 @@ Assigned-To: macparakeet@017-publish-signed-notarized-ci-app-artifact
 Tags:
   - ready-for-agent
 Parent:
-Blocked-By:
-  - 018-use-fork-owner-team-for-signed-ci-artifact
+Blocked-By: []
 ---
 
 ## What to build
