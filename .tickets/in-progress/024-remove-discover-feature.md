@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@024-remove-discover-feature
 Tags:
   - ready-for-agent
 Parent: 023-simplify-meeting-transcript-experience

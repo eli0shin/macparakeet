@@ -113,7 +113,7 @@ MACOS_DIR="$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$MACOS_DIR"
 cp -f "$APP_BIN" "$APP_MACOS_BIN"
 
-# Copy resource bundle (contains discover-fallback.json etc.)
+# Copy the Swift package resource bundle.
 RESOURCE_BUNDLE="$PRODUCT_DIR/MacParakeet_MacParakeet.bundle"
 if [[ -d "$RESOURCE_BUNDLE" ]]; then
   RESOURCES_DIR="$APP_BUNDLE/Contents/Resources"

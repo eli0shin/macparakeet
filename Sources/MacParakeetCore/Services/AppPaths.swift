@@ -215,11 +215,6 @@ public enum AppPaths {
         return FileManager.default.isExecutableFile(atPath: ytDlpPath) ? ytDlpPath : nil
     }
 
-    /// Cached discover feed
-    public static var discoverCachePath: String {
-        "\(appSupportDir)/discover-cache.json"
-    }
-
     /// Thumbnail cache directory
     public static var thumbnailsDir: String {
         "\(appSupportDir)/thumbnails"

@@ -325,7 +325,7 @@ events remain useful for diarization-specific timing and failure analysis.
 | `llm_operation` | `operation_id`, `workflow_id`, `parent_operation_id`, `feature`, `provider`, `streaming`, `outcome`, `duration_seconds`, `input_chars`, `output_chars`, `input_truncated`, `prompt_default_used`, `message_count`, `error_type` | One safe outcome event per LLM call, without prompts, responses, or provider error bodies |
 | `history_searched` | `result_count` (`0`, `1`, `2_5`, `6_20`, `21_50`, `51_plus`) | Is search useful? Emitted once per debounced executed search, never per keystroke, and never includes the query text. |
 | `history_replayed` | — | Do people re-listen to audio? |
-| `copy_to_clipboard` | `source` (dictation, transcription, history, meeting, discover) | How do people get text out? |
+| `copy_to_clipboard` | `source` (dictation, transcription, history, meeting) | How do people get text out? |
 | `keystroke_snippet_fired` | — | Are keystroke action snippets being used? |
 | `feedback_submitted` | `category` (bug, featureRequest, other) | Feedback volume and sentiment split |
 | `feedback_operation` | `operation_id`, `workflow_id`, `parent_operation_id`, `category`, `outcome`, `duration_seconds`, `screenshot_attached`, `diagnostic_log_attached`, `system_info_included`, `error_type` | Feedback delivery health without storing message text, email, or diagnostic log contents |
