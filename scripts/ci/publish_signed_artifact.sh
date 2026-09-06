@@ -44,11 +44,11 @@ fi
 if ! [[ "$SIGNED_ARTIFACT_BUILD_NUMBER" =~ ^[0-9]{14}$ ]]; then
   fail "SIGNED_ARTIFACT_BUILD_NUMBER must be a 14-digit UTC timestamp."
 fi
-if [[ "$APPLE_TEAM_ID" != "FYAF2ZD7RM" ]]; then
-  fail "APPLE_TEAM_ID must be the MacParakeet distribution team FYAF2ZD7RM."
+if ! [[ "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+  fail "APPLE_TEAM_ID must be a 10-character Apple Developer team identifier."
 fi
 if [[ "$DEVELOPER_ID_APPLICATION_IDENTITY" != "Developer ID Application: "*" ($APPLE_TEAM_ID)" ]]; then
-  fail "DEVELOPER_ID_APPLICATION_IDENTITY must be a Developer ID Application identity for APPLE_TEAM_ID."
+  fail "DEVELOPER_ID_APPLICATION_IDENTITY must be the full Developer ID Application identity for APPLE_TEAM_ID."
 fi
 
 rm -f "$TRUSTED_DMG" "$KEYCHAIN_PATH" "$CERTIFICATE_PATH"
@@ -68,7 +68,6 @@ security set-key-partition-list -S apple-tool:,apple: -s \
 
 identity_output="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH")"
 if ! grep -Fq "\"$DEVELOPER_ID_APPLICATION_IDENTITY\"" <<<"$identity_output"; then
-  echo "$identity_output" >&2
   fail "The imported certificate does not contain the configured Developer ID Application identity."
 fi
 

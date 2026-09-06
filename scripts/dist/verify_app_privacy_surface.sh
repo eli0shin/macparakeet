@@ -3,8 +3,8 @@ set -euo pipefail
 
 APP_PATH="${1:-dist/MacParakeet.app}"
 EXPECTED_BUNDLE_ID="${EXPECTED_BUNDLE_ID:-com.macparakeet.MacParakeet}"
-EXPECTED_TEAM_ID="${EXPECTED_TEAM_ID:-FYAF2ZD7RM}"
-EXPECTED_AUTHORITY="${EXPECTED_AUTHORITY:-Developer ID Application: Daniel Moon (FYAF2ZD7RM)}"
+EXPECTED_TEAM_ID="${EXPECTED_TEAM_ID:-3ZK76CKTXW}"
+EXPECTED_AUTHORITY="${EXPECTED_AUTHORITY:-Developer ID Application: Elimelech Oshinsky (3ZK76CKTXW)}"
 
 fail() {
   echo "error: $*" >&2

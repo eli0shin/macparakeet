@@ -128,9 +128,9 @@ Homebrew. The official release procedure remains the separate process below.
 #### One-time repository-owner setup
 
 1. In the Apple Developer portal, create or use a **Developer ID Application**
-   certificate for team `FYAF2ZD7RM`. Import the certificate and private key on
-   a trusted Mac, then export both from Keychain Access as a password-protected
-   `.p12`. Do not export an Apple Development certificate.
+   certificate for this fork owner's team, `3ZK76CKTXW`. Import the certificate
+   and private key on a trusted Mac, then export both from Keychain Access as a
+   password-protected `.p12`. Do not export an Apple Development certificate.
 2. Create an Apple ID app-specific password for the Apple ID that can submit
    notarization requests for the same team.
 3. In GitHub, open **Settings -> Environments**, create
@@ -142,8 +142,8 @@ Homebrew. The official release procedure remains the separate process below.
    |---|---|
    | `DEVELOPMENT_ID_CERTIFICATE_BASE64` | Base64 of the complete Developer ID `.p12` |
    | `DEVELOPMENT_ID_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` |
-   | `DEVELOPER_ID_APPLICATION_IDENTITY` | Full identity, for example `Developer ID Application: Daniel Moon (FYAF2ZD7RM)` |
-   | `APPLE_TEAM_ID` | `FYAF2ZD7RM` |
+   | `DEVELOPER_ID_APPLICATION_IDENTITY` | Full identity, for example `Developer ID Application: Elimelech Oshinsky (3ZK76CKTXW)` |
+   | `APPLE_TEAM_ID` | `3ZK76CKTXW` |
    | `NOTARY_APPLE_ID` | Apple ID email used for notarization |
    | `NOTARY_APP_SPECIFIC_PASSWORD` | Apple ID app-specific password |
 
@@ -192,7 +192,7 @@ xcrun stapler validate /Volumes/MacParakeet/MacParakeet.app
 hdiutil detach /Volumes/MacParakeet
 ```
 
-The signature details must show `TeamIdentifier=FYAF2ZD7RM`, and Gatekeeper must
+The signature details must show `TeamIdentifier=3ZK76CKTXW`, and Gatekeeper must
 report a notarized Developer ID source. Then complete the Finder launch check on
 a normal Mac.
 
@@ -204,8 +204,8 @@ Prereqs:
 
 ```bash
 xcrun notarytool store-credentials "AC_PASSWORD" \
-  --apple-id "moona3k@gmail.com" \
-  --team-id "FYAF2ZD7RM" \
+  --apple-id "developer@example.com" \
+  --team-id "3ZK76CKTXW" \
   --password "app-specific-password"
 ```
 

@@ -11,7 +11,7 @@ set -euo pipefail
 # Environment variables:
 #   APP_NAME              (default: MacParakeet)
 #   DIST_DIR              (default: ./dist)
-#   SIGN_IDENTITY         (default: Developer ID Application: Daniel Moon (FYAF2ZD7RM))
+#   SIGN_IDENTITY         (default: Developer ID Application: Elimelech Oshinsky (3ZK76CKTXW))
 #   NOTARYTOOL_PROFILE    (required to notarize)
 #   NOTARYTOOL_KEYCHAIN   (optional explicit keychain containing the profile)
 #   SIGN_KEYCHAIN         (optional explicit keychain containing the signing identity)
@@ -29,7 +29,7 @@ APP_NAME="${APP_NAME:-MacParakeet}"
 DIST_DIR="${DIST_DIR:-$ROOT_DIR/dist}"
 APP_PATH="$DIST_DIR/${APP_NAME}.app"
 
-SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Daniel Moon (FYAF2ZD7RM)}"
+SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Elimelech Oshinsky (3ZK76CKTXW)}"
 NOTARYTOOL_PROFILE="${NOTARYTOOL_PROFILE:-AC_PASSWORD}"
 NOTARYTOOL_KEYCHAIN="${NOTARYTOOL_KEYCHAIN:-}"
 SIGN_KEYCHAIN="${SIGN_KEYCHAIN:-}"
