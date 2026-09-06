@@ -3,8 +3,7 @@ Assigned-To:
 Tags:
   - ready-for-agent
 Parent: 023-simplify-meeting-transcript-experience
-Blocked-By:
-  - 025-prototype-compact-borderless-meeting-transcript
+Blocked-By: []
 ---
 
 ## What to build
