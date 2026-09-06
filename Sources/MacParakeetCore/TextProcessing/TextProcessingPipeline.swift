@@ -67,30 +67,8 @@ public struct TextProcessingPipeline: Sendable {
 
     // MARK: - Step 1: Filler Removal
 
-    /// Always-safe fillers (always removed)
-    /// Conservative hesitation spellings that do not conflict with supported languages.
-    private static let alwaysSafeFillers = [
-        "uh", "umm", "uhh",
-    ]
-
-    /// Pre-compiled filler regexes — avoids recompilation on every dictation.
-    private static let fillerRegexes: [NSRegularExpression] = alwaysSafeFillers.compactMap { filler in
-        let pattern = "\\b\(NSRegularExpression.escapedPattern(for: filler))\\b"
-        return try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
-    }
-
     func removeFillers(from text: String) -> String {
-        var result = text
-
-        for regex in Self.fillerRegexes {
-            result = regex.stringByReplacingMatches(
-                in: result,
-                range: NSRange(result.startIndex..., in: result),
-                withTemplate: ""
-            )
-        }
-
-        return result
+        DeterministicFillerPolicy.removeFillers(from: text)
     }
 
     // MARK: - Step 2: Custom Word Replacements
@@ -247,7 +225,7 @@ public struct TextProcessingPipeline: Sendable {
         return customTerms + snippetTerms
     }
 
-    private func capitalizeFirstLetter(in text: String) -> String {
+    func capitalizeFirstLetter(in text: String) -> String {
         guard let first = text.first, first.isLowercase else { return text }
         return first.uppercased() + text.dropFirst()
     }

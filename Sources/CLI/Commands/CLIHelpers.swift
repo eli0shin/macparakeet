@@ -61,12 +61,9 @@ func makeDatabaseManager(database: String?) throws -> DatabaseManager {
 
 func completedMeetingReadingConfiguration(
     customWordRepository: CustomWordRepositoryProtocol,
-    defaults: UserDefaults = macParakeetAppDefaults()
+    defaults _: UserDefaults = macParakeetAppDefaults()
 ) throws -> CompletedMeetingReadingConfiguration {
-    let rawMode = defaults.string(forKey: UserDefaultsAppRuntimePreferences.processingModeKey)
-    let mode = Dictation.ProcessingMode(rawValue: rawMode ?? Dictation.ProcessingMode.raw.rawValue) ?? .raw
-    return CompletedMeetingReadingConfiguration(
-        processingMode: mode,
+    CompletedMeetingReadingConfiguration(
         customWords: try customWordRepository.fetchEnabled()
     )
 }

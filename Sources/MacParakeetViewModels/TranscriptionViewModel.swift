@@ -276,12 +276,7 @@ public final class TranscriptionViewModel {
     }
 
     private func meetingReadingConfiguration() -> CompletedMeetingReadingConfiguration {
-        let rawMode = defaults.string(forKey: UserDefaultsAppRuntimePreferences.processingModeKey)
-        let mode = Dictation.ProcessingMode(
-            rawValue: rawMode ?? Dictation.ProcessingMode.raw.rawValue
-        ) ?? .raw
-        return CompletedMeetingReadingConfiguration(
-            processingMode: mode,
+        CompletedMeetingReadingConfiguration(
             customWords: (try? customWordRepo?.fetchEnabled()) ?? []
         )
     }

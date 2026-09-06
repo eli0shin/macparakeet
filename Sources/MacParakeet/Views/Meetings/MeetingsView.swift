@@ -5,6 +5,7 @@ import MacParakeetViewModels
 
 struct MeetingsView: View {
     @Bindable var viewModel: MeetingsWorkspaceViewModel
+    var customWords: [CustomWord] = []
 
     var onRecordMeeting: () -> Void
     var onPauseToggleMeeting: (() -> Void)?
@@ -535,6 +536,7 @@ struct MeetingsView: View {
                 ForEach(Array(section.items.enumerated()), id: \.element.id) { idx, transcription in
                     MeetingRowCard(
                         transcription: transcription,
+                        customWords: customWords,
                         searchText: viewModel.recentMeetingsViewModel.searchText,
                         isSelected: viewModel.recentMeetingsViewModel.isTranscriptionSelected(transcription),
                         showsSelectionControls: viewModel.recentMeetingsViewModel.isBulkSelectionModeEnabled,

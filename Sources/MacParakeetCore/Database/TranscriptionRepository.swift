@@ -272,6 +272,7 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
         }
         sql += " ORDER BY \(Self.libraryOrderClause(for: sortOrder))"
 
+        let customWords = try enabledCustomWords(in: db)
         let cursor = try Transcription.fetchCursor(
             db,
             sql: sql,
@@ -280,7 +281,11 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
         var skipped = 0
         var items: [Transcription] = []
         while let transcription = try cursor.next() {
-            guard transcriptionMatchesLibrarySearch(transcription, normalizedQuery: normalizedQuery) else {
+            guard transcriptionMatchesLibrarySearch(
+                transcription,
+                normalizedQuery: normalizedQuery,
+                customWords: customWords
+            ) else {
                 continue
             }
             if skipped < offset {
@@ -425,6 +430,7 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
             guard !trimmed.isEmpty else { return [] }
 
             let normalizedQuery = UnicodeSearch.makeKey(trimmed)
+            let customWords = try Self.enabledCustomWords(in: db)
             let cursor =
                 try Transcription
                 .order(Transcription.Columns.createdAt.desc)
@@ -432,7 +438,11 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
 
             var results: [Transcription] = []
             while let transcription = try cursor.next() {
-                guard transcriptionMatchesLibrarySearch(transcription, normalizedQuery: normalizedQuery) else {
+                guard transcriptionMatchesLibrarySearch(
+                    transcription,
+                    normalizedQuery: normalizedQuery,
+                    customWords: customWords
+                ) else {
                     continue
                 }
 
@@ -727,6 +737,13 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
         return target.hasPrefix(root + "/")
     }
 
+    private static func enabledCustomWords(in db: Database) throws -> [CustomWord] {
+        try CustomWord
+            .filter(Column("isEnabled") == true)
+            .order(Column("word").collating(.localizedCaseInsensitiveCompare))
+            .fetchAll(db)
+    }
+
     private static func artifactFolderPath(forAudioPath filePath: String) -> String? {
         let trimmed = filePath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -766,12 +783,31 @@ private func escapedLikePattern(_ value: String) -> String {
 
 private func transcriptionMatchesLibrarySearch(
     _ transcription: Transcription,
-    normalizedQuery: String
+    normalizedQuery: String,
+    customWords: [CustomWord] = []
 ) -> Bool {
-    UnicodeSearch.contains(transcription.effectiveDisplayTitle, normalizedQuery: normalizedQuery)
+    let transcriptMatches: Bool
+    if transcription.sourceType == .meeting {
+        transcriptMatches = UnicodeSearch.contains(
+            MeetingTranscriptCleaner.preferredText(
+                for: transcription,
+                customWords: customWords
+            ),
+            normalizedQuery: normalizedQuery
+        )
+    } else {
+        transcriptMatches =
+            (transcription.rawTranscript.map {
+                UnicodeSearch.contains($0, normalizedQuery: normalizedQuery)
+            } ?? false)
+            || (transcription.cleanTranscript.map {
+                UnicodeSearch.contains($0, normalizedQuery: normalizedQuery)
+            } ?? false)
+    }
+
+    return UnicodeSearch.contains(transcription.effectiveDisplayTitle, normalizedQuery: normalizedQuery)
         || UnicodeSearch.contains(transcription.fileName, normalizedQuery: normalizedQuery)
         || (transcription.derivedTitle.map { UnicodeSearch.contains($0, normalizedQuery: normalizedQuery) } ?? false)
-        || (transcription.rawTranscript.map { UnicodeSearch.contains($0, normalizedQuery: normalizedQuery) } ?? false)
-        || (transcription.cleanTranscript.map { UnicodeSearch.contains($0, normalizedQuery: normalizedQuery) } ?? false)
+        || transcriptMatches
         || (transcription.channelName.map { UnicodeSearch.contains($0, normalizedQuery: normalizedQuery) } ?? false)
 }

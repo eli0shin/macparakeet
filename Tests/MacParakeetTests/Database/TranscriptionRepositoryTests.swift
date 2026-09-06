@@ -561,6 +561,30 @@ final class TranscriptionRepositoryTests: XCTestCase {
         XCTAssertEqual(transcriptResults.count, 1)
     }
 
+    func testSearchDerivesLegacyMeetingCleanupWithoutBackfill() throws {
+        let meeting = Transcription(
+            fileName: "Legacy Meeting",
+            rawTranscript: "uh aye pee eye evidence",
+            cleanTranscript: nil,
+            status: .completed,
+            sourceType: .meeting
+        )
+        try repo.save(meeting)
+        try CustomWordRepository(dbQueue: dbQueue).save(
+            CustomWord(word: "aye pee eye", replacement: "API")
+        )
+
+        XCTAssertEqual(try repo.search(query: "API", limit: nil).map(\.id), [meeting.id])
+        XCTAssertTrue(try repo.search(query: "uh", limit: nil).isEmpty)
+        XCTAssertEqual(
+            try repo.fetchLibraryPage(
+                query: TranscriptionLibraryQuery(searchText: "API", limit: 10)
+            ).items.map(\.id),
+            [meeting.id]
+        )
+        XCTAssertNil(try repo.fetch(id: meeting.id)?.cleanTranscript)
+    }
+
     // MARK: - Library Queries
 
     func testFetchLibraryPageExcludesProcessingButIncludesTerminalRowsByDefault() throws {

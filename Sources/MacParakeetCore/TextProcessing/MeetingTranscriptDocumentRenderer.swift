@@ -57,8 +57,8 @@ public extension MeetingTranscriptPresentationDocument {
 }
 
 /// The active presentation policy for completed-meeting Reading Turns.
-/// Meeting word timestamps already contain single-token vocabulary corrections,
-/// so only phrase rules are applied when the readable document is rebuilt.
+/// Completed meetings always use deterministic cleanup, independent of the
+/// dictation Raw/Clean preference.
 public struct CompletedMeetingReadingConfiguration: Sendable {
     public let customWords: [CustomWord]
     public let cleanup: MeetingTranscriptCleanup
@@ -67,19 +67,16 @@ public struct CompletedMeetingReadingConfiguration: Sendable {
         processingMode: Dictation.ProcessingMode,
         customWords: [CustomWord]
     ) {
-        self.customWords = customWords.filter {
-            $0.word.contains(where: { $0.isWhitespace })
-        }
-        cleanup = processingMode == .clean ? .cleaned : .verbatim
+        _ = processingMode
+        self.customWords = customWords
+        cleanup = .cleaned
     }
 
     public init(
         customWords: [CustomWord] = [],
         cleanup: MeetingTranscriptCleanup = .cleaned
     ) {
-        self.customWords = customWords.filter {
-            $0.word.contains(where: { $0.isWhitespace })
-        }
+        self.customWords = customWords
         self.cleanup = cleanup
     }
 }
@@ -110,12 +107,16 @@ public enum CompletedMeetingReadingDocument {
         else {
             return nil
         }
+        let rawTranscript = transcription.rawTranscript ?? transcription.cleanTranscript ?? ""
         return MeetingTranscriptPresentationBuilder.build(
-            transcriptText: transcription.rawTranscript ?? transcription.cleanTranscript ?? "",
+            transcriptText: rawTranscript,
             words: transcription.wordTimestamps,
             speakers: transcription.speakers,
             diarizationSegments: transcription.diarizationSegments,
-            customWords: transcription.hasWordTimestamps ? customWords : [],
+            customWords: MeetingTranscriptCleaner.applicableCustomWords(
+                customWords,
+                to: rawTranscript
+            ),
             cleanup: cleanup,
             formatting: transcription.meetingReadingTurnFormatting ?? []
         )

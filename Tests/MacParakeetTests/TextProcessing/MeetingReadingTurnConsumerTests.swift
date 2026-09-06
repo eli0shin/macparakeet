@@ -49,7 +49,7 @@ final class MeetingReadingTurnConsumerTests: XCTestCase {
         XCTAssertNil(document.navigationTarget(containingTimeMs: 2_000))
     }
 
-    func testRawPhraseVocabularyPolicyStaysIdenticalAcrossDirectArtifactBackgroundAIAndCLIExport() throws {
+    func testDictationRawModeStillUsesCleanMeetingPolicyAcrossConsumers() throws {
         var transcription = fixture()
         transcription.rawTranscript = "uh mac parakeet"
         transcription.cleanTranscript = "MacParakeet"
@@ -73,7 +73,8 @@ final class MeetingReadingTurnConsumerTests: XCTestCase {
             meetingReadingConfiguration: configuration
         )
 
-        XCTAssertTrue(expected.contains("uh MacParakeet"))
+        XCTAssertFalse(expected.localizedCaseInsensitiveContains("uh"))
+        XCTAssertTrue(expected.contains("MacParakeet"))
         XCTAssertEqual(
             TranscriptAIContextFormatter.format(
                 transcription: transcription,
@@ -96,6 +97,60 @@ final class MeetingReadingTurnConsumerTests: XCTestCase {
             cliExportService.formatForClipboard(transcription: transcription),
             expected
         )
+    }
+
+    func testLegacyPlainAIContextUsesCleanedFallbackWithoutBackfill() {
+        let transcription = Transcription(
+            fileName: "Legacy Meeting",
+            rawTranscript: "uh aye pee eye evidence",
+            cleanTranscript: nil,
+            status: .completed,
+            sourceType: .meeting
+        )
+        let configuration = CompletedMeetingReadingConfiguration(
+            customWords: [CustomWord(word: "aye pee eye", replacement: "API")]
+        )
+
+        XCTAssertEqual(
+            TranscriptAIContextFormatter.format(
+                transcription: transcription,
+                mode: .plainTranscript,
+                meetingReadingConfiguration: configuration
+            ),
+            "API evidence"
+        )
+        XCTAssertNil(transcription.cleanTranscript)
+    }
+
+    func testPersistedEmptyCleanTranscriptDoesNotFallBackToRawEvidence() {
+        let transcription = Transcription(
+            fileName: "Filler Meeting",
+            rawTranscript: "uh",
+            cleanTranscript: "",
+            status: .completed,
+            sourceType: .meeting
+        )
+
+        XCTAssertEqual(MeetingTranscriptCleaner.preferredText(for: transcription), "")
+    }
+
+    func testLegacyVocabularyCorrectedEvidenceIsNotCorrectedTwice() throws {
+        let transcription = Transcription(
+            fileName: "Legacy Meeting",
+            rawTranscript: "ACME Corporation shipped.",
+            wordTimestamps: [word("ACME Corporation", 0, 500, "microphone"), word("shipped.", 600, 900, "microphone")],
+            status: .completed,
+            sourceType: .meeting
+        )
+        let configuration = CompletedMeetingReadingConfiguration(
+            customWords: [CustomWord(word: "acme", replacement: "ACME Corporation")]
+        )
+
+        let document = try XCTUnwrap(
+            CompletedMeetingReadingDocument.build(from: transcription, configuration: configuration)
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["ACME Corporation shipped."])
     }
 
     func testValidatedReadingTurnFormattingFlowsThroughReadableConsumers() throws {
@@ -198,7 +253,7 @@ final class MeetingReadingTurnConsumerTests: XCTestCase {
             CompletedMeetingReadingDocument.build(from: untimed, cleanup: .verbatim)
         )
 
-        XCTAssertEqual(MeetingTranscriptDocumentRenderer.markdown(cleaned), "original words.")
+        XCTAssertEqual(MeetingTranscriptDocumentRenderer.markdown(cleaned), "Original words.")
         XCTAssertEqual(MeetingTranscriptDocumentRenderer.markdown(verbatim), "Uh, original words.")
     }
 

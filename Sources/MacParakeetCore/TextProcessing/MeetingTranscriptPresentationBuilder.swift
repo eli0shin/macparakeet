@@ -198,7 +198,6 @@ public enum MeetingTranscriptPresentationBuilder {
     private static let minimumOverlapEvidenceMs = 200
     private static let maximumParagraphSentenceCount = 3
     private static let maximumParagraphWordCount = 80
-    private static let alwaysSafeFillers: Set<String> = ["uh", "umm", "uhh"]
 
     public static func build(
         transcriptText: String,
@@ -1060,18 +1059,12 @@ public enum MeetingTranscriptPresentationBuilder {
         switch cleanup {
         case .cleaned:
             var retainedTokens: [String] = []
-            var lastRetainedEvidence: IndexedWord?
             for word in words {
                 let token = word.word.word
                 if isAlwaysSafeFiller(token) {
                     preservePunctuationSuffix(of: token, in: &retainedTokens)
-                } else if let lastRetainedEvidence,
-                    isObviousAdjacentRepetition(lastRetainedEvidence, word)
-                {
-                    preservePunctuationSuffix(of: token, in: &retainedTokens)
                 } else {
                     retainedTokens.append(token)
-                    lastRetainedEvidence = word
                 }
             }
             return cleanReadableText(
@@ -1148,18 +1141,7 @@ public enum MeetingTranscriptPresentationBuilder {
     }
 
     private static func isAlwaysSafeFiller(_ token: String) -> Bool {
-        guard let key = lexicalKey(token) else { return false }
-        return alwaysSafeFillers.contains(key)
-    }
-
-    private static func isObviousAdjacentRepetition(
-        _ previous: IndexedWord,
-        _ current: IndexedWord
-    ) -> Bool {
-        guard lexicalKey(previous.word.word) == lexicalKey(current.word.word),
-            lexicalKey(current.word.word) != nil
-        else { return false }
-        return current.word.startMs <= previous.word.endMs
+        DeterministicFillerPolicy.contains(token)
     }
 
     private static func lexicalKey(_ token: String) -> String? {
@@ -1170,6 +1152,14 @@ public enum MeetingTranscriptPresentationBuilder {
         return key.isEmpty ? nil : key
     }
 
+    static func cleanTranscriptText(_ text: String, customWords: [CustomWord]) -> String {
+        let tokens = text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        return cleanReadableText(
+            renderedText(from: removingFillersPreservingPunctuation(tokens)),
+            customWords: customWords
+        )
+    }
+
     private static func cleanReadableText(_ text: String, customWords: [CustomWord]) -> String {
         var result = CustomWordReplacer(words: customWords).apply(to: text)
         result = replacing(#"\s+"#, in: result, with: " ")
@@ -1178,7 +1168,9 @@ public enum MeetingTranscriptPresentationBuilder {
         result = replacing(#"([,;:])\1+"#, in: result, with: "$1")
         result = replacing(#"([!?])(?:\s*\1)+"#, in: result, with: "$1")
         result = replacing(#"(?<!\.)\.\.(?!\.)"#, in: result, with: ".")
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        return TextProcessingPipeline().capitalizeFirstLetter(
+            in: result.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
     }
 
     private static func replacing(_ pattern: String, in text: String, with template: String) -> String {

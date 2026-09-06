@@ -188,9 +188,6 @@ struct TranscriptResultView: View {
     @AppStorage(UserDefaultsAppRuntimePreferences.transcriptAIContextModeKey)
     private var transcriptAIContextModeRaw = TranscriptAIContextMode.richTranscript.rawValue
 
-    @AppStorage(UserDefaultsAppRuntimePreferences.processingModeKey)
-    private var processingModeRaw = Dictation.ProcessingMode.raw.rawValue
-
     @State private var backHovered = false
     @State private var headerExpanded = false
     @State private var speakerOverviewExpanded = true
@@ -398,11 +395,6 @@ struct TranscriptResultView: View {
             }
         }
         .onChange(of: transcriptText) {
-            rebuildSegmentCache()
-            reloadAIContext()
-            if findBarVisible { rebuildFindBlocks() }
-        }
-        .onChange(of: processingModeRaw) {
             rebuildSegmentCache()
             reloadAIContext()
             if findBarVisible { rebuildFindBlocks() }
@@ -1051,7 +1043,10 @@ struct TranscriptResultView: View {
     }
 
     private var transcriptText: String {
-        activeTranscription.cleanTranscript ?? activeTranscription.rawTranscript ?? ""
+        MeetingTranscriptCleaner.preferredText(
+            for: activeTranscription,
+            customWords: customWords
+        )
     }
 
     private var usesMeetingReadingSurface: Bool {
@@ -3572,15 +3567,13 @@ struct TranscriptResultView: View {
         }
     }
 
-    private var meetingTranscriptCleanup: MeetingTranscriptCleanup {
-        Dictation.ProcessingMode(rawValue: processingModeRaw) == .clean ? .cleaned : .verbatim
-    }
+    private var meetingTranscriptCleanup: MeetingTranscriptCleanup { .cleaned }
 
-    /// Finalization already applies single-token vocabulary to meeting words.
-    /// Phrase rules cannot span those tokens, so the Reading Turn presentation
-    /// applies only phrase rules and avoids applying token rules twice.
     private var readingTurnCustomWords: [CustomWord] {
-        customWords.filter { $0.word.contains(where: { $0.isWhitespace }) }
+        MeetingTranscriptCleaner.applicableCustomWords(
+            customWords,
+            to: activeTranscription.rawTranscript ?? ""
+        )
     }
 
     private func rebuildSegmentCache() {

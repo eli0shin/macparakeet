@@ -86,7 +86,8 @@ The v1 folder can contain these stable filenames:
   the app, readable exports, and AI context, including one start time per turn.
   Edited meetings use plain edited transcript text because word alignment is no
   longer valid. Untimed fallback text does not fabricate a speaker or time.
-- `transcript.json`: transcript view.
+- `transcript.json`: transcript view. It keeps separate raw and cleaned text;
+  its readable `transcript` projection prefers cleaned text.
 - `notes.md`: optional user notes view. Removed when notes are empty or nil.
 - `prompt-results.json`: JSON array of prompt-result records.
 - `prompt-results/`: refreshed directory of per-result Markdown files.
@@ -187,6 +188,13 @@ artifact paths.
 fields, durable `transcriptSegments`, `userNotes`, language/engine attribution,
 `sourceType`, `recoveredFromCrash`, `isTranscriptEdited`, and optional
 `startContext`, `calendarEventSnapshot`, and `meetingCaptureReport`.
+
+For newly finalized and explicitly re-transcribed meetings, `rawTranscript`
+and `wordTimestamps` preserve STT evidence while `cleanTranscript` stores the
+separate deterministic readable text. Existing meeting artifacts are not
+backfilled on read; a refreshed legacy artifact can still derive its readable
+Markdown projection without changing the database row. Evidence-focused JSON
+fields and subtitle cues remain raw and timed.
 
 `transcriptSegments` is an additive v1 field populated from the DB row when a
 meeting has durable segments. Each segment keeps `id`, `startMs`, `endMs`,

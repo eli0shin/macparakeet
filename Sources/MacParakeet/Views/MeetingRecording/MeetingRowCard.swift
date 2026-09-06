@@ -6,6 +6,7 @@ import SwiftUI
 /// (recovered dot, speaker count) appear only when they carry signal.
 struct MeetingRowCard<MenuContent: View>: View {
     let transcription: Transcription
+    var customWords: [CustomWord] = []
     var searchText: String = ""
     var isSelected: Bool = false
     var showsSelectionControls: Bool = false
@@ -313,9 +314,12 @@ struct MeetingRowCard<MenuContent: View>: View {
     }
 
     private var legacySnippet: String? {
-        guard let text = transcription.cleanTranscript ?? transcription.rawTranscript, !text.isEmpty else {
-            return nil
-        }
+        let preferredText = MeetingTranscriptCleaner.preferredText(
+            for: transcription,
+            customWords: customWords
+        )
+        guard !preferredText.isEmpty else { return nil }
+        let text = preferredText
         let cleaned =
             text
             .replacingOccurrences(of: "\n", with: " ")
