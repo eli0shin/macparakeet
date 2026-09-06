@@ -3,7 +3,8 @@ Assigned-To: macparakeet@019-restore-downloadable-development-builds
 Tags:
   - ready-for-agent
 Parent:
-Blocked-By: []
+Blocked-By:
+  - 021-make-packaged-development-app-launch
 ---
 
 ## What to build
