@@ -84,7 +84,7 @@ cd "$ROOT_DIR"
 VERSION="$SIGNED_ARTIFACT_VERSION" \
 BUILD_NUMBER="$SIGNED_ARTIFACT_BUILD_NUMBER" \
 BUILD_SOURCE="github-actions-signed-notarized-ci-test" \
-BUILD_SYSTEM=swiftpm \
+BUILD_SYSTEM=xcodebuild \
 REQUIRE_MEETING_ECHO_ASSETS=1 \
   bash scripts/dist/build_app_bundle.sh
 

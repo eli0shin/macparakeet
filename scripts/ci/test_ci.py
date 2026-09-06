@@ -76,6 +76,7 @@ class WorkflowTests(unittest.TestCase):
         fixture = self.release_job.split("      - name: Release Bundle Fixture Smoke\n", 1)[1]
         fixture = fixture.split("      - name:", 1)[0]
         self.assertIn("if: github.event_name == 'pull_request'", fixture)
+        self.assertIn('BUILD_SYSTEM: xcodebuild', fixture)
         self.assertIn('BUNDLE_YTDLP: "0"', fixture)
         self.assertIn('BUNDLE_NODE: "0"', fixture)
         self.assertIn("FFMPEG_PATH: /usr/bin/true", fixture)
@@ -154,6 +155,7 @@ class SignedArtifactScriptTests(unittest.TestCase):
         self.verify = Path("scripts/ci/verify_signed_dmg.sh").read_text()
         self.sign = Path("scripts/dist/sign_notarize.sh").read_text()
         self.privacy_verify = Path("scripts/dist/verify_app_privacy_surface.sh").read_text()
+        self.downloadable_verify = Path("scripts/ci/verify_downloadable_app.sh").read_text()
 
     def test_credentials_use_ephemeral_keychain_with_failure_cleanup(self):
         self.assertIn("trap cleanup EXIT INT TERM", self.publish)
@@ -207,6 +209,7 @@ class SignedArtifactScriptTests(unittest.TestCase):
         self.assertIn("YTDLP_RUNTIME_ENTITLEMENTS", self.sign)
         self.assertIn("verify_app_privacy_surface.sh", self.sign)
         self.assertIn("verify_meeting_echo_assets.sh", self.sign)
+        self.assertIn("verify_packaged_app_launch.sh", self.downloadable_verify)
 
     def test_landing_dmg_verification_covers_gatekeeper_stapling_and_helpers(self):
         for command in [
@@ -226,10 +229,12 @@ class DevelopmentArtifactScriptTests(unittest.TestCase):
     def setUp(self):
         self.publish = Path("scripts/ci/publish_development_artifact.sh").read_text()
         self.verify = Path("scripts/ci/verify_development_dmg.sh").read_text()
+        self.downloadable_verify = Path("scripts/ci/verify_downloadable_app.sh").read_text()
 
     def test_build_uses_complete_runtime_defaults_without_credentials(self):
         self.assertIn("scripts/dist/build_app_bundle.sh", self.publish)
         self.assertIn("BUILD_SOURCE=github-actions-owner-development", self.publish)
+        self.assertIn("BUILD_SYSTEM=xcodebuild", self.publish)
         self.assertNotIn("BUNDLE_YTDLP=0", self.publish)
         self.assertNotIn("BUNDLE_NODE=0", self.publish)
         self.assertNotIn("FFMPEG_PATH", self.publish)
@@ -256,21 +261,54 @@ class DevelopmentArtifactScriptTests(unittest.TestCase):
         ]:
             with self.subTest(expected=expected):
                 self.assertIn(expected, self.verify)
+        self.assertIn("verify_packaged_app_launch.sh", self.downloadable_verify)
+
+
+class BundleAssemblyTests(unittest.TestCase):
+    def test_packaged_apps_use_xcode_accessors_and_resource_layout(self):
+        build = Path("scripts/dist/build_app_bundle.sh").read_text()
+        signed_publish = Path("scripts/ci/publish_signed_artifact.sh").read_text()
+        self.assertIn('BUILD_SYSTEM" != "xcodebuild"', build)
+        self.assertIn("command-line resource accessors with checkout-path fallbacks", build)
+        self.assertIn('app_resource_bundle="$product_dir/MacParakeet_MacParakeet.bundle"', build)
+        self.assertIn('rm -rf "$RESOURCES_DIR/$name"', build)
+        self.assertIn('cp -R "$bundle" "$RESOURCES_DIR/"', build)
+        self.assertIn("BUILD_SYSTEM=xcodebuild", signed_publish)
 
 
 class DownloadableAppVerificationTests(unittest.TestCase):
     def make_app(self, root, ffmpeg_output="ffmpeg version fixture", include_ytdlp=True,
-                 include_node=True):
-        contents = Path(root) / "MacParakeet.app" / "Contents"
+                 include_node=True, include_app_resource_bundle=True, swiftpm_accessor=False,
+                 checkout_bundle_fallback=False):
+        app = Path(root) / "MacParakeet.app"
+        contents = app / "Contents"
         resources = contents / "Resources"
         resources.mkdir(parents=True)
+        if include_app_resource_bundle:
+            (resources / "MacParakeet_MacParakeet.bundle").mkdir()
         (contents / "Frameworks" / "Sparkle.framework").mkdir(parents=True)
         macos = contents / "MacOS"
         macos.mkdir()
-        for name, output in {"MacParakeet": "app", "macparakeet-cli": "macparakeet-cli 3.0.0"}.items():
-            executable = macos / name
-            executable.write_text(f"#!/bin/sh\nprintf '%s\\n' '{output}'\n")
-            executable.chmod(0o755)
+        app_executable = macos / "MacParakeet"
+        resource_location = (
+            "$app_root/MacParakeet_MacParakeet.bundle" if swiftpm_accessor
+            else "$app_root/Contents/Resources/MacParakeet_MacParakeet.bundle"
+        )
+        app_executable.write_text(
+            "#!/bin/sh\n"
+            "app_root=$(cd \"$(dirname \"$0\")/../..\" && pwd)\n"
+            f"if [ ! -d \"{resource_location}\" ]; then\n"
+            "  echo 'MacParakeet/resource_bundle_accessor.swift:12: Fatal error: could not load resource bundle' >&2\n"
+            "  exit 132\n"
+            "fi\n"
+            "while :; do sleep 1; done\n"
+            + ("# /tmp/repo/.build/release/MacParakeet_MacParakeet.bundle\n"
+               if checkout_bundle_fallback else "")
+        )
+        app_executable.chmod(0o755)
+        cli = macos / "macparakeet-cli"
+        cli.write_text("#!/bin/sh\nprintf '%s\\n' 'macparakeet-cli 3.0.0'\n")
+        cli.chmod(0o755)
 
         helpers = {"ffmpeg": ffmpeg_output}
         if include_ytdlp:
@@ -283,12 +321,21 @@ class DownloadableAppVerificationTests(unittest.TestCase):
             helper.chmod(0o755)
         return resources.parent.parent
 
-    def verify(self, app):
+    def run_script(self, script, app):
+        environment = os.environ.copy()
+        environment["MACPARAKEET_PACKAGED_LAUNCH_SECONDS"] = "0.2"
         return subprocess.run(
-            ["bash", "scripts/ci/verify_downloadable_app.sh", str(app)],
+            ["bash", script, str(app)],
             text=True,
             capture_output=True,
+            env=environment,
         )
+
+    def verify(self, app):
+        return self.run_script("scripts/ci/verify_downloadable_app.sh", app)
+
+    def launch(self, app):
+        return self.run_script("scripts/ci/verify_packaged_app_launch.sh", app)
 
     def test_accepts_required_helpers_and_executes_version_smokes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -298,6 +345,27 @@ class DownloadableAppVerificationTests(unittest.TestCase):
         self.assertIn("yt-dlp: 2026.01.01", result.stdout)
         self.assertIn("CLI: macparakeet-cli 3.0.0", result.stdout)
         self.assertIn("node: v24.13.1", result.stdout)
+
+    def test_packaged_launch_smoke_catches_prefixed_resource_bundle_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(directory, swiftpm_accessor=True)
+            result = self.launch(app)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("SwiftPM resource bundle could not load", result.stderr)
+        self.assertIn("resource_bundle_accessor.swift:12", result.stderr)
+
+    def test_verifier_requires_resource_bundle_at_bundle_resource_url(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.verify(self.make_app(directory, include_app_resource_bundle=False))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Bundle.main.resourceURL", result.stderr)
+
+    def test_verifier_rejects_checkout_resource_fallbacks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(directory, checkout_bundle_fallback=True)
+            result = self.verify(app)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("fallback into a build checkout", result.stderr)
 
     def test_rejects_missing_runtime_helpers(self):
         for helper in ["yt-dlp", "node"]:

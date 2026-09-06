@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@021-make-packaged-development-app-launch
 Tags:
   - ready-for-agent
 Parent: 019-restore-downloadable-development-builds

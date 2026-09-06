@@ -3,6 +3,11 @@
 > Status: **ACTIVE** - Build, sign, notarize, and auto-update workflow
 
 This repo is SwiftPM-based, so we assemble a `.app` bundle manually for Developer ID distribution.
+The packaged app product must be built through Xcode. Plain `swift build`
+generates command-line resource accessors that check the app root and then an
+absolute checkout path. The Xcode package integration generates app-aware
+accessors that check `Contents/Resources`, where macOS code signing can seal the
+resource bundles. The bundled CLI continues to use `swift build`.
 
 ## 1) Build the app bundle
 
@@ -15,7 +20,9 @@ scripts/dist/build_app_bundle.sh
 This creates `dist/MacParakeet.app` and bundles:
 - `Assets/AppIcon.icns` into `Contents/Resources/AppIcon.icns` (app icon for Dock, Finder, DMG)
 - `macparakeet-cli` into `Contents/MacOS/macparakeet-cli`
-- SwiftPM resource bundles into `Contents/Resources/`
+- SwiftPM-generated `.bundle` directories into `Contents/Resources`, which is
+  `Bundle.main.resourceURL` and is the first app location used by Xcode's
+  generated package-resource accessors
 - Standalone helper binaries (FFmpeg, yt-dlp helper seed, and optional Node runtime) into `Contents/Resources/` when configured by the build scripts
 - No Python runtime or `uv` bootstrap is bundled (FluidAudio/CoreML STT is native Swift)
 
@@ -113,11 +120,13 @@ into `Info.plist` as:
 Successful `main` pushes and manual CI runs publish the three-day artifact
 `MacParakeet-owner-development-build`. It contains exactly one Finder-mountable
 `MacParakeet-owner-development-build.dmg`. The DMG contains the complete app,
-including FFmpeg, yt-dlp, Node, the bundled CLI, Sparkle framework, and an
-Applications shortcut. CI verifies helper execution, relative bundle symlinks,
-and the app plus nested code with `codesign --verify --deep --strict` before it
-uploads the DMG. This path does not access release certificates or notary
-credentials.
+including FFmpeg, yt-dlp, Node, the bundled CLI, Sparkle framework, SwiftPM
+resource bundles, and an Applications shortcut. CI verifies helper execution,
+relative bundle symlinks, and the app plus nested code with
+`codesign --verify --deep --strict`. It also copies the packaged app outside the
+checkout, removes quarantine metadata from that copy, launches its bundled
+executable, and requires it to remain alive past startup before upload. This
+path does not access release certificates or notary credentials.
 
 This is an **owner-testing development build**. Its signatures are ad-hoc and
 provide bundle structure only. It is not Developer ID signed, Apple-notarized,

@@ -22,7 +22,7 @@ set -euo pipefail
 #   MIN_MACOS_VERSION   (default: 14.2)
 #   UNIVERSAL           (default: 0) build universal (arm64+x86_64) if 1
 #   SKIP_BUILD          (default: 0) reuse existing Release binary if 1
-#   BUILD_SYSTEM        (default: xcodebuild) 'xcodebuild' or 'swiftpm'
+#   BUILD_SYSTEM        (default: xcodebuild) must be 'xcodebuild' for packaged apps
 #   XCODE_DERIVED_DATA  (default: .build/xcode-dist) derived data path for xcodebuild
 #   FFMPEG_PATH         (default: auto-download static build) source ffmpeg binary to bundle
 #   FFMPEG_VERSION      (default: release) 'release' or 'snapshot' from ffmpeg.martin-riedl.de
@@ -76,29 +76,6 @@ if [[ "$VERSION" == "0.0.0" ]]; then
   echo "Warning: VERSION not set; building a local/dev bundle with CFBundleShortVersionString=0.0.0." >&2
   echo "Set VERSION=X.Y.Z for release builds so Sparkle and release metadata are correct." >&2
 fi
-
-build_swiftpm() {
-  if [[ "$SKIP_BUILD" == "1" ]]; then
-    echo "[1/4] Skipping build (SKIP_BUILD=1)…"
-    return 0
-  fi
-
-  if [[ "$UNIVERSAL" == "1" ]]; then
-    echo "[1/4] Building SwiftPM product (universal Release)…"
-  else
-    echo "[1/4] Building SwiftPM product (Release)…"
-  fi
-
-  pushd "$ROOT_DIR" >/dev/null
-  if [[ "$UNIVERSAL" == "1" ]]; then
-    swift build -c release --arch arm64 --arch x86_64 --product MacParakeet
-    swift build -c release --arch arm64 --arch x86_64 --product macparakeet-cli
-  else
-    swift build -c release --product MacParakeet
-    swift build -c release --product macparakeet-cli
-  fi
-  popd >/dev/null
-}
 
 build_cli_swiftpm() {
   if [[ "$SKIP_BUILD" == "1" ]]; then
@@ -197,15 +174,22 @@ build_xcodebuild() {
 
 copy_resource_bundles() {
   local product_dir="$1"
-  # Copy SwiftPM-generated resource bundles alongside the executable. This is required for some dependencies.
-  if [[ -d "$product_dir" ]]; then
-    while IFS= read -r -d '' bundle; do
-      local name
-      name="$(basename "$bundle")"
-      rm -rf "$RESOURCES_DIR/$name"
-      cp -R "$bundle" "$RESOURCES_DIR/"
-    done < <(find "$product_dir" -maxdepth 1 -type d -name '*.bundle' -print0 2>/dev/null || true)
+  local app_resource_bundle="$product_dir/MacParakeet_MacParakeet.bundle"
+
+  # Xcode's SwiftPM accessor checks Bundle.main.resourceURL first for apps.
+  # Keep all generated package bundles in Contents/Resources so they are both
+  # discoverable at runtime and sealed by normal macOS code signing.
+  if [[ ! -d "$app_resource_bundle" ]]; then
+    echo "Failed to locate required SwiftPM app resource bundle at: $app_resource_bundle" >&2
+    exit 1
   fi
+
+  while IFS= read -r -d '' bundle; do
+    local name
+    name="$(basename "$bundle")"
+    rm -rf "$RESOURCES_DIR/$name"
+    cp -R "$bundle" "$RESOURCES_DIR/"
+  done < <(find "$product_dir" -maxdepth 1 -type d -name '*.bundle' -print0)
 }
 
 swiftpm_release_bin_dir() {
@@ -234,23 +218,14 @@ copy_cli_binary() {
   echo "Bundled CLI: $MACOS_DIR/macparakeet-cli"
 }
 
-if [[ "$BUILD_SYSTEM" == "swiftpm" ]]; then
-  build_swiftpm
-  # Locate the release binary produced by SwiftPM.
-  BIN_DIR="$(swiftpm_release_bin_dir MacParakeet)"
-  BIN_PATH="$BIN_DIR/MacParakeet"
-  if [[ ! -f "$BIN_PATH" ]]; then
-    echo "Failed to locate Release binary at: $BIN_PATH" >&2
-    exit 1
-  fi
-
-  echo "[2/4] Assembling app bundle…"
-  cp "$BIN_PATH" "$MACOS_DIR/$APP_NAME"
-  chmod +x "$MACOS_DIR/$APP_NAME"
-else
-  build_xcodebuild
-  echo "[2/4] Assembling app bundle…"
+if [[ "$BUILD_SYSTEM" != "xcodebuild" ]]; then
+  echo "Error: packaged macOS apps require BUILD_SYSTEM=xcodebuild." >&2
+  echo "Plain SwiftPM generates command-line resource accessors with checkout-path fallbacks." >&2
+  exit 1
 fi
+
+build_xcodebuild
+echo "[2/4] Assembling app bundle…"
 
 copy_cli_binary
 
