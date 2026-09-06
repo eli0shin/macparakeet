@@ -22,6 +22,58 @@ struct TriangleShape: Shape {
     }
 }
 
+// MARK: - Merkaba Shape
+
+/// Static star tetrahedron used as a decorative background.
+struct MerkabaShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) * 0.42
+
+        for index in 0..<3 {
+            let angle = CGFloat(index) * 2 * .pi / 3 - .pi / 2
+            let point = CGPoint(
+                x: center.x + radius * cos(angle),
+                y: center.y + radius * sin(angle)
+            )
+            if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        path.closeSubpath()
+
+        for index in 0..<3 {
+            let angle = CGFloat(index) * 2 * .pi / 3 + .pi / 2
+            let point = CGPoint(
+                x: center.x + radius * cos(angle),
+                y: center.y + radius * sin(angle)
+            )
+            if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        path.closeSubpath()
+
+        let innerRadius = radius * 0.5
+        for index in 0..<6 {
+            let angle = CGFloat(index) * .pi / 3
+            let point = CGPoint(
+                x: center.x + innerRadius * cos(angle),
+                y: center.y + innerRadius * sin(angle)
+            )
+            if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        path.closeSubpath()
+
+        path.addEllipse(
+            in: CGRect(
+                x: center.x - radius,
+                y: center.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            )
+        )
+        return path
+    }
+}
+
 // MARK: - Spinner Ring (Compact Merkaba)
 
 /// Merkaba-inspired spinner — two counter-rotating triangles with glowing vertices

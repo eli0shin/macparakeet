@@ -5,6 +5,14 @@ import MacParakeetViewModels
 
 @MainActor
 final class MainWindowStateTests: XCTestCase {
+    func testLegacyDiscoverRawValueIsRejectedAndStartupDefaultsToTranscribe() {
+        XCTAssertNil(SidebarItem(rawValue: "Discover"))
+
+        let state = MainWindowState()
+
+        XCTAssertEqual(state.selectedItem, .transcribe)
+    }
+
     func testNavigateToSettingsSelectsSettingsAndRecordsRequestedTab() {
         let state = MainWindowState()
 
@@ -57,12 +65,13 @@ final class MainWindowStateTests: XCTestCase {
         XCTAssertEqual(state.selectedItem, .library)
     }
 
-    func testNavigateCanSelectMeetingsWorkspace() {
+    func testEveryRemainingSidebarDestinationCanBeSelected() {
         let state = MainWindowState()
 
-        state.navigate(to: .meetings)
-
-        XCTAssertEqual(state.selectedItem, .meetings)
+        for item in SidebarItem.allCases {
+            state.navigate(to: item)
+            XCTAssertEqual(state.selectedItem, item)
+        }
     }
 
     func testPrimarySidebarOrderRespectsMeetingFeatureFlag() {
@@ -72,6 +81,15 @@ final class MainWindowStateTests: XCTestCase {
         }
 
         XCTAssertEqual(SidebarItem.primaryItems, expected)
+    }
+
+    func testConfigurationSidebarOrderRespectsTransformsFeatureFlag() {
+        var expected: [SidebarItem] = [.vocabulary, .feedback, .settings]
+        if AppFeatures.transformsEnabled {
+            expected.insert(.transforms, at: 0)
+        }
+
+        XCTAssertEqual(SidebarItem.configItems, expected)
     }
 
     func testStartNewTranscriptionReturnsToTranscribeAndHidesProgressDetail() {

@@ -250,7 +250,6 @@ public enum TelemetryCopySource: String, Sendable, Equatable {
     case transcription
     case history
     case meeting
-    case discover
 }
 
 public enum TelemetryFormatterSource: String, Sendable, Equatable {
