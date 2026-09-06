@@ -45,7 +45,16 @@ struct FlowLayout: Layout {
         var currentRowWidth: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let idealSize = subview.sizeThatFits(.unspecified)
+            let size: CGSize
+            if maxWidth.isFinite, idealSize.width > maxWidth {
+                let constrained = subview.sizeThatFits(
+                    ProposedViewSize(width: max(0, maxWidth), height: nil)
+                )
+                size = CGSize(width: min(constrained.width, maxWidth), height: constrained.height)
+            } else {
+                size = idealSize
+            }
             let spaceNeeded = currentRowWidth > 0 ? size.width + spacing : size.width
 
             if currentRowWidth + spaceNeeded > maxWidth && !rows[rows.count - 1].isEmpty {

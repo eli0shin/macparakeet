@@ -32,7 +32,7 @@ final class MeetingReadingTurnIdentityTests: XCTestCase {
         XCTAssertEqual(readingTurnScrollTarget(for: 2_500, in: turns), turns[2].scrollID)
     }
 
-    func testOverlapGroupingPreservesReadingKeyboardAndVoiceOverOrder() {
+    func testBorderlessDisplayKeepsOverlapEvidenceInReadingOrder() {
         let anchor = ReadingTurnIdentity(
             source: .microphone,
             speakerId: "microphone",
@@ -59,17 +59,24 @@ final class MeetingReadingTurnIdentityTests: XCTestCase {
             turn(speaker: "system:S1", source: .system, firstWord: 5, startMs: 2_000),
         ])
 
-        let groups = identifiedReadingTurnGroups(turns)
+        XCTAssertEqual(
+            turns.map(\.turn.id.firstWordIndex),
+            [0, 3, 99, 4, 5],
+            "Removing overlap chrome must not regroup or reorder Reading Turns"
+        )
+        XCTAssertNil(turns[0].turn.overlap)
+        XCTAssertEqual(turns[1].turn.overlap, overlap)
+        XCTAssertNil(turns[2].turn.overlap)
+        XCTAssertEqual(turns[3].turn.overlap, overlap)
+    }
 
-        XCTAssertEqual(
-            groups.map { $0.turns.map(\.turn.id.firstWordIndex) },
-            [[0], [3, 4], [99], [5]]
-        )
-        XCTAssertEqual(groups[1].overlap, overlap)
-        XCTAssertEqual(
-            groups.flatMap(\.turns).map(\.turn.id.firstWordIndex),
-            [0, 3, 4, 99, 5]
-        )
+    func testSelectedCompactBylineLayoutUsesMateriallyReducedSpacing() {
+        XCTAssertEqual(MeetingReadingTurnLayout.interTurnSpacing, 2)
+        XCTAssertEqual(MeetingReadingTurnLayout.horizontalPadding, 8)
+        XCTAssertEqual(MeetingReadingTurnLayout.verticalPadding, 7)
+        XCTAssertEqual(MeetingReadingTurnLayout.speakerMarkerSize, 7)
+        XCTAssertEqual(MeetingReadingTurnLayout.playbackFocusWidth, 2)
+        XCTAssertLessThan(MeetingReadingTurnLayout.verticalPadding, DesignSystem.Spacing.lg)
     }
 
     func testUntimedFallbackHasAViewIdentityButNoPlaybackTarget() {
