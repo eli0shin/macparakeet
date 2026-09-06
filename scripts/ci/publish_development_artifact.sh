@@ -24,7 +24,7 @@ command -v hdiutil >/dev/null || fail "hdiutil is required."
 cd "$ROOT_DIR"
 rm -f "$DMG_PATH"
 
-BUILD_SYSTEM=swiftpm \
+BUILD_SYSTEM=xcodebuild \
 BUILD_SOURCE=github-actions-owner-development \
 VERSION=0.0.0 \
 BUILD_NUMBER="$(date -u +%Y%m%d%H%M%S)" \

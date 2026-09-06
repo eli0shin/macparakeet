@@ -13,7 +13,12 @@ CLI="$APP_PATH/Contents/MacOS/macparakeet-cli"
 SPARKLE="$APP_PATH/Contents/Frameworks/Sparkle.framework"
 FFMPEG="$RESOURCES/ffmpeg"
 YTDLP="$RESOURCES/yt-dlp"
+APP_RESOURCE_BUNDLE="$RESOURCES/MacParakeet_MacParakeet.bundle"
 
+[[ -d "$APP_RESOURCE_BUNDLE" ]] || {
+  echo "Error: SwiftPM app resource bundle is missing from Bundle.main.resourceURL: $APP_RESOURCE_BUNDLE" >&2
+  exit 1
+}
 [[ -x "$APP_EXECUTABLE" ]] || {
   echo "Error: bundled app executable is missing or not executable: $APP_EXECUTABLE" >&2
   exit 1
@@ -22,6 +27,11 @@ YTDLP="$RESOURCES/yt-dlp"
   echo "Error: bundled CLI is missing or not executable: $CLI" >&2
   exit 1
 }
+BUILD_BUNDLE_FALLBACKS="$(strings "$APP_EXECUTABLE" | grep -E '/\.build/[^[:space:]]*\.bundle' || true)"
+if [[ -n "$BUILD_BUNDLE_FALLBACKS" ]]; then
+  echo "Error: packaged app contains a SwiftPM resource fallback into a build checkout" >&2
+  exit 1
+fi
 [[ -d "$SPARKLE" ]] || {
   echo "Error: Sparkle.framework is missing: $SPARKLE" >&2
   exit 1
@@ -84,3 +94,5 @@ printf 'CLI: %s\n' "$(head -n 1 <<<"$CLI_VERSION_OUTPUT")"
 for helper in "${NODE_HELPERS[@]}"; do
   printf '%s: %s\n' "$(basename "$helper")" "$("$helper" --version)"
 done
+
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/verify_packaged_app_launch.sh" "$APP_PATH"
