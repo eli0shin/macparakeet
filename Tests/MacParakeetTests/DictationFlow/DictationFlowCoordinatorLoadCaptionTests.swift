@@ -72,15 +72,26 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
     }
 
     func testFirstInstallShowsPreparingThenClearsOnSuccess() async throws {
-        let harness = try makeHarness(isReady: false, transcribeDelayMs: 90, hasCompletedFirstDictation: false)
+        let transcribeGate = AsyncGate()
+        let harness = try makeHarness(
+            isReady: false,
+            transcribeDelayMs: 0,
+            hasCompletedFirstDictation: false,
+            transcribeGate: transcribeGate
+        )
 
         try await harness.startAndStop()
-        let shown = await harness.captionSignal.wait(for: .preparing)
+        let shown = await harness.captionSignal.wait(for: .preparing, timeout: .seconds(3))
         XCTAssertTrue(shown)
-        let cleared = await waitUntil { harness.coordinator.processingLoadCaptionForTesting == nil }
+        XCTAssertTrue(harness.coordinator.processingLoadCaptionForTesting?.isPreparingForTest == true)
+
+        await transcribeGate.release()
+        let cleared = await waitUntil(timeoutMs: 3_000) {
+            harness.coordinator.processingLoadCaptionForTesting == nil
+        }
         XCTAssertTrue(cleared)
 
-        let recordedSuccess = await waitUntil {
+        let recordedSuccess = await waitUntil(timeoutMs: 3_000) {
             harness.telemetry.snapshot().containsCaptionDuration(outcome: "success")
         }
         XCTAssertTrue(recordedSuccess)
@@ -717,6 +728,15 @@ private extension Array where Element == TelemetryEventSpec {
                 return false
             }
             return durationMs >= 0 && value == outcome
+        }
+    }
+}
+
+private extension DictationOverlayViewModel.ProcessingLoadCaption {
+    var isPreparingForTest: Bool {
+        switch self {
+        case .preparing, .preparingExtended: true
+        case .optimizing, .optimizingExtended, .failed: false
         }
     }
 }
