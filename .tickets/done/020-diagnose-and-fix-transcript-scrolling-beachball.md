@@ -16,12 +16,16 @@ Preserve Reading Turn formatting, speaker labels, selection, search, editing, co
 
 ## Acceptance criteria
 
-- [ ] One documented, agent-runnable command exercises the actual long-transcript scrolling/rendering seam and fails on the pre-fix stall threshold.
-- [ ] Baseline measurements and a profiler trace identify the dominant main-thread work before the fix; the diagnosis records ranked hypotheses and evidence.
-- [ ] The smallest load-bearing reproduction is converted to a public-safe regression or performance test at the correct seam.
-- [ ] The fix removes the beachball and materially improves measured scroll/frame latency on the original representative meeting.
-- [ ] Reading Turns, speaker labels, search, selection, editing, copy/export, and scroll-position behavior remain correct.
-- [ ] No private meeting content, identifiers, paths, traces, or diagnostics enter Git.
-- [ ] All temporary instrumentation and throwaway artifacts are removed before review.
-- [ ] Focused tests and applicable CI checks pass.
-- [ ] The PR documents before/after measurements, profiler evidence, the confirmed cause, and remaining limits.
+- [x] One documented, agent-runnable command exercises the actual long-transcript scrolling/rendering seam and fails on the pre-fix stall threshold.
+- [x] Baseline measurements and a profiler trace identify the dominant main-thread work before the fix; the diagnosis records ranked hypotheses and evidence.
+- [x] The smallest load-bearing reproduction is converted to a public-safe regression or performance test at the correct seam.
+- [x] The fix removes the beachball and materially improves measured scroll/frame latency on the original representative meeting.
+- [x] Reading Turns, speaker labels, search, selection, editing, copy/export, and scroll-position behavior remain correct.
+- [x] No private meeting content, identifiers, paths, traces, or diagnostics enter Git.
+- [x] All temporary instrumentation and throwaway artifacts are removed before review.
+- [x] Focused tests and applicable CI checks pass.
+- [x] The PR documents before/after measurements, profiler evidence, the confirmed cause, and remaining limits.
+
+## Resolution
+
+The beachball was a SwiftUI lazy-layout feedback loop caused by variable-height selectable Reading Turn cards. Timed transcripts now use stable eager stack layout at every row count. A public-safe 401-row integration locks scrolling bounds, and `scripts/dev/check_transcript_scrolling_performance.sh` enforces an 8 ms gate: the legacy path failed near 10 ms while the fixed path passed near 4 ms. Private traces and meeting data remained local. Reviewed and merged in PR #20 at commit `05a118ed`.
