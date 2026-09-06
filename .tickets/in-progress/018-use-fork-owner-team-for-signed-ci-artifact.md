@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@018-use-fork-owner-team-for-signed-ci-artifact
 Tags:
   - ready-for-agent
 Parent: 017-publish-signed-notarized-ci-app-artifact

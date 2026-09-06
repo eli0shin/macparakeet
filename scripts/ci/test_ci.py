@@ -130,6 +130,7 @@ class SignedArtifactScriptTests(unittest.TestCase):
         self.publish = Path("scripts/ci/publish_signed_artifact.sh").read_text()
         self.verify = Path("scripts/ci/verify_signed_dmg.sh").read_text()
         self.sign = Path("scripts/dist/sign_notarize.sh").read_text()
+        self.privacy_verify = Path("scripts/dist/verify_app_privacy_surface.sh").read_text()
 
     def test_credentials_use_ephemeral_keychain_with_failure_cleanup(self):
         self.assertIn("trap cleanup EXIT INT TERM", self.publish)
@@ -152,13 +153,28 @@ class SignedArtifactScriptTests(unittest.TestCase):
             with self.subTest(variable=name):
                 self.assertIn(name, self.publish)
         self.assertIn("explicit non-sentinel X.Y.Z", self.publish)
-        self.assertIn("Developer ID Application:", self.publish)
-        self.assertIn("FYAF2ZD7RM", self.publish)
+        self.assertIn('[[ "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]', self.publish)
+        self.assertIn('"Developer ID Application: "*" ($APPLE_TEAM_ID)"', self.publish)
+        self.assertIn('grep -Fq "\\\"$DEVELOPER_ID_APPLICATION_IDENTITY\\\""', self.publish)
         self.assertIn('rm -f "$TRUSTED_DMG"', self.publish)
         self.assertLess(
             self.publish.index("verify_signed_dmg.sh"),
             self.publish.index('mv dist/MacParakeet.dmg "$TRUSTED_DMG"'),
         )
+
+    def test_signing_and_verification_paths_do_not_hard_code_upstream_identity(self):
+        signing_paths = "\n".join([
+            self.publish, self.verify, self.sign, self.privacy_verify,
+        ])
+        self.assertNotIn("FYAF2ZD7RM", signing_paths)
+        self.assertNotIn("Daniel Moon", signing_paths)
+
+    def test_configured_identity_controls_notary_signing_and_verification(self):
+        self.assertIn('--team-id "$APPLE_TEAM_ID"', self.publish)
+        self.assertIn('SIGN_IDENTITY="$DEVELOPER_ID_APPLICATION_IDENTITY"', self.publish)
+        self.assertIn('EXPECTED_TEAM_ID="$APPLE_TEAM_ID"', self.publish)
+        self.assertIn('EXPECTED_AUTHORITY="$DEVELOPER_ID_APPLICATION_IDENTITY"', self.publish)
+        self.assertNotIn('echo "$identity_output"', self.publish)
 
     def test_build_reuses_release_gates_and_signed_helper_entitlements(self):
         self.assertIn("REQUIRE_MEETING_ECHO_ASSETS=1", self.publish)
@@ -174,7 +190,10 @@ class SignedArtifactScriptTests(unittest.TestCase):
             "hdiutil verify", "codesign --verify --strict", "xcrun stapler validate",
             "spctl --assess --type open", "codesign --verify --deep --strict",
             "spctl --assess --type execute", "TeamIdentifier=$EXPECTED_TEAM_ID",
-            "verify_downloadable_app.sh",
+            "Authority=$EXPECTED_AUTHORITY", "verify_signature_identity",
+            'find "$APP_PATH/Contents/Frameworks"',
+            'find "$APP_PATH/Contents/Resources"',
+            'find "$APP_PATH/Contents/MacOS"', "verify_downloadable_app.sh",
         ]:
             with self.subTest(command=command):
                 self.assertIn(command, self.verify)
