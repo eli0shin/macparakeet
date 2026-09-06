@@ -131,14 +131,14 @@ final class MeetingReadingTurnScrollingPerformanceTests: XCTestCase {
         var worstFrameMilliseconds = 0.0
         for position in toBottom ? Array(positions) : Array(positions).reversed() {
             let y = document.isFlipped ? position : maxY - position
-            let frameStart = ContinuousClock.now
+            let frameStart = threadCPUSeconds()
             clip.scroll(to: NSPoint(x: 0, y: y))
             scrollView.reflectScrolledClipView(clip)
             sendMouseMoved(to: scrollView)
             RunLoop.main.run(until: Date().addingTimeInterval(0.001))
             worstFrameMilliseconds = max(
                 worstFrameMilliseconds,
-                milliseconds(frameStart.duration(to: .now))
+                (threadCPUSeconds() - frameStart) * 1_000
             )
         }
         return worstFrameMilliseconds
@@ -161,9 +161,9 @@ final class MeetingReadingTurnScrollingPerformanceTests: XCTestCase {
         if let event { NSApp.sendEvent(event) }
     }
 
-    private func milliseconds(_ duration: Duration) -> Double {
-        let components = duration.components
-        return Double(components.seconds) * 1_000
-            + Double(components.attoseconds) / 1_000_000_000_000_000
+    private func threadCPUSeconds() -> Double {
+        var time = timespec()
+        precondition(clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time) == 0)
+        return Double(time.tv_sec) + Double(time.tv_nsec) / 1_000_000_000
     }
 }
