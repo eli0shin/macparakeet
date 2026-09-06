@@ -37,17 +37,14 @@ Two categories:
 - **Disabled** words are skipped (user can toggle without deleting)
 - Applied in the order they appear in the database
 
-**Meetings (REQ-PIPE-003):** these custom-word corrections also run on
-finalized meeting transcripts — applied to both the plain text and the
-per-word timestamp tokens that drive the speaker-segmented transcript view and
-the SRT/VTT/speaker-paragraph exports. Meeting correction is **always-on**,
-independent of the Raw/Clean processing mode (custom words a user entered are
-intentional corrections, and the default mode is Raw). This persistence path
-reuses only the custom-word step. Filler removal is limited to the derived
-Reading Turn presentation described below, while snippet expansion and
-insertion styling stay dictation-only. The shared matching logic lives in
-`CustomWordReplacer`; the meeting entry point is
-`MeetingTranscriptVocabularyApplier`.
+**Meetings:** enabled custom words apply to the separate deterministic
+`cleanTranscript` and its readable Reading Turn projection. They do not rewrite
+`rawTranscript`, timed words, source attribution, or diarization evidence.
+Meeting cleanup is always on, independent of the dictation Raw/Clean mode.
+`MeetingTranscriptCleaner` also uses the shared conservative filler policy,
+whitespace and punctuation normalization, and sentence capitalization. Snippet
+expansion, trailing actions, paste actions, dictation insertion styling, and
+LLM calls are not part of this path.
 
 ## Meeting Reading Turn presentation
 
@@ -57,7 +54,7 @@ Sentence boundaries form mergeable utterances. A 2.5-second pause or a completed
 
 The builder marks microphone/system contributions as one overlap group when their Reading Turn ranges intersect for at least 200 ms. Two remote contributions receive the same treatment only when retained diarization regions for their resolved speakers also overlap for at least 200 ms. Weak fallback or unattributed fragments do not receive a refined identity to create an overlap group. The group's identity comes from the earliest contribution, and contributions remain ordered by start time and capture-source rank.
 
-Readable mode removes only `uh`, `umm`, and `uhh`, removes an exact adjacent repetition only when its word timings overlap, applies custom vocabulary, and normalizes whitespace and punctuation artifacts. Raw processing mode selects verbatim wording with the same turns, paragraph boundaries, speaker attribution, order, timing, and word references. Neither mode runs snippet expansion, trailing paste actions, or dictation insertion styling. Both modes retain references to every supplied word so the canonical wording and timing remain recoverable. The builder also exposes content-free fixture metrics for turns per minute, blocks shorter than three words, isolated speaker flips, fallback-speaker transitions, and median words per turn. This derivation is deterministic, local, and read-only. It does not update raw words, source attribution, timestamps, durable transcript segments, or diarization regions. Meetings without word timings receive one unlabelled, untimed text fallback.
+Normal readable mode removes only `uh`, `umm`, and `uhh`, applies custom vocabulary, normalizes whitespace and punctuation artifacts, and capitalizes paragraph starts. It is always selected for completed meetings, independent of the dictation Raw/Clean preference. Explicit evidence paths can select verbatim wording with the same turns, paragraph boundaries, speaker attribution, order, timing, and word references. Neither policy runs snippet expansion, trailing paste actions, or dictation insertion styling. Both retain references to every supplied word so canonical wording and timing remain recoverable. The builder also exposes content-free fixture metrics for turns per minute, blocks shorter than three words, isolated speaker flips, fallback-speaker transitions, and median words per turn. This derivation is deterministic, local, and read-only. It does not update raw words, source attribution, timestamps, or diarization regions. Meetings without word timings receive one unlabelled, untimed text fallback. Legacy rows with no persisted clean transcript use this fallback without a database write.
 
 ### Step 3: Trailing Action Extraction
 

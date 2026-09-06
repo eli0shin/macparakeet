@@ -191,7 +191,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
                     speakerId: "system:S2",
                     speakerLabel: "Blake",
                     wordIndexes: [1],
-                    text: "right",
+                    text: "Right",
                     startMs: 300,
                     endMs: 500,
                     overlap: overlap
@@ -244,7 +244,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
                     speakerId: "system:S2",
                     speakerLabel: "Blake",
                     wordIndexes: [1, 3],
-                    text: "yeah right",
+                    text: "Yeah right",
                     startMs: 250,
                     endMs: 780,
                     overlap: overlap
@@ -737,7 +737,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         )
 
         XCTAssertEqual(document.turns.count, 1)
-        XCTAssertEqual(document.turns[0].paragraphs.map(\.text), ["Well, use MacParakeet today. Done."])
+        XCTAssertEqual(document.turns[0].paragraphs.map(\.text), ["Well, use MacParakeet today today. Done."])
         XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
         XCTAssertEqual(document.turns[0].paragraphs[0].wordReferences, Array(words.indices))
         XCTAssertEqual(
@@ -761,7 +761,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
             speakers: nil
         )
 
-        XCTAssertEqual(document.turns.map(\.text), ["we can ship."])
+        XCTAssertEqual(document.turns.map(\.text), ["We can ship."])
         XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
     }
 
@@ -773,7 +773,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
             cleanup: .cleaned
         )
 
-        XCTAssertEqual(document.turns.map(\.text), ["we can ship."])
+        XCTAssertEqual(document.turns.map(\.text), ["We can ship."])
     }
 
     func testTimedSentenceInitialFillerDoesNotLeaveStandalonePunctuation() {
@@ -826,7 +826,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
     }
 
-    func testPunctuatedOverlappingRepetitionPreservesSentenceBoundaryInFinalDocument() {
+    func testPunctuatedOverlappingRepetitionRemainsCanonicalInFinalDocument() {
         let words = [
             word("Keep", 0, 100, "microphone"),
             word("that", 120, 250, "microphone"),
@@ -841,11 +841,11 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
             speakers: nil
         )
 
-        XCTAssertEqual(document.turns.map(\.text), ["Keep that. Next topic."])
+        XCTAssertEqual(document.turns.map(\.text), ["Keep that that. Next topic."])
         XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
     }
 
-    func testRemovedFillerDoesNotHideOverlappingRepetitionInFinalDocument() {
+    func testRemovedFillerKeepsOverlappingRepetitionInFinalDocument() {
         let words = [
             word("that", 0, 300, "microphone"),
             word("uh", 100, 200, "microphone"),
@@ -858,7 +858,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
             speakers: nil
         )
 
-        XCTAssertEqual(document.turns.map(\.text), ["that."])
+        XCTAssertEqual(document.turns.map(\.text), ["That that."])
         XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
     }
 
@@ -897,7 +897,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
     }
 
-    func testTransferredSentencePunctuationReplacesExistingSeparatorInFinalDocument() {
+    func testOverlappingRepetitionPreservesExistingSeparatorInFinalDocument() {
         let words = [
             word("Keep", 0, 100, "microphone"),
             word("that,", 120, 300, "microphone"),
@@ -910,7 +910,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
             speakers: nil
         )
 
-        XCTAssertEqual(document.turns.map(\.text), ["Keep that."])
+        XCTAssertEqual(document.turns.map(\.text), ["Keep that, that."])
         XCTAssertEqual(document.turns[0].wordReferences, Array(words.indices))
     }
 
@@ -1044,7 +1044,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
             speakers: nil
         )
 
-        XCTAssertEqual(document.turns.map(\.text), ["um like very very clear..."])
+        XCTAssertEqual(document.turns.map(\.text), ["Um like very very clear..."])
     }
 
     func testUntimedFallbackPreservesValidMixedPunctuation() {
@@ -1148,10 +1148,10 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         )
 
         XCTAssertEqual(formatted.turns[0].text, "Hello.")
-        XCTAssertEqual(formatted.turns[0].deterministicText, "hello.")
+        XCTAssertEqual(formatted.turns[0].deterministicText, "Hello.")
         XCTAssertEqual(formatted.turns[0].timeRange, turn.timeRange)
         XCTAssertEqual(formatted.turns[0].wordReferences, turn.wordReferences)
-        XCTAssertEqual(rejected.turns[0].text, "hello.")
+        XCTAssertEqual(rejected.turns[0].text, "Hello.")
     }
 
     func testStableIdentityDoesNotDependOnDisplayLabel() {

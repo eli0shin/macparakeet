@@ -6,6 +6,7 @@ import SwiftUI
 /// (recovered dot, speaker count) appear only when they carry signal.
 struct MeetingRowCard<MenuContent: View>: View {
     let transcription: Transcription
+    var customWords: [CustomWord] = []
     var searchText: String = ""
     var isSelected: Bool = false
     var showsSelectionControls: Bool = false
@@ -305,23 +306,34 @@ struct MeetingRowCard<MenuContent: View>: View {
     }
 
     private var displayedSnippet: String? {
-        if let derived = transcription.derivedSnippet?.trimmingCharacters(in: .whitespacesAndNewlines), !derived.isEmpty
+        Self.snippetText(for: transcription, customWords: customWords)
+    }
+
+    static func snippetText(
+        for transcription: Transcription,
+        customWords: [CustomWord]
+    ) -> String? {
+        let preferredText = MeetingTranscriptCleaner.preferredText(
+            for: transcription,
+            customWords: customWords
+        )
+        let cleaned =
+            preferredText
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedFallback = cleaned.isEmpty ? nil : String(cleaned.prefix(140))
+
+        if transcription.sourceType == .meeting,
+            transcription.cleanTranscript == nil
+        {
+            return cleanedFallback
+        }
+        if let derived = transcription.derivedSnippet?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !derived.isEmpty
         {
             return derived
         }
-        return legacySnippet
-    }
-
-    private var legacySnippet: String? {
-        guard let text = transcription.cleanTranscript ?? transcription.rawTranscript, !text.isEmpty else {
-            return nil
-        }
-        let cleaned =
-            text
-            .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return nil }
-        return String(cleaned.prefix(140))
+        return cleanedFallback
     }
 
     private var displayedSpeakerCount: Int? {

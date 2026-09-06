@@ -735,13 +735,28 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
 
         let systemDiarization = mappedMeetingSystemDiarization(diarResult, systemStartOffsetMs: systemTrack.startOffsetMs)
         let finalized = MeetingTranscriptFinalizer.reattributeSystemWords(words, systemDiarization: systemDiarization)
-        let transcriptSegments = TranscriptSegmenter.materializeSegments(words: finalized.words, speakers: finalized.speakers)
+        let readableDocument = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: original.rawTranscript ?? finalized.rawTranscript,
+            words: finalized.words,
+            speakers: finalized.speakers,
+            diarizationSegments: finalized.diarizationSegments,
+            customWords: MeetingTranscriptCleaner.applicableCustomWords(
+                fetchMeetingVocabulary(),
+                to: original.rawTranscript ?? finalized.rawTranscript
+            ),
+            cleanup: .cleaned,
+            formatting: original.meetingReadingTurnFormatting ?? []
+        )
+        let transcriptSegments = Self.materializeMeetingSegments(
+            from: readableDocument,
+            words: finalized.words
+        )
         let update = MeetingSpeakerAttributionUpdate(
             wordTimestamps: finalized.words,
             speakers: finalized.speakers,
             speakerCount: finalized.speakers.isEmpty ? nil : finalized.speakers.count,
             diarizationSegments: finalized.diarizationSegments,
-            transcriptSegments: transcriptSegments.isEmpty ? nil : transcriptSegments
+            transcriptSegments: transcriptSegments
         )
 
         try Task.checkCancellation()
@@ -1374,23 +1389,10 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             )
             meetingFinalizationBenchmarkObserver?.stageDidEnd(.finalizeMerge)
 
-            // Apply the user's Vocabulary corrections to the meeting transcript.
-            // Meetings otherwise never run custom words — the deterministic
-            // pipeline only touches dictation/file transcripts — so names the
-            // user has already corrected elsewhere would still come through raw
-            // here (issue #550). Intentionally always-on, not gated on the
-            // Raw/Clean dictation mode: the corrections drive the
-            // speaker-segmented view and the word-timestamp exports, and the
-            // default processing mode is `.raw`. `completeTranscription` below
-            // still receives the *uncorrected* `finalized.rawTranscript`, so its
-            // Clean-mode pass derives `cleanTranscript` without double-applying.
-            let corrected = MeetingTranscriptVocabularyApplier.apply(
-                rawTranscript: finalized.rawTranscript,
-                words: finalized.words,
-                customWords: fetchMeetingVocabulary()
-            )
-            transcription.rawTranscript = corrected.rawTranscript
-            transcription.wordTimestamps = corrected.words
+            // Raw text and timed words are canonical meeting evidence. Vocabulary
+            // and readability cleanup are derived separately in post-processing.
+            transcription.rawTranscript = finalized.rawTranscript
+            transcription.wordTimestamps = finalized.words
             transcription.language = Self.commonDetectedLanguage(from: sourceResults) ?? transcription.language
             // Both meeting source transcripts (mic + system) run through the
             // same `SpeechEngineSelection`, so taking the first source's
@@ -1409,7 +1411,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             transcription.speakerCount = finalized.speakers.isEmpty ? nil : finalized.speakers.count
             transcription.diarizationSegments = finalized.diarizationSegments.isEmpty ? nil : finalized.diarizationSegments
             let transcriptSegments = TranscriptSegmenter.materializeSegments(
-                words: corrected.words,
+                words: finalized.words,
                 speakers: finalized.speakers
             )
             transcription.transcriptSegments = transcriptSegments.isEmpty ? nil : transcriptSegments
@@ -1954,38 +1956,50 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil
     ) async throws -> Transcription {
         let mode = processingMode()
+        let isMeeting = transcription.sourceType == .meeting
         var customWords: [CustomWord] = []
         var snippets: [TextSnippet] = []
-        if mode.usesDeterministicPipeline {
+        if isMeeting {
+            customWords = MeetingTranscriptCleaner.applicableCustomWords(
+                fetchMeetingVocabulary(),
+                to: transcription.rawTranscript ?? rawText
+            )
+        } else if mode.usesDeterministicPipeline {
             do { customWords = try customWordRepo?.fetchEnabled() ?? [] }
             catch { logger.error("transcription_custom_words_fetch_failed error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)") }
             do { snippets = try snippetRepo?.fetchEnabled() ?? [] }
             catch { logger.error("transcription_snippets_fetch_failed error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)") }
         }
 
-        let refinement = await textRefinementService.refine(
-            rawText: rawText,
-            mode: mode,
-            customWords: customWords,
-            snippets: snippets
-        )
+        let refinement: TextRefinementResult
+        if isMeeting {
+            refinement = TextRefinementResult(
+                text: MeetingTranscriptCleaner.clean(
+                    rawTranscript: transcription.rawTranscript ?? rawText,
+                    customWords: customWords
+                ),
+                expandedSnippetIDs: [],
+                path: .deterministic
+            )
+        } else {
+            refinement = await textRefinementService.refine(
+                rawText: rawText,
+                mode: mode,
+                customWords: customWords,
+                snippets: snippets
+            )
+        }
         let baseText = refinement.text ?? rawText
         var formatterRuns: [LLMRun] = []
 
-        if transcription.sourceType == .meeting, shouldUseAIFormatter(), llmService != nil {
-            let cleanup: MeetingTranscriptCleanup = mode.usesDeterministicPipeline
-                ? .cleaned
-                : .verbatim
-            let phraseVocabulary = fetchMeetingVocabulary().filter {
-                $0.word.contains(where: { $0.isWhitespace })
-            }
+        if isMeeting, shouldUseAIFormatter(), llmService != nil {
             let deterministicDocument = MeetingTranscriptPresentationBuilder.build(
                 transcriptText: transcription.rawTranscript ?? rawText,
                 words: transcription.wordTimestamps,
                 speakers: transcription.speakers,
                 diarizationSegments: transcription.diarizationSegments,
-                customWords: phraseVocabulary,
-                cleanup: cleanup
+                customWords: customWords,
+                cleanup: .cleaned
             )
             let promptTemplate = aiFormatterPromptTemplate()
             let transcriptFormatter = TranscriptFormatter(
@@ -2029,8 +2043,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                     words: transcription.wordTimestamps,
                     speakers: transcription.speakers,
                     diarizationSegments: transcription.diarizationSegments,
-                    customWords: phraseVocabulary,
-                    cleanup: cleanup,
+                    customWords: customWords,
+                    cleanup: .cleaned,
                     formatting: result.formatting
                 )
                 transcription.cleanTranscript = formattedDocument.turns
@@ -2055,6 +2069,29 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             )
             if let run = formatterOutcome.run { formatterRuns.append(run) }
             transcription.cleanTranscript = formatterOutcome.text ?? refinement.text
+        }
+
+        if isMeeting,
+            (transcription.rawTranscript ?? rawText).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            transcription.cleanTranscript?.isEmpty == true
+        {
+            transcription.cleanTranscript = nil
+        }
+
+        if isMeeting {
+            let readableDocument = MeetingTranscriptPresentationBuilder.build(
+                transcriptText: transcription.rawTranscript ?? rawText,
+                words: transcription.wordTimestamps,
+                speakers: transcription.speakers,
+                diarizationSegments: transcription.diarizationSegments,
+                customWords: customWords,
+                cleanup: .cleaned,
+                formatting: transcription.meetingReadingTurnFormatting ?? []
+            )
+            transcription.transcriptSegments = Self.materializeMeetingSegments(
+                from: readableDocument,
+                words: transcription.wordTimestamps ?? []
+            )
         }
 
         if persistResult, !refinement.expandedSnippetIDs.isEmpty {
@@ -2158,6 +2195,35 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         )
 
         return transcription
+    }
+
+    private static func materializeMeetingSegments(
+        from document: MeetingTranscriptPresentationDocument,
+        words: [WordTimestamp]
+    ) -> [TranscriptSegmentRecord]? {
+        let segments = document.turns.flatMap { turn in
+            turn.paragraphs.compactMap { paragraph -> TranscriptSegmentRecord? in
+                let references = paragraph.wordReferences.filter { words.indices.contains($0) }
+                guard let firstReference = references.min(),
+                    let lastReference = references.max()
+                else {
+                    return nil
+                }
+                let referencedWords = references.map { words[$0] }
+                return TranscriptSegmentRecord(
+                    startMs: referencedWords.map(\.startMs).min() ?? words[firstReference].startMs,
+                    endMs: referencedWords.map(\.endMs).max() ?? words[lastReference].endMs,
+                    speakerId: turn.speakerId,
+                    speakerLabel: turn.speakerLabel,
+                    text: paragraph.text,
+                    wordRange: TranscriptSegmentWordRange(
+                        startIndex: firstReference,
+                        endIndexExclusive: lastReference + 1
+                    )
+                )
+            }
+        }
+        return segments.isEmpty ? nil : segments
     }
 
     private func generateMeetingTitleIfNeeded(

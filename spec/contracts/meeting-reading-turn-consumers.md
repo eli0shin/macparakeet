@@ -30,9 +30,9 @@ ranges must not drift.
 
 ## Stable Semantics
 
-- All reconstructed documents use the active Raw/Clean policy and the current
-  enabled phrase vocabulary. Meeting word timestamps already contain
-  single-token vocabulary corrections.
+- All normal reconstructed documents use deterministic cleaned meeting text and
+  the current enabled vocabulary. The global dictation Raw/Clean preference does
+  not change completed meetings. Raw timed words remain unchanged evidence.
 - Each rendered block follows Reading Turn order and uses the current speaker
   label.
 - A rendered turn has at most one start time. Word timestamps are not emitted in
@@ -45,9 +45,15 @@ ranges must not drift.
 - Untimed fallback text has no fabricated timestamp or speaker attribution.
 - Edited transcripts use the existing plain edited text because word alignment
   is no longer valid.
-- Plain AI-context mode remains the preferred plain transcript.
-- SRT and VTT remain cue projections of canonical word timings. DAPT and JSON
-  keep their existing evidence-focused contracts.
+- Plain AI-context mode remains the preferred stored `cleanTranscript`, with raw
+  text only as a legacy fallback. Legacy meeting card snippets and rebuildable
+  search segments derive deterministic cleanup in memory; segment index version
+  3 replaces older raw-derived rows without backfilling `cleanTranscript`.
+- SRT and VTT remain cue projections of canonical raw word timings. When an
+  unedited meeting has no word timings, their single-cue fallback and DAPT's
+  untimed event use `rawTranscript`, not deterministic cleaned text. A manual
+  transcript edit remains authoritative and drops stale timing. JSON keeps its
+  existing evidence-focused contract.
 
 ## Versioning And Compatibility
 
@@ -67,8 +73,9 @@ fixture in one change.
 - `PromptsCommandTests`
 
 The shared consumer fixture compares readable exports, clipboard output,
-meeting Markdown, and AI context with one derived Reading Turn document. Its Raw
-fixture includes a phrase-vocabulary replacement and compares direct artifact,
-background AI, and CLI-readable export reconstruction. It also pins rename
+meeting Markdown, and AI context with one derived Reading Turn document. Its
+dictation-Raw fixture proves that meeting cleanup and vocabulary replacement
+stay active across direct artifact, background AI, and CLI-readable export
+reconstruction. It also pins rename
 propagation, overlap rendering, paragraph preservation, containing navigation,
 untimed fallback, verbatim availability, and SRT/VTT cue retention.

@@ -3,11 +3,9 @@ import Foundation
 /// Pre-compiled, reusable custom-word replacement.
 ///
 /// Build once from a set of `CustomWord`s, then apply to many strings. The
-/// deterministic dictation pipeline only ever corrects one string per call, so
-/// it historically compiled its regexes inline. Meeting finalization corrects a
-/// full transcript *plus every word token* (issue #550), so compiling per token
-/// would be wasteful — this hoists compilation out of the hot loop, the same
-/// optimization `TextProcessingPipeline.fillerRegexes` already makes for fillers.
+/// deterministic dictation pipeline only ever corrects one string per call.
+/// Completed-meeting cleanup and Reading Turn projection reuse the same rules,
+/// so this type keeps their replacement semantics identical.
 ///
 /// Semantics match the original inline `TextProcessingPipeline.applyCustomWords`
 /// exactly, and `CustomWordReplacerTests` pins that parity:

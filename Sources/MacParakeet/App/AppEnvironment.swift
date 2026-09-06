@@ -95,10 +95,7 @@ final class AppEnvironment {
         }
         let readingConfigurationProvider: @Sendable () -> CompletedMeetingReadingConfiguration = {
             let customWords = (try? customWordRepository.fetchEnabled()) ?? []
-            return CompletedMeetingReadingConfiguration(
-                processingMode: processingModeClosure(),
-                customWords: customWords
-            )
+            return CompletedMeetingReadingConfiguration(customWords: customWords)
         }
         let selectedInputDeviceUIDProvider: @Sendable () -> String? = { [runtimePreferences] in
             runtimePreferences.selectedMicrophoneDeviceUID

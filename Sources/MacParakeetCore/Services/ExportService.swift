@@ -114,6 +114,13 @@ public final class ExportService: ExportServiceProtocol, Sendable {
         transcription.cleanTranscript ?? transcription.rawTranscript ?? ""
     }
 
+    private func untimedEvidenceText(transcription: Transcription) -> String {
+        if transcription.sourceType == .meeting, !transcription.isTranscriptEdited {
+            return transcription.rawTranscript ?? transcription.cleanTranscript ?? ""
+        }
+        return preferredText(transcription: transcription)
+    }
+
     private func readingDocument(transcription: Transcription) -> MeetingTranscriptPresentationDocument? {
         let configuredDocument: MeetingTranscriptPresentationDocument?
         if let meetingReadingConfiguration {
@@ -194,7 +201,7 @@ public final class ExportService: ExportServiceProtocol, Sendable {
         }
 
         guard let words = transcription.wordTimestamps, !words.isEmpty else {
-            let text = preferredText(transcription: transcription)
+            let text = untimedEvidenceText(transcription: transcription)
             let duration = transcription.durationMs ?? 0
             return "1\n00:00:00,000 --> \(srtTimestamp(ms: duration))\n\(singleCueSubtitleText(text))\n"
         }
@@ -209,7 +216,7 @@ public final class ExportService: ExportServiceProtocol, Sendable {
         }
 
         guard let words = transcription.wordTimestamps, !words.isEmpty else {
-            let text = preferredText(transcription: transcription)
+            let text = untimedEvidenceText(transcription: transcription)
             let duration = transcription.durationMs ?? 0
             return "WEBVTT\n\n\(vttTimestamp(ms: 0)) --> \(vttTimestamp(ms: duration))\n\(singleCueSubtitleText(text))\n"
         }

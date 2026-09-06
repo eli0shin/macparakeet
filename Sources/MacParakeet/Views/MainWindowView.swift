@@ -117,6 +117,7 @@ struct MainWindowView: View {
                     case .meetings:
                         MeetingsView(
                             viewModel: meetingsWorkspaceViewModel,
+                            customWords: customWordsViewModel.words,
                             onRecordMeeting: {
                                 onRecordMeetingFromWorkspace()
                             },

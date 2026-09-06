@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@027-persist-cleaned-meeting-transcripts
 Tags:
   - ready-for-agent
 Parent: 023-simplify-meeting-transcript-experience

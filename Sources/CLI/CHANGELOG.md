@@ -92,11 +92,13 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 ### Changed
 
 - Meeting TXT and Markdown file exports, Markdown stdout, `meetings export`,
-  and `prompts run --transcription <meeting>` now use the same Reading Turns as
-  the completed-meeting view, including the active Raw/Clean policy and current
-  phrase vocabulary. This applies to normal, streaming, and JSON prompt runs.
-  The plain `export --format txt --stdout` path remains preferred transcript
-  text with no metadata, speaker, timestamp, Markdown, or overlap headers.
+  and `prompts run --transcription <meeting>` now use the same cleaned Reading
+  Turns as the completed-meeting view, independent of the dictation Raw/Clean
+  preference and with current vocabulary. This applies to normal, streaming,
+  and JSON prompt runs. The plain `export --format txt --stdout` path remains
+  preferred cleaned transcript text with no metadata, speaker, timestamp,
+  Markdown, or overlap headers. JSON and timed subtitle exports retain raw
+  transcript evidence.
 
 ### Added
 

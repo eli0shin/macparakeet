@@ -2,7 +2,7 @@ import Foundation
 
 /// Frozen versioned rules for deriving the rebuildable transcript search layer.
 public enum KnowledgeSegmenter {
-    public static let currentVersion = 2
+    public static let currentVersion = 3
 
     private static let targetMinimumScalars = 200
     private static let targetMaximumScalars = 500
@@ -103,12 +103,26 @@ public enum KnowledgeSegmenter {
         return result
     }
 
-    public static func deriveSegments(for transcription: Transcription) -> [Segment] {
+    public static func deriveSegments(
+        for transcription: Transcription,
+        customWords: [CustomWord] = []
+    ) -> [Segment] {
         guard transcription.status == .completed else { return [] }
 
-        let storedSegments = (transcription.transcriptSegments ?? []).compactMap {
+        let isEditedMeeting =
+            transcription.sourceType == .meeting
+            && transcription.isTranscriptEdited
+        let shouldCleanMeetingEvidence =
+            transcription.sourceType == .meeting
+            && transcription.cleanTranscript == nil
+            && !transcription.isTranscriptEdited
+        let storedSegments = (isEditedMeeting ? [] : transcription.transcriptSegments ?? []).compactMap {
             source -> TranscriptSegmentRecord? in
-            guard let text = usableText(source.text) else { return nil }
+            let sourceText =
+                shouldCleanMeetingEvidence
+                ? MeetingTranscriptCleaner.clean(rawTranscript: source.text, customWords: customWords)
+                : source.text
+            guard let text = usableText(sourceText) else { return nil }
             var normalized = source
             normalized.text = text
             return normalized
@@ -116,13 +130,32 @@ public enum KnowledgeSegmenter {
         let durableSegments: [TranscriptSegmentRecord]
         if !storedSegments.isEmpty {
             durableSegments = storedSegments
-        } else if let words = transcription.wordTimestamps,
+        } else if !isEditedMeeting,
+            let words = transcription.wordTimestamps,
             words.contains(where: { usableText($0.word) != nil })
         {
-            durableSegments = materializeFileTranscriptSegments(
+            let materialized = materializeFileTranscriptSegments(
                 words: words,
                 speakers: transcription.speakers
             )
+            if shouldCleanMeetingEvidence {
+                durableSegments = materialized.compactMap { source in
+                    guard
+                        let text = usableText(
+                            MeetingTranscriptCleaner.clean(
+                                rawTranscript: source.text,
+                                customWords: customWords
+                            ))
+                    else {
+                        return nil
+                    }
+                    var normalized = source
+                    normalized.text = text
+                    return normalized
+                }
+            } else {
+                durableSegments = materialized
+            }
         } else {
             durableSegments = []
         }
@@ -141,10 +174,20 @@ public enum KnowledgeSegmenter {
             }
         }
 
-        let text =
-            usableText(transcription.cleanTranscript)
-            ?? usableText(transcription.rawTranscript)
-            ?? ""
+        let text: String
+        if transcription.sourceType == .meeting {
+            text =
+                usableText(
+                    MeetingTranscriptCleaner.preferredText(
+                        for: transcription,
+                        customWords: customWords
+                    )) ?? ""
+        } else {
+            text =
+                usableText(transcription.cleanTranscript)
+                ?? usableText(transcription.rawTranscript)
+                ?? ""
+        }
         return pseudoSegment(text).enumerated().map { seq, chunk in
             Segment(
                 transcriptionId: transcription.id,
@@ -158,8 +201,8 @@ public enum KnowledgeSegmenter {
         }
     }
 
-    /// Pure, locale-independent version-2 pseudo-segmentation. Only explicit
-    /// Unicode scalar values participate in whitespace and sentence rules.
+    /// Pure, locale-independent pseudo-segmentation. Version 3 keeps these
+    /// scalar rules and cleans legacy meeting source text before applying them.
     public static func pseudoSegment(_ text: String) -> [String] {
         let normalized = normalizeWhitespace(text)
         guard !normalized.isEmpty else { return [] }

@@ -28,8 +28,6 @@ struct TranscriptionLibraryView: View {
     private var bulkExportIncludeSpeakerLabels = true
     @AppStorage("com.macparakeet.libraryBulkExportIncludeMetadata")
     private var bulkExportIncludeMetadata = true
-    @AppStorage(UserDefaultsAppRuntimePreferences.processingModeKey)
-    private var processingModeRaw = Dictation.ProcessingMode.raw.rawValue
     @State private var bulkExportInProgress = false
     @State private var bulkExportResult: BulkTranscriptExportResult?
     @State private var bulkExportErrorMessage: String?
@@ -299,6 +297,7 @@ struct TranscriptionLibraryView: View {
                     ForEach(Array(section.items.enumerated()), id: \.element.id) { idx, transcription in
                         MeetingRowCard(
                             transcription: transcription,
+                            customWords: customWords,
                             searchText: viewModel.searchText,
                             isSelected: viewModel.isTranscriptionSelected(transcription),
                             showsSelectionControls: viewModel.isBulkSelectionModeEnabled,
@@ -738,9 +737,7 @@ struct TranscriptionLibraryView: View {
         let runID = UUID()
         let format = selectedBulkExportFormat
         let options = bulkExportOptions
-        let processingMode = Dictation.ProcessingMode(rawValue: processingModeRaw) ?? .raw
         let readingConfiguration = CompletedMeetingReadingConfiguration(
-            processingMode: processingMode,
             customWords: customWords
         )
 

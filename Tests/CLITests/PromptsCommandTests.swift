@@ -497,7 +497,8 @@ final class PromptsCommandTests: XCTestCase {
 
         XCTAssertTrue(context.contains("> Simultaneous speech"))
         XCTAssertTrue(context.contains("**Dana · [0:00]**"))
-        XCTAssertTrue(context.contains("uh MacParakeet"))
+        XCTAssertFalse(context.contains("uh MacParakeet"))
+        XCTAssertTrue(context.contains("MacParakeet"))
         XCTAssertTrue(context.contains("First. Second. Third.\n\nFourth."))
     }
 

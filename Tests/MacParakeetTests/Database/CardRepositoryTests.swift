@@ -391,7 +391,7 @@ final class CardRepositoryTests: XCTestCase {
             transcriptionId: transcriptionId,
             cardSchemaVersion: 1,
             transcriptHash: CardContentFingerprint.transcriptHash(for: transcription),
-            segmenterVersion: 2,
+            segmenterVersion: KnowledgeSegmenter.currentVersion,
             promptVersion: "knowledge-card-v1",
             model: "stub-model",
             generatedAt: Date(timeIntervalSince1970: 1_800_000_100),

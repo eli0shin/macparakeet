@@ -17,8 +17,7 @@ mode.
   steps in fixed order; details below.
 - `CustomWordReplacer.swift` — pre-compiled, reusable custom-word
   replacement (the step-2 rule). `TextProcessingPipeline.applyCustomWords`
-  delegates to it, and the meeting finalizer reuses it to correct a whole
-  transcript plus every word token without recompiling regexes per token.
+  and deterministic meeting cleanup delegate to it.
 - `TextProcessingResult.swift` — value type returned by the pipeline.
   Carries the cleaned text, the set of expanded-snippet IDs, and an
   optional `postPasteAction` for trailing-action snippets.
@@ -39,9 +38,9 @@ mode.
   that forms source utterances, assigns remote speakers from aggregate diarization
   overlap, smooths weak isolated changes, and derives Reading Turns, readability
   metrics, bounded paragraphs, cleaned readable text, time ranges, and raw-word
-  references without changing canonical transcript evidence. Its `.verbatim`
-  policy, selected for Raw processing mode by the completed-meeting surface,
-  keeps the same document structure without presentation cleanup.
+  references without changing canonical transcript evidence. Normal completed-
+  meeting surfaces always select `.cleaned`, independent of the dictation
+  Raw/Clean preference. `.verbatim` remains available for evidence-focused use.
 - `MeetingReadingTurnFormatter.swift` — optional AI formatting module for completed
   meetings. It makes serial requests from complete deterministic paragraphs,
   validates content preservation, and commits overrides one stable Reading Turn
@@ -138,15 +137,18 @@ turn identity and deterministic source text; stale overrides fail closed. The
 existing transcript-formatter toggle, provider, model, and prompt remain the only
 routing controls, so this module adds no implicit network path.
 
-**Meetings reuse only the custom-word step, not the whole dictation pipeline.**
-`MeetingTranscriptVocabularyApplier` (in `Services/MeetingRecording/`)
-applies `CustomWordReplacer` to finalized meeting text and word tokens
-(REQ-PIPE-003). The Reading Turn builder also accepts custom words for its
-read-only presentation. Its dedicated cleanup removes only the always-safe
-fillers and overlapping adjacent repetitions, then normalizes whitespace and
-punctuation. It deliberately does **not** run snippet expansion, trailing paste
-actions, or insertion styling. Keep custom-word semantics in
-`CustomWordReplacer` so dictation, file/URL, and meetings stay in sync.
+**Meetings have a separate deterministic cleanup boundary.** New finalized
+meetings and explicit meeting retranscriptions keep STT text, timed words,
+source attribution, and diarization as raw evidence. `MeetingTranscriptCleaner`
+derives and persists `cleanTranscript` with the shared conservative filler
+policy, `CustomWordReplacer`, whitespace and punctuation normalization, and
+sentence capitalization. It deliberately does **not** expand snippets, extract
+trailing actions, execute paste actions, apply dictation insertion styling, or
+call an LLM. Normal meeting UI, copy, search, readable exports, artifacts, and
+AI context use cleaned text or the equivalent deterministic Reading Turn
+projection. Legacy rows with no `cleanTranscript` use that projection without a
+storage write. JSON, SRT, VTT, and other evidence-focused paths continue to use
+raw words and timing.
 
 ## How to verify a change
 

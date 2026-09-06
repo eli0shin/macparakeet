@@ -6,17 +6,23 @@ public enum TranscriptAIContextFormatter {
         mode: TranscriptAIContextMode = .richTranscript,
         meetingReadingConfiguration: CompletedMeetingReadingConfiguration? = nil
     ) -> String {
+        let customWords = meetingReadingConfiguration?.customWords ?? []
         switch mode {
         case .plainTranscript:
-            return preferredText(transcription)
+            return preferredText(transcription, customWords: customWords)
         case .richTranscript:
-            let document = meetingReadingConfiguration.flatMap {
-                CompletedMeetingReadingDocument.build(from: transcription, configuration: $0)
-            } ?? CompletedMeetingReadingDocument.build(from: transcription)
+            let document =
+                meetingReadingConfiguration.flatMap {
+                    CompletedMeetingReadingDocument.build(from: transcription, configuration: $0)
+                } ?? CompletedMeetingReadingDocument.build(from: transcription)
             if let document {
                 return MeetingTranscriptDocumentRenderer.markdown(document)
             }
-            return richText(transcription) ?? preferredText(transcription)
+            return richText(transcription)
+                ?? preferredText(
+                    transcription,
+                    customWords: customWords
+                )
         }
     }
 
@@ -33,9 +39,15 @@ public enum TranscriptAIContextFormatter {
         }
     }
 
-    private static func preferredText(_ transcription: Transcription) -> String {
-        (transcription.cleanTranscript ?? transcription.rawTranscript ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    private static func preferredText(
+        _ transcription: Transcription,
+        customWords: [CustomWord]
+    ) -> String {
+        MeetingTranscriptCleaner.preferredText(
+            for: transcription,
+            customWords: customWords
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func editedTranscriptText(_ transcription: Transcription) -> String? {

@@ -2031,20 +2031,23 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(result.rawTranscript, "deterministic meeting text.")
     }
 
-    func testTranscribeMeetingAppliesEnabledCustomWordsToTextAndWordTokens() async throws {
+    func testTranscribeMeetingPersistsCleanedTextWithoutChangingRawEvidence() async throws {
         // Seed the user's Vocabulary with company-context corrections (issue #550).
         let dbManager = try DatabaseManager()
         let transcriptionRepo = TranscriptionRepository(dbQueue: dbManager.dbQueue)
         let customWordRepo = CustomWordRepository(dbQueue: dbManager.dbQueue)
+        let snippetRepo = TextSnippetRepository(dbQueue: dbManager.dbQueue)
         try customWordRepo.save(CustomWord(word: "acme", replacement: "ACME Corporation"))
         try customWordRepo.save(CustomWord(word: "kubernetes", replacement: "Kubernetes (K8s)"))
         try customWordRepo.save(CustomWord(word: "ignored", replacement: "SHOULD-NOT-APPEAR", isEnabled: false))
+        try snippetRepo.save(TextSnippet(trigger: "rollout", expansion: "MUST NOT EXPAND"))
 
         let service = TranscriptionService(
             audioProcessor: mockAudio,
             sttTranscriber: mockSTT,
             transcriptionRepo: transcriptionRepo,
-            customWordRepo: customWordRepo
+            customWordRepo: customWordRepo,
+            snippetRepo: snippetRepo
         )
 
         let recordingFolder = URL(fileURLWithPath: AppPaths.tempDir)
@@ -2088,35 +2091,28 @@ final class TranscriptionServiceTests: XCTestCase {
 
         let result = try await service.transcribeMeeting(recording: recording)
 
-        // Plain transcript is corrected.
-        let raw = try XCTUnwrap(result.rawTranscript)
-        XCTAssertTrue(raw.contains("ACME Corporation"), "rawTranscript should correct 'acme'; got: \(raw)")
-        XCTAssertTrue(raw.contains("Kubernetes (K8s)"), "rawTranscript should correct 'kubernetes'; got: \(raw)")
+        XCTAssertEqual(result.rawTranscript, "sync with acme kubernetes rollout")
+        XCTAssertEqual(
+            result.cleanTranscript,
+            "Sync with ACME Corporation Kubernetes (K8s) rollout"
+        )
 
-        // Word tokens — the surface the speaker-segmented view and SRT/VTT/speaker
-        // exports read from — are corrected too, and were raw before this change.
         let words = try XCTUnwrap(result.wordTimestamps)
-        let wordStrings = words.map(\.word)
-        XCTAssertTrue(wordStrings.contains("ACME Corporation"))
-        XCTAssertTrue(wordStrings.contains("Kubernetes (K8s)"))
-        XCTAssertFalse(wordStrings.contains("acme"))
-        XCTAssertFalse(wordStrings.contains("kubernetes"))
-
-        // Timestamps and speaker attribution survive the correction.
-        let acme = try XCTUnwrap(words.first { $0.word == "ACME Corporation" })
+        XCTAssertEqual(words.map(\.word), ["sync", "with", "acme", "kubernetes", "rollout"])
+        let acme = try XCTUnwrap(words.first { $0.word == "acme" })
         XCTAssertEqual(acme.startMs, 440)
         XCTAssertEqual(acme.endMs, 700)
         XCTAssertEqual(acme.speakerId, "microphone")
-        let k8s = try XCTUnwrap(words.first { $0.word == "Kubernetes (K8s)" })
-        XCTAssertEqual(k8s.startMs, 920) // 20 + 900ms system offset
-        XCTAssertEqual(k8s.speakerId, "system")
+        let kubernetes = try XCTUnwrap(words.first { $0.word == "kubernetes" })
+        XCTAssertEqual(kubernetes.startMs, 920)
+        XCTAssertEqual(kubernetes.speakerId, "system")
 
-        // Corrections are persisted, not just returned.
         let fetched = try XCTUnwrap(transcriptionRepo.fetch(id: result.id))
-        XCTAssertEqual(
-            fetched.wordTimestamps?.first { $0.word == "ACME Corporation" }?.speakerId,
-            "microphone"
-        )
+        XCTAssertEqual(fetched.rawTranscript, result.rawTranscript)
+        XCTAssertEqual(fetched.cleanTranscript, result.cleanTranscript)
+        XCTAssertEqual(fetched.wordTimestamps, words)
+        XCTAssertTrue(fetched.transcriptSegments?.contains { $0.text.contains("ACME Corporation") } == true)
+        XCTAssertTrue(fetched.transcriptSegments?.contains { $0.text.contains("Kubernetes (K8s)") } == true)
     }
 
     func testTranscribeMeetingAutoGeneratesTitleForFallbackDisplayName() async throws {
@@ -2506,7 +2502,7 @@ final class TranscriptionServiceTests: XCTestCase {
             filePath: recording.mixedAudioURL.path,
             rawTranscript: "Old segment.",
             wordTimestamps: [
-                WordTimestamp(word: "Old", startMs: 0, endMs: 200, confidence: 0.9, speakerId: "microphone"),
+                WordTimestamp(word: "Old", startMs: 0, endMs: 200, confidence: 0.9, speakerId: "microphone")
             ],
             transcriptSegments: [
                 TranscriptSegmentRecord(
@@ -2517,19 +2513,21 @@ final class TranscriptionServiceTests: XCTestCase {
                     speakerLabel: "Me",
                     text: "Old",
                     wordRange: TranscriptSegmentWordRange(startIndex: 0, endIndexExclusive: 1)
-                ),
+                )
             ],
             status: .completed,
             sourceType: .meeting
         )
         try transcriptionRepo.save(original)
-        await mockSTT.configure(result: STTResult(
-            text: "Fresh segment",
-            words: [
-                TimestampedWord(word: "Fresh", startMs: 0, endMs: 300, confidence: 0.9),
-                TimestampedWord(word: "segment", startMs: 320, endMs: 620, confidence: 0.9),
-            ]
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "uh fresh segment",
+                words: [
+                    TimestampedWord(word: "uh", startMs: 0, endMs: 100, confidence: 0.9),
+                    TimestampedWord(word: "fresh", startMs: 120, endMs: 300, confidence: 0.9),
+                    TimestampedWord(word: "segment", startMs: 320, endMs: 620, confidence: 0.9),
+                ]
+            ))
         let service = TranscriptionService(
             audioProcessor: mockAudio,
             sttTranscriber: mockSTT,
@@ -2542,12 +2540,15 @@ final class TranscriptionServiceTests: XCTestCase {
         let result = try await service.retranscribeMeeting(existing: original, recording: recording)
 
         XCTAssertEqual(result.id, original.id)
+        XCTAssertEqual(result.rawTranscript, "uh fresh segment")
+        XCTAssertEqual(result.cleanTranscript, "Fresh segment")
+        XCTAssertEqual(result.wordTimestamps?.map(\.word), ["uh", "fresh", "segment"])
         let segment = try XCTUnwrap(result.transcriptSegments?.first)
         XCTAssertNotEqual(segment.id, oldSegmentID)
         XCTAssertEqual(segment.text, "Fresh segment")
         XCTAssertEqual(segment.speakerId, "microphone")
         XCTAssertEqual(segment.speakerLabel, "Me")
-        XCTAssertEqual(segment.wordRange, TranscriptSegmentWordRange(startIndex: 0, endIndexExclusive: 2))
+        XCTAssertEqual(segment.wordRange, TranscriptSegmentWordRange(startIndex: 0, endIndexExclusive: 3))
 
         let fetched = try XCTUnwrap(transcriptionRepo.fetch(id: original.id))
         XCTAssertEqual(fetched.transcriptSegments?.first?.id, segment.id)
