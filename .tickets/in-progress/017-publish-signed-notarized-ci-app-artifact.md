@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@017-publish-signed-notarized-ci-app-artifact
 Tags:
   - ready-for-agent
 Parent:

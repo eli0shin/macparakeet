@@ -108,38 +108,93 @@ into `Info.plist` as:
 - `MacParakeetCheckoutURL`
 - `MacParakeetLemonSqueezyVariantID`
 
-### Downloadable CI development build
+### Signed and notarized CI test artifact
 
-Successful `main` and manual CI runs upload a GitHub Actions artifact named
-`MacParakeet-unsigned-non-notarized`. GitHub downloads the artifact as a ZIP;
-expanding it reveals one Finder-mountable
-`MacParakeet-unsigned-non-notarized.dmg`. The disk image contains
-`MacParakeet.app` and an Applications shortcut. This shape avoids a ZIP inside
-an identically named ZIP. The disk image preserves bundle metadata, symlinks,
-and executable permissions. The app contains the normal portable FFmpeg,
-yt-dlp helper seed, and Node runtime. CI verifies the compressed disk-image
-format, mounts it read-only, compares its app entries with the built bundle,
-and executes safe helper version checks before upload. The artifact is retained
-for seven days. Pull request runs use a separate fixture-only bundle smoke and
-do not publish its output.
+CI can publish a Developer ID signed and Apple-notarized test DMG through one
+explicit, protected manual path. It does not publish an app from pull requests,
+main pushes, or ordinary manual validation runs. The protected run uses the
+same bundle, nested-helper entitlements, privacy checks, release-version gate,
+notarization, stapling, and Gatekeeper checks as distribution. It also executes
+the signed FFmpeg, yt-dlp seed, and Node version checks from the mounted DMG.
 
-This artifact is an **unsigned, non-notarized development build** for testing.
-It is not the stable MacParakeet release and does not replace the Developer ID,
-notarization, DMG, R2, Sparkle, or GitHub release steps below. macOS can warn or
-block the app because it has no release signature. CI does not receive signing
-credentials and does not publish this archive outside GitHub Actions.
+The artifact is named `MacParakeet-signed-notarized-ci-test` and contains one
+`MacParakeet-signed-notarized-ci-test.dmg`. GitHub wraps that DMG in its normal
+artifact ZIP. Retention is seven days.
 
-To install with Finder:
+This is a **CI test artifact**, not an official release. The workflow does not
+upload it to R2, edit the Sparkle appcast, create a GitHub release, or update
+Homebrew. The official release procedure remains the separate process below.
 
-1. Download `MacParakeet-unsigned-non-notarized` from the successful workflow's
-   **Artifacts** section.
-2. Double-click the downloaded ZIP. Then double-click
-   `MacParakeet-unsigned-non-notarized.dmg`.
-3. Drag `MacParakeet.app` to Applications.
+#### One-time repository-owner setup
 
-This development app is unsigned and non-notarized, so macOS can block its
-first launch. Use it only when you trust the workflow and commit that produced
-it.
+1. In the Apple Developer portal, create or use a **Developer ID Application**
+   certificate for team `FYAF2ZD7RM`. Import the certificate and private key on
+   a trusted Mac, then export both from Keychain Access as a password-protected
+   `.p12`. Do not export an Apple Development certificate.
+2. Create an Apple ID app-specific password for the Apple ID that can submit
+   notarization requests for the same team.
+3. In GitHub, open **Settings -> Environments**, create
+   `signed-ci-artifact`, require an owner as a reviewer, and limit deployment
+   branches to `main`.
+4. Add these environment secrets (not repository variables):
+
+   | Secret | Exact value |
+   |---|---|
+   | `DEVELOPMENT_ID_CERTIFICATE_BASE64` | Base64 of the complete Developer ID `.p12` |
+   | `DEVELOPMENT_ID_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` |
+   | `DEVELOPER_ID_APPLICATION_IDENTITY` | Full identity, for example `Developer ID Application: Daniel Moon (FYAF2ZD7RM)` |
+   | `APPLE_TEAM_ID` | `FYAF2ZD7RM` |
+   | `NOTARY_APPLE_ID` | Apple ID email used for notarization |
+   | `NOTARY_APP_SPECIFIC_PASSWORD` | Apple ID app-specific password |
+
+   Encode and provision the certificate without writing it into the repository:
+
+   ```bash
+   base64 -i /secure/path/DeveloperIDApplication.p12 | \
+     gh secret set DEVELOPMENT_ID_CERTIFICATE_BASE64 --env signed-ci-artifact
+   gh secret set DEVELOPMENT_ID_CERTIFICATE_PASSWORD --env signed-ci-artifact
+   gh secret set DEVELOPER_ID_APPLICATION_IDENTITY --env signed-ci-artifact
+   gh secret set APPLE_TEAM_ID --env signed-ci-artifact
+   gh secret set NOTARY_APPLE_ID --env signed-ci-artifact
+   gh secret set NOTARY_APP_SPECIFIC_PASSWORD --env signed-ci-artifact
+   ```
+
+   The last five commands prompt for the value. Do not put secret values on the
+   command line. Delete the exported `.p12` after provisioning it.
+
+The job creates a random temporary keychain, imports the certificate, stores the
+notary profile in that keychain, and deletes the certificate and keychain on
+success, failure, interruption, or timeout. A missing secret, wrong certificate,
+wrong team, invalid version, failed notarization, or failed verification stops
+the job before the trusted DMG name exists. The artifact upload also fails if
+that exact DMG is absent.
+
+#### Publish and download
+
+1. Open **Actions -> CI -> Run workflow** on `main`.
+2. Enable **Publish the protected signed and notarized CI test DMG**.
+3. Enter an explicit `X.Y.Z` test version. `0.0.0` and other sentinel values are
+   rejected. The job generates an increasing UTC timestamp build number.
+4. Approve the `signed-ci-artifact` environment deployment.
+5. After the run succeeds, download `MacParakeet-signed-notarized-ci-test` from
+   **Artifacts**, expand the GitHub ZIP, open the DMG, and drag the app to
+   Applications.
+
+For an independent landing check, run:
+
+```bash
+xcrun stapler validate MacParakeet-signed-notarized-ci-test.dmg
+hdiutil attach MacParakeet-signed-notarized-ci-test.dmg
+codesign --verify --deep --strict /Volumes/MacParakeet/MacParakeet.app
+codesign -dv --verbose=4 /Volumes/MacParakeet/MacParakeet.app
+spctl --assess --type execute --verbose=4 /Volumes/MacParakeet/MacParakeet.app
+xcrun stapler validate /Volumes/MacParakeet/MacParakeet.app
+hdiutil detach /Volumes/MacParakeet
+```
+
+The signature details must show `TeamIdentifier=FYAF2ZD7RM`, and Gatekeeper must
+report a notarized Developer ID source. Then complete the Finder launch check on
+a normal Mac.
 
 ## 2) Sign + notarize (recommended)
 
