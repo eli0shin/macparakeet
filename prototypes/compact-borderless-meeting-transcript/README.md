@@ -10,7 +10,7 @@ Which compact, borderless completed-meeting transcript layout reduces vertical w
 
 Open the published [compact-borderless-meeting-transcript artifact](https://artifacts.home.arpa/compact-borderless-meeting-transcript/) directly in a browser. No checkout, Xcode, server, or build tool is required.
 
-CI also uploads `MacParakeet-compact-borderless-transcript-prototype` from the PR's [workflow run](https://github.com/moona3k/macparakeet/actions/workflows/ci.yml). Download it, unzip it, and open `index.html` to review the exact committed file.
+CI also uploaded [`MacParakeet-compact-borderless-transcript-prototype`](https://github.com/eli0shin/macparakeet/actions/runs/34041480443/artifacts/9991802726) from PR #22. Download it, unzip it, and open `index.html` to review the exact committed file.
 
 For a local checkout, open:
 

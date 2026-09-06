@@ -71,7 +71,9 @@ class WorkflowTests(unittest.TestCase):
 
     def test_compact_transcript_prototype_is_self_contained_and_downloadable(self):
         self.assertIn("github.event_name == 'pull_request'", self.prototype_job)
+        self.assertIn("github.head_ref == '025-prototype-compact-borderless-meeting-transcript'", self.prototype_job)
         self.assertIn("github.event_name == 'workflow_dispatch'", self.prototype_job)
+        self.assertIn("github.ref == 'refs/heads/025-prototype-compact-borderless-meeting-transcript'", self.prototype_job)
         self.assertIn("Verify self-contained prototype", self.prototype_job)
         self.assertIn('forbidden = ["<script src=", "<link rel=", "http://", "https://", "file:///"', self.prototype_job)
         upload = self.prototype_job.split("      - name: Upload compact transcript prototype\n", 1)[1]

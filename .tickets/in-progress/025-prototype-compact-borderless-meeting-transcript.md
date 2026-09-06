@@ -43,7 +43,7 @@ Variants must differ in information hierarchy or alignment, not only color or a 
 
 ## Review handoff
 
-Artifact: [compact-borderless-meeting-transcript](https://artifacts.home.arpa/compact-borderless-meeting-transcript/). Open it directly in a browser; no checkout, Xcode, server, or build tool is required. CI also uploads `MacParakeet-compact-borderless-transcript-prototype` from [this branch's workflow run](https://github.com/moona3k/macparakeet/actions/workflows/ci.yml?query=branch%3A025-prototype-compact-borderless-meeting-transcript).
+Artifact: [compact-borderless-meeting-transcript](https://artifacts.home.arpa/compact-borderless-meeting-transcript/). Open it directly in a browser; no checkout, Xcode, server, or build tool is required. CI also uploaded [`MacParakeet-compact-borderless-transcript-prototype`](https://github.com/eli0shin/macparakeet/actions/runs/34041480443/artifacts/9991802726) from PR #22.
 
 Use the bottom switcher or Left and Right Arrow keys. Compare density, rename Nadia in the compact speaker overview, select long transcript text, select timestamps to move playback focus, inspect adjacent overlap-marked turns, and resize the window to check speaker wrapping. Record one selected variant or an exact combination here, then carry the decision and rejected alternatives into ticket `026`.
 

@@ -46,7 +46,11 @@ jobs:
         run: python3 scripts/ci/classify_changes.py
 
   compact-transcript-prototype:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.head_ref == '025-prototype-compact-borderless-meeting-transcript') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/025-prototype-compact-borderless-meeting-transcript')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
