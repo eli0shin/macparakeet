@@ -29,6 +29,83 @@ final class SegmentRepositoryTests: XCTestCase {
         XCTAssertEqual(rows.map(\.speaker), ["Dana"])
     }
 
+    func testOutdatedLegacyMeetingSegmentsRebuildWithCleanupAndEnabledVocabulary() throws {
+        let transcription = completedTranscription(
+            source: .meeting,
+            text: "uh ship foo today",
+            transcriptSegments: [
+                segmentRecord(text: "uh ship foo today", startMs: 1_000, speaker: "Dana")
+            ]
+        )
+        try transcriptions.save(transcription)
+        try CustomWordRepository(dbQueue: manager.dbQueue).save(
+            CustomWord(word: "foo", replacement: "Acme")
+        )
+        try manager.dbQueue.write { db in
+            var oldSegment = Segment(
+                transcriptionId: transcription.id,
+                seq: 0,
+                startMs: 1_000,
+                endMs: 2_000,
+                speaker: "Dana",
+                text: "uh ship foo today",
+                segmenterVersion: 2
+            )
+            try oldSegment.insert(db)
+        }
+
+        let result = try segments.rebuildOutdated()
+
+        XCTAssertEqual(result, SegmentReindexResult(transcriptionsIndexed: 1, segmentsIndexed: 1))
+        let rebuilt = try XCTUnwrap(segments.fetch(transcriptionId: transcription.id).first)
+        XCTAssertEqual(rebuilt.text, "Ship Acme today")
+        XCTAssertEqual(rebuilt.segmenterVersion, KnowledgeSegmenter.currentVersion)
+        XCTAssertEqual(rebuilt.startMs, 1_000)
+        XCTAssertEqual(rebuilt.speaker, "Dana")
+        XCTAssertTrue(try segments.search(SegmentSearchQuery(query: "foo")).isEmpty)
+        XCTAssertEqual(try segments.search(SegmentSearchQuery(query: "Acme")).count, 1)
+        XCTAssertNil(try transcriptions.fetch(id: transcription.id)?.cleanTranscript)
+    }
+
+    func testPersistedCleanMeetingSegmentsAreNotCleanedAgain() {
+        var transcription = completedTranscription(
+            source: .meeting,
+            text: "foo",
+            transcriptSegments: [
+                segmentRecord(text: "Bar", startMs: 1_000, speaker: "Dana")
+            ]
+        )
+        transcription.cleanTranscript = "Bar"
+        let customWords = [
+            CustomWord(word: "bar", replacement: "baz"),
+            CustomWord(word: "foo", replacement: "bar"),
+        ]
+
+        let derived = KnowledgeSegmenter.deriveSegments(
+            for: transcription,
+            customWords: customWords
+        )
+
+        XCTAssertEqual(derived.map(\.text), ["Bar"])
+    }
+
+    func testEditedMeetingSegmentsUseManualTranscriptInsteadOfStaleEvidence() {
+        var transcription = completedTranscription(
+            source: .meeting,
+            text: "stale raw evidence",
+            transcriptSegments: [
+                segmentRecord(text: "stale timed segment", startMs: 1_000, speaker: "Dana")
+            ]
+        )
+        transcription.cleanTranscript = "Authoritative manual edit."
+        transcription.isTranscriptEdited = true
+
+        let derived = KnowledgeSegmenter.deriveSegments(for: transcription)
+
+        XCTAssertEqual(derived.map(\.text), ["Authoritative manual edit."])
+        XCTAssertTrue(derived.allSatisfy { $0.startMs == nil && $0.speaker == nil })
+    }
+
     func testTimedFileAndURLRowsDeriveSentenceSizedSegmentsWithSpeakers() throws {
         let sources: [Transcription.SourceType] = [.file, .youtube, .podcast]
         let words: [WordTimestamp] = [
@@ -56,7 +133,7 @@ final class SegmentRepositoryTests: XCTestCase {
     }
 
     func testWordTimestampMaterializationHandlesBothWhitespaceTokenStyles() {
-        XCTAssertEqual(KnowledgeSegmenter.currentVersion, 2)
+        XCTAssertEqual(KnowledgeSegmenter.currentVersion, 3)
         let wordStyle = ["That's", "incredible.", "I", "will", "be", "honest"]
         let tokenizerStyle = ["That's", " incredible", ".", " I", " will", " be", "honest"]
 

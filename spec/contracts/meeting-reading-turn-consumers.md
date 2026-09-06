@@ -46,9 +46,14 @@ ranges must not drift.
 - Edited transcripts use the existing plain edited text because word alignment
   is no longer valid.
 - Plain AI-context mode remains the preferred stored `cleanTranscript`, with raw
-  text only as a legacy fallback.
-- SRT and VTT remain cue projections of canonical raw word timings. DAPT and
-  JSON keep their existing evidence-focused contracts.
+  text only as a legacy fallback. Legacy meeting card snippets and rebuildable
+  search segments derive deterministic cleanup in memory; segment index version
+  3 replaces older raw-derived rows without backfilling `cleanTranscript`.
+- SRT and VTT remain cue projections of canonical raw word timings. When an
+  unedited meeting has no word timings, their single-cue fallback and DAPT's
+  untimed event use `rawTranscript`, not deterministic cleaned text. A manual
+  transcript edit remains authoritative and drops stale timing. JSON keeps its
+  existing evidence-focused contract.
 
 ## Versioning And Compatibility
 

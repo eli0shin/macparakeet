@@ -101,7 +101,11 @@ public final class SegmentRepository: SegmentRepositoryProtocol, @unchecked Send
     }
 
     public func replaceSegments(for transcription: Transcription) throws {
-        let derived = KnowledgeSegmenter.deriveSegments(for: transcription)
+        let customWords = try enabledCustomWords()
+        let derived = KnowledgeSegmenter.deriveSegments(
+            for: transcription,
+            customWords: customWords
+        )
         try dbQueue.write { db in
             try Self.replaceSegments(
                 derived,
@@ -144,6 +148,7 @@ public final class SegmentRepository: SegmentRepositoryProtocol, @unchecked Send
                 ]
             )
         }
+        let customWords = try enabledCustomWords()
         var transcriptionCount = 0
         var segmentCount = 0
         for transcriptionID in transcriptionIDs {
@@ -154,7 +159,10 @@ public final class SegmentRepository: SegmentRepositoryProtocol, @unchecked Send
             else {
                 continue
             }
-            let derived = KnowledgeSegmenter.deriveSegments(for: transcription)
+            let derived = KnowledgeSegmenter.deriveSegments(
+                for: transcription,
+                customWords: customWords
+            )
             try dbQueue.write { db in
                 try Self.replaceSegments(
                     derived,
@@ -199,6 +207,7 @@ public final class SegmentRepository: SegmentRepositoryProtocol, @unchecked Send
             try deleteSegments(transcriptionId: staleID)
         }
 
+        let customWords = try enabledCustomWords()
         var transcriptionCount = 0
         var segmentCount = 0
         for transcriptionID in transcriptionIDs {
@@ -209,7 +218,10 @@ public final class SegmentRepository: SegmentRepositoryProtocol, @unchecked Send
             else {
                 continue
             }
-            let derived = KnowledgeSegmenter.deriveSegments(for: transcription)
+            let derived = KnowledgeSegmenter.deriveSegments(
+                for: transcription,
+                customWords: customWords
+            )
             try dbQueue.write { db in
                 try Self.replaceSegments(
                     derived,
@@ -225,6 +237,15 @@ public final class SegmentRepository: SegmentRepositoryProtocol, @unchecked Send
             transcriptionsIndexed: transcriptionCount,
             segmentsIndexed: segmentCount
         )
+    }
+
+    private func enabledCustomWords() throws -> [CustomWord] {
+        try dbQueue.read { db in
+            try CustomWord
+                .filter(Column("isEnabled") == true)
+                .order(Column("word").collating(.localizedCaseInsensitiveCompare))
+                .fetchAll(db)
+        }
     }
 
     public func search(_ query: SegmentSearchQuery) throws -> [SegmentSearchHit] {

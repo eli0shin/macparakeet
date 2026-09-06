@@ -18,7 +18,16 @@ public final class KnowledgeLayerMutationService: KnowledgeLayerMutating, @unche
     }
 
     public func replaceSegmentsAndInvalidateCard(for transcription: Transcription) throws {
-        let derived = KnowledgeSegmenter.deriveSegments(for: transcription)
+        let customWords = try dbQueue.read { db in
+            try CustomWord
+                .filter(Column("isEnabled") == true)
+                .order(Column("word").collating(.localizedCaseInsensitiveCompare))
+                .fetchAll(db)
+        }
+        let derived = KnowledgeSegmenter.deriveSegments(
+            for: transcription,
+            customWords: customWords
+        )
         try dbQueue.write { db in
             try SegmentRepository.replaceSegments(
                 derived,

@@ -408,6 +408,29 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(vtt, "WEBVTT\n\n00:00:00.000 --> 00:00:02.500\nHello world.\n")
     }
 
+    func testUntimedUneditedMeetingEvidenceExportsUseRawTranscript() {
+        let transcription = Transcription(
+            fileName: "cohere-meeting.m4a",
+            durationMs: 2500,
+            rawTranscript: "Uhh raw <meeting> evidence.",
+            cleanTranscript: "Clean meeting text.",
+            wordTimestamps: nil,
+            status: .completed,
+            sourceType: .meeting
+        )
+
+        let srt = exportService.formatSRT(transcription: transcription)
+        let vtt = exportService.formatVTT(transcription: transcription)
+        let dapt = exportService.formatDAPT(transcription: transcription)
+
+        XCTAssertTrue(srt.contains("Uhh raw <meeting> evidence."))
+        XCTAssertTrue(vtt.contains("Uhh raw <meeting> evidence."))
+        XCTAssertTrue(dapt.contains("Uhh raw &lt;meeting&gt; evidence."))
+        XCTAssertFalse(srt.contains("Clean meeting text."))
+        XCTAssertFalse(vtt.contains("Clean meeting text."))
+        XCTAssertFalse(dapt.contains("Clean meeting text."))
+    }
+
     // MARK: - File Export
 
     func testExportToSRT() throws {

@@ -92,8 +92,13 @@ enum DAPTDocumentRenderer {
     }
 
     private static func preferredText(_ transcription: Transcription) -> String {
-        (transcription.cleanTranscript ?? transcription.rawTranscript ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let text: String
+        if transcription.sourceType == .meeting, !transcription.isTranscriptEdited {
+            text = transcription.rawTranscript ?? transcription.cleanTranscript ?? ""
+        } else {
+            text = transcription.cleanTranscript ?? transcription.rawTranscript ?? ""
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func referencedCharacters(

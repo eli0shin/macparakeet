@@ -306,26 +306,34 @@ struct MeetingRowCard<MenuContent: View>: View {
     }
 
     private var displayedSnippet: String? {
-        if let derived = transcription.derivedSnippet?.trimmingCharacters(in: .whitespacesAndNewlines), !derived.isEmpty
-        {
-            return derived
-        }
-        return legacySnippet
+        Self.snippetText(for: transcription, customWords: customWords)
     }
 
-    private var legacySnippet: String? {
+    static func snippetText(
+        for transcription: Transcription,
+        customWords: [CustomWord]
+    ) -> String? {
         let preferredText = MeetingTranscriptCleaner.preferredText(
             for: transcription,
             customWords: customWords
         )
-        guard !preferredText.isEmpty else { return nil }
-        let text = preferredText
         let cleaned =
-            text
+            preferredText
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return nil }
-        return String(cleaned.prefix(140))
+        let cleanedFallback = cleaned.isEmpty ? nil : String(cleaned.prefix(140))
+
+        if transcription.sourceType == .meeting,
+            transcription.cleanTranscript == nil
+        {
+            return cleanedFallback
+        }
+        if let derived = transcription.derivedSnippet?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !derived.isEmpty
+        {
+            return derived
+        }
+        return cleanedFallback
     }
 
     private var displayedSpeakerCount: Int? {
