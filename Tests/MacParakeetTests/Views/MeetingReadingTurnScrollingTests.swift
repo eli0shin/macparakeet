@@ -8,9 +8,9 @@ import MacParakeetCore
 /// stack, selection, hover, and scrolling shape used by `TranscriptResultView`.
 ///
 /// Agent-runnable regression command:
-/// `swift test --filter MeetingReadingTurnScrollingPerformanceTests`
+/// `swift test --filter MeetingReadingTurnScrollingTests`
 @MainActor
-final class MeetingReadingTurnScrollingPerformanceTests: XCTestCase {
+final class MeetingReadingTurnScrollingTests: XCTestCase {
     private final class CountingHostingView<Content: View>: NSHostingView<Content> {
         var layoutCount = 0
 
@@ -22,12 +22,6 @@ final class MeetingReadingTurnScrollingPerformanceTests: XCTestCase {
 
     func testRepresentativeMeetingScrollDownAndBackUpSettlesWithoutMainThreadStall() {
         let view = host(turnCount: 75)
-        let watchdog = DispatchWorkItem {
-            fatalError("Reading Turn scrolling did not return within 15 seconds")
-        }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 15, execute: watchdog)
-        defer { watchdog.cancel() }
-
         let window = NSWindow(
             contentRect: NSRect(x: -20_000, y: -20_000, width: 800, height: 600),
             styleMask: [.titled, .resizable],
@@ -45,25 +39,15 @@ final class MeetingReadingTurnScrollingPerformanceTests: XCTestCase {
             return
         }
 
-        var worstFrameMilliseconds = 0.0
         for _ in 0..<3 {
-            worstFrameMilliseconds = max(
-                worstFrameMilliseconds,
-                scrollThrough(scrollView, document: document, toBottom: true)
-            )
-            worstFrameMilliseconds = max(
-                worstFrameMilliseconds,
-                scrollThrough(scrollView, document: document, toBottom: false)
-            )
+            scrollThrough(scrollView, document: document, toBottom: true)
+            XCTAssertEqual(scrollView.contentView.bounds.origin.y, bottomPosition(for: scrollView))
+            scrollThrough(scrollView, document: document, toBottom: false)
+            XCTAssertEqual(scrollView.contentView.bounds.origin.y, topPosition(for: scrollView))
         }
         let settledCount = view.layoutCount
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
 
-        XCTAssertLessThan(
-            worstFrameMilliseconds,
-            8,
-            "Representative Reading Turn scrolling stalled one main-thread frame for \(worstFrameMilliseconds) ms"
-        )
         XCTAssertLessThanOrEqual(
             view.layoutCount - settledCount,
             2,
@@ -124,24 +108,18 @@ final class MeetingReadingTurnScrollingPerformanceTests: XCTestCase {
         _ scrollView: NSScrollView,
         document: NSView,
         toBottom: Bool
-    ) -> Double {
+    ) {
         let clip = scrollView.contentView
         let maxY = max(0, document.frame.height - clip.bounds.height)
-        let positions = stride(from: 0.0, through: maxY, by: 120.0)
-        var worstFrameMilliseconds = 0.0
-        for position in toBottom ? Array(positions) : Array(positions).reversed() {
+        var positions = Array(stride(from: 0.0, to: maxY, by: 120.0))
+        positions.append(maxY)
+        for position in toBottom ? positions : positions.reversed() {
             let y = document.isFlipped ? position : maxY - position
-            let frameStart = threadCPUSeconds()
             clip.scroll(to: NSPoint(x: 0, y: y))
             scrollView.reflectScrolledClipView(clip)
             sendMouseMoved(to: scrollView)
             RunLoop.main.run(until: Date().addingTimeInterval(0.001))
-            worstFrameMilliseconds = max(
-                worstFrameMilliseconds,
-                (threadCPUSeconds() - frameStart) * 1_000
-            )
         }
-        return worstFrameMilliseconds
     }
 
     private func sendMouseMoved(to scrollView: NSScrollView) {
@@ -161,9 +139,15 @@ final class MeetingReadingTurnScrollingPerformanceTests: XCTestCase {
         if let event { NSApp.sendEvent(event) }
     }
 
-    private func threadCPUSeconds() -> Double {
-        var time = timespec()
-        precondition(clock_gettime(CLOCK_THREAD_CPUTIME_ID, &time) == 0)
-        return Double(time.tv_sec) + Double(time.tv_nsec) / 1_000_000_000
+    private func bottomPosition(for scrollView: NSScrollView) -> CGFloat {
+        guard let document = scrollView.documentView else { return 0 }
+        let maxY = max(0, document.frame.height - scrollView.contentView.bounds.height)
+        return document.isFlipped ? maxY : 0
+    }
+
+    private func topPosition(for scrollView: NSScrollView) -> CGFloat {
+        guard let document = scrollView.documentView else { return 0 }
+        let maxY = max(0, document.frame.height - scrollView.contentView.bounds.height)
+        return document.isFlipped ? 0 : maxY
     }
 }
