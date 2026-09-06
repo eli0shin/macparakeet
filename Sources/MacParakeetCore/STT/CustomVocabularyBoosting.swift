@@ -8,9 +8,7 @@ public enum CustomVocabularyBoostingConfiguration {
     /// `docs/research/2026-07-04-custom-vocab-phase0.md`.
     public static let minSimilarity: Float = 0.65
     public static let minTermLength: Int = 3
-    /// Product v1 avoids loading multi-hour file/meeting audio into RAM for the
-    /// sidecar. Longer jobs keep FluidAudio's URL-backed TDT path and skip
-    /// boosting until chunked sidecar rescoring lands.
+    /// Upper bound for each sidecar audio buffer, not the total recording.
     public static let maxSidecarAudioSeconds: Double = 5 * 60
     public static let termWeight: Float = 10.0
     public static let maxCachedVocabularyEntries: Int = 3
@@ -54,20 +52,20 @@ public enum CustomVocabularyBoostingPresentation {
                 return CustomVocabularyBoostingSupportPresentation(
                     title: "Clean corrections only",
                     detail:
-                        "Recognition boosting is paused; enabled rules still run after transcription."
+                        "Vocabulary hints are off. Enable them to prepare the additional local model. Clean replacement rules are unchanged."
                 )
             }
             return CustomVocabularyBoostingSupportPresentation(
-                title: "Recognition boosting on",
+                title: "Vocabulary hints enabled",
                 detail:
-                    "Enabled anchors boost Parakeet TDT recognition; replacement rules still run after transcription."
+                    "Vocabulary words guide Parakeet v2/v3 recognition, including Raw mode. Matches are not guaranteed. Replacements run only in Clean mode."
             )
         }
 
         return CustomVocabularyBoostingSupportPresentation(
             title: "Clean corrections only",
             detail:
-                "\(displayName(for: capabilities.key)) does not support recognition-time vocabulary boosting; enabled rules still run after transcription."
+                "Vocabulary hints unavailable for this engine (\(displayName(for: capabilities.key))). Stored words are kept; Clean replacement rules are unchanged."
         )
     }
 
@@ -94,19 +92,25 @@ public struct CustomVocabularyBoostingVocabulary: Equatable, Sendable {
 
     public let terms: [String]
     public let contentHash: String
+    public let warning: String?
 
     public var isEmpty: Bool { terms.isEmpty }
 
-    public init(terms: [String]) {
+    public init(terms: [String], warning: String? = nil) {
         self.terms = Self.canonicalTerms(terms)
         self.contentHash = Self.contentHash(for: self.terms)
+        self.warning = warning
     }
 
     public static func mapping(
         from words: [CustomWord],
         minTermLength: Int = CustomVocabularyBoostingConfiguration.minTermLength
     ) -> CustomVocabularyBoostingVocabulary {
-        CustomVocabularyBoostingVocabulary(
+        let hasShortWords = words.contains {
+            $0.isEnabled && RecognitionVocabularyPolicy.isVocabularyWord($0)
+                && $0.word.trimmingCharacters(in: .whitespacesAndNewlines).count < minTermLength
+        }
+        return CustomVocabularyBoostingVocabulary(
             terms: words.compactMap { word in
                 guard word.isEnabled else { return nil }
                 if let replacement = word.replacement,
@@ -118,7 +122,9 @@ public struct CustomVocabularyBoostingVocabulary: Equatable, Sendable {
                 let term = word.word.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard term.count >= minTermLength else { return nil }
                 return term
-            }
+            },
+            warning: hasShortWords
+                ? "Vocabulary words shorter than three characters are not used as recognition hints." : nil
         )
     }
 
@@ -191,17 +197,20 @@ public struct CustomVocabularyRescoringResult: Sendable {
     public let detectedTerms: [String]
     public let appliedTerms: [String]
     public let replacementCount: Int
+    public let edits: [CustomVocabularyEdit]
 
     public init(
         text: String,
         detectedTerms: [String],
         appliedTerms: [String],
-        replacementCount: Int
+        replacementCount: Int,
+        edits: [CustomVocabularyEdit] = []
     ) {
         self.text = text
         self.detectedTerms = detectedTerms
         self.appliedTerms = appliedTerms
         self.replacementCount = replacementCount
+        self.edits = edits
     }
 }
 
@@ -219,6 +228,9 @@ public extension CustomVocabularyRescoring {
 public enum CustomVocabularyBoostingError: Error, Sendable {
     case emptyTokenizedVocabulary
     case unpreparedVocabulary
+    case tooManyTerms
+    case unavailableAudioOrTimings
+    case invalidCandidateRange
 }
 
 public struct RepositoryCustomVocabularyBoostingTermProvider: CustomVocabularyBoostingTermProviding {
@@ -236,7 +248,8 @@ public struct RepositoryCustomVocabularyBoostingTermProvider: CustomVocabularyBo
             logger.warning(
                 "custom_vocabulary_fetch_failed error_type=\(String(describing: type(of: error)), privacy: .public)"
             )
-            return .empty
+            return CustomVocabularyBoostingVocabulary(
+                terms: [], warning: "Vocabulary could not be read. Transcription continues without hints.")
         }
     }
 }
@@ -268,6 +281,9 @@ public actor FluidAudioCustomVocabularyRescorer: CustomVocabularyRescoring {
 
     public func prepare(vocabulary: CustomVocabularyBoostingVocabulary) async throws {
         guard !vocabulary.isEmpty else { return }
+        guard vocabulary.terms.count <= RecognitionVocabularyPolicy.maximumEnabledTerms else {
+            throw CustomVocabularyBoostingError.tooManyTerms
+        }
         _ = try await components(for: vocabulary)
     }
 
@@ -308,7 +324,7 @@ public actor FluidAudioCustomVocabularyRescorer: CustomVocabularyRescoring {
             )
         }
 
-        let output = components.rescorer.ctcTokenRescore(
+        let output = components.rescorer.ctcTokenEvaluateCandidates(
             transcript: request.transcript,
             tokenTimings: tokenTimings,
             logProbs: spotResult.logProbs,
@@ -318,24 +334,30 @@ public actor FluidAudioCustomVocabularyRescorer: CustomVocabularyRescoring {
             minSimilarity: CustomVocabularyBoostingConfiguration.minSimilarity
         )
         let detected = Self.uniquePreservingOrder(spotResult.detections.map { $0.term.text })
-        let applied = Self.uniquePreservingOrder(
-            output.replacements.compactMap { replacement in
-                replacement.shouldReplace ? replacement.replacementWord : nil
+        let edits = try output.candidates.filter { $0.legacyOutcome == .applied }.map { candidate in
+            guard let range = candidate.baseTextUTF8Range, let startTime = candidate.startTime else {
+                throw CustomVocabularyBoostingError.invalidCandidateRange
             }
-        )
-        let replacementCount = output.replacements.filter(\.shouldReplace).count
+            return CustomVocabularyEdit(
+                utf8Range: range, text: candidate.canonicalTerm, startTime: startTime
+            )
+        }
+        let text = try CustomVocabularyEdit.applying(edits, to: request.transcript)
+        let applied = Self.uniquePreservingOrder(edits.map(\.text))
+        let replacementCount = edits.count
 
-        if output.wasModified {
+        if text != request.transcript {
             logger.info(
                 "custom_vocabulary_boost_applied terms=\(request.vocabulary.terms.count, privacy: .public) replacements=\(replacementCount, privacy: .public)"
             )
         }
 
         return CustomVocabularyRescoringResult(
-            text: output.text,
+            text: text,
             detectedTerms: detected,
             appliedTerms: applied,
-            replacementCount: replacementCount
+            replacementCount: replacementCount,
+            edits: edits
         )
     }
 
@@ -349,7 +371,7 @@ public actor FluidAudioCustomVocabularyRescorer: CustomVocabularyRescoring {
         if let loadTask = cachedVocabularyLoadTasks[hash] {
             let cachedVocabulary: CachedVocabulary
             do {
-                cachedVocabulary = try await loadTask.value
+                cachedVocabulary = try await VocabularyPreparationWaiter.value(of: loadTask)
             } catch {
                 if !(error is CancellationError) {
                     cachedVocabularyLoadTasks.removeValue(forKey: hash)
@@ -362,16 +384,20 @@ public actor FluidAudioCustomVocabularyRescorer: CustomVocabularyRescoring {
 
         try Task.checkCancellation()
         let loadTask = Task.detached { [self, vocabulary] in
-            let resources = try await self.ctcResources()
-            return try await Self.makeCachedVocabulary(
-                vocabulary: vocabulary,
-                resources: resources
-            )
+            do {
+                let resources = try await self.ctcResources()
+                let cached = try await Self.makeCachedVocabulary(vocabulary: vocabulary, resources: resources)
+                await self.storeCachedVocabulary(cached)
+                return cached
+            } catch {
+                await self.removeVocabularyLoadTask(hash)
+                throw error
+            }
         }
         cachedVocabularyLoadTasks[hash] = loadTask
 
         do {
-            let cachedVocabulary = try await loadTask.value
+            let cachedVocabulary = try await VocabularyPreparationWaiter.value(of: loadTask)
             let shouldLogLoad = cachedVocabularies[hash] == nil
             storeCachedVocabulary(cachedVocabulary)
             if shouldLogLoad {
@@ -395,7 +421,7 @@ public actor FluidAudioCustomVocabularyRescorer: CustomVocabularyRescoring {
 
         if let resourceLoadTask {
             do {
-                let resources = try await resourceLoadTask.value
+                let resources = try await VocabularyPreparationWaiter.value(of: resourceLoadTask)
                 cachedResources = resources
                 self.resourceLoadTask = nil
                 return resources
@@ -413,7 +439,7 @@ public actor FluidAudioCustomVocabularyRescorer: CustomVocabularyRescoring {
         resourceLoadTask = loadTask
 
         do {
-            let resources = try await loadTask.value
+            let resources = try await VocabularyPreparationWaiter.value(of: loadTask)
             cachedResources = resources
             resourceLoadTask = nil
             return resources
@@ -469,7 +495,11 @@ public actor FluidAudioCustomVocabularyRescorer: CustomVocabularyRescoring {
         let rescorer = try await VocabularyRescorer.create(
             spotter: spotter,
             vocabulary: context,
-            config: .default,
+            config: VocabularyRescorer.Config(
+                shortTermCbwTaperPivot: 5,
+                spotterRescueMinSimilarity: 0.30,
+                spotterRescueMultiWordMinSimilarity: 0.50
+            ),
             ctcModelDirectory: resources.modelDirectory
         )
         try Task.checkCancellation()
@@ -482,6 +512,10 @@ public actor FluidAudioCustomVocabularyRescorer: CustomVocabularyRescoring {
             cbw: sizeConfig.cbw,
             marginSeconds: ContextBiasingConstants.defaultMarginSeconds
         )
+    }
+
+    private func removeVocabularyLoadTask(_ hash: String) {
+        cachedVocabularyLoadTasks.removeValue(forKey: hash)
     }
 
     private func rememberCachedVocabularyHash(_ hash: String) {

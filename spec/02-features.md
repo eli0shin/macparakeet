@@ -972,6 +972,26 @@ Important constraints:
 
 ### F9: Custom Words & Snippets Management
 
+Vocabulary words and replacement rules share the existing word store but have
+separate entry forms. A vocabulary word is a name or term expected in speech;
+it does not require an incorrect spelling. Parakeet TDT v2/v3 can use English
+vocabulary hints for final dictation and file/meeting transcripts, including
+long recordings. Hints apply in Raw and Clean recognition; replacement rules
+still run only during Clean processing. Matching is not guaranteed.
+
+Hints default off. Adding the first vocabulary word offers consent to download
+and prepare the additional local model. The user can decline, enable later,
+or turn hints off without deleting words. Settings show preparation and engine
+support. Failures retain the base transcript and display a notice. Unsupported
+engines never trigger an automatic engine switch.
+
+Newly enabled words require three characters and a selection of at most 100
+unique terms. Larger legacy/imported lists remain stored but require an explicit
+selection before recognition hints run. Short legacy entries retain their existing
+Clean capitalization behavior and receive a recognition warning. Jobs snapshot
+the shared list at admission; edits do not change running jobs or saved transcripts.
+Whisper hints, live-preview hints, and multilingual qualification are not included.
+
 **What:** UI for managing custom word corrections and text snippet expansions.
 
 **Custom Words view:**

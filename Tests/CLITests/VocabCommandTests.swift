@@ -108,7 +108,7 @@ final class VocabCommandTests: XCTestCase {
         SpeechEnginePreference.saveParakeetModelVariant(.v3, defaults: defaults)
         XCTAssertTrue(
             VocabWordsCommand.recognitionBoostingStatusLine(defaults: defaults)
-                .contains("Recognition boosting is paused")
+                .contains("Vocabulary hints are off")
         )
 
         defaults.set(
@@ -117,7 +117,7 @@ final class VocabCommandTests: XCTestCase {
         )
         XCTAssertTrue(
             VocabWordsCommand.recognitionBoostingStatusLine(defaults: defaults)
-                .contains("Recognition boosting on")
+                .contains("Vocabulary hints enabled")
         )
 
         defaults.removeObject(

@@ -11,13 +11,73 @@ public final class CustomWordsViewModel {
     public var errorMessage: String?
     public var pendingDeleteWord: CustomWord?
 
+    public var isReplacementEntry = false
+    public var recognitionEnabled = false
+    public var needsRecognitionConsent = false
+    public var isPreparingRecognition = false
+    public var recognitionStatus = RecognitionVocabularyStatus()
+
     private var repo: CustomWordRepositoryProtocol?
+    private var defaults: UserDefaults = .standard
+    private var prepareRecognition: (@Sendable () async throws -> Void)?
+    private static let consentKey = UserDefaultsAppRuntimePreferences.customVocabularyRecognitionConsentKey
+    private static let askedKey = UserDefaultsAppRuntimePreferences.customVocabularyRecognitionConsentAskedKey
 
     public init() {}
 
-    public func configure(repo: CustomWordRepositoryProtocol) {
+    public func configure(
+        repo: CustomWordRepositoryProtocol,
+        defaults: UserDefaults = .standard,
+        recognitionStatus: RecognitionVocabularyStatus? = nil,
+        prepareRecognition: (@Sendable () async throws -> Void)? = nil
+    ) {
         self.repo = repo
+        self.defaults = defaults
+        self.prepareRecognition = prepareRecognition
+        if let recognitionStatus { self.recognitionStatus = recognitionStatus }
+        recognitionEnabled = defaults.bool(
+            forKey: UserDefaultsAppRuntimePreferences.customVocabularyRecognitionBoostingEnabledKey)
         loadWords()
+    }
+
+    public var vocabularyWarning: String? { RecognitionVocabularyPolicy.warning(for: words) }
+
+    public func requestRecognitionEnabled(_ enabled: Bool) async {
+        guard !isPreparingRecognition else { return }
+        if !enabled {
+            recognitionEnabled = false
+            defaults.set(false, forKey: UserDefaultsAppRuntimePreferences.customVocabularyRecognitionBoostingEnabledKey)
+        } else if !defaults.bool(forKey: Self.consentKey) {
+            needsRecognitionConsent = true
+        } else {
+            await enableRecognition()
+        }
+    }
+
+    public func answerRecognitionConsent(_ accepted: Bool) async {
+        needsRecognitionConsent = false
+        defaults.set(true, forKey: Self.askedKey)
+        guard accepted else { return }
+        defaults.set(true, forKey: Self.consentKey)
+        await enableRecognition()
+    }
+
+    private func enableRecognition() async {
+        guard let prepareRecognition else {
+            errorMessage = "Vocabulary preparation is unavailable."
+            return
+        }
+        isPreparingRecognition = true
+        defer { isPreparingRecognition = false }
+        do {
+            try await prepareRecognition()
+            try Task.checkCancellation()
+            defaults.set(true, forKey: UserDefaultsAppRuntimePreferences.customVocabularyRecognitionBoostingEnabledKey)
+            recognitionEnabled = true
+            errorMessage = nil
+        } catch {
+            errorMessage = "Vocabulary hints could not be prepared. Check your connection and try again."
+        }
     }
 
     public var filteredWords: [CustomWord] {
@@ -30,6 +90,10 @@ public final class CustomWordsViewModel {
 
     public func loadWords() {
         guard let repo else { return }
+        if !isPreparingRecognition {
+            recognitionEnabled = defaults.bool(
+                forKey: UserDefaultsAppRuntimePreferences.customVocabularyRecognitionBoostingEnabledKey)
+        }
         do {
             words = try repo.fetchAll()
             errorMessage = nil
@@ -56,7 +120,13 @@ public final class CustomWordsViewModel {
         )
 
         do {
+            try RecognitionVocabularyPolicy.validateSaving(word, among: try repo.fetchAll())
             try repo.save(word)
+            if RecognitionVocabularyPolicy.isVocabularyWord(word),
+                !recognitionEnabled, !defaults.bool(forKey: Self.askedKey)
+            {
+                needsRecognitionConsent = true
+            }
             Telemetry.send(.customWordAdded)
             newWord = ""
             newReplacement = ""
@@ -73,6 +143,7 @@ public final class CustomWordsViewModel {
         updated.isEnabled.toggle()
         updated.updatedAt = Date()
         do {
+            try RecognitionVocabularyPolicy.validateSaving(updated, among: try repo.fetchAll())
             try repo.save(updated)
             loadWords()
         } catch {

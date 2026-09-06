@@ -22,58 +22,65 @@ struct ConfigCommand: ParsableCommand {
         commandName: "config",
         abstract: "Read or write CLI/app configuration values.",
         discussion: """
-        Configuration is stored in the shared MacParakeet UserDefaults suite \
-        (com.macparakeet.MacParakeet). The GUI and CLI read the same suite, so \
-        values set here apply to later app-default reads. A running GUI may \
-        cache some settings until relaunch or an in-app change.
+            Configuration is stored in the shared MacParakeet UserDefaults suite \
+            (com.macparakeet.MacParakeet). The GUI and CLI read the same suite, so \
+            values set here apply to later app-default reads. A running GUI may \
+            cache some settings until relaunch or an in-app change.
 
-        Supported keys:
-          telemetry                 on|off                         default: on
-          processing-mode           raw|clean                       default: raw
-          speech-engine             parakeet|nemotron|whisper|cohere default: parakeet
-          parakeet-model            v3|v2|unified                   default: v3
-                                    (v3=supported languages, v2=English
-                                    timestamps, unified=readable English timestamps)
-          nemotron-model            multilingual-1120ms|            default: multilingual-1120ms
-                                    english-1120ms (Beta streaming)
-          nemotron-language         auto|<Nemotron language code>   default: auto
-                                    (multilingual build only)
-          whisper-language          auto|<Whisper language code>    default: auto
-          cohere-language           <Cohere language code>          default: en (no auto)
-          speaker-detection         on|off                          default: on
-          meeting-speaker-detection on|off                          default: on
-          auto-meeting-titles       on|off                          default: on
-          voice-return-enabled      on|off                          default: off
-          voice-return-triggers     phrase[|phrase...]              default: press return
-          save-transcription-audio  on|off                          default: on
-          meeting-audio-retention   keep-forever|                   default: keep-forever
-                                    delete-after-<1-365>-days|
-                                    <1-365>d|
-                                    delete-immediately
-          meeting-audio-source      microphone-and-system|          default: microphone-and-system
-                                    microphone-only|
-                                    system-only
-          save-meeting-audio        on|off                          legacy alias
-          youtube-audio-quality     m4a|best-available              default: m4a
-          meeting-artifacts-folder  absolute path|default           default: app support
-          meeting-hook-enabled      on|off                          default: off
-          meeting-hook-path         absolute executable path|none    default: none
-          meeting-hook-timeout      seconds (1-300)                 default: 20
+            Supported keys:
+              telemetry                 on|off                         default: on
+              processing-mode           raw|clean                       default: raw
+              speech-engine             parakeet|nemotron|whisper|cohere default: parakeet
+              parakeet-model            v3|v2|unified                   default: v3
+                                        (v3=supported languages, v2=English
+                                        timestamps, unified=readable English timestamps)
+              nemotron-model            multilingual-1120ms|            default: multilingual-1120ms
+                                        english-1120ms (Beta streaming)
+              nemotron-language         auto|<Nemotron language code>   default: auto
+                                        (multilingual build only)
+              whisper-language          auto|<Whisper language code>    default: auto
+              cohere-language           <Cohere language code>          default: en (no auto)
+              speaker-detection         on|off                          default: on
+              meeting-speaker-detection on|off                          default: on
+              auto-meeting-titles       on|off                          default: on
+              voice-return-enabled      on|off                          default: off
+              voice-return-triggers     phrase[|phrase...]              default: press return
+              save-transcription-audio  on|off                          default: on
+              meeting-audio-retention   keep-forever|                   default: keep-forever
+                                        delete-after-<1-365>-days|
+                                        <1-365>d|
+                                        delete-immediately
+              meeting-audio-source      microphone-and-system|          default: microphone-and-system
+                                        microphone-only|
+                                        system-only
+              save-meeting-audio        on|off                          legacy alias
+              youtube-audio-quality     m4a|best-available              default: m4a
+              meeting-artifacts-folder  absolute path|default           default: app support
+              meeting-hook-enabled      on|off                          default: off
+              meeting-hook-path         absolute executable path|none    default: none
+              meeting-hook-timeout      seconds (1-300)                 default: 20
 
-        Full event catalog:
-          https://github.com/moona3k/macparakeet/blob/main/docs/telemetry.md
+            Full event catalog:
+              https://github.com/moona3k/macparakeet/blob/main/docs/telemetry.md
 
-        Per-process overrides (env vars, do not require `config set`):
-          MACPARAKEET_TELEMETRY=0   Force-off for one invocation
-          MACPARAKEET_TELEMETRY=1   Force-on for one invocation
-          DO_NOT_TRACK=1            Force-off (industry-standard signal)
-          CI=true                   Auto-disabled in CI environments
-        """,
+            Per-process overrides (env vars, do not require `config set`):
+              MACPARAKEET_TELEMETRY=0   Force-off for one invocation
+              MACPARAKEET_TELEMETRY=1   Force-on for one invocation
+              DO_NOT_TRACK=1            Force-off (industry-standard signal)
+              CI=true                   Auto-disabled in CI environments
+            """,
         subcommands: [GetCommand.self, SetCommand.self, ListCommand.self]
     )
 
     /// Keys recognized by `get`/`set`/`list`.
     static let supportedKeySpecs: [CLIConfigKeySpec] = [
+        CLIConfigKeySpec(
+            key: "vocabulary-hints",
+            valueSyntax: "on|off",
+            allowedValues: ["on", "off"],
+            summary:
+                "Enable local Parakeet vocabulary hints. Setting on consents to an additional model download on the next supported transcription."
+        ),
         CLIConfigKeySpec(
             key: "telemetry",
             valueSyntax: "on|off",
@@ -96,7 +103,8 @@ struct ConfigCommand: ParsableCommand {
             key: "parakeet-model",
             valueSyntax: "v3|v2|unified",
             allowedValues: ["v3", "v2", "unified"],
-            summary: "Default Parakeet build: v3 supported languages, v2 English timestamps, or Unified readable English timestamps."
+            summary:
+                "Default Parakeet build: v3 supported languages, v2 English timestamps, or Unified readable English timestamps."
         ),
         CLIConfigKeySpec(
             key: "nemotron-model",
@@ -108,7 +116,8 @@ struct ConfigCommand: ParsableCommand {
             key: "nemotron-language",
             valueSyntax: "auto|<Nemotron language code>",
             allowedValues: nil,
-            summary: "Default Nemotron language hint for the multilingual build; auto uses engine detection when available."
+            summary:
+                "Default Nemotron language hint for the multilingual build; auto uses engine detection when available."
         ),
         CLIConfigKeySpec(
             key: "whisper-language",
@@ -307,6 +316,9 @@ struct ConfigCommand: ParsableCommand {
     static func read(key: String, defaults: UserDefaults? = nil) throws -> String {
         let store = defaults ?? macParakeetAppDefaults()
         switch try canonicalKey(key) {
+        case "vocabulary-hints":
+            return store.bool(forKey: UserDefaultsAppRuntimePreferences.customVocabularyRecognitionBoostingEnabledKey)
+                ? "on" : "off"
         case "telemetry":
             let on = AppPreferences.isTelemetryEnabled(defaults: store)
             return on ? "on" : "off"
@@ -332,7 +344,8 @@ struct ConfigCommand: ParsableCommand {
             let on = UserDefaultsAppRuntimePreferences.meetingSpeakerDiarizationEnabled(defaults: store)
             return on ? "on" : "off"
         case "auto-meeting-titles":
-            let on = store.object(forKey: UserDefaultsAppRuntimePreferences.autoGenerateMeetingTitlesKey) as? Bool ?? true
+            let on =
+                store.object(forKey: UserDefaultsAppRuntimePreferences.autoGenerateMeetingTitlesKey) as? Bool ?? true
             return on ? "on" : "off"
         case "voice-return-enabled":
             let on = store.object(forKey: UserDefaultsAppRuntimePreferences.voiceReturnEnabledKey) as? Bool ?? false
@@ -363,7 +376,8 @@ struct ConfigCommand: ParsableCommand {
                 .flatMap { MeetingAutomationHookConfiguration.normalizedExecutablePath($0) }
                 ?? "none"
         case "meeting-hook-timeout":
-            let timeout = store.object(forKey: MeetingAutomationHookConfiguration.timeoutSecondsKey) as? Double
+            let timeout =
+                store.object(forKey: MeetingAutomationHookConfiguration.timeoutSecondsKey) as? Double
                 ?? MeetingAutomationHookConfiguration.defaultTimeoutSeconds
             return displayTimeout(MeetingAutomationHookConfiguration.clampedTimeout(timeout))
         default:
@@ -382,6 +396,14 @@ struct ConfigCommand: ParsableCommand {
     ) throws -> String {
         let store = defaults ?? macParakeetAppDefaults()
         switch try canonicalKey(key) {
+        case "vocabulary-hints":
+            let enabled = try parseBool(value, key: key)
+            if enabled {
+                store.set(true, forKey: UserDefaultsAppRuntimePreferences.customVocabularyRecognitionConsentKey)
+                store.set(true, forKey: UserDefaultsAppRuntimePreferences.customVocabularyRecognitionConsentAskedKey)
+            }
+            store.set(enabled, forKey: UserDefaultsAppRuntimePreferences.customVocabularyRecognitionBoostingEnabledKey)
+            return enabled ? "on" : "off"
         case "telemetry":
             let parsed = try parseBool(value, key: key)
             store.set(parsed, forKey: AppPreferences.telemetryEnabledKey)
@@ -413,7 +435,8 @@ struct ConfigCommand: ParsableCommand {
             // multilingual build is selected again); the note goes to stderr so
             // stdout/--json output stays contract-stable.
             if SpeechEnginePreference.nemotronModelVariant(defaults: store).isEnglishOnly {
-                printErr("Note: nemotron-model is english-1120ms; nemotron-language applies only to the multilingual build.")
+                printErr(
+                    "Note: nemotron-model is english-1120ms; nemotron-language applies only to the multilingual build.")
             }
             return language ?? "auto"
         case "whisper-language":
@@ -488,7 +511,8 @@ struct ConfigCommand: ParsableCommand {
             let path = try parseMeetingHookPath(value)
             if let path {
                 guard FileManager.default.isExecutableFile(atPath: path) else {
-                    throw ValidationError("Invalid value for meeting-hook-path: '\(value)'. The path must exist and be executable.")
+                    throw ValidationError(
+                        "Invalid value for meeting-hook-path: '\(value)'. The path must exist and be executable.")
                 }
                 store.set(path, forKey: MeetingAutomationHookConfiguration.executablePathKey)
                 return path
@@ -537,7 +561,8 @@ struct ConfigCommand: ParsableCommand {
     static func parseSpeechEngine(_ value: String) throws -> SpeechEnginePreference {
         let raw = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard let engine = SpeechEnginePreference(rawValue: raw) else {
-            throw ValidationError("Invalid value for speech-engine: '\(value)'. Use parakeet, nemotron, whisper, or cohere.")
+            throw ValidationError(
+                "Invalid value for speech-engine: '\(value)'. Use parakeet, nemotron, whisper, or cohere.")
         }
         return engine
     }
@@ -556,7 +581,9 @@ struct ConfigCommand: ParsableCommand {
         case "unified", "english-unified", "unified-offline":
             return .unified
         default:
-            throw ValidationError("Invalid value for parakeet-model: '\(value)'. Use v3 (multilingual), v2 (English-only), or unified (English-only with punctuation/capitalization).")
+            throw ValidationError(
+                "Invalid value for parakeet-model: '\(value)'. Use v3 (multilingual), v2 (English-only), or unified (English-only with punctuation/capitalization)."
+            )
         }
     }
 
@@ -572,7 +599,8 @@ struct ConfigCommand: ParsableCommand {
         case "english-1120ms", "english", "english-only", "en":
             return .english1120
         default:
-            throw ValidationError("Invalid value for nemotron-model: '\(value)'. Use multilingual-1120ms or english-1120ms.")
+            throw ValidationError(
+                "Invalid value for nemotron-model: '\(value)'. Use multilingual-1120ms or english-1120ms.")
         }
     }
 
@@ -583,7 +611,8 @@ struct ConfigCommand: ParsableCommand {
             return nil
         }
         guard let language = SpeechEnginePreference.normalizeLanguage(trimmed) else {
-            throw ValidationError("Invalid value for whisper-language: '\(value)'. Use auto or a Whisper language code.")
+            throw ValidationError(
+                "Invalid value for whisper-language: '\(value)'. Use auto or a Whisper language code.")
         }
         return language
     }
@@ -595,7 +624,9 @@ struct ConfigCommand: ParsableCommand {
             return nil
         }
         guard let language = SpeechEnginePreference.normalizeNemotronLanguage(trimmed) else {
-            throw ValidationError("Invalid value for nemotron-language: '\(value)'. Use auto or a language code such as en-US, ko, or zh-CN.")
+            throw ValidationError(
+                "Invalid value for nemotron-language: '\(value)'. Use auto or a language code such as en-US, ko, or zh-CN."
+            )
         }
         return language
     }
@@ -634,25 +665,31 @@ struct ConfigCommand: ParsableCommand {
 
     static func parseMeetingAudioRetention(_ value: String) throws -> MeetingAudioRetention {
         guard let retention = MeetingAudioRetention.parseConfigurationValue(value) else {
-            throw ValidationError("Invalid value for meeting-audio-retention: '\(value)'. Use keep-forever, delete-immediately, delete-after-<1-365>-days, or <1-365>d.")
+            throw ValidationError(
+                "Invalid value for meeting-audio-retention: '\(value)'. Use keep-forever, delete-immediately, delete-after-<1-365>-days, or <1-365>d."
+            )
         }
         return retention
     }
 
     static func parseMeetingAudioSourceMode(_ value: String) throws -> MeetingAudioSourceMode {
         guard let mode = MeetingAudioSourceMode.parseConfigurationValue(value) else {
-            throw ValidationError("Invalid value for meeting-audio-source: '\(value)'. Use microphone-and-system, microphone-only, or system-only.")
+            throw ValidationError(
+                "Invalid value for meeting-audio-source: '\(value)'. Use microphone-and-system, microphone-only, or system-only."
+            )
         }
         return mode
     }
 
     static func parseVoiceReturnTriggers(_ value: String) throws -> [String] {
-        let rawTriggers = value
+        let rawTriggers =
+            value
             .split(separator: "|", omittingEmptySubsequences: false)
             .map(String.init)
         let triggers = VoiceReturnTriggerPhrases.normalized(rawTriggers)
         guard !triggers.isEmpty else {
-            throw ValidationError("Invalid value for voice-return-triggers: '\(value)'. Provide at least one trigger phrase.")
+            throw ValidationError(
+                "Invalid value for voice-return-triggers: '\(value)'. Provide at least one trigger phrase.")
         }
         return triggers
     }
@@ -668,9 +705,10 @@ struct ConfigCommand: ParsableCommand {
             return nil
         }
         guard let normalized = AppPaths.normalizedMeetingArtifactsFolder(trimmed),
-              (normalized as NSString).isAbsolutePath
+            (normalized as NSString).isAbsolutePath
         else {
-            throw ValidationError("Invalid value for meeting-artifacts-folder: '\(value)'. Use an absolute path, ~/path, or default.")
+            throw ValidationError(
+                "Invalid value for meeting-artifacts-folder: '\(value)'. Use an absolute path, ~/path, or default.")
         }
         return normalized
     }
@@ -682,7 +720,8 @@ struct ConfigCommand: ParsableCommand {
             return nil
         }
         guard let normalized = MeetingAutomationHookConfiguration.normalizedExecutablePath(trimmed) else {
-            throw ValidationError("Invalid value for meeting-hook-path: '\(value)'. Use an absolute executable path, ~/path, or none.")
+            throw ValidationError(
+                "Invalid value for meeting-hook-path: '\(value)'. Use an absolute executable path, ~/path, or none.")
         }
         return normalized
     }
@@ -690,8 +729,8 @@ struct ConfigCommand: ParsableCommand {
     static func parseMeetingHookTimeout(_ value: String) throws -> TimeInterval {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let seconds = Double(trimmed),
-              seconds >= MeetingAutomationHookConfiguration.minimumTimeoutSeconds,
-              seconds <= MeetingAutomationHookConfiguration.maximumTimeoutSeconds
+            seconds >= MeetingAutomationHookConfiguration.minimumTimeoutSeconds,
+            seconds <= MeetingAutomationHookConfiguration.maximumTimeoutSeconds
         else {
             throw ValidationError("Invalid value for meeting-hook-timeout: '\(value)'. Use seconds from 1 to 300.")
         }
@@ -703,7 +742,8 @@ struct ConfigCommand: ParsableCommand {
     }
 
     private static func unknownKeyError(_ key: String) -> ValidationError {
-        ValidationError("Unknown config key: '\(key)'. Supported: \(ConfigCommand.supportedKeys.joined(separator: ", ")).")
+        ValidationError(
+            "Unknown config key: '\(key)'. Supported: \(ConfigCommand.supportedKeys.joined(separator: ", ")).")
     }
 }
 
