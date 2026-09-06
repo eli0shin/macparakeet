@@ -3,7 +3,8 @@ Assigned-To: macparakeet@017-publish-signed-notarized-ci-app-artifact
 Tags:
   - ready-for-agent
 Parent:
-Blocked-By: []
+Blocked-By:
+  - 022-provision-release-signing-and-notarization
 ---
 
 ## What to build
