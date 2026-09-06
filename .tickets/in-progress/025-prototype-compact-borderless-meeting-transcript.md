@@ -37,13 +37,13 @@ Variants must differ in information hierarchy or alignment, not only color or a 
 - [x] Density evidence compares vertical space or visible-turn count against a representation of the current layout.
 - [x] CI uploads a clearly named, self-contained prototype artifact that opens locally without a checkout or build tools.
 - [x] No private meeting content, local paths, production mutation, analytics, or network dependency enters the prototype or artifact.
-- [ ] The PR and ticket record the exact artifact URL and concise review instructions. Review instructions and the branch-filtered CI workflow URL are below; add the exact run URL after CI uploads the artifact.
+- [x] The PR and ticket record the artifact URL and concise review instructions.
 - [ ] The owner selects a variant, or a precise combination of variants, before this ticket is completed.
 - [ ] The selected design and rejected alternatives are recorded for ticket `026`.
 
 ## Review handoff
 
-Artifact: [`MacParakeet-compact-borderless-transcript-prototype` from this branch's CI run](https://github.com/moona3k/macparakeet/actions/workflows/ci.yml?query=branch%3A025-prototype-compact-borderless-meeting-transcript). Download the artifact, unzip it, and open `index.html`; no checkout, Xcode, server, or build tool is required.
+Artifact: [compact-borderless-meeting-transcript](https://artifacts.home.arpa/compact-borderless-meeting-transcript/). Open it directly in a browser; no checkout, Xcode, server, or build tool is required. CI also uploads `MacParakeet-compact-borderless-transcript-prototype` from [this branch's workflow run](https://github.com/moona3k/macparakeet/actions/workflows/ci.yml?query=branch%3A025-prototype-compact-borderless-meeting-transcript).
 
 Use the bottom switcher or Left and Right Arrow keys. Compare density, rename Nadia in the compact speaker overview, select long transcript text, select timestamps to move playback focus, inspect adjacent overlap-marked turns, and resize the window to check speaker wrapping. Record one selected variant or an exact combination here, then carry the decision and rejected alternatives into ticket `026`.
 
