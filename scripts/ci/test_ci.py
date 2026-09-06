@@ -82,6 +82,11 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("MacParakeet-signed-notarized-ci-test", self.release_job)
         self.assertNotIn("unsigned-non-notarized", self.workflow)
 
+    def test_signed_publication_waits_for_complete_fail_closed_gate(self):
+        self.assertIn("needs: swift-test", self.signed_job)
+        self.assertIn("needs.swift-test.result == 'success'", self.signed_job)
+        self.assertNotIn("needs: [changes, release]", self.signed_job)
+
     def test_signed_publication_is_manual_main_and_environment_gated(self):
         self.assertIn("github.event_name == 'workflow_dispatch'", self.signed_job)
         self.assertIn("inputs.publish_signed_artifact == true", self.signed_job)

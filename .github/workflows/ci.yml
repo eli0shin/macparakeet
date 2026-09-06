@@ -180,8 +180,9 @@ jobs:
           retention-days: 7
 
   signed-artifact:
-    needs: [changes, release]
+    needs: swift-test
     if: >-
+      needs.swift-test.result == 'success' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.publish_signed_artifact == true &&
       github.ref == 'refs/heads/main'
