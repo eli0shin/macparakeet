@@ -5,8 +5,7 @@ import SwiftUI
 ///
 /// On macOS 26, selectable variable-height rows can trap a `LazyVStack` in a
 /// self-feeding layout loop after the user scrolls down and back up. A plain
-/// stack has no lazy view cache, so normal transcripts use it. Very large
-/// transcripts keep lazy layout to avoid materializing an unbounded view tree.
+/// stack has no lazy view cache, so all production transcripts use it.
 struct TranscriptBodyStack<Content: View>: View {
     let rowCount: Int
     let content: Content
@@ -40,19 +39,16 @@ struct TranscriptBodyStack<Content: View>: View {
 }
 
 enum TranscriptBodyLayout {
-    static let nonLazyRowLimit = 400
-
     static func usesLazyStack(
-        rowCount: Int,
+        rowCount _: Int,
         environment: [String: String] = launchEnvironment
     ) -> Bool {
-        if let override = debugOverride(
+        // Keep the faulty path available only to prove the regression harness
+        // goes red. Production never selects it from transcript size.
+        debugOverride(
             named: "MACPARAKEET_DEBUG_TRANSCRIPT_LAZY",
             environment: environment
-        ) {
-            return override
-        }
-        return rowCount > nonLazyRowLimit
+        ) == true
     }
 
     private static let launchEnvironment = ProcessInfo.processInfo.environment

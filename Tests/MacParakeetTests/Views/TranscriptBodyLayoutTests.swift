@@ -2,25 +2,27 @@ import XCTest
 @testable import MacParakeet
 
 final class TranscriptBodyLayoutTests: XCTestCase {
-    func testRepresentativeMeetingsRenderWithoutLazyLayout() {
+    func testAllProductionTranscriptSizesRenderWithoutLazyLayout() {
         XCTAssertFalse(TranscriptBodyLayout.usesLazyStack(rowCount: 0, environment: [:]))
-        XCTAssertFalse(TranscriptBodyLayout.usesLazyStack(rowCount: 13, environment: [:]))
-        XCTAssertFalse(
-            TranscriptBodyLayout.usesLazyStack(
-                rowCount: TranscriptBodyLayout.nonLazyRowLimit,
-                environment: [:]
-            )
-        )
+        XCTAssertFalse(TranscriptBodyLayout.usesLazyStack(rowCount: 75, environment: [:]))
+        XCTAssertFalse(TranscriptBodyLayout.usesLazyStack(rowCount: 401, environment: [:]))
+        XCTAssertFalse(TranscriptBodyLayout.usesLazyStack(rowCount: 10_000, environment: [:]))
     }
 
-    func testVeryLargeTranscriptsKeepBoundedLazyLayout() {
+    func testDebugOverrideCanReproduceFaultyLazyLayout() {
+        let name = "MACPARAKEET_DEBUG_TRANSCRIPT_LAZY"
         XCTAssertTrue(
             TranscriptBodyLayout.usesLazyStack(
-                rowCount: TranscriptBodyLayout.nonLazyRowLimit + 1,
-                environment: [:]
+                rowCount: 401,
+                environment: [name: "1"]
             )
         )
-        XCTAssertTrue(TranscriptBodyLayout.usesLazyStack(rowCount: 964, environment: [:]))
+        XCTAssertFalse(
+            TranscriptBodyLayout.usesLazyStack(
+                rowCount: 401,
+                environment: [name: "0"]
+            )
+        )
     }
 
     func testDebugOverrideParsing() {
