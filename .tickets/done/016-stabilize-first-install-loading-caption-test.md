@@ -14,12 +14,12 @@ Use a tight red-capable stress loop and determine whether the defect is test syn
 
 ## Acceptance criteria
 
-- [ ] A repeated focused loop reproduces the original assertion failure before the fix, or the investigation documents why a deterministic red loop cannot be made.
-- [ ] The test deterministically observes the intended pending-start and successful-completion states.
-- [ ] The first-install preparing-caption user behavior remains unchanged.
-- [ ] No sleep, retry, or arbitrary-yield workaround is added.
-- [ ] Focused stress verification passes without retries.
-- [ ] Applicable CI checks pass.
+- [x] A repeated focused loop reproduces the original assertion failure before the fix, or the investigation documents why a deterministic red loop cannot be made.
+- [x] The test deterministically observes the intended pending-start and successful-completion states.
+- [x] The first-install preparing-caption user behavior remains unchanged.
+- [x] No sleep, retry, or arbitrary-yield workaround is added.
+- [x] Focused stress verification passes without retries.
+- [x] Applicable CI checks pass.
 
 ## Implementation notes
 
@@ -33,3 +33,7 @@ This is test synchronization, not a user-facing state-ordering defect. The test
 now holds transcription at the existing async gate, observes the preparing
 caption while startup is pending, releases startup, and then observes caption
 clearance and successful telemetry. Production caption behavior is unchanged.
+
+## Resolution
+
+Replaced elapsed-time test ordering with an async gate that holds transcription pending while the preparing caption is observed, then verifies successful clearance after release. Production behavior is unchanged. The synchronized scenario passed 1,000 focused process runs under load, and all applicable PR checks passed. Reviewed and merged in PR #16 at commit `bb4354a7`.
