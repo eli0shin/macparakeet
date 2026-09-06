@@ -45,6 +45,41 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: python3 scripts/ci/classify_changes.py
 
+  compact-transcript-prototype:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Verify self-contained prototype
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          prototype = Path("prototypes/compact-borderless-meeting-transcript/index.html")
+          files = sorted(path.name for path in prototype.parent.iterdir() if path.is_file())
+          if files != ["README.md", "index.html"]:
+              raise SystemExit(f"Unexpected prototype files: {files}")
+          content = prototype.read_text()
+          forbidden = ["<script src=", "<link rel=", "http://", "https://", "file:///"]
+          found = [token for token in forbidden if token in content]
+          if found:
+              raise SystemExit(f"Prototype is not self-contained: {found}")
+          required = ['key: "byline"', 'key: "rail"', 'key: "running"', "overlapId", "data-rename"]
+          missing = [token for token in required if token not in content]
+          if missing:
+              raise SystemExit(f"Prototype contract is incomplete: {missing}")
+          PY
+      - name: Upload compact transcript prototype
+        uses: actions/upload-artifact@v7
+        with:
+          name: MacParakeet-compact-borderless-transcript-prototype
+          path: prototypes/compact-borderless-meeting-transcript/index.html
+          if-no-files-found: error
+          retention-days: 14
+
   debug-tests:
     needs: changes
     if: needs.changes.outputs.code == 'true'

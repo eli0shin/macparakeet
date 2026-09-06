@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Compact Borderless Meeting Transcript Prototype — MacParakeet</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #252624;
+      --secondary: #676964;
+      --tertiary: #686a65;
+      --line: #dedfdb;
+      --chrome: #eeede9;
+      --paper: #fbfaf7;
+      --accent: #e86b3b;
+      --accent-soft: #fff0e8;
+      --playing: #16745f;
+      --playing-soft: #e6f4ef;
+      --sidebar: #e8e7e3;
+      --shadow: 0 14px 42px rgb(28 30 27 / 14%);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .app { display: grid; grid-template-columns: 184px minmax(0, 1fr); min-height: 100vh; }
+    .sidebar { position: sticky; top: 0; height: 100vh; padding: 18px 12px; background: var(--sidebar); border-right: 1px solid #d4d3cf; }
+    .brand { display: flex; align-items: center; gap: 9px; padding: 3px 8px 22px; font-size: 14px; font-weight: 720; }
+    .brand-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: #35160c; }
+    .nav-item { margin: 2px 0; padding: 8px 10px; border-radius: 7px; color: #555752; font-size: 13px; }
+    .nav-item.active { background: #d5d4d0; color: var(--ink); font-weight: 650; }
+    main { min-width: 0; padding-bottom: 128px; }
+    .audio-bar { position: sticky; z-index: 4; top: 0; display: grid; grid-template-columns: auto minmax(100px, 620px) auto; align-items: center; gap: 12px; height: 44px; padding: 0 30px; border-bottom: 1px solid var(--line); background: rgb(251 250 247 / 94%); backdrop-filter: blur(18px); }
+    .play { display: grid; place-items: center; width: 27px; height: 27px; border: 0; border-radius: 50%; background: var(--accent); color: #35160c; cursor: pointer; }
+    .track { height: 4px; overflow: hidden; border-radius: 4px; background: #dbdcd8; }
+    .track::before { content: ""; display: block; width: var(--progress, 0%); height: 100%; background: var(--accent); }
+    .clock { color: var(--secondary); font: 11px ui-monospace, SFMono-Regular, monospace; }
+    .page { max-width: 1040px; margin: auto; padding: 25px 38px 0; }
+    .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+    .back { margin-bottom: 12px; color: var(--secondary); font-size: 12px; }
+    .eyebrow { color: var(--secondary); font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+    h1 { margin: 5px 0 4px; font-size: 25px; letter-spacing: -.025em; }
+    .meta { margin: 0; color: var(--secondary); font-size: 12px; }
+    .actions { display: flex; gap: 7px; padding-top: 18px; }
+    .quiet-button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; background: white; font-size: 12px; }
+    .tabs { display: flex; gap: 20px; margin-top: 24px; border-bottom: 1px solid var(--line); }
+    .tab { padding: 0 1px 9px; color: var(--secondary); font-size: 13px; }
+    .tab.active { margin-bottom: -1px; border-bottom: 2px solid var(--accent); color: var(--ink); font-weight: 650; }
+    .prototype-banner { display: flex; justify-content: space-between; gap: 18px; margin: 18px 0 12px; padding: 9px 11px; border: 1px dashed #c69c87; border-radius: 8px; background: #fff7f1; color: #684b3e; font-size: 11px; }
+    .overview { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 7px; padding: 8px 0 10px; border-bottom: 1px solid var(--line); }
+    .overview-title { margin-right: 4px; color: var(--secondary); font-size: 11px; font-weight: 680; }
+    .speaker-chip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 3px 6px; border-radius: 6px; background: #eeefeb; font-size: 11px; }
+    .dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--speaker); }
+    .speaker-chip button { padding: 0; border: 0; background: transparent; cursor: text; }
+    .speaker-chip small { color: var(--secondary); font-size: 9px; font-variant-numeric: tabular-nums; }
+    .speaker-chip.renaming { outline: 1px solid color-mix(in srgb, var(--speaker), white 30%); background: white; }
+    .speaker-chip input { width: 82px; padding: 0 2px; border: 0; border-bottom: 1px solid var(--speaker); outline: none; background: transparent; font-size: 11px; font-weight: 650; }
+    .density { display: grid; grid-template-columns: 148px 1fr 1fr auto; align-items: center; gap: 12px; margin: 10px 0 22px; padding: 8px 10px; border-radius: 8px; background: #f0efeb; font-size: 10px; }
+    .density-title strong { display: block; font-size: 11px; }
+    .density-title span, .density-metric span { color: var(--secondary); }
+    .density-metric strong { display: block; font-size: 14px; font-variant-numeric: tabular-nums; }
+    .density-bars { display: flex; align-items: flex-end; gap: 4px; height: 30px; }
+    .density-bars i { display: block; width: 15px; border-radius: 2px 2px 0 0; background: #bbbcb7; }
+    .density-bars i:nth-child(1) { height: 30px; }
+    .density-bars i:nth-child(2) { height: 24px; }
+    .density-bars i:nth-child(3) { height: 27px; }
+    .density-bars i:nth-child(4) { height: 20px; }
+    .density details { color: var(--secondary); }
+    .density summary { cursor: pointer; }
+    .density details p { position: absolute; z-index: 5; right: 38px; width: 310px; margin: 8px 0 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: white; box-shadow: var(--shadow); line-height: 1.45; }
+    #transcript { max-width: 850px; margin: auto; }
+    .turn { scroll-margin: 110px; }
+    .turn-text { user-select: text; font-size: 15px; line-height: 1.6; }
+    .turn-text p { margin: 0 0 .63em; }
+    .turn-text p:last-child { margin-bottom: 0; }
+    .speaker-name { font-weight: 690; }
+    .time-button { padding: 1px 3px; border: 0; border-radius: 4px; background: transparent; color: var(--tertiary); font-size: 10px; font-variant-numeric: tabular-nums; cursor: pointer; }
+    .time-button:hover, .time-button:focus-visible { outline: none; background: var(--accent-soft); color: var(--accent); }
+    .turn.playing { background: linear-gradient(90deg, var(--playing-soft), transparent 72%); box-shadow: inset 2px 0 var(--playing); }
+    .turn.playing .time-button { color: var(--playing); font-weight: 700; }
+    .overlap-mark { color: var(--tertiary); font-size: 9px; cursor: help; }
+
+    /* A: compact byline. Identity and seek sit above each borderless text block. */
+    .byline { max-width: 790px !important; }
+    .byline .turn { padding: 7px 8px 8px; }
+    .byline .turn + .turn { margin-top: 2px; }
+    .byline .turn-head { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; font-size: 11px; }
+    .byline .turn-head::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--speaker); }
+    .byline .turn-text { padding-left: 13px; }
+
+    /* B: transcript rail. Identity is a stable left column; prose is continuous. */
+    .rail .turn { display: grid; grid-template-columns: 112px minmax(0, 1fr); column-gap: 16px; padding: 6px 8px; }
+    .rail .turn + .turn { margin-top: 1px; }
+    .rail .turn-head { display: grid; grid-template-columns: 9px 1fr; align-content: start; gap: 2px 6px; padding-top: 2px; font-size: 10px; }
+    .rail .turn-head .dot { grid-row: 1 / 3; margin-top: 3px; }
+    .rail .speaker-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rail .time-button { width: fit-content; padding-left: 0; }
+    .rail .overlap-mark { grid-column: 2; }
+
+    /* C: running names. Time owns the gutter; speaker starts the prose line. */
+    .running { max-width: 810px !important; }
+    .running .turn { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 11px; padding: 5px 8px; }
+    .running .turn + .turn { margin-top: 3px; }
+    .running .turn-head { display: flex; align-items: flex-start; justify-content: flex-end; gap: 3px; padding-top: 3px; }
+    .running .dot { display: none; }
+    .running .speaker-name { display: none; }
+    .running .turn-text .running-name { color: var(--ink); font-size: 11px; font-weight: 750; letter-spacing: .01em; }
+    .running .turn-text .running-name::after { content: " — "; color: var(--tertiary); }
+    .running .time-button { color: var(--secondary); }
+
+    .switcher { position: fixed; z-index: 20; left: 50%; bottom: 19px; transform: translateX(-50%); display: flex; align-items: center; gap: 7px; padding: 7px; border-radius: 15px; background: #202220; color: white; box-shadow: 0 10px 34px rgb(0 0 0 / 28%); }
+    .switcher button { width: 34px; height: 34px; border: 0; border-radius: 9px; background: #3a3d3a; color: white; cursor: pointer; }
+    .switcher button:hover { background: #505450; }
+    .variant-label { min-width: 232px; text-align: center; }
+    .variant-label strong { display: block; font-size: 12px; }
+    .variant-label span { color: #b6bbb6; font-size: 9px; }
+    .now-playing { position: fixed; z-index: 12; right: 18px; bottom: 19px; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--playing); color: white; box-shadow: var(--shadow); font-size: 10px; }
+    .now-playing button { border: 0; background: transparent; color: white; }
+    #baseline-measure { position: absolute; left: -10000px; top: 0; width: 790px; visibility: hidden; }
+    #baseline-measure .baseline-card { margin: 0 0 16px; padding: 24px; border: 1px solid #ddd; border-radius: 11px; font-size: 15px; line-height: 1.6; }
+    #baseline-measure .baseline-card p { margin: 0 0 .63em; }
+    #baseline-measure .baseline-card p:last-child { margin-bottom: 0; }
+    #baseline-measure .baseline-head { height: 18px; margin-bottom: 16px; }
+    #baseline-measure .baseline-overlap { margin-bottom: 16px; padding: 8px; border-left: 3px solid #8d72bd; background: #f1edf8; }
+    #baseline-measure .baseline-overlap .baseline-card { margin-bottom: 8px; }
+    #baseline-measure .baseline-overlap .baseline-card:last-child { margin-bottom: 0; }
+    @media (max-width: 760px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .page { padding: 20px 14px 0; }
+      .header { display: block; }
+      .actions { padding-top: 10px; }
+      .audio-bar { padding: 0 14px; }
+      .density { grid-template-columns: 1fr 1fr; }
+      .density-bars, .density details { display: none; }
+      .rail .turn { grid-template-columns: 86px minmax(0, 1fr); gap: 10px; }
+      .now-playing { display: none; }
+      .prototype-banner { display: block; }
+      .prototype-banner span { display: block; margin-top: 4px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Application preview navigation">
+      <div class="brand"><span class="brand-mark">M</span> MacParakeet</div>
+      <div class="nav-item">⌁ Transcribe</div>
+      <div class="nav-item">▦ Library</div>
+      <div class="nav-item active">♬ Meetings</div>
+      <div class="nav-item">✦ Transforms</div>
+      <div class="nav-item">⚙ Settings</div>
+    </aside>
+    <main>
+      <section class="audio-bar" aria-label="Meeting audio player"><button class="play" aria-label="Pause">Ⅱ</button><div class="track" id="audio-track"></div><span class="clock" id="player-clock">12:16 / 14:24</span></section>
+      <div class="page">
+        <div class="back">‹ Recent meetings</div>
+        <header class="header">
+          <div><div class="eyebrow">Saved meeting · Tuesday, 10:00 AM</div><h1>Atlas launch readiness review</h1><p class="meta">14 min · 8 people · System and microphone audio · Audio saved</p></div>
+          <div class="actions"><button class="quiet-button">Find</button><button class="quiet-button">Edit</button><button class="quiet-button">Export</button></div>
+        </header>
+        <nav class="tabs" aria-label="Meeting content"><div class="tab">Notes</div><div class="tab active">Transcript</div><div class="tab">Ask</div></nav>
+        <div class="prototype-banner"><strong>THROWAWAY PROTOTYPE — synthetic meeting only</strong><span>Same frozen fixture in all three variants. No saving, analytics, or network use.</span></div>
+        <section class="overview" id="speaker-overview" aria-label="Speakers"></section>
+        <section class="density" aria-label="Density comparison">
+          <div class="density-title"><strong>Density at 720 px</strong><span>Measured from this fixture</span></div>
+          <div class="density-metric"><strong id="current-height">—</strong><span>Current cards · <b id="current-count">—</b> full turns</span></div>
+          <div class="density-metric"><strong id="variant-height">—</strong><span><b id="variant-short">Active variant</b> · <b id="variant-count">—</b> full turns</span></div>
+          <div class="density-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <details><summary>Current representation</summary><p>One rounded card per Reading Turn uses the production dimensions: 24 pt padding, a 16 pt internal gap, 16 pt stack spacing, 15 pt body type, and an 8 pt padded overlap wrapper. The active prototype removes each border and background. Heights are live DOM measurements of identical text at the same width and body size.</p></details>
+        </section>
+        <article id="transcript" aria-live="polite"></article>
+      </div>
+    </main>
+  </div>
+  <div id="baseline-measure" aria-hidden="true"></div>
+  <aside class="now-playing" aria-label="Playback focus"><button aria-label="Pause">Ⅱ</button><span id="playing-label">Nadia Chen · 12:16</span></aside>
+  <nav class="switcher" aria-label="Prototype variant switcher">
+    <button id="previous" aria-label="Previous variant">←</button>
+    <div class="variant-label"><strong id="variant-name"></strong><span>Click or use Left and Right Arrow keys</span></div>
+    <button id="next" aria-label="Next variant">→</button>
+  </nav>
+
+  <script>
+    // Three compact variants, switchable with ?variant=, in the complete saved-meeting page context.
+    const speakers = Object.freeze([
+      { id: "me", name: "Me", color: "#d76138" },
+      { id: "nadia", name: "Nadia Chen", color: "#297aa3" },
+      { id: "marcus", name: "Marcus Webb", color: "#705db1" },
+      { id: "sofia", name: "Sofia Alvarez", color: "#27806d" },
+      { id: "theo", name: "Theo Martin", color: "#a35d28" },
+      { id: "imani", name: "Imani Brooks", color: "#a8466e" },
+      { id: "kenji", name: "Kenji Sato", color: "#536f24" },
+      { id: "ravi", name: "Ravi Patel", color: "#536a9d" }
+    ]);
+    const turns = Object.freeze([
+      { id: "t01", speaker: "nadia", start: 12, end: 38, paragraphs: ["Thanks, everyone. This is the final Atlas launch readiness review. We need one clear release decision, named owners for the remaining risks, and no optimistic interpretation of incomplete evidence. I will keep us on the three questions in the agenda: reliability, support readiness, and the rollback boundary."] },
+      { id: "t02", speaker: "me", start: 41, end: 57, paragraphs: ["The candidate has been stable since Friday. The deployment path is unchanged, but yesterday’s cache test exposed one slow recovery case that we should discuss before approval."] },
+      { id: "t03", speaker: "marcus", start: 61, end: 198, paragraphs: ["I will start with reliability. The sustained-load run completed at three times our expected launch traffic, and the request error rate stayed below the agreed threshold. The important detail is that the median hides two short clusters during cache rotation. Neither cluster lost data, but both increased response time enough to trigger the internal warning.", "We repeated the rotation with a cold node and then with one node unavailable. In the cold-node case, the queue drained normally after forty-two seconds. With one node unavailable, the queue remained bounded, but recovery took two minutes and fourteen seconds. That is the slow case Eli mentioned. It is not a launch blocker by the written threshold, yet it changes the support guidance because users can see stale status while recovery runs.", "My recommendation is to launch with the existing capacity margin, add the recovery symptom to the support brief, and keep the automatic rollback tied to errors rather than latency. A latency rollback would fire during a healthy queue drain and could make recovery worse. The source timings and overlap evidence remain available even though this prototype renders the Reading Turn as one calm block."], overlapId: "ov-backchannel" },
+      { id: "t04", speaker: "sofia", start: 126, end: 128, paragraphs: ["That matches support."], overlapId: "ov-backchannel" },
+      { id: "t05", speaker: "imani", start: 205, end: 217, paragraphs: ["Can we state the user-visible symptom precisely? “Stale status” can mean several different things in a ticket."] },
+      { id: "t06", speaker: "marcus", start: 220, end: 246, paragraphs: ["The job continues, but its progress indicator can stop moving for up to two minutes. Refreshing does not lose work. When the queue drains, the indicator catches up and the result appears normally."] },
+      { id: "t07", speaker: "sofia", start: 251, end: 340, paragraphs: ["Support can work with that if the release note says not to restart the job. We have a draft response that asks the user to wait three minutes, check the service banner, and contact us only if there is still no movement after that window. The response avoids promising completion because a separate upstream failure can present in a similar way.", "I also want a dashboard link in the internal version. The public response should stay short, but the on-call person needs the queue depth and cache-rotation markers before escalating. Imani, I can send you the final wording after this call and we can use the same terms in the status page template."] },
+      { id: "t08", speaker: "imani", start: 344, end: 347, paragraphs: ["Perfect."] },
+      { id: "t09", speaker: "kenji", start: 354, end: 429, paragraphs: ["The client changes are ready. We tested update, clean install, interrupted download, and reopening the app after the operating system terminated it. The interrupted download resumes from the verified boundary. It does not trust the partial archive, and it never replaces the installed version until verification succeeds.", "One concern remains in the accessibility pass: when the progress state changes quickly, VoiceOver can announce two updates close together. The information is correct and the control stays usable. I have a small announcement-coalescing patch, but I recommend that we do not add it to this candidate unless the owner considers duplicate speech a blocker."], overlapId: "ov-question" },
+      { id: "t10", speaker: "ravi", start: 401, end: 414, paragraphs: ["Is that duplicate announcement only on the interrupted path, or can it happen during a normal update too?"], overlapId: "ov-question" },
+      { id: "t11", speaker: "kenji", start: 430, end: 443, paragraphs: ["It can happen on either path when verification completes in under one second. The interrupted test only made it easier to reproduce."] },
+      { id: "t12", speaker: "theo", start: 450, end: 534, paragraphs: ["From release operations, the package and rollback artifacts are both present. Checksums match the signed manifest, the install smoke passed on the oldest supported system, and the staged rollout controls are ready. The first stage is internal only, the second is five percent, and each later stage requires a manual approval.", "Rollback does not delete user-created data. It restores the prior application version and leaves the new-format cache in place because both versions can read it. We tested that exact direction rather than assuming downgrade symmetry. The runbook names the person who can stop each stage, the evidence required to resume, and the communication channel for a hold." ] },
+      { id: "t13", speaker: "me", start: 541, end: 558, paragraphs: ["I want to confirm the database point. The candidate writes no schema that the prior version cannot read, and rollback needs no migration step. Correct?"] },
+      { id: "t14", speaker: "theo", start: 560, end: 562, paragraphs: ["Correct."] },
+      { id: "t15", speaker: "ravi", start: 570, end: 659, paragraphs: ["Analytics validation is complete for the release funnel, with one qualification. The client emits the start and completion events as specified, and the aggregate counts match the synthetic test cohort. No transcript text, filenames, local paths, or account-like stable identifiers appear in the payload. Opt-out prevents the requests rather than sending a disabled marker.", "The qualification is dashboard freshness. The ingestion path is near real time, but the launch dashboard refreshes every five minutes. That is sufficient for staged rollout decisions, provided we do not interpret a flat first minute as zero usage. I added the refresh time beside every chart and a warning when the last complete bucket is older than ten minutes." ] },
+      { id: "t16", speaker: "nadia", start: 666, end: 684, paragraphs: ["Good. Let’s separate product telemetry from operational logs in the checklist so nobody looks for a user event when diagnosing queue recovery."] },
+      { id: "t17", speaker: "imani", start: 690, end: 722, paragraphs: ["One more documentation item: the launch note currently says the update is instant. I will change that to “usually completes in under a minute” and link the recovery guidance. “Instant” contradicts the slow but healthy case we just accepted."] },
+      { id: "t18", speaker: "sofia", start: 726, end: 728, paragraphs: ["Thank you."] },
+      { id: "t19", speaker: "nadia", start: 736, end: 829, paragraphs: ["I hear no release blocker. We accept the bounded recovery delay, support will publish precise wait-and-escalate guidance, and the staged rollout remains manual. Kenji’s VoiceOver coalescing change moves to the next patch unless qualification finds loss of control or missing information. Ravi will label dashboard freshness and keep telemetry separate from operational diagnosis.", "The launch decision is go for the internal stage at fourteen hundred. Theo owns the stage and rollback controls. Sofia and Imani own the support wording before external rollout. Marcus watches queue recovery during the internal stage. We will hold at five percent if errors cross the existing threshold, if queue depth does not recover, or if support sees a symptom outside the documented case."], overlapId: "ov-close" },
+      { id: "t20", speaker: "me", start: 812, end: 824, paragraphs: ["I’ll post the decision and owners as soon as the transcript is ready."], overlapId: "ov-close" },
+      { id: "t21", speaker: "nadia", start: 832, end: 834, paragraphs: ["Great."] },
+      { id: "t22", speaker: "theo", start: 836, end: 839, paragraphs: ["Ready here."] },
+      { id: "t23", speaker: "kenji", start: 842, end: 854, paragraphs: ["I will move the accessibility patch and attach today’s qualification notes to it."] },
+      { id: "t24", speaker: "nadia", start: 858, end: 864, paragraphs: ["Thanks, all. We’re done."] }
+    ]);
+    const variants = [
+      { key: "byline", name: "A — Compact byline", short: "Compact byline" },
+      { key: "rail", name: "B — Speaker rail", short: "Speaker rail" },
+      { key: "running", name: "C — Running names", short: "Running names" }
+    ];
+    const speakerNames = Object.fromEntries(speakers.map(speaker => [speaker.id, speaker.name]));
+    let activeTurn = "t19";
+    let playbackSeconds = 736;
+    const meetingDuration = 864;
+
+    function formatTime(seconds) {
+      return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+    }
+    function speakerFor(id) { return speakers.find(speaker => speaker.id === id); }
+    function safeText(value) {
+      return value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+    }
+    function wordCount(turn) { return turn.paragraphs.join(" ").trim().split(/\s+/).length; }
+    function renderOverview() {
+      document.getElementById("speaker-overview").innerHTML = `<span class="overview-title">Speakers</span>` + speakers.map(speaker => {
+        const stats = turns.filter(turn => turn.speaker === speaker.id);
+        const words = stats.reduce((sum, turn) => sum + wordCount(turn), 0);
+        if (speaker.id === "nadia") return `<span class="speaker-chip renaming" style="--speaker:${speaker.color}"><i class="dot"></i><input value="${safeText(speakerNames[speaker.id])}" data-rename="${speaker.id}" aria-label="Rename ${speaker.name}"><small>${stats.length} turns · ${words} words</small></span>`;
+        return `<span class="speaker-chip" style="--speaker:${speaker.color}"><i class="dot"></i><button data-edit="${speaker.id}" title="Rename ${safeText(speakerNames[speaker.id])}">${safeText(speakerNames[speaker.id])}</button><small>${stats.length} · ${words}w</small></span>`;
+      }).join("");
+      document.querySelector("[data-rename]").addEventListener("input", event => { speakerNames[event.target.dataset.rename] = event.target.value || "Unnamed"; renderTranscript(); });
+      document.querySelectorAll("[data-edit]").forEach(button => button.addEventListener("click", () => alert("Prototype rename: Nadia’s active inline field shows the proposed compact editing state. No names are saved.")));
+    }
+    function turnMarkup(turn, variant) {
+      const speaker = speakerFor(turn.speaker);
+      const overlap = turn.overlapId ? `<span class="overlap-mark" title="Retained overlap evidence: ${turn.overlapId}, ${formatTime(turn.start)}–${formatTime(turn.end)}">↗ overlap</span>` : "";
+      const name = safeText(speakerNames[turn.speaker]);
+      const runningName = variant === "running" ? `<span class="running-name">${name}</span>` : "";
+      return `<section class="turn ${turn.id === activeTurn ? "playing" : ""}" data-id="${turn.id}" data-overlap-id="${turn.overlapId || ""}" style="--speaker:${speaker.color}" aria-label="${name}, ${formatTime(turn.start)}">
+        <header class="turn-head"><i class="dot"></i><span class="speaker-name">${name}</span><button class="time-button" data-seek="${turn.id}" title="Play from ${formatTime(turn.start)}">▶ ${formatTime(turn.start)}</button>${overlap}</header>
+        <div class="turn-text">${turn.paragraphs.map((paragraph, index) => `<p>${index === 0 ? runningName : ""}${paragraph}</p>`).join("")}</div>
+      </section>`;
+    }
+    function baselineMarkup() {
+      const consumed = new Set();
+      return turns.map(turn => {
+        if (consumed.has(turn.id)) return "";
+        if (turn.overlapId) {
+          const peers = turns.filter(peer => peer.overlapId === turn.overlapId);
+          peers.forEach(peer => consumed.add(peer.id));
+          return `<div class="baseline-overlap">${peers.map(peer => `<div class="baseline-card"><div class="baseline-head"></div>${peer.paragraphs.map(text => `<p>${text}</p>`).join("")}</div>`).join("")}</div>`;
+        }
+        consumed.add(turn.id);
+        return `<div class="baseline-card"><div class="baseline-head"></div>${turn.paragraphs.map(text => `<p>${text}</p>`).join("")}</div>`;
+      }).join("");
+    }
+    function fullyVisibleTurns(container, viewportHeight) {
+      const top = container.getBoundingClientRect().top;
+      return [...container.querySelectorAll(".turn, .baseline-card")].filter(item => item.getBoundingClientRect().bottom - top <= viewportHeight).length;
+    }
+    function updateDensity(variant) {
+      requestAnimationFrame(() => {
+        const transcript = document.getElementById("transcript");
+        const baseline = document.getElementById("baseline-measure");
+        baseline.style.width = `${Math.round(transcript.getBoundingClientRect().width)}px`;
+        document.getElementById("current-height").textContent = `${Math.round(baseline.getBoundingClientRect().height).toLocaleString()} px`;
+        document.getElementById("variant-height").textContent = `${Math.round(transcript.getBoundingClientRect().height).toLocaleString()} px`;
+        document.getElementById("current-count").textContent = fullyVisibleTurns(baseline, 720);
+        document.getElementById("variant-count").textContent = fullyVisibleTurns(transcript, 720);
+        document.getElementById("variant-short").textContent = variant.short;
+      });
+    }
+    function currentVariant() {
+      const requested = new URLSearchParams(location.search).get("variant");
+      return variants.find(variant => variant.key === requested) || variants[0];
+    }
+    function renderTranscript() {
+      const variant = currentVariant();
+      const transcript = document.getElementById("transcript");
+      transcript.className = variant.key;
+      transcript.innerHTML = turns.map(turn => turnMarkup(turn, variant.key)).join("");
+      document.getElementById("variant-name").textContent = variant.name;
+      document.querySelectorAll("[data-seek]").forEach(button => button.addEventListener("click", () => seek(button.dataset.seek)));
+      syncPlayback();
+      updateDensity(variant);
+    }
+    function syncPlayback() {
+      const turn = turns.find(item => item.id === activeTurn);
+      document.getElementById("playing-label").textContent = `${speakerNames[turn.speaker]} · ${formatTime(playbackSeconds)}`;
+      document.getElementById("player-clock").textContent = `${formatTime(playbackSeconds)} / ${formatTime(meetingDuration)}`;
+      document.getElementById("audio-track").style.setProperty("--progress", `${(playbackSeconds / meetingDuration) * 100}%`);
+    }
+    function seek(id) {
+      activeTurn = id;
+      const turn = turns.find(item => item.id === id);
+      playbackSeconds = turn.start;
+      renderTranscript();
+      document.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    function cycle(direction) {
+      const index = variants.findIndex(variant => variant.key === currentVariant().key);
+      const next = variants[(index + direction + variants.length) % variants.length];
+      const url = new URL(location.href);
+      url.searchParams.set("variant", next.key);
+      history.replaceState({}, "", url);
+      renderTranscript();
+    }
+    document.getElementById("baseline-measure").innerHTML = baselineMarkup();
+    document.getElementById("previous").addEventListener("click", () => cycle(-1));
+    document.getElementById("next").addEventListener("click", () => cycle(1));
+    addEventListener("keydown", event => {
+      if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+      if (event.key === "ArrowLeft") cycle(-1);
+      if (event.key === "ArrowRight") cycle(1);
+    });
+    addEventListener("resize", () => updateDensity(currentVariant()));
+    renderOverview();
+    renderTranscript();
+  </script>
+</body>
+</html>

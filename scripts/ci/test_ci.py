@@ -67,6 +67,20 @@ class WorkflowTests(unittest.TestCase):
         self.release_job = self.workflow.split("\n  release:\n", 1)[1].split("\n  development-artifact:\n", 1)[0]
         self.development_job = self.workflow.split("\n  development-artifact:\n", 1)[1].split("\n  signed-artifact:\n", 1)[0]
         self.signed_job = self.workflow.split("\n  signed-artifact:\n", 1)[1].split("\n  # Preserve", 1)[0]
+        self.prototype_job = self.workflow.split("\n  compact-transcript-prototype:\n", 1)[1].split("\n  debug-tests:\n", 1)[0]
+
+    def test_compact_transcript_prototype_is_self_contained_and_downloadable(self):
+        self.assertIn("github.event_name == 'pull_request'", self.prototype_job)
+        self.assertIn("github.event_name == 'workflow_dispatch'", self.prototype_job)
+        self.assertIn("Verify self-contained prototype", self.prototype_job)
+        self.assertIn('forbidden = ["<script src=", "<link rel=", "http://", "https://", "file:///"', self.prototype_job)
+        upload = self.prototype_job.split("      - name: Upload compact transcript prototype\n", 1)[1]
+        self.assertIn("uses: actions/upload-artifact@v7", upload)
+        self.assertIn("name: MacParakeet-compact-borderless-transcript-prototype", upload)
+        self.assertIn("path: prototypes/compact-borderless-meeting-transcript/index.html", upload)
+        self.assertIn("if-no-files-found: error", upload)
+        self.assertIn("retention-days: 14", upload)
+        self.assertNotIn("secrets.", self.prototype_job)
 
     def test_debug_tests_job_has_twenty_minute_timeout(self):
         debug_job = self.workflow.split("\n  debug-tests:\n", 1)[1].split("\n  swift6:\n", 1)[0]
