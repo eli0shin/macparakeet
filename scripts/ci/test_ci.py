@@ -321,9 +321,35 @@ class DownloadableAppVerificationTests(unittest.TestCase):
             helper.chmod(0o755)
         return resources.parent.parent
 
-    def run_script(self, script, app):
+    def install_foundation_state_executable(self, app):
+        source = app.parent / "FoundationStateFixture.swift"
+        source.write_text(
+            "import Darwin\n"
+            "import Foundation\n"
+            "let environment = ProcessInfo.processInfo.environment\n"
+            "let support = FileManager.default.urls(for: .applicationSupportDirectory, "
+            "in: .userDomainMask)[0]\n"
+            "let state = support.appendingPathComponent(\"MacParakeet/launch-smoke-state\")\n"
+            "try FileManager.default.createDirectory(at: state.deletingLastPathComponent(), "
+            "withIntermediateDirectories: true)\n"
+            "try Data().write(to: state)\n"
+            "let report = URL(fileURLWithPath: environment[\"LAUNCH_STATE_REPORT\"]!)\n"
+            "let output = NSHomeDirectory() + \"\\n\" + support.path + \"\\n\"\n"
+            "try output.write(to: report, atomically: true, encoding: .utf8)\n"
+            "if environment[\"LAUNCH_STATE_EXIT_AFTER_WRITE\"] == \"1\" { exit(23) }\n"
+            "RunLoop.current.run()\n"
+        )
+        subprocess.run(
+            ["xcrun", "swiftc", str(source), "-o", str(app / "Contents/MacOS/MacParakeet")],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    def run_script(self, script, app, extra_environment=None):
         environment = os.environ.copy()
         environment["MACPARAKEET_PACKAGED_LAUNCH_SECONDS"] = "0.2"
+        environment.update(extra_environment or {})
         return subprocess.run(
             ["bash", script, str(app)],
             text=True,
@@ -334,8 +360,10 @@ class DownloadableAppVerificationTests(unittest.TestCase):
     def verify(self, app):
         return self.run_script("scripts/ci/verify_downloadable_app.sh", app)
 
-    def launch(self, app):
-        return self.run_script("scripts/ci/verify_packaged_app_launch.sh", app)
+    def launch(self, app, extra_environment=None):
+        return self.run_script(
+            "scripts/ci/verify_packaged_app_launch.sh", app, extra_environment
+        )
 
     def test_accepts_required_helpers_and_executes_version_smokes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -353,6 +381,61 @@ class DownloadableAppVerificationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("SwiftPM resource bundle could not load", result.stderr)
         self.assertIn("resource_bundle_accessor.swift:12", result.stderr)
+
+    def test_packaged_launch_isolates_and_cleans_foundation_user_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            real_home = root / "real-home"
+            real_home.mkdir()
+            report = root / "foundation-home.txt"
+            app = self.make_app(root / "fixture")
+            self.install_foundation_state_executable(app)
+            result = self.launch(app, {
+                "CFFIXED_USER_HOME": str(real_home),
+                "HOME": str(real_home),
+                "LAUNCH_STATE_REPORT": str(report),
+                "MACPARAKEET_PACKAGED_LAUNCH_SECONDS": "1",
+            })
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(
+                (real_home / "Library/Application Support/MacParakeet/launch-smoke-state").exists()
+            )
+            isolated_home_text, application_support_text = report.read_text().splitlines()
+            isolated_home = Path(isolated_home_text)
+            application_support = Path(application_support_text)
+            self.assertEqual(isolated_home.name, "home")
+            self.assertEqual(application_support, isolated_home / "Library/Application Support")
+            launch_root = isolated_home.parent
+            self.assertTrue(launch_root.name.startswith("macparakeet-packaged-launch."))
+            self.assertFalse(launch_root.exists(), "temporary launch root was not cleaned up")
+
+    def test_failed_packaged_launch_cleans_isolated_foundation_user_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            real_home = root / "real-home"
+            real_home.mkdir()
+            report = root / "foundation-home.txt"
+            app = self.make_app(root / "fixture")
+            self.install_foundation_state_executable(app)
+            result = self.launch(app, {
+                "CFFIXED_USER_HOME": str(real_home),
+                "HOME": str(real_home),
+                "LAUNCH_STATE_REPORT": str(report),
+                "LAUNCH_STATE_EXIT_AFTER_WRITE": "1",
+                "MACPARAKEET_PACKAGED_LAUNCH_SECONDS": "1",
+            })
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("terminated before", result.stderr)
+            self.assertFalse(
+                (real_home / "Library/Application Support/MacParakeet/launch-smoke-state").exists()
+            )
+            isolated_home_text, application_support_text = report.read_text().splitlines()
+            isolated_home = Path(isolated_home_text)
+            self.assertEqual(isolated_home.name, "home")
+            self.assertEqual(Path(application_support_text), isolated_home / "Library/Application Support")
+            self.assertFalse(isolated_home.parent.exists(), "failed launch root was not cleaned up")
 
     def test_verifier_requires_resource_bundle_at_bundle_resource_url(self):
         with tempfile.TemporaryDirectory() as directory:

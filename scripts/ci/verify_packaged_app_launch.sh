@@ -42,7 +42,11 @@ LAUNCH_LOG="$TEMP_ROOT/launch.log"
 mkdir -p "$TEMP_ROOT/home" "$TEMP_ROOT/tmp"
 (
   cd "$TEMP_ROOT"
-  exec env HOME="$TEMP_ROOT/home" TMPDIR="$TEMP_ROOT/tmp" "$APP_EXECUTABLE"
+  exec env \
+    CFFIXED_USER_HOME="$TEMP_ROOT/home" \
+    HOME="$TEMP_ROOT/home" \
+    TMPDIR="$TEMP_ROOT/tmp" \
+    "$APP_EXECUTABLE"
 ) >"$LAUNCH_LOG" 2>&1 &
 APP_PID=$!
 sleep "$LAUNCH_SECONDS"
