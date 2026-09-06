@@ -674,9 +674,11 @@ final class AudioRecorderFormatChangeTests: XCTestCase {
     ///
     /// The `permissionProvider` is the synchronization gate: every `start()`
     /// invokes it after passing the entry guard, so signaling on the second
-    /// call gives a deterministic "task #2 has entered start()" sync point.
-    /// A blanket `Task.sleep` would risk task #2 entering AFTER task #1
-    /// resolves, missing the bug entirely (false-pass regression sentinel).
+    /// call gives a deterministic "task #2 has claimed the start generation"
+    /// sync point. After releasing start #1, the recorder's `isRecording`
+    /// state proves that start #2 owns its subscription before the test sends
+    /// the only buffer. Stream subscriber count alone is ambiguous because it
+    /// can still describe start #1's stale subscription.
     func testSharedModeStartAfterStopDuringFirstStartSucceeds() async throws {
         let platform = AudioRecorderBlockingPlatform()
         let stream = SharedMicrophoneStream(platform: platform, bufferSize: 1024)
@@ -723,12 +725,10 @@ final class AudioRecorderFormatChangeTests: XCTestCase {
         // Launch start #2 while start #1 is still suspended in subscribe.
         let task2 = Task { try await recorder.start() }
 
-        // Wait for task2 to reach permissionProvider — proof it's inside the
-        // actor with `starting=true` set. From there to `await subscribe` is
-        // a few lines of synchronous code (no awaits between), so a short
-        // yield suffices to let the await be reached before we release.
+        // Wait for task2 to reach permissionProvider — proof it has claimed
+        // `starting` and bumped the per-call generation before start #1 can
+        // resume and run its defer.
         XCTAssertEqual(task2EnteredStart.wait(timeout: .now() + 5), .success)
-        for _ in 0..<5 { await Task.yield() }
 
         // Release start #1's blocked engine startup. Subscribe #1 completes,
         // its continuation resumes on the actor, lostRace throws, defer fires.
@@ -744,11 +744,25 @@ final class AudioRecorderFormatChangeTests: XCTestCase {
             XCTFail("Unexpected start #1 error: \(error)")
         }
 
+        // Wait on start #2's recorder-owned state and the settled stream
+        // count. The old condition (`activeSubscriberCount >= 1`) could pass
+        // on start #1's stale subscriber, send this buffer to the wrong
+        // generation, and manufacture a no-input timeout under CI load.
         let readyForFirstBuffer = await pollUntil(timeout: .seconds(2)) {
-            stream.diagnostics.activeSubscriberCount >= 1 && stream.diagnostics.engineRunning
+            await recorder.isRecording
+                && stream.diagnostics.subscriberCount == 1
+                && stream.diagnostics.activeSubscriberCount == 1
+                && stream.diagnostics.engineRunning
         }
-        XCTAssertTrue(readyForFirstBuffer, "expected start #2 to hold a subscriber before first-buffer gate")
-        platform.deliverBuffer(try makeMonoFloatBuffer(frameCount: 4_800))
+        XCTAssertTrue(
+            readyForFirstBuffer,
+            "expected start #2 to own the only subscriber before first-buffer delivery"
+        )
+        if readyForFirstBuffer {
+            platform.deliverBuffer(try makeMonoFloatBuffer(frameCount: 4_800))
+        } else {
+            task2.cancel()
+        }
 
         do {
             try await task2.value
