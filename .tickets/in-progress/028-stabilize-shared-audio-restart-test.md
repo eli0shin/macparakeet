@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@028-stabilize-shared-audio-restart-test
 Tags:
   - ready-for-agent
   - ci-reliability
