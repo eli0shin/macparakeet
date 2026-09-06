@@ -11,16 +11,18 @@ public enum TranscriptAIContextFormatter {
         case .plainTranscript:
             return preferredText(transcription, customWords: customWords)
         case .richTranscript:
-            let document = meetingReadingConfiguration.flatMap {
-                CompletedMeetingReadingDocument.build(from: transcription, configuration: $0)
-            } ?? CompletedMeetingReadingDocument.build(from: transcription)
+            let document =
+                meetingReadingConfiguration.flatMap {
+                    CompletedMeetingReadingDocument.build(from: transcription, configuration: $0)
+                } ?? CompletedMeetingReadingDocument.build(from: transcription)
             if let document {
                 return MeetingTranscriptDocumentRenderer.markdown(document)
             }
-            return richText(transcription) ?? preferredText(
-                transcription,
-                customWords: customWords
-            )
+            return richText(transcription)
+                ?? preferredText(
+                    transcription,
+                    customWords: customWords
+                )
         }
     }
 

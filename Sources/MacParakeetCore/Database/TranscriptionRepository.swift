@@ -281,11 +281,13 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
         var skipped = 0
         var items: [Transcription] = []
         while let transcription = try cursor.next() {
-            guard transcriptionMatchesLibrarySearch(
-                transcription,
-                normalizedQuery: normalizedQuery,
-                customWords: customWords
-            ) else {
+            guard
+                transcriptionMatchesLibrarySearch(
+                    transcription,
+                    normalizedQuery: normalizedQuery,
+                    customWords: customWords
+                )
+            else {
                 continue
             }
             if skipped < offset {
@@ -438,11 +440,13 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
 
             var results: [Transcription] = []
             while let transcription = try cursor.next() {
-                guard transcriptionMatchesLibrarySearch(
-                    transcription,
-                    normalizedQuery: normalizedQuery,
-                    customWords: customWords
-                ) else {
+                guard
+                    transcriptionMatchesLibrarySearch(
+                        transcription,
+                        normalizedQuery: normalizedQuery,
+                        customWords: customWords
+                    )
+                else {
                     continue
                 }
 

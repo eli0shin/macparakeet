@@ -2502,7 +2502,7 @@ final class TranscriptionServiceTests: XCTestCase {
             filePath: recording.mixedAudioURL.path,
             rawTranscript: "Old segment.",
             wordTimestamps: [
-                WordTimestamp(word: "Old", startMs: 0, endMs: 200, confidence: 0.9, speakerId: "microphone"),
+                WordTimestamp(word: "Old", startMs: 0, endMs: 200, confidence: 0.9, speakerId: "microphone")
             ],
             transcriptSegments: [
                 TranscriptSegmentRecord(
@@ -2513,20 +2513,21 @@ final class TranscriptionServiceTests: XCTestCase {
                     speakerLabel: "Me",
                     text: "Old",
                     wordRange: TranscriptSegmentWordRange(startIndex: 0, endIndexExclusive: 1)
-                ),
+                )
             ],
             status: .completed,
             sourceType: .meeting
         )
         try transcriptionRepo.save(original)
-        await mockSTT.configure(result: STTResult(
-            text: "uh fresh segment",
-            words: [
-                TimestampedWord(word: "uh", startMs: 0, endMs: 100, confidence: 0.9),
-                TimestampedWord(word: "fresh", startMs: 120, endMs: 300, confidence: 0.9),
-                TimestampedWord(word: "segment", startMs: 320, endMs: 620, confidence: 0.9),
-            ]
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "uh fresh segment",
+                words: [
+                    TimestampedWord(word: "uh", startMs: 0, endMs: 100, confidence: 0.9),
+                    TimestampedWord(word: "fresh", startMs: 120, endMs: 300, confidence: 0.9),
+                    TimestampedWord(word: "segment", startMs: 320, endMs: 620, confidence: 0.9),
+                ]
+            ))
         let service = TranscriptionService(
             audioProcessor: mockAudio,
             sttTranscriber: mockSTT,
