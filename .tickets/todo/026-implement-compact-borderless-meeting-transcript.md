@@ -13,6 +13,18 @@ Implement the owner-selected design from ticket `025` in the completed-meeting t
 
 The final design must make the speaker overview compact, remove the visible overlap container, and render Reading Turns as dense borderless blocks. Preserve all transcript semantics and interactions.
 
+## Selected design from ticket `025`
+
+Use **A — Compact byline** as the production direction:
+
+- show one restrained speaker dot beside the name;
+- place the speaker name and quiet seekable timestamp above each Reading Turn;
+- keep compact borderless spacing and full-width prose;
+- show playback focus with the left border only, without a gradient or background fill;
+- render overlapping turns as ordinary adjacent blocks while preserving overlap evidence internally.
+
+Reject B because its fixed speaker rail reduces the width available for long prose. Reject C because running names separate speaker changes less clearly than A.
+
 ## Acceptance criteria
 
 - [ ] Implementation matches the selected prototype decision recorded by ticket `025`.
