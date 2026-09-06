@@ -235,6 +235,17 @@ but the live lease is still acquired so a batch-only live engine cannot reopen
 the engine/variant race. The lease releases at durable stop/cancel; queued final
 STT uses the captured final route rather than the mutable preference.
 
+**Vocabulary hints are opt-in recognition context.** Enabled blank-replacement
+words feed the Parakeet TDT sidecar, not a second vocabulary store. The scheduler
+captures the selection at admission; changes affect subsequent jobs. Raw mode
+still receives recognition hints but skips deterministic replacements. Live
+preview does not use hints. First-use preparation requires user consent; cancelled
+waiters return without cancelling a shared model load. Long audio uses 120-second
+cores with 15 seconds of context on each side, bounded source-file reads, and
+candidate-span ownership at joins. Source-relative edits preserve unchanged
+word timings. Sidecar failure keeps the whole base result and emits a notice;
+never infer timing by searching later occurrences of corrected text.
+
 **Model lifecycle is the runtime's job, not yours.** Don't call
 `AsrManager` directly from app code, don't `Task { try await
 manager.initialize() }`, and don't reach into `STTRuntime`'s

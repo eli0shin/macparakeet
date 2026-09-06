@@ -118,7 +118,9 @@ public enum MeetingAudioRetention: Hashable, Sendable, Equatable {
         }
     }
 
-    public static func make(mode: MeetingAudioRetentionMode, days: Int = defaultDeleteAfterDays) -> MeetingAudioRetention {
+    public static func make(mode: MeetingAudioRetentionMode, days: Int = defaultDeleteAfterDays)
+        -> MeetingAudioRetention
+    {
         switch mode {
         case .keepForever:
             return .keepForever
@@ -141,7 +143,8 @@ public enum MeetingAudioRetention: Hashable, Sendable, Equatable {
     }
 
     public static func parseConfigurationValue(_ value: String) -> MeetingAudioRetention? {
-        let raw = value
+        let raw =
+            value
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
             .replacingOccurrences(of: "_", with: "-")
@@ -171,7 +174,8 @@ public enum MeetingAudioRetention: Hashable, Sendable, Equatable {
         }
 
         if let days = Int(dayValue),
-           isValidDeleteAfterDays(days) {
+            isValidDeleteAfterDays(days)
+        {
             return .deleteAfterDays(days)
         }
         return nil
@@ -215,7 +219,8 @@ public enum DictationInsertionStyle: String, CaseIterable, Hashable, Sendable, E
 
     public static func current(defaults: UserDefaults = .standard) -> DictationInsertionStyle {
         guard let raw = defaults.string(forKey: UserDefaultsAppRuntimePreferences.dictationInsertionStyleKey),
-              let style = DictationInsertionStyle(rawValue: raw) else {
+            let style = DictationInsertionStyle(rawValue: raw)
+        else {
             return .sentence
         }
         return style
@@ -243,7 +248,8 @@ public enum DictationPreviewTextSize: String, CaseIterable, Hashable, Sendable, 
 
     public static func current(defaults: UserDefaults = .standard) -> DictationPreviewTextSize {
         guard let raw = defaults.string(forKey: UserDefaultsAppRuntimePreferences.dictationPreviewTextSizeKey),
-              let size = DictationPreviewTextSize(rawValue: raw) else {
+            let size = DictationPreviewTextSize(rawValue: raw)
+        else {
             return .medium
         }
         return size
@@ -279,7 +285,8 @@ public enum DictationUndoCountdown: String, CaseIterable, Hashable, Sendable, Eq
 
     public static func current(defaults: UserDefaults = .standard) -> DictationUndoCountdown {
         guard let raw = defaults.string(forKey: UserDefaultsAppRuntimePreferences.dictationUndoCountdownKey),
-              let countdown = DictationUndoCountdown(rawValue: raw) else {
+            let countdown = DictationUndoCountdown(rawValue: raw)
+        else {
             return .fiveSeconds
         }
         return countdown
@@ -312,7 +319,8 @@ public enum TranscriptAIContextMode: String, CaseIterable, Codable, Identifiable
 
     public static func current(defaults: UserDefaults = .standard) -> TranscriptAIContextMode {
         guard let raw = defaults.string(forKey: UserDefaultsAppRuntimePreferences.transcriptAIContextModeKey),
-              let mode = TranscriptAIContextMode(rawValue: raw) else {
+            let mode = TranscriptAIContextMode(rawValue: raw)
+        else {
             return .richTranscript
         }
         return mode
@@ -335,9 +343,11 @@ public enum YouTubeAudioQuality: String, CaseIterable, Hashable, Sendable, Equat
     public var detail: String {
         switch self {
         case .m4a:
-            return "Download an Apple-friendly m4a file. Smaller and slightly faster; transcripts are close to Best available for most videos."
+            return
+                "Download an Apple-friendly m4a file. Smaller and slightly faster; transcripts are close to Best available for most videos."
         case .bestAvailable:
-            return "YouTube's highest-quality audio stream — recommended when transcription accuracy matters most (issue #237 measured ~10% lower WER on a Stanford speech). WebM/Opus downloads are converted to m4a in the background so the in-app audio scrubber works."
+            return
+                "YouTube's highest-quality audio stream — recommended when transcription accuracy matters most (issue #237 measured ~10% lower WER on a Stanford speech). WebM/Opus downloads are converted to m4a in the background so the in-app audio scrubber works."
         }
     }
 
@@ -352,7 +362,8 @@ public enum YouTubeAudioQuality: String, CaseIterable, Hashable, Sendable, Equat
 
     public static func current(defaults: UserDefaults = .standard) -> YouTubeAudioQuality {
         guard let raw = defaults.string(forKey: UserDefaultsAppRuntimePreferences.youtubeAudioQualityKey),
-              let quality = YouTubeAudioQuality(rawValue: raw) else {
+            let quality = YouTubeAudioQuality(rawValue: raw)
+        else {
             return .m4a
         }
         return quality
@@ -416,7 +427,8 @@ public enum MeetingAudioSourceMode: String, Codable, CaseIterable, Hashable, Sen
     }
 
     public static func parseConfigurationValue(_ value: String) -> MeetingAudioSourceMode? {
-        let raw = value
+        let raw =
+            value
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
             .components(separatedBy: CharacterSet(charactersIn: "_-+&").union(.whitespacesAndNewlines))
@@ -425,16 +437,16 @@ public enum MeetingAudioSourceMode: String, Codable, CaseIterable, Hashable, Sen
 
         switch raw {
         case "microphone-and-system",
-             "microphone-and-system-audio",
-             "microphone-system",
-             "microphone-system-audio",
-             "mic-and-system",
-             "mic-and-system-audio",
-             "mic-system",
-             "mic-system-audio",
-             "both",
-             "all",
-             "default":
+            "microphone-and-system-audio",
+            "microphone-system",
+            "microphone-system-audio",
+            "mic-and-system",
+            "mic-and-system-audio",
+            "mic-system",
+            "mic-system-audio",
+            "both",
+            "all",
+            "default":
             return .microphoneAndSystem
         // Short source aliases are exclusive; use "both" or "default" for combined capture.
         case "microphone-only", "mic-only", "microphone", "mic":
@@ -448,7 +460,8 @@ public enum MeetingAudioSourceMode: String, Codable, CaseIterable, Hashable, Sen
 
     public static func current(defaults: UserDefaults = .standard) -> MeetingAudioSourceMode {
         guard let raw = defaults.string(forKey: UserDefaultsAppRuntimePreferences.meetingAudioSourceModeKey),
-              let mode = MeetingAudioSourceMode(rawValue: raw) else {
+            let mode = MeetingAudioSourceMode(rawValue: raw)
+        else {
             return .microphoneAndSystem
         }
         return mode
@@ -523,6 +536,8 @@ public final class UserDefaultsAppRuntimePreferences: AppRuntimePreferencesProto
     public static let pauseMediaDuringDictationKey = "pauseMediaDuringDictation"
     public static let instantDictationEnabledKey = "instantDictationEnabled"
     public static let customVocabularyRecognitionBoostingEnabledKey = "customVocabularyRecognitionBoostingEnabled"
+    public static let customVocabularyRecognitionConsentKey = "customVocabularyRecognitionConsent"
+    public static let customVocabularyRecognitionConsentAskedKey = "customVocabularyRecognitionConsentAsked"
     public static let showLiveDictationPreviewKey = "showLiveDictationPreview"
     public static let dictationPreviewTextSizeKey = "dictationPreviewTextSize"
     public static let dictationUndoCountdownKey = "dictationUndoCountdown"
@@ -711,14 +726,16 @@ public final class UserDefaultsAppRuntimePreferences: AppRuntimePreferencesProto
 
     public static func meetingAudioRetention(defaults: UserDefaults = .standard) -> MeetingAudioRetention {
         if let raw = defaults.string(forKey: meetingAudioRetentionKey),
-           let mode = MeetingAudioRetentionMode(rawValue: raw) {
+            let mode = MeetingAudioRetentionMode(rawValue: raw)
+        {
             return MeetingAudioRetention.make(
                 mode: mode,
                 days: meetingAudioRetentionDeleteAfterDays(defaults: defaults)
             )
         }
 
-        let migrated: MeetingAudioRetention = (defaults.object(forKey: saveMeetingAudioKey) as? Bool ?? true)
+        let migrated: MeetingAudioRetention =
+            (defaults.object(forKey: saveMeetingAudioKey) as? Bool ?? true)
             ? .keepForever
             : .deleteImmediately
         saveMeetingAudioRetention(migrated, defaults: defaults)

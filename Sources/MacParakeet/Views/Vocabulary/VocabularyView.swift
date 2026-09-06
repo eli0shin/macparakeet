@@ -46,9 +46,10 @@ struct VocabularyView: View {
         } content: {
             CustomWordsView(
                 viewModel: customWordsViewModel,
-                recognitionStatus: settingsViewModel.customVocabularyRecognitionStatus
+                recognitionStatus: settingsViewModel.customVocabularyRecognitionStatus(
+                    isEnabled: customWordsViewModel.recognitionEnabled)
             )
-                .frame(width: 640, height: 560)
+            .frame(width: 640, height: 560)
         }
         .sheet(isPresented: $showTextSnippets) {
             settingsViewModel.refreshStats()
@@ -150,7 +151,8 @@ struct VocabularyView: View {
                 pipelineStep(
                     number: 3,
                     title: "Expand snippets",
-                    detail: "\(settingsViewModel.snippetCount) phrase snippet\(settingsViewModel.snippetCount == 1 ? "" : "s")",
+                    detail:
+                        "\(settingsViewModel.snippetCount) phrase snippet\(settingsViewModel.snippetCount == 1 ? "" : "s")",
                     actionTitle: "Manage snippets",
                     action: {
                         textSnippetsViewModel.loadSnippets()
@@ -253,7 +255,8 @@ struct VocabularyView: View {
                                 .foregroundStyle(DesignSystem.Colors.warningAmber)
                         } else {
                             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                                ForEach(Array(settingsViewModel.voiceReturnTriggers.enumerated()), id: \.element) { index, trigger in
+                                ForEach(Array(settingsViewModel.voiceReturnTriggers.enumerated()), id: \.element) {
+                                    index, trigger in
                                     voiceReturnTriggerRow(trigger: trigger, index: index)
                                 }
                             }
@@ -267,19 +270,26 @@ struct VocabularyView: View {
                             Image(systemName: "info.circle")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.secondary)
-                            Text("Say any listed phrase at the end of a dictation to simulate a Return keypress. The trigger must be the last words spoken — if it appears mid-sentence, it's pasted as normal text.")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundStyle(.secondary)
+                            Text(
+                                "Say any listed phrase at the end of a dictation to simulate a Return keypress. The trigger must be the last words spoken — if it appears mid-sentence, it's pasted as normal text."
+                            )
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(.secondary)
                         }
 
                         let trigger = settingsViewModel.voiceReturnExampleTrigger
                         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                            exampleRow(input: "git status \(trigger)", result: "Pastes \"git status\" + presses ⏎", fires: true)
+                            exampleRow(
+                                input: "git status \(trigger)", result: "Pastes \"git status\" + presses ⏎", fires: true
+                            )
                             exampleRow(input: "\(trigger)", result: "Just presses ⏎ (nothing to paste)", fires: true)
                             if let secondaryTrigger = settingsViewModel.voiceReturnTriggers.dropFirst().first {
-                                exampleRow(input: "git status \(secondaryTrigger)", result: "Also presses ⏎", fires: true)
+                                exampleRow(
+                                    input: "git status \(secondaryTrigger)", result: "Also presses ⏎", fires: true)
                             }
-                            exampleRow(input: "the \(trigger) was broken", result: "Pastes as-is — trigger is mid-sentence", fires: false)
+                            exampleRow(
+                                input: "the \(trigger) was broken", result: "Pastes as-is — trigger is mid-sentence",
+                                fires: false)
                             exampleRow(input: "git status", result: "Pastes as-is — no trigger spoken", fires: false)
                         }
                         .padding(.leading, DesignSystem.Spacing.lg)

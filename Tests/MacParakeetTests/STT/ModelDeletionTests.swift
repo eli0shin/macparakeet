@@ -69,7 +69,8 @@ final class ModelDeletionTests: XCTestCase {
     func testParakeetUnifiedRequiredModelFilesTrackRuntimeDownloadSet() {
         let requiredFiles = ParakeetUnifiedEngine.requiredModelFiles()
 
-        XCTAssertTrue(requiredFiles.contains("parakeet_unified_preprocessor.mlmodelc"))
+        // FluidAudio 0.15.6 computes mel features natively; old caches remain safe.
+        XCTAssertFalse(requiredFiles.contains("parakeet_unified_preprocessor.mlmodelc"))
         XCTAssertTrue(requiredFiles.contains("parakeet_unified_encoder_streaming_70_13_13_int8.mlmodelc"))
         XCTAssertTrue(requiredFiles.contains("parakeet_unified_decoder.mlmodelc"))
         XCTAssertTrue(requiredFiles.contains("parakeet_unified_joint_decision_single_step.mlmodelc"))
@@ -81,7 +82,7 @@ final class ModelDeletionTests: XCTestCase {
     func testParakeetUnifiedRequiredStreamingModelFilesTrackStreamingDownloadSet() {
         let requiredFiles = ParakeetUnifiedEngine.requiredStreamingModelFiles()
 
-        XCTAssertTrue(requiredFiles.contains("parakeet_unified_preprocessor.mlmodelc"))
+        XCTAssertFalse(requiredFiles.contains("parakeet_unified_preprocessor.mlmodelc"))
         XCTAssertTrue(requiredFiles.contains("parakeet_unified_encoder_streaming_70_13_13_int8.mlmodelc"))
         XCTAssertTrue(requiredFiles.contains("parakeet_unified_decoder.mlmodelc"))
         XCTAssertTrue(requiredFiles.contains("parakeet_unified_joint_decision_single_step.mlmodelc"))

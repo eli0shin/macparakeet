@@ -19,26 +19,32 @@ final class SpeechEngineCapabilitiesTests: XCTestCase {
     }
 
     func testNativeLiveDictationClaimsMatchNativeStreamingVariants() {
-        let liveKeys = Set(SpeechEngineVariantKey.allCases.filter {
-            SpeechEngineCapabilityRegistry.capabilities(for: $0).supportsNativeLiveDictation
-        })
+        let liveKeys = Set(
+            SpeechEngineVariantKey.allCases.filter {
+                SpeechEngineCapabilityRegistry.capabilities(for: $0).supportsNativeLiveDictation
+            })
 
-        XCTAssertEqual(liveKeys, Set([
-            .parakeet(.unified),
-            .nemotron(.multilingual1120),
-            .nemotron(.english1120),
-        ]))
+        XCTAssertEqual(
+            liveKeys,
+            Set([
+                .parakeet(.unified),
+                .nemotron(.multilingual1120),
+                .nemotron(.english1120),
+            ]))
     }
 
     func testCustomVocabularyClaimsMatchParakeetTDTVariants() {
-        let customVocabularyKeys = Set(SpeechEngineVariantKey.allCases.filter {
-            SpeechEngineCapabilityRegistry.capabilities(for: $0).supportsCustomVocabulary
-        })
+        let customVocabularyKeys = Set(
+            SpeechEngineVariantKey.allCases.filter {
+                SpeechEngineCapabilityRegistry.capabilities(for: $0).supportsCustomVocabulary
+            })
 
-        XCTAssertEqual(customVocabularyKeys, Set([
-            .parakeet(.v2),
-            .parakeet(.v3),
-        ]))
+        XCTAssertEqual(
+            customVocabularyKeys,
+            Set([
+                .parakeet(.v2),
+                .parakeet(.v3),
+            ]))
     }
 
     func testCustomVocabularyPresentationReadsCapabilitySupport() {
@@ -46,15 +52,15 @@ final class SpeechEngineCapabilitiesTests: XCTestCase {
             for: SpeechEngineCapabilityRegistry.capabilities(for: .parakeet(.v3)),
             recognitionBoostingEnabled: true
         )
-        XCTAssertEqual(tdtStatus.title, "Recognition boosting on")
-        XCTAssertTrue(tdtStatus.detail.contains("Parakeet TDT"))
+        XCTAssertEqual(tdtStatus.title, "Vocabulary hints enabled")
+        XCTAssertTrue(tdtStatus.detail.contains("Parakeet v2/v3"))
 
         let pausedTDTStatus = CustomVocabularyBoostingPresentation.status(
             for: SpeechEngineCapabilityRegistry.capabilities(for: .parakeet(.v3)),
             recognitionBoostingEnabled: false
         )
         XCTAssertEqual(pausedTDTStatus.title, "Clean corrections only")
-        XCTAssertTrue(pausedTDTStatus.detail.contains("paused"))
+        XCTAssertTrue(pausedTDTStatus.detail.contains("hints are off"))
 
         let unifiedStatus = CustomVocabularyBoostingPresentation.status(
             for: SpeechEngineCapabilityRegistry.capabilities(for: .parakeet(.unified))

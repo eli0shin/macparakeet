@@ -79,6 +79,17 @@ struct MainWindowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let notice = customWordsViewModel.recognitionStatus.message {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle")
+                    Text(notice).font(.callout)
+                    Spacer()
+                    Button("Dismiss") { customWordsViewModel.recognitionStatus.message = nil }
+                        .parakeetAction(.secondary)
+                }
+                .padding()
+                .background(.yellow.opacity(0.1))
+            }
             NavigationSplitView {
                 List(selection: $state.selectedItem) {
                     Section {
@@ -153,7 +164,8 @@ struct MainWindowView: View {
                                     state.selectedItem = .transcribe
                                 },
                                 onRetranscribe: { original, speechEngineOverride in
-                                    transcriptionViewModel.retranscribe(original, speechEngineOverride: speechEngineOverride)
+                                    transcriptionViewModel.retranscribe(
+                                        original, speechEngineOverride: speechEngineOverride)
                                 },
                                 onSetUpAI: {
                                     state.navigateToSettings(tab: .ai)
@@ -195,7 +207,8 @@ struct MainWindowView: View {
                                     Task {
                                         if await transformsViewModel.save(prompt) {
                                             state.isCreatingTransform = false
-                                            NotificationCenter.default.post(name: .transformsBindingsChanged, object: nil)
+                                            NotificationCenter.default.post(
+                                                name: .transformsBindingsChanged, object: nil)
                                         }
                                     }
                                 },
@@ -213,24 +226,27 @@ struct MainWindowView: View {
                                     Task {
                                         if await transformsViewModel.save(prompt) {
                                             state.editingTransform = nil
-                                            NotificationCenter.default.post(name: .transformsBindingsChanged, object: nil)
+                                            NotificationCenter.default.post(
+                                                name: .transformsBindingsChanged, object: nil)
                                         }
                                     }
                                 },
                                 onCancel: { state.editingTransform = nil },
-                                onReset: transform.isBuiltIn ? {
-                                    Task {
-                                        if await transformsViewModel.resetBuiltIn(
-                                            transform,
-                                            reservedHotkeys: transformReservedHotkeys
-                                        ) {
-                                            state.editingTransform = nil
-                                            NotificationCenter.default.post(name: .transformsBindingsChanged, object: nil)
-                                        } else {
-                                            state.editingTransform = nil
+                                onReset: transform.isBuiltIn
+                                    ? {
+                                        Task {
+                                            if await transformsViewModel.resetBuiltIn(
+                                                transform,
+                                                reservedHotkeys: transformReservedHotkeys
+                                            ) {
+                                                state.editingTransform = nil
+                                                NotificationCenter.default.post(
+                                                    name: .transformsBindingsChanged, object: nil)
+                                            } else {
+                                                state.editingTransform = nil
+                                            }
                                         }
-                                    }
-                                } : nil
+                                    } : nil
                             )
                         }
                     case .vocabulary:
@@ -317,11 +333,15 @@ struct MainWindowView: View {
                 trigger: settingsViewModel.pushToTalkHotkeyTrigger,
                 conflictMode: .bareModifierDictation
             ),
-            TransformShortcutReservedHotkey(name: "file transcription", trigger: settingsViewModel.fileTranscriptionHotkeyTrigger),
-            TransformShortcutReservedHotkey(name: "video URL transcription", trigger: settingsViewModel.youtubeTranscriptionHotkeyTrigger),
+            TransformShortcutReservedHotkey(
+                name: "file transcription", trigger: settingsViewModel.fileTranscriptionHotkeyTrigger),
+            TransformShortcutReservedHotkey(
+                name: "video URL transcription", trigger: settingsViewModel.youtubeTranscriptionHotkeyTrigger),
         ]
         if AppFeatures.meetingRecordingEnabled {
-            reserved.append(TransformShortcutReservedHotkey(name: "meeting recording", trigger: settingsViewModel.meetingHotkeyTrigger))
+            reserved.append(
+                TransformShortcutReservedHotkey(
+                    name: "meeting recording", trigger: settingsViewModel.meetingHotkeyTrigger))
         }
         return reserved.filter { !$0.trigger.isDisabled }
     }
@@ -354,12 +374,14 @@ struct MainWindowView: View {
                 }
 
                 HStack(spacing: 6) {
-                    Text(transcriptionViewModel.isBatchActive
-                        ? transcriptionViewModel.batchStatusHeadline
-                        : transcriptionViewModel.progressHeadline)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    Text(
+                        transcriptionViewModel.isBatchActive
+                            ? transcriptionViewModel.batchStatusHeadline
+                            : transcriptionViewModel.progressHeadline
+                    )
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
 
                     Text("\u{00B7}")
                         .foregroundStyle(.tertiary)

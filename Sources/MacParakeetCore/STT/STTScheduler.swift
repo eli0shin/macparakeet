@@ -30,6 +30,7 @@ public actor STTScheduler: STTManaging, STTDictationPreviewTranscribing, SpeechE
         let audioPath: String
         let job: STTJobKind
         let speechEngine: SpeechEngineSelection
+        let vocabulary: CustomVocabularyBoostingVocabulary?
         let enqueueOrder: UInt64
         let onProgress: (@Sendable (Int, Int) -> Void)?
 
@@ -143,6 +144,7 @@ public actor STTScheduler: STTManaging, STTDictationPreviewTranscribing, SpeechE
             }
         }
         let selection = await runtime.currentSpeechEngineSelection()
+        let vocabulary = await runtime.vocabularySnapshot(for: job)
         try Task.checkCancellation()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -154,6 +156,7 @@ public actor STTScheduler: STTManaging, STTDictationPreviewTranscribing, SpeechE
                         audioPath: audioPath,
                         job: job,
                         speechEngine: selection,
+                        vocabulary: vocabulary,
                         enqueueOrder: nextEnqueueOrder(),
                         onProgress: onProgress
                     ),
@@ -183,14 +186,22 @@ public actor STTScheduler: STTManaging, STTDictationPreviewTranscribing, SpeechE
     ) async throws -> STTResult {
         let id = UUID()
         try Task.checkCancellation()
+        pendingJobAdmissionCount += 1
+        var admissionOpen = true
+        defer { if admissionOpen { pendingJobAdmissionCount -= 1 } }
+        let vocabulary = await runtime.vocabularySnapshot(for: job)
+        try Task.checkCancellation()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
+                admissionOpen = false
+                pendingJobAdmissionCount -= 1
                 enqueue(
                     ScheduledJob(
                         id: id,
                         audioPath: audioPath,
                         job: job,
                         speechEngine: speechEngine,
+                        vocabulary: vocabulary,
                         enqueueOrder: nextEnqueueOrder(),
                         onProgress: onProgress
                     ),
@@ -610,6 +621,7 @@ public actor STTScheduler: STTManaging, STTDictationPreviewTranscribing, SpeechE
                 audioPath: next.audioPath,
                 job: next.job,
                 speechEngine: next.speechEngine,
+                vocabulary: next.vocabulary,
                 onProgress: next.onProgress
             )
         }
