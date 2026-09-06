@@ -74,6 +74,32 @@ struct MockTranscriptionService: TranscriptionService {
 - Text processing pipeline (raw text -> clean text through all stages)
 - Export pipeline (transcription -> format -> file)
 
+### Transcript Scrolling Regression Coverage
+
+Run the deterministic long-transcript correctness checks with:
+
+```bash
+swift test --filter MeetingReadingTurnScrollingTests
+```
+
+Run the real AppKit/SwiftUI scrolling frame-latency gate with:
+
+```bash
+scripts/dev/check_transcript_scrolling_performance.sh
+```
+
+The command builds outside its watchdog, then fails when one scroll step uses
+8 ms or more of main-thread CPU or when the test process does not return within
+30 seconds. It uses only synthetic public-safe Reading Turns. Prove that the
+command remains red-capable against the known-faulty lazy layout with:
+
+```bash
+scripts/dev/check_transcript_scrolling_performance.sh --legacy
+```
+
+XCTest keeps machine-speed-independent assertions for exact scroll bounds and
+idle layout settlement. The command owns the explicit performance threshold.
+
 ### Progress Regression Coverage
 
 The suite includes targeted regressions for progress behavior in URL transcription:

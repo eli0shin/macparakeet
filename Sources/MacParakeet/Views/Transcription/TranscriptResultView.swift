@@ -1462,6 +1462,18 @@ struct TranscriptResultView: View {
         .padding(DesignSystem.Spacing.lg)
     }
 
+    private var transcriptBodyRowCount: Int {
+        if usesMeetingReadingSurface, !cachedReadingTurns.isEmpty {
+            return cachedReadingTurns.count
+        }
+        if cachedHasSpeakers {
+            return cachedIdentifiedTurnCards.reduce(0) { count, card in
+                count + card.turn.segments.count
+            }
+        }
+        return cachedSegments.count
+    }
+
     private var transcriptPane: some View {
         VStack(spacing: 0) {
             if findBarVisible {
@@ -1469,7 +1481,7 @@ struct TranscriptResultView: View {
             }
             ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                TranscriptBodyStack(rowCount: transcriptBodyRowCount) {
                     transcriptPaneHeader
 
                     if let partialCapture = MeetingPartialCapturePresentation.make(for: activeTranscription) {

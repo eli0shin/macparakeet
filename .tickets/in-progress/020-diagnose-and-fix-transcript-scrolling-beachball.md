@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@020-diagnose-and-fix-transcript-scrolling-beachball
 Tags:
   - ready-for-agent
 Parent:
