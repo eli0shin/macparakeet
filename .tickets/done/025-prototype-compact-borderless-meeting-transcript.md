@@ -49,4 +49,6 @@ Use the bottom switcher or Left and Right Arrow keys. Compare density, rename Na
 
 Decision: select **A — Compact byline** for ticket `026`. Show one speaker dot beside the name. Keep the left playback-focus border, but remove the gradient background. Reject B because its fixed rail reduces the width available for long prose. Reject C because running names separate speaker changes less clearly than A.
 
-The orchestrator still owns ticket completion; this ticket remains in progress.
+## Resolution
+
+The owner selected A — Compact byline, with one speaker dot, a left playback-focus border, and no focus gradient. The complete prototype artifact matched its reviewed source and passed interaction and accessibility checks. Reviewed and squash-merged PR #22 at commit `d2365f9b`.
