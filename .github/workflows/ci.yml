@@ -5,6 +5,16 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_signed_artifact:
+        description: Publish the protected signed and notarized CI test DMG
+        required: true
+        default: false
+        type: boolean
+      signed_artifact_version:
+        description: Non-sentinel X.Y.Z version for the signed CI test artifact
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -159,71 +169,6 @@ jobs:
         run: |
           set -o pipefail
           bash scripts/dist/build_app_bundle.sh 2>&1 | tee .ci-logs/release-bundle-smoke.log
-      - name: Build downloadable unsigned app
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-        timeout-minutes: 5
-        env:
-          BUILD_SYSTEM: swiftpm
-          SKIP_BUILD: "1"
-          BUILD_SOURCE: github-actions-unsigned-development
-          VERSION: 0.0.0
-          BUILD_NUMBER: ci
-        run: |
-          set -o pipefail
-          bash scripts/dist/build_app_bundle.sh 2>&1 | tee .ci-logs/downloadable-app-build.log
-          bash scripts/ci/verify_downloadable_app.sh dist/MacParakeet.app 2>&1 | tee .ci-logs/downloadable-app-helpers.log
-      - name: Package unsigned app disk image
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-        run: |
-          set -euo pipefail
-          APP_PATH="dist/MacParakeet.app"
-          DMG_PATH="dist/MacParakeet-unsigned-non-notarized.dmg"
-          STAGING_DIR="$(mktemp -d "$RUNNER_TEMP/macparakeet-unsigned-dmg.XXXXXX")"
-          MOUNT_DIR="$(mktemp -d "$RUNNER_TEMP/macparakeet-unsigned-mount.XXXXXX")"
-          MOUNTED=0
-          cleanup() {
-            if test "$MOUNTED" = 1; then
-              hdiutil detach "$MOUNT_DIR" -quiet || true
-            fi
-            rm -rf "$STAGING_DIR" "$MOUNT_DIR"
-          }
-          trap cleanup EXIT
-
-          test -d "$APP_PATH/Contents"
-          /usr/bin/ditto "$APP_PATH" "$STAGING_DIR/MacParakeet.app"
-          ln -s /Applications "$STAGING_DIR/Applications"
-          hdiutil create -volname "MacParakeet Dev (Unsigned)" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
-          test -s "$DMG_PATH"
-          test "$(hdiutil imageinfo -plist "$DMG_PATH" | plutil -extract Format raw -)" = "UDZO"
-          hdiutil verify "$DMG_PATH"
-          hdiutil attach "$DMG_PATH" -readonly -nobrowse -noautoopen -mountpoint "$MOUNT_DIR"
-          MOUNTED=1
-
-          MOUNTED_APP="$MOUNT_DIR/MacParakeet.app"
-          test -d "$MOUNTED_APP/Contents"
-          test "$(readlink "$MOUNT_DIR/Applications")" = "/Applications"
-          test -x "$MOUNTED_APP/Contents/MacOS/MacParakeet"
-          test -x "$MOUNTED_APP/Contents/MacOS/macparakeet-cli"
-          test "$(plutil -extract CFBundleIdentifier raw "$MOUNTED_APP/Contents/Info.plist")" = "com.macparakeet.MacParakeet"
-          bash scripts/ci/verify_downloadable_app.sh "$MOUNTED_APP" 2>&1 | tee -a .ci-logs/downloadable-app-helpers.log
-          while IFS= read -r -d '' SOURCE_PATH; do
-            RELATIVE_PATH="${SOURCE_PATH#$APP_PATH}"
-            MOUNTED_PATH="$MOUNTED_APP$RELATIVE_PATH"
-            test -e "$MOUNTED_PATH" || test -L "$MOUNTED_PATH"
-            test "$(stat -f '%p' "$SOURCE_PATH")" = "$(stat -f '%p' "$MOUNTED_PATH")"
-            if test -L "$SOURCE_PATH"; then
-              test "$(readlink "$SOURCE_PATH")" = "$(readlink "$MOUNTED_PATH")"
-            fi
-          done < <(find "$APP_PATH" -print0)
-          hdiutil imageinfo "$DMG_PATH" | tee .ci-logs/unsigned-app-disk-image-info.log
-      - name: Upload unsigned non-notarized app
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-        uses: actions/upload-artifact@v7
-        with:
-          name: MacParakeet-unsigned-non-notarized
-          path: dist/MacParakeet-unsigned-non-notarized.dmg
-          if-no-files-found: error
-          retention-days: 7
       - name: Upload release logs
         if: always()
         uses: actions/upload-artifact@v7
@@ -231,6 +176,53 @@ jobs:
           name: swift-release-logs
           path: .ci-logs/
           include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+  signed-artifact:
+    needs: swift-test
+    if: >-
+      needs.swift-test.result == 'success' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.publish_signed_artifact == true &&
+      github.ref == 'refs/heads/main'
+    environment: signed-ci-artifact
+    runs-on: macos-14
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-swift
+        with:
+          lane: release
+      - name: Build, sign, notarize, and verify protected CI test artifact
+        timeout-minutes: 70
+        env:
+          SIGNED_ARTIFACT_VERSION: ${{ inputs.signed_artifact_version }}
+          DEVELOPMENT_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPMENT_ID_CERTIFICATE_BASE64 }}
+          DEVELOPMENT_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPMENT_ID_CERTIFICATE_PASSWORD }}
+          DEVELOPER_ID_APPLICATION_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_APP_SPECIFIC_PASSWORD: ${{ secrets.NOTARY_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set -o pipefail
+          export SIGNED_ARTIFACT_BUILD_NUMBER="$(date -u +%Y%m%d%H%M%S)"
+          bash scripts/ci/publish_signed_artifact.sh 2>&1 | tee signed-artifact.log
+      - name: Upload signed and notarized CI test DMG
+        uses: actions/upload-artifact@v7
+        with:
+          name: MacParakeet-signed-notarized-ci-test
+          path: dist/MacParakeet-signed-notarized-ci-test.dmg
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload signed artifact log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: signed-artifact-log
+          path: signed-artifact.log
           if-no-files-found: warn
           retention-days: 7
 

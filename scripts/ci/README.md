@@ -16,7 +16,8 @@ The workflow runs:
 | `changes` | Every PR, main push, manual run | Script tests, subsystem README references, change classification |
 | `debug-tests` | Code/input changes | One app/CLI/test build with concurrency warnings; all XCTest and Swift Testing cases; debug CLI smoke |
 | `swift6` | Code/input changes, parallel with debug | First-party Swift 6 compilation without WhisperKit; informational format lint |
-| `release` | Release-input PRs, every main push, manual run | Optimized release build and release CLI smoke; PRs use a fast fixture bundle smoke, while main/manual runs build and publish a seven-day unsigned, non-notarized app artifact with the normal runtime helpers |
+| `release` | Release-input PRs, every main push, manual run | Optimized release build and release CLI smoke; PRs use a fast fixture bundle smoke |
+| `signed-artifact` | Explicit manual request on `main`, after protected-environment approval | Build, Developer ID sign, notarize, staple, verify, and upload a seven-day CI test DMG |
 | `swift-test` | Always | Stable, fail-closed result for all required lanes |
 
 Release inputs include package manifests/lockfile, `.github/`, `scripts/ci/`,
@@ -26,19 +27,20 @@ wait for release optimization. This accepts the risk that another release-only
 compiler/linker error can first appear on main. Run manual CI before releasing;
 the bundle smoke is not signing/notarization or complete distribution validation.
 
-After a successful `release` job on `main` or a manual run, CI builds
-`dist/MacParakeet.app` with the bundle defaults, including the verified portable
-FFmpeg download, yt-dlp helper seed, and Node runtime. It executes each helper's
-version command, packages the app in a compressed, Finder-mountable disk image,
-mounts that image read-only, compares app modes and symlinks with the source
-bundle, and executes the helper checks again before uploading
-`MacParakeet-unsigned-non-notarized` for seven days. The GitHub artifact ZIP
-contains one `.dmg`, not an identically named inner ZIP. Pull requests use the fast
-`/usr/bin/true` bundle fixture with helper downloads disabled, but that step is
-limited to pull-request events and its output cannot reach publication. Pull
-requests do not publish the app artifact. The artifact is only a development
-build; it is not signed, notarized, published to the stable download channel,
-or suitable as an official release.
+Pull requests use the fast `/usr/bin/true` bundle fixture with helper downloads
+disabled. Its output cannot reach publication. Main pushes and ordinary manual
+runs also do not publish an app.
+
+A manual run on `main` publishes only when `publish_signed_artifact` is enabled
+and the `signed-ci-artifact` environment approves the job. The protected job
+requires a non-sentinel `X.Y.Z` input and environment secrets, uses a temporary
+keychain, builds the normal runtime helpers and required meeting echo assets,
+then runs the established signing/notarization path. It mounts and verifies the
+DMG with `codesign`, Gatekeeper, and `stapler`, and executes helper version
+smokes before uploading `MacParakeet-signed-notarized-ci-test` for seven days.
+Missing credentials or any verification failure leaves no uploadable trusted
+DMG. This test artifact is not sent to R2 or Sparkle and is not an official
+release. Provisioning and download instructions are in `docs/distribution.md`.
 
 Only known prose paths skip compilation: root Markdown, Markdown under docs,
 plans, spec, integrations, and source README files. The CLI changelog remains a

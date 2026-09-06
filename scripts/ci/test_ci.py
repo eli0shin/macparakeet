@@ -64,7 +64,8 @@ class ClassificationTests(unittest.TestCase):
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
         self.workflow = Path(".github/workflows/ci.yml").read_text()
-        self.release_job = self.workflow.split("\n  release:\n", 1)[1].split("\n  # Preserve", 1)[0]
+        self.release_job = self.workflow.split("\n  release:\n", 1)[1].split("\n  signed-artifact:\n", 1)[0]
+        self.signed_job = self.workflow.split("\n  signed-artifact:\n", 1)[1].split("\n  # Preserve", 1)[0]
 
     def test_debug_tests_job_has_twenty_minute_timeout(self):
         debug_job = self.workflow.split("\n  debug-tests:\n", 1)[1].split("\n  swift6:\n", 1)[0]
@@ -78,66 +79,43 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('BUNDLE_NODE: "0"', fixture)
         self.assertIn("FFMPEG_PATH: /usr/bin/true", fixture)
 
-        downloadable = self.release_job.split("      - name: Build downloadable unsigned app\n", 1)[1]
-        downloadable = downloadable.split("      - name:", 1)[0]
-        self.assertIn("github.event_name == 'workflow_dispatch'", downloadable)
-        self.assertIn("github.ref == 'refs/heads/main'", downloadable)
-        self.assertIn("BUILD_SOURCE: github-actions-unsigned-development", downloadable)
-        self.assertIn("bash scripts/ci/verify_downloadable_app.sh dist/MacParakeet.app", downloadable)
-        self.assertNotIn("BUNDLE_YTDLP", downloadable)
-        self.assertNotIn("BUNDLE_NODE", downloadable)
-        self.assertNotIn("FFMPEG_PATH", downloadable)
-        self.assertLess(
-            self.release_job.index("Release Bundle Fixture Smoke"),
-            self.release_job.index("Build downloadable unsigned app"),
-        )
-        self.assertLess(
-            self.release_job.index("Build downloadable unsigned app"),
-            self.release_job.index("Package unsigned app disk image"),
-        )
+        self.assertNotIn("MacParakeet-signed-notarized-ci-test", self.release_job)
+        self.assertNotIn("unsigned-non-notarized", self.workflow)
 
-    def test_release_job_packages_finder_mountable_app_only_for_main_and_manual_runs(self):
-        package = self.release_job.split("      - name: Package unsigned app disk image\n", 1)[1]
-        package = package.split("      - name:", 1)[0]
-        publish_condition = (
-            "if: github.event_name == 'workflow_dispatch' || "
-            "(github.event_name == 'push' && github.ref == 'refs/heads/main')"
-        )
-        self.assertIn(publish_condition, package)
-        self.assertIn('APP_PATH="dist/MacParakeet.app"', package)
-        self.assertIn('DMG_PATH="dist/MacParakeet-unsigned-non-notarized.dmg"', package)
-        self.assertIn('/usr/bin/ditto "$APP_PATH" "$STAGING_DIR/MacParakeet.app"', package)
-        self.assertIn('ln -s /Applications "$STAGING_DIR/Applications"', package)
-        self.assertIn("hdiutil create", package)
-        self.assertIn('-format UDZO "$DMG_PATH"', package)
-        self.assertIn("hdiutil imageinfo -plist", package)
-        self.assertIn('= "UDZO"', package)
-        self.assertIn('hdiutil verify "$DMG_PATH"', package)
-        self.assertIn('hdiutil attach "$DMG_PATH" -readonly -nobrowse -noautoopen', package)
-        self.assertIn("test -x", package)
-        self.assertIn("stat -f '%p'", package)
-        self.assertIn("readlink", package)
-        self.assertIn("CFBundleIdentifier", package)
-        self.assertIn("com.macparakeet.MacParakeet", package)
-        self.assertIn(
-            'bash scripts/ci/verify_downloadable_app.sh "$MOUNTED_APP"',
-            package,
-        )
-        self.assertNotIn("ditto -c -k", package)
-        self.assertNotIn("unsigned-non-notarized.zip", package)
+    def test_signed_publication_waits_for_complete_fail_closed_gate(self):
+        self.assertIn("needs: swift-test", self.signed_job)
+        self.assertIn("needs.swift-test.result == 'success'", self.signed_job)
+        self.assertNotIn("needs: [changes, release]", self.signed_job)
 
-    def test_release_job_uploads_named_disk_image_fail_closed_with_retention(self):
-        upload = self.release_job.split("      - name: Upload unsigned non-notarized app\n", 1)[1]
+    def test_signed_publication_is_manual_main_and_environment_gated(self):
+        self.assertIn("github.event_name == 'workflow_dispatch'", self.signed_job)
+        self.assertIn("inputs.publish_signed_artifact == true", self.signed_job)
+        self.assertIn("github.ref == 'refs/heads/main'", self.signed_job)
+        self.assertIn("environment: signed-ci-artifact", self.signed_job)
+        self.assertNotIn("pull_request", self.signed_job)
+        self.assertIn("SIGNED_ARTIFACT_VERSION: ${{ inputs.signed_artifact_version }}", self.signed_job)
+
+    def test_signing_secrets_exist_only_in_protected_job(self):
+        secret_names = [
+            "DEVELOPMENT_ID_CERTIFICATE_BASE64",
+            "DEVELOPMENT_ID_CERTIFICATE_PASSWORD",
+            "DEVELOPER_ID_APPLICATION_IDENTITY",
+            "APPLE_TEAM_ID",
+            "NOTARY_APPLE_ID",
+            "NOTARY_APP_SPECIFIC_PASSWORD",
+        ]
+        unprotected = self.workflow.split("\n  signed-artifact:\n", 1)[0]
+        for name in secret_names:
+            with self.subTest(secret=name):
+                self.assertIn("${{ secrets." + name + " }}", self.signed_job)
+                self.assertNotIn(name, unprotected)
+
+    def test_signed_upload_is_fail_closed_named_and_retained(self):
+        upload = self.signed_job.split("      - name: Upload signed and notarized CI test DMG\n", 1)[1]
         upload = upload.split("      - name:", 1)[0]
-        publish_condition = (
-            "if: github.event_name == 'workflow_dispatch' || "
-            "(github.event_name == 'push' && github.ref == 'refs/heads/main')"
-        )
-        self.assertIn(publish_condition, upload)
         self.assertIn("uses: actions/upload-artifact@v7", upload)
-        self.assertIn("name: MacParakeet-unsigned-non-notarized", upload)
-        self.assertIn("path: dist/MacParakeet-unsigned-non-notarized.dmg", upload)
-        self.assertNotIn(".zip", upload)
+        self.assertIn("name: MacParakeet-signed-notarized-ci-test", upload)
+        self.assertIn("path: dist/MacParakeet-signed-notarized-ci-test.dmg", upload)
         self.assertIn("if-no-files-found: error", upload)
         self.assertIn("retention-days: 7", upload)
         self.assertNotIn("continue-on-error", upload)
@@ -145,6 +123,61 @@ class WorkflowTests(unittest.TestCase):
     def test_release_log_artifact_remains_available(self):
         self.assertIn("name: swift-release-logs", self.release_job)
         self.assertIn("if: always()", self.release_job)
+
+
+class SignedArtifactScriptTests(unittest.TestCase):
+    def setUp(self):
+        self.publish = Path("scripts/ci/publish_signed_artifact.sh").read_text()
+        self.verify = Path("scripts/ci/verify_signed_dmg.sh").read_text()
+        self.sign = Path("scripts/dist/sign_notarize.sh").read_text()
+
+    def test_credentials_use_ephemeral_keychain_with_failure_cleanup(self):
+        self.assertIn("trap cleanup EXIT INT TERM", self.publish)
+        self.assertIn('security create-keychain', self.publish)
+        self.assertIn('security delete-keychain "$KEYCHAIN_PATH"', self.publish)
+        self.assertIn('rm -f "$CERTIFICATE_PATH"', self.publish)
+        self.assertIn('--keychain "$KEYCHAIN_PATH"', self.publish)
+        self.assertIn('SIGN_KEYCHAIN="$KEYCHAIN_PATH"', self.publish)
+        self.assertIn('NOTARYTOOL_KEYCHAIN="$KEYCHAIN_PATH"', self.publish)
+        self.assertIn('codesign --keychain "$SIGN_KEYCHAIN"', self.sign)
+        self.assertIn('xcrun notarytool "$@" --keychain "$NOTARYTOOL_KEYCHAIN"', self.sign)
+
+    def test_missing_credentials_version_and_identity_fail_closed(self):
+        for name in [
+            "SIGNED_ARTIFACT_VERSION", "SIGNED_ARTIFACT_BUILD_NUMBER",
+            "DEVELOPMENT_ID_CERTIFICATE_BASE64", "DEVELOPMENT_ID_CERTIFICATE_PASSWORD",
+            "DEVELOPER_ID_APPLICATION_IDENTITY", "APPLE_TEAM_ID", "NOTARY_APPLE_ID",
+            "NOTARY_APP_SPECIFIC_PASSWORD",
+        ]:
+            with self.subTest(variable=name):
+                self.assertIn(name, self.publish)
+        self.assertIn("explicit non-sentinel X.Y.Z", self.publish)
+        self.assertIn("Developer ID Application:", self.publish)
+        self.assertIn("FYAF2ZD7RM", self.publish)
+        self.assertIn('rm -f "$TRUSTED_DMG"', self.publish)
+        self.assertLess(
+            self.publish.index("verify_signed_dmg.sh"),
+            self.publish.index('mv dist/MacParakeet.dmg "$TRUSTED_DMG"'),
+        )
+
+    def test_build_reuses_release_gates_and_signed_helper_entitlements(self):
+        self.assertIn("REQUIRE_MEETING_ECHO_ASSETS=1", self.publish)
+        self.assertIn("scripts/dist/build_app_bundle.sh", self.publish)
+        self.assertIn("scripts/dist/sign_notarize.sh", self.publish)
+        self.assertIn("NODE_RUNTIME_ENTITLEMENTS", self.sign)
+        self.assertIn("YTDLP_RUNTIME_ENTITLEMENTS", self.sign)
+        self.assertIn("verify_app_privacy_surface.sh", self.sign)
+        self.assertIn("verify_meeting_echo_assets.sh", self.sign)
+
+    def test_landing_dmg_verification_covers_gatekeeper_stapling_and_helpers(self):
+        for command in [
+            "hdiutil verify", "codesign --verify --strict", "xcrun stapler validate",
+            "spctl --assess --type open", "codesign --verify --deep --strict",
+            "spctl --assess --type execute", "TeamIdentifier=$EXPECTED_TEAM_ID",
+            "verify_downloadable_app.sh",
+        ]:
+            with self.subTest(command=command):
+                self.assertIn(command, self.verify)
 
 
 class DownloadableAppVerificationTests(unittest.TestCase):

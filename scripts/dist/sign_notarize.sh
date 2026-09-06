@@ -13,6 +13,8 @@ set -euo pipefail
 #   DIST_DIR              (default: ./dist)
 #   SIGN_IDENTITY         (default: Developer ID Application: Daniel Moon (FYAF2ZD7RM))
 #   NOTARYTOOL_PROFILE    (required to notarize)
+#   NOTARYTOOL_KEYCHAIN   (optional explicit keychain containing the profile)
+#   SIGN_KEYCHAIN         (optional explicit keychain containing the signing identity)
 #   CREATE_DMG            (default: 1)
 #   NOTARY_TIMEOUT_SECONDS       (default: 1800)
 #   NOTARY_POLL_INTERVAL_SECONDS (default: 15)
@@ -29,6 +31,8 @@ APP_PATH="$DIST_DIR/${APP_NAME}.app"
 
 SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Daniel Moon (FYAF2ZD7RM)}"
 NOTARYTOOL_PROFILE="${NOTARYTOOL_PROFILE:-AC_PASSWORD}"
+NOTARYTOOL_KEYCHAIN="${NOTARYTOOL_KEYCHAIN:-}"
+SIGN_KEYCHAIN="${SIGN_KEYCHAIN:-}"
 CREATE_DMG="${CREATE_DMG:-1}"
 NOTARY_TIMEOUT_SECONDS="${NOTARY_TIMEOUT_SECONDS:-1800}"
 NOTARY_POLL_INTERVAL_SECONDS="${NOTARY_POLL_INTERVAL_SECONDS:-15}"
@@ -43,6 +47,22 @@ if ! [[ "$NOTARY_POLL_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] || [[ "$NOTARY_POLL_INTER
   exit 1
 fi
 
+codesign_for_distribution() {
+  if [[ -n "$SIGN_KEYCHAIN" ]]; then
+    codesign --keychain "$SIGN_KEYCHAIN" "$@"
+  else
+    codesign "$@"
+  fi
+}
+
+notarytool() {
+  if [[ -n "$NOTARYTOOL_KEYCHAIN" ]]; then
+    xcrun notarytool "$@" --keychain "$NOTARYTOOL_KEYCHAIN"
+  else
+    xcrun notarytool "$@"
+  fi
+}
+
 poll_notarization() {
   local submission_id="$1"
   local artifact_label="$2"
@@ -52,7 +72,7 @@ poll_notarization() {
   echo "Polling ${artifact_label} notarization status for $submission_id..."
   while true; do
     local status
-    status="$(xcrun notarytool info "$submission_id" --keychain-profile "$NOTARYTOOL_PROFILE" 2>&1)"
+    status="$(notarytool info "$submission_id" --keychain-profile "$NOTARYTOOL_PROFILE" 2>&1)"
 
     if echo "$status" | grep -q "status: Accepted"; then
       echo "${artifact_label} notarization accepted!"
@@ -102,27 +122,27 @@ if [[ -d "$SPARKLE_FW" ]]; then
   # Sign XPC services
   while IFS= read -r -d '' xpc; do
     echo "  Signing XPC: $(basename "$xpc")"
-    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$xpc"
+    codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$xpc"
   done < <(find "$SPARKLE_FW" -name "*.xpc" -type d -print0 2>/dev/null || true)
   # Sign nested apps (Updater.app)
   while IFS= read -r -d '' app; do
     echo "  Signing app: $(basename "$app")"
-    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$app"
+    codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$app"
   done < <(find "$SPARKLE_FW" -name "*.app" -type d -print0 2>/dev/null || true)
   # Sign standalone executables (Autoupdate)
   while IFS= read -r -d '' bin; do
     echo "  Signing binary: $(basename "$bin")"
-    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$bin"
+    codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$bin"
   done < <(find "$SPARKLE_FW/Versions/B" -maxdepth 1 -type f -perm -111 -print0 2>/dev/null || true)
   # Sign the framework itself
   echo "  Signing: Sparkle.framework"
-  codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$SPARKLE_FW"
+  codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$SPARKLE_FW"
 fi
 
 # Sign optional model-backed meeting echo-suppression dylibs.
 while IFS= read -r -d '' dylib; do
   echo "Signing bundled dylib: $dylib"
-  codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$dylib"
+  codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$dylib"
 done < <(
   find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -type f -name "*.dylib" -print0 2>/dev/null || true
 )
@@ -134,13 +154,13 @@ while IFS= read -r -d '' bin; do
   base="$(basename "$bin")"
   echo "Signing: $bin"
   if [[ "$base" == "node" || "$base" == "node-arm64" || "$base" == "node-x86_64" ]]; then
-    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp \
+    codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp \
       --entitlements "$NODE_RUNTIME_ENTITLEMENTS" "$bin"
   elif [[ "$base" == "yt-dlp" ]]; then
-    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp \
+    codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp \
       --entitlements "$YTDLP_RUNTIME_ENTITLEMENTS" "$bin"
   else
-    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$bin"
+    codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$bin"
   fi
 done < <(
   find "$APP_PATH/Contents/Resources" -maxdepth 1 -type f -perm -111 \
@@ -153,7 +173,7 @@ while IFS= read -r -d '' bin; do
     continue
   fi
   echo "Signing bundled executable: $bin"
-  codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$bin"
+  codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$bin"
 done < <(
   find "$APP_PATH/Contents/MacOS" -maxdepth 1 -type f -perm -111 -print0 2>/dev/null || true
 )
@@ -161,7 +181,7 @@ done < <(
 ENTITLEMENTS="$ROOT_DIR/scripts/dist/MacParakeet.entitlements"
 
 echo "[3/8] Codesigning app (hardened runtime + entitlements)…"
-codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp \
+codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp \
   --entitlements "$ENTITLEMENTS" "$APP_PATH"
 
 echo "[4/8] Verifying signature…"
@@ -182,7 +202,7 @@ fi
 
 echo "[6/8] Submitting to notarization service…"
 # Submit without --wait (crashes with bus error on macOS 15+), then poll.
-SUBMIT_OUT=$(xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARYTOOL_PROFILE" 2>&1)
+SUBMIT_OUT=$(notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARYTOOL_PROFILE" 2>&1)
 echo "$SUBMIT_OUT"
 SUBMISSION_ID=$(echo "$SUBMIT_OUT" | grep '  id:' | head -1 | awk '{print $2}')
 if [[ -z "$SUBMISSION_ID" ]]; then
@@ -286,11 +306,11 @@ APPLESCRIPT
   rm -f "$DMG_RW"
 
   echo "Signing DMG…"
-  codesign --force --sign "$SIGN_IDENTITY" --timestamp "$DMG_PATH"
+  codesign_for_distribution --force --sign "$SIGN_IDENTITY" --timestamp "$DMG_PATH"
 
   echo "Notarizing DMG…"
   # Submit without --wait (crashes with bus error on macOS 15+), then poll.
-  DMG_SUBMIT_OUT=$(xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARYTOOL_PROFILE" 2>&1)
+  DMG_SUBMIT_OUT=$(notarytool submit "$DMG_PATH" --keychain-profile "$NOTARYTOOL_PROFILE" 2>&1)
   echo "$DMG_SUBMIT_OUT"
   DMG_SUBMISSION_ID=$(echo "$DMG_SUBMIT_OUT" | grep '  id:' | head -1 | awk '{print $2}')
   if [[ -z "$DMG_SUBMISSION_ID" ]]; then
