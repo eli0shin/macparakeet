@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@026-implement-compact-borderless-meeting-transcript
 Tags:
   - ready-for-agent
 Parent: 023-simplify-meeting-transcript-experience

@@ -14,39 +14,14 @@ func identifiedReadingTurns(_ turns: [ReadingTurn]) -> [IdentifiedReadingTurn] {
     }
 }
 
-struct IdentifiedReadingTurnGroup: Identifiable {
-    let overlap: ReadingTurnOverlap?
-    let turns: [IdentifiedReadingTurn]
-
-    var id: Int { turns[0].scrollID }
-}
-
-func identifiedReadingTurnGroups(
-    _ turns: [IdentifiedReadingTurn]
-) -> [IdentifiedReadingTurnGroup] {
-    let overlapMembers = Dictionary(
-        grouping: turns.compactMap { turn in
-            turn.turn.overlap.map { ($0, turn) }
-        },
-        by: { $0.0 }
-    )
-    var emittedOverlaps: Set<ReadingTurnOverlap> = []
-    var groups: [IdentifiedReadingTurnGroup] = []
-
-    for turn in turns {
-        guard let overlap = turn.turn.overlap else {
-            groups.append(IdentifiedReadingTurnGroup(overlap: nil, turns: [turn]))
-            continue
-        }
-        guard emittedOverlaps.insert(overlap).inserted else { continue }
-        groups.append(
-            IdentifiedReadingTurnGroup(
-                overlap: overlap,
-                turns: overlapMembers[overlap, default: []].map(\.1)
-            )
-        )
-    }
-    return groups
+enum MeetingReadingTurnLayout {
+    static let interTurnSpacing: CGFloat = 2
+    static let horizontalPadding = DesignSystem.Spacing.sm
+    static let verticalPadding: CGFloat = 7
+    static let bylineSpacing: CGFloat = 6
+    static let bodyIndent: CGFloat = 13
+    static let speakerMarkerSize: CGFloat = 7
+    static let playbackFocusWidth: CGFloat = 2
 }
 
 func readingTurnScrollTarget(
@@ -73,32 +48,8 @@ struct MeetingReadingTurnContentView<SpeakerLabelContent: View>: View {
     var currentHighlight: (id: Int, range: NSRange)?
 
     var body: some View {
-        ForEach(identifiedReadingTurnGroups(turns)) { group in
-            if group.overlap != nil {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                    Label("Simultaneous speech", systemImage: "waveform.path")
-                        .font(DesignSystem.Typography.caption.weight(.semibold))
-                        .foregroundStyle(DesignSystem.Colors.speakerColor(for: 1))
-
-                    ForEach(group.turns) { identified in
-                        card(for: identified)
-                    }
-                }
-                .padding(DesignSystem.Spacing.sm)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                        .fill(DesignSystem.Colors.speakerColor(for: 1).opacity(0.06))
-                )
-                .overlay(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(DesignSystem.Colors.speakerColor(for: 1).opacity(0.75))
-                        .frame(width: 3)
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel("Simultaneous speech")
-            } else if let identified = group.turns.first {
-                card(for: identified)
-            }
+        ForEach(turns) { identified in
+            card(for: identified)
         }
     }
 
@@ -147,16 +98,17 @@ private struct MeetingReadingTurnCard<SpeakerLabelContent: View>: View {
     let highlightRanges: [NSRange]
     let currentRange: NSRange?
 
-    @State private var isHovering = false
-
     private var turn: ReadingTurn { identified.turn }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            HStack(spacing: DesignSystem.Spacing.sm) {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack(spacing: MeetingReadingTurnLayout.bylineSpacing) {
                 Circle()
-                    .fill(speakerColor)
-                    .frame(width: 10, height: 10)
+                    .fill(speakerColor.opacity(DesignSystem.Colors.transcriptSpeakerLabelAlpha))
+                    .frame(
+                        width: MeetingReadingTurnLayout.speakerMarkerSize,
+                        height: MeetingReadingTurnLayout.speakerMarkerSize
+                    )
                     .accessibilityHidden(true)
 
                 speakerLabelContent(
@@ -164,7 +116,7 @@ private struct MeetingReadingTurnCard<SpeakerLabelContent: View>: View {
                     turn.speakerLabel,
                     speakerColor,
                     renameContextID,
-                    isHovering
+                    false
                 )
 
                 if let startMs = turn.timeRange?.startMs {
@@ -177,28 +129,17 @@ private struct MeetingReadingTurnCard<SpeakerLabelContent: View>: View {
             bodyText
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .textSelection(.enabled)
-                .lineSpacing(6)
+                .lineSpacing(4)
+                .padding(.leading, MeetingReadingTurnLayout.bodyIndent)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(DesignSystem.Spacing.lg)
-        .background(
-            RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                .fill(
-                    isActive
-                        ? speakerColor.opacity(0.15)
-                        : speakerColor.opacity(0.07))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                .strokeBorder(
-                    isActive ? speakerColor.opacity(0.55) : speakerColor.opacity(0.16),
-                    lineWidth: isActive ? 1.25 : 0.75
-                )
-        )
-        .onHover { hovering in
-            withAnimation(DesignSystem.Animation.hoverTransition) {
-                isHovering = hovering
-            }
+        .padding(.horizontal, MeetingReadingTurnLayout.horizontalPadding)
+        .padding(.vertical, MeetingReadingTurnLayout.verticalPadding)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(speakerColor.opacity(isActive ? 0.8 : 0))
+                .frame(width: MeetingReadingTurnLayout.playbackFocusWidth)
+                .accessibilityHidden(true)
         }
         .contextMenu {
             Button("Copy Reading Turn") {
@@ -235,15 +176,14 @@ private struct MeetingReadingTurnCard<SpeakerLabelContent: View>: View {
             onTimestampTap(startMs)
         } label: {
             Text(timestampLabel(startMs))
-                .font(DesignSystem.Typography.timestamp)
+                .font(DesignSystem.Typography.duration)
                 .foregroundStyle(
                     isTimestampSeekable
-                        ? DesignSystem.Colors.accent
-                        : DesignSystem.Colors.textSecondary
+                        ? DesignSystem.Colors.textSecondary
+                        : DesignSystem.Colors.textTertiary
                 )
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Capsule().fill(DesignSystem.Colors.surfaceElevated))
+                .padding(.horizontal, 3)
+                .padding(.vertical, 1)
         }
         .buttonStyle(.plain)
         .disabled(!isTimestampSeekable)

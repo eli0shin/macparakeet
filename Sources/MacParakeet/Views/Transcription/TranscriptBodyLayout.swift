@@ -8,13 +8,16 @@ import SwiftUI
 /// stack has no lazy view cache, so all production transcripts use it.
 struct TranscriptBodyStack<Content: View>: View {
     let rowCount: Int
+    let spacing: CGFloat
     let content: Content
 
     init(
         rowCount: Int,
+        spacing: CGFloat = DesignSystem.Spacing.md,
         @ViewBuilder content: () -> Content
     ) {
         self.rowCount = rowCount
+        self.spacing = spacing
         self.content = content()
     }
 
@@ -23,14 +26,14 @@ struct TranscriptBodyStack<Content: View>: View {
         if TranscriptBodyLayout.usesLazyStack(rowCount: rowCount) {
             LazyVStack(
                 alignment: .leading,
-                spacing: DesignSystem.Spacing.md
+                spacing: spacing
             ) {
                 content
             }
         } else {
             VStack(
                 alignment: .leading,
-                spacing: DesignSystem.Spacing.md
+                spacing: spacing
             ) {
                 content
             }

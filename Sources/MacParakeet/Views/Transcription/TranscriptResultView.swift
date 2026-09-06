@@ -1469,6 +1469,16 @@ struct TranscriptResultView: View {
         return cachedSegments.count
     }
 
+    private var transcriptBodySpacing: CGFloat {
+        if !editingTranscript,
+           transcriptDisplayMode == .timed,
+           usesMeetingReadingSurface,
+           !cachedReadingTurns.isEmpty {
+            return MeetingReadingTurnLayout.interTurnSpacing
+        }
+        return DesignSystem.Spacing.md
+    }
+
     private var transcriptPane: some View {
         VStack(spacing: 0) {
             if findBarVisible {
@@ -1476,7 +1486,10 @@ struct TranscriptResultView: View {
             }
             ScrollViewReader { proxy in
             ScrollView {
-                TranscriptBodyStack(rowCount: transcriptBodyRowCount) {
+                TranscriptBodyStack(
+                    rowCount: transcriptBodyRowCount,
+                    spacing: transcriptBodySpacing
+                ) {
                     transcriptPaneHeader
 
                     if let partialCapture = MeetingPartialCapturePresentation.make(for: activeTranscription) {
@@ -1515,7 +1528,7 @@ struct TranscriptResultView: View {
                               usesMeetingReadingSurface,
                               !cachedReadingTurns.isEmpty {
                         if let speakers = activeTranscription.speakers, !speakers.isEmpty {
-                            speakerSummaryPanel(speakers: speakers)
+                            compactMeetingSpeakerSummaryPanel(speakers: speakers)
                         }
                         meetingReadingTurnView
                     } else if transcriptDisplayMode == .timed,
@@ -3372,6 +3385,104 @@ struct TranscriptResultView: View {
     }
 
     // MARK: - Speaker Summary Panel
+
+    @ViewBuilder
+    private func compactMeetingSpeakerSummaryPanel(speakers: [SpeakerInfo]) -> some View {
+        let colorMap = buildSpeakerColorMap()
+        let speakerStats = TranscriptSegmenter.computeSpeakerStats(
+            diarizationSegments: activeTranscription.diarizationSegments,
+            wordTimestamps: activeTranscription.wordTimestamps
+        )
+
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    speakerOverviewExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Text("Speakers")
+                        .font(DesignSystem.Typography.caption.weight(.semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                    if !speakerOverviewExpanded {
+                        HStack(spacing: 4) {
+                            ForEach(speakers.prefix(6), id: \.id) { speaker in
+                                Circle()
+                                    .fill(colorMap[speaker.id] ?? DesignSystem.Colors.textTertiary)
+                                    .frame(width: 7, height: 7)
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textTertiary)
+                        .rotationEffect(.degrees(speakerOverviewExpanded ? 180 : 0))
+                }
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(SpeakerRenameAccessibility.overviewToggleLabel(isExpanded: speakerOverviewExpanded))
+            .accessibilityHint(SpeakerRenameAccessibility.overviewToggleHint)
+            .accessibilityIdentifier(SpeakerRenameAccessibility.overviewToggleIdentifier)
+
+            if speakerOverviewExpanded {
+                FlowLayout(spacing: DesignSystem.Spacing.sm) {
+                    ForEach(speakers, id: \.id) { speaker in
+                        speakerOverviewEntry(
+                            speaker: speaker,
+                            color: colorMap[speaker.id] ?? DesignSystem.Colors.textTertiary,
+                            stats: speakerStats[speaker.id]
+                        )
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text("Speaker labels are approximate.")
+                    .font(DesignSystem.Typography.micro)
+                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+            }
+        }
+        .padding(.vertical, DesignSystem.Spacing.sm)
+    }
+
+    private func speakerOverviewEntry(
+        speaker: SpeakerInfo,
+        color: Color,
+        stats: SpeakerStatistics?
+    ) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(color.opacity(DesignSystem.Colors.transcriptSpeakerLabelAlpha))
+                .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+
+            speakerLabelView(
+                speaker: speaker,
+                color: color,
+                contextID: SpeakerRenameAccessibility.overviewRenameContextIdentifier(for: speaker.id),
+                font: DesignSystem.Typography.micro.weight(.semibold)
+            )
+
+            if let stats {
+                Text("\(formatSpeakingTime(ms: stats.speakingTimeMs)) · \(stats.wordCount.formatted()) words")
+                    .font(DesignSystem.Typography.micro)
+                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.7))
+        )
+        .accessibilityElement(children: .contain)
+    }
 
     @ViewBuilder
     private func speakerSummaryPanel(speakers: [SpeakerInfo]) -> some View {

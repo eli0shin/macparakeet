@@ -21,7 +21,9 @@ ranges must not drift.
 
 ## Consumers
 
-- Completed-meeting transcript cards and per-turn copy actions.
+- Completed-meeting transcript blocks and per-turn copy actions. The visible
+  reading surface can omit overlap decoration while each turn keeps its overlap
+  identity.
 - Full meeting and transcript clipboard actions.
 - TXT and Markdown exports.
 - `meeting.md` artifact rendering.

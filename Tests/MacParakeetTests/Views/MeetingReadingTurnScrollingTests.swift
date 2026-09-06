@@ -56,6 +56,26 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         )
     }
 
+    func testCompactRowsUseLessThanNinetyPointsPerReadingTurn() {
+        let turnCount = 12
+        let view = host(turnCount: turnCount, compactRows: true)
+        let window = show(view)
+        defer { window.orderOut(nil) }
+
+        guard let scrollView = preparedScrollView(in: view), let document = scrollView.documentView else {
+            XCTFail("No NSScrollView behind the completed-meeting ScrollView")
+            return
+        }
+
+        let outerPadding = DesignSystem.Spacing.lg * 2
+        let transcriptHeight = document.frame.height - outerPadding
+        XCTAssertLessThan(
+            transcriptHeight / CGFloat(turnCount),
+            90,
+            "The borderless byline layout must remain materially denser than the former cards"
+        )
+    }
+
     /// Reports a measurement for the command-level performance gate. XCTest
     /// does not assert a machine-time expectation.
     func testRepresentativeMeetingReportsMainThreadFrameCPU() {
@@ -122,7 +142,10 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         )
         let content = ScrollViewReader { _ in
             ScrollView {
-                TranscriptBodyStack(rowCount: turns.count) {
+                TranscriptBodyStack(
+                    rowCount: turns.count,
+                    spacing: MeetingReadingTurnLayout.interTurnSpacing
+                ) {
                     body
                 }
                 .padding(DesignSystem.Spacing.lg)
