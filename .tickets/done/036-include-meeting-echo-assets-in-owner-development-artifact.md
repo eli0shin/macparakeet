@@ -37,10 +37,16 @@ Do not change speech recognition, meeting behavior, transcript filtering, releas
 
 ## Acceptance criteria
 
-- [ ] The owner development artifact build does not set `BUNDLE_MEETING_ECHO_ASSETS=0`.
-- [ ] Its DMG contains `liblocalvqe.dylib` and `localvqe-v1.4-aec-200K-f32.gguf` at the expected bundle paths.
-- [ ] Development artifact verification fails when either required asset is absent.
-- [ ] The existing echo runtime probe validates the packaged development assets where applicable.
-- [ ] The explicit local development-only opt-out remains available and unchanged.
-- [ ] Focused artifact/fixture tests pass.
-- [ ] No release workflow, ADR, product behavior, or unrelated files change.
+- [x] The owner development artifact build does not set `BUNDLE_MEETING_ECHO_ASSETS=0`.
+- [x] Its DMG contains `liblocalvqe.dylib` and `localvqe-v1.4-aec-200K-f32.gguf` at the expected bundle paths.
+- [x] Development artifact verification fails when either required asset is absent.
+- [x] The existing echo runtime probe validates the packaged development assets where applicable.
+- [x] The explicit local development-only opt-out remains available and unchanged.
+- [x] Focused artifact/fixture tests pass.
+- [x] No release workflow, ADR, product behavior, or unrelated files change.
+
+## Resolution
+
+PR #40 merged as `c7d98016` from reviewed head `e1fdc1efa14177b122657c30e47e0caeb738f286`. CI run `34168192546` passed. Downloaded owner development artifact `10035156651` has SHA-256 `5842f742be528343425645374cfd1e66432cb3544b9b8a8860d3c99228cfa95d`.
+
+Direct verification confirmed the DMG contains the required LocalVQE library and model, verifies the model checksum and code signatures, initializes the packaged runtime, processes one frame, validates helpers, and launches outside the checkout. Release planner run `34169253954` correctly returned `should_release=false`; no public release or generated release artifact was created for this development-artifact-only correction.
