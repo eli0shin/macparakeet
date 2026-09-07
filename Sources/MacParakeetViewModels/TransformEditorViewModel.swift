@@ -140,13 +140,14 @@ public final class TransformEditorViewModel {
             return
         }
         let editingID = mode.initialPrompt?.id
-        let bindings: [UUID: KeyboardShortcut] = Dictionary(uniqueKeysWithValues:
-            existingPrompts.compactMap { prompt in
-                guard prompt.category == .transform,
-                      let s = prompt.shortcut
-                else { return nil }
-                return (prompt.id, s)
-            }
+        let bindings: [UUID: KeyboardShortcut] = Dictionary(
+            uniqueKeysWithValues:
+                existingPrompts.compactMap { prompt in
+                    guard prompt.category == .transform,
+                        let s = prompt.shortcut
+                    else { return nil }
+                    return (prompt.id, s)
+                }
         )
         let collision = collisionChecker.check(
             candidate: candidate,

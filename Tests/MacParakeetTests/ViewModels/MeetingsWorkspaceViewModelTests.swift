@@ -41,7 +41,7 @@ final class MeetingsWorkspaceViewModelTests: XCTestCase {
         calendar.stubEvents = [
             makeEvent(title: "Design Review", meetUrl: "https://zoom.us/j/123", calendarIdentifier: "work"),
             makeEvent(title: "Focus Block", meetUrl: nil, calendarIdentifier: "work"),
-            makeEvent(title: "Ignored Review", meetUrl: "https://meet.google.com/abc", calendarIdentifier: "personal")
+            makeEvent(title: "Ignored Review", meetUrl: "https://meet.google.com/abc", calendarIdentifier: "personal"),
         ]
         let viewModel = makeViewModel(
             calendarMode: .notify,
@@ -75,7 +75,7 @@ final class MeetingsWorkspaceViewModelTests: XCTestCase {
             makeEvent(title: "Accepted Review", meetUrl: "https://zoom.us/j/1", userStatus: .accepted),
             makeEvent(title: "Pending Invite", meetUrl: "https://zoom.us/j/2", userStatus: .pending),
             makeEvent(title: "Tentative Sync", meetUrl: "https://zoom.us/j/3", userStatus: .tentative),
-            makeEvent(title: "Declined Standup", meetUrl: "https://zoom.us/j/4", userStatus: .declined)
+            makeEvent(title: "Declined Standup", meetUrl: "https://zoom.us/j/4", userStatus: .declined),
         ]
         let viewModel = makeViewModel(
             calendarMode: .autoStart,
@@ -102,7 +102,7 @@ final class MeetingsWorkspaceViewModelTests: XCTestCase {
         calendar.stubEvents = [
             makeEvent(title: "Real Meeting", meetUrl: "https://zoom.us/j/123"),
             makeEvent(title: "All-day Offsite", meetUrl: "https://zoom.us/j/456", isAllDay: true),
-            makeEvent(title: "Declined Sync", meetUrl: "https://zoom.us/j/789", userStatus: .declined)
+            makeEvent(title: "Declined Sync", meetUrl: "https://zoom.us/j/789", userStatus: .declined),
         ]
         let viewModel = makeViewModel(
             calendarMode: .notify,
@@ -125,7 +125,7 @@ final class MeetingsWorkspaceViewModelTests: XCTestCase {
         calendar.stubPermissionStatus = .granted
         calendar.stubEvents = [
             makeEvent(title: "Accepted Review", meetUrl: "https://zoom.us/j/123", userStatus: .accepted),
-            makeEvent(title: "Pending Invite", meetUrl: "https://zoom.us/j/456", userStatus: .pending)
+            makeEvent(title: "Pending Invite", meetUrl: "https://zoom.us/j/456", userStatus: .pending),
         ]
         let viewModel = makeViewModel(
             calendarMode: .notify,
@@ -161,10 +161,16 @@ final class MeetingsWorkspaceViewModelTests: XCTestCase {
         // Deliberately unsorted, with the soonest standup in the middle, to
         // prove the collapse picks soonest by start time, not array order.
         calendar.stubEvents = [
-            makeEvent(title: "Standup Wed", meetUrl: "https://zoom.us/j/1", id: "standup", startTime: base.addingTimeInterval(2 * 86_400)),
+            makeEvent(
+                title: "Standup Wed", meetUrl: "https://zoom.us/j/1", id: "standup",
+                startTime: base.addingTimeInterval(2 * 86_400)),
             makeEvent(title: "Standup Mon", meetUrl: "https://zoom.us/j/1", id: "standup", startTime: base),
-            makeEvent(title: "Standup Tue", meetUrl: "https://zoom.us/j/1", id: "standup", startTime: base.addingTimeInterval(86_400)),
-            makeEvent(title: "1:1", meetUrl: "https://zoom.us/j/2", id: "one-on-one", startTime: base.addingTimeInterval(3 * 86_400))
+            makeEvent(
+                title: "Standup Tue", meetUrl: "https://zoom.us/j/1", id: "standup",
+                startTime: base.addingTimeInterval(86_400)),
+            makeEvent(
+                title: "1:1", meetUrl: "https://zoom.us/j/2", id: "one-on-one",
+                startTime: base.addingTimeInterval(3 * 86_400)),
         ]
         let viewModel = makeViewModel(
             calendarMode: .notify,
@@ -314,7 +320,7 @@ final class MeetingsWorkspaceViewModelTests: XCTestCase {
     func testSetMeetingAutoNoteScopesToMeetingOnly() throws {
         let promptRepo = MockPromptRepository()
         promptRepo.prompts = [
-            makeResultPrompt(name: "Action Items", isAutoRun: false, sortOrder: 0),
+            makeResultPrompt(name: "Action Items", isAutoRun: false, sortOrder: 0)
         ]
         let promptsVM = PromptsViewModel()
         promptsVM.configure(repo: promptRepo)
@@ -327,7 +333,8 @@ final class MeetingsWorkspaceViewModelTests: XCTestCase {
 
         let toggled = try XCTUnwrap(viewModel.meetingAutoNotePrompts.first)
         XCTAssertTrue(viewModel.isMeetingAutoNote(toggled))
-        XCTAssertEqual(toggled.appliesToSources, [.meeting], "Enabling from the Meetings card must scope to meetings only.")
+        XCTAssertEqual(
+            toggled.appliesToSources, [.meeting], "Enabling from the Meetings card must scope to meetings only.")
         XCTAssertEqual(viewModel.meetingAutoNoteActiveCount, 1)
     }
 

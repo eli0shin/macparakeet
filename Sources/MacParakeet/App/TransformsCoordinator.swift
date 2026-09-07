@@ -16,12 +16,12 @@ import OSLog
 ///   selections (browser text, terminal scrollback, PDFs) can still feed a
 ///   paste-ready result into the user's active input
 /// - manages cancel-then-restart on re-trigger, run-ID stale-event
-///   guarding, and per-Transform telemetry
+///   guarding, and execution
 ///
 /// Supersedes the original AX-coverage spike (a single hardcoded Opt+Ctrl+1
 /// bound to a baked-in Polish prompt). The coordinator is gated by
 /// `AppFeatures.transformsEnabled`, which is enabled and shipping after the
-/// website telemetry allowlist deploy landed.
+/// feature rollout completed.
 @MainActor
 final class TransformsCoordinator {
     private let llmServiceProvider: () -> LLMServiceProtocol?
@@ -176,18 +176,8 @@ final class TransformsCoordinator {
             return
         }
 
-        let telemetryName = TelemetryTransformName(
-            builtInName: prompt.name,
-            isBuiltIn: prompt.isBuiltIn
-        )
-        let operationContext = ObservabilityOperationContext()
-
         guard let llmService = llmServiceProvider() else {
-            handleMissingLLMProvider(
-                prompt: prompt,
-                telemetryName: telemetryName,
-                operationContext: operationContext
-            )
+            handleMissingLLMProvider(prompt: prompt)
             return
         }
 
@@ -211,7 +201,7 @@ final class TransformsCoordinator {
         runSerializer.replace { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let result = try await Observability.withOperationContext(operationContext) {
+                let result = try await {
                     try await executor.run(
                         prompt: promptBody,
                         replacementMode: .pasteIntoCurrentFocus,
@@ -226,34 +216,9 @@ final class TransformsCoordinator {
                             }
                         }
                     )
-                }
+                }()
                 guard self.activeRunID == runID else { return }
                 self.panelController?.done(message: "Done")
-                let capturePath: TelemetryTransformCapturePath = result.captureTag == "ax" ? .ax : .clipboard
-                let replacePath: TelemetryTransformReplacePath = result.path == .ax ? .ax : .clipboardPaste
-                // The target captured at trigger time is the app the rewritten
-                // text was pasted back into — map it to a coarse category only.
-                let appCategory = TelemetryAppCategory(bundleIdentifier: result.target?.bundleIdentifier)
-                Telemetry.send(.transformExecuted(
-                    transformName: telemetryName,
-                    capturePath: capturePath,
-                    replacePath: replacePath,
-                    llmMs: result.llmElapsedMs,
-                    totalMs: result.totalElapsedMs,
-                    appCategory: appCategory
-                ))
-                self.sendTransformOperation(
-                    operationContext: operationContext,
-                    outcome: .success,
-                    transformName: telemetryName,
-                    stage: .complete,
-                    capturePath: capturePath,
-                    replacePath: replacePath,
-                    llmMs: result.llmElapsedMs,
-                    totalMs: result.totalElapsedMs,
-                    appCategory: appCategory,
-                    errorType: nil
-                )
                 self.saveHistoryEntry(prompt: prompt, result: result)
                 self.logger.notice("transforms: \(runningTransformName, privacy: .public) completed")
             } catch let error as TransformExecutorError {
@@ -261,129 +226,37 @@ final class TransformsCoordinator {
                 switch error {
                 case .cancelled:
                     self.panelController?.close()
-                    Telemetry.send(.transformFailed(transformName: telemetryName, reason: .cancelled))
-                    self.sendTransformOperation(
-                        operationContext: operationContext,
-                        outcome: .cancelled,
-                        transformName: telemetryName,
-                        stage: nil,
-                        errorType: .cancelled
-                    )
                 case .emptySelection:
                     self.panelController?.fail(message: error.localizedDescription)
-                    Telemetry.send(.transformFailed(transformName: telemetryName, reason: .emptySelection))
-                    self.sendTransformOperation(
-                        operationContext: operationContext,
-                        outcome: .empty,
-                        transformName: telemetryName,
-                        stage: .capture,
-                        errorType: .emptySelection
-                    )
                 case .llmNotConfigured:
-                    self.handleMissingLLMProvider(
-                        prompt: prompt,
-                        telemetryName: telemetryName,
-                        operationContext: operationContext
-                    )
+                    self.handleMissingLLMProvider(prompt: prompt)
                 case .captureFailed:
                     self.panelController?.fail(message: error.localizedDescription)
-                    Telemetry.send(.transformFailed(transformName: telemetryName, reason: .captureFailed))
-                    self.sendTransformOperation(
-                        operationContext: operationContext,
-                        outcome: .failure,
-                        transformName: telemetryName,
-                        stage: .capture,
-                        errorType: .captureFailed
-                    )
                 case .llmFailed:
                     self.panelController?.fail(message: error.localizedDescription)
-                    Telemetry.send(.transformFailed(transformName: telemetryName, reason: .llmFailed))
-                    self.sendTransformOperation(
-                        operationContext: operationContext,
-                        outcome: .failure,
-                        transformName: telemetryName,
-                        stage: .llm,
-                        errorType: .llmFailed
-                    )
                 case .replacementFailed:
                     self.panelController?.fail(message: error.localizedDescription)
-                    Telemetry.send(.transformFailed(transformName: telemetryName, reason: .replacementFailed))
-                    self.sendTransformOperation(
-                        operationContext: operationContext,
-                        outcome: .failure,
-                        transformName: telemetryName,
-                        stage: .replacement,
-                        errorType: .replacementFailed
-                    )
                 }
-                self.logger.notice("transforms: \(runningTransformName, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+                self.logger.notice(
+                    "transforms: \(runningTransformName, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
+                )
             } catch {
                 guard self.activeRunID == runID else { return }
                 self.panelController?.fail(message: error.localizedDescription)
-                Telemetry.send(.transformFailed(transformName: telemetryName, reason: .llmFailed))
-                self.sendTransformOperation(
-                    operationContext: operationContext,
-                    outcome: .failure,
-                    transformName: telemetryName,
-                    stage: nil,
-                    errorType: .llmFailed
-                )
             }
         }
     }
 
-    private func handleMissingLLMProvider(
-        prompt: Prompt,
-        telemetryName: TelemetryTransformName,
-        operationContext: ObservabilityOperationContext
-    ) {
+    private func handleMissingLLMProvider(prompt: Prompt) {
         panelController?.show()
         // Name the problem + where to fix it. The old "Opening AI settings..."
         // described a side-effect, not what the user needs to do — and when the
         // hotkey is fired from another app the Settings window opens behind
-        // focus, so it read as "nothing happened" and users re-fired the hotkey
-        // (see the no_provider telemetry cluster). The Settings → AI window
-        // still opens automatically alongside this message.
+        // focus, so it read as "nothing happened" and users re-fired the hotkey.
+        // The Settings → AI window still opens automatically alongside this message.
         panelController?.fail(message: "Add an LLM provider in Settings to use Transforms")
         onLLMProviderRequired()
-        Telemetry.send(.transformFailed(transformName: telemetryName, reason: .noProvider))
-        sendTransformOperation(
-            operationContext: operationContext,
-            outcome: .unavailable,
-            transformName: telemetryName,
-            stage: .llm,
-            errorType: .noProvider
-        )
         logger.notice("transforms: no LLM provider configured for \(prompt.name, privacy: .public)")
-    }
-
-    private func sendTransformOperation(
-        operationContext: ObservabilityOperationContext,
-        outcome: ObservabilityOutcome,
-        transformName: TelemetryTransformName,
-        stage: TelemetryTransformOperationStage?,
-        capturePath: TelemetryTransformCapturePath? = nil,
-        replacePath: TelemetryTransformReplacePath? = nil,
-        llmMs: Int? = nil,
-        totalMs: Int? = nil,
-        appCategory: TelemetryAppCategory? = nil,
-        errorType: TelemetryTransformFailureReason? = nil
-    ) {
-        Telemetry.send(.transformOperation(
-            operationID: operationContext.operationID,
-            operationContext: operationContext,
-            outcome: outcome,
-            transformName: transformName,
-            stage: stage,
-            capturePath: capturePath,
-            replacePath: replacePath,
-            durationSeconds: totalMs.map { Double($0) / 1000.0 }
-                ?? Observability.durationSeconds(since: operationContext.startedAt),
-            llmMs: llmMs,
-            totalMs: totalMs,
-            appCategory: appCategory,
-            errorType: errorType
-        ))
     }
 
     private func saveHistoryEntry(prompt: Prompt, result: TransformExecutionResult) {
@@ -411,7 +284,8 @@ final class TransformsCoordinator {
                     NotificationCenter.default.post(name: .transformHistoryChanged, object: nil)
                 }
             } catch {
-                logger.error("transforms: failed to save history entry: \(error.localizedDescription, privacy: .public)")
+                logger.error(
+                    "transforms: failed to save history entry: \(error.localizedDescription, privacy: .public)")
             }
         }
     }

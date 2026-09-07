@@ -19,12 +19,18 @@ struct LLMTransformCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Stream the response token by token.")
     var stream: Bool = false
 
-    @Flag(name: .long, help: "Emit a structured JSON envelope (output, provider, model, usage, stopReason, latencyMs) instead of plain text.")
+    @Flag(
+        name: .long,
+        help:
+            "Emit a structured JSON envelope (output, provider, model, usage, stopReason, latencyMs) instead of plain text."
+    )
     var json: Bool = false
 
     func validate() throws {
         if json && stream {
-            throw ValidationError("--json with --stream is not yet supported. Run without --stream for the envelope, or omit --json for token streaming.")
+            throw ValidationError(
+                "--json with --stream is not yet supported. Run without --stream for the envelope, or omit --json for token streaming."
+            )
         }
     }
 

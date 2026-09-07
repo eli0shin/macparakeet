@@ -7,35 +7,35 @@ final class PodcastEpisodeResolverTests: XCTestCase {
 
     func testResolvesEpisodeURLToEnclosureAndMetadata() async throws {
         let json = """
-        {
-          "resultCount": 3,
-          "results": [
-            { "wrapperType": "track", "kind": "podcast", "collectionName": "The Daily", "feedUrl": "https://feeds.example.com/thedaily.rss" },
             {
-              "wrapperType": "podcastEpisode",
-              "kind": "podcast-episode",
-              "trackId": 1000654321000,
-              "trackName": "Wrong episode",
-              "collectionName": "The Daily",
-              "episodeUrl": "https://cdn.example.com/audio/wrong.mp3"
-            },
-            {
-              "wrapperType": "podcastEpisode",
-              "kind": "podcast-episode",
-              "trackId": 1000654321987,
-              "trackName": "Episode 42: On Patience",
-              "collectionName": "The Daily",
-              "feedUrl": "https://feeds.example.com/thedaily.rss",
-              "episodeUrl": "https://cdn.example.com/audio/42.mp3",
-              "artworkUrl600": "https://art.example.com/600.jpg",
-              "artworkUrl100": "https://art.example.com/100.jpg",
-              "description": "A long-form episode description.",
-              "releaseDate": "2024-06-01T07:00:00Z",
-              "trackTimeMillis": 1830000
+              "resultCount": 3,
+              "results": [
+                { "wrapperType": "track", "kind": "podcast", "collectionName": "The Daily", "feedUrl": "https://feeds.example.com/thedaily.rss" },
+                {
+                  "wrapperType": "podcastEpisode",
+                  "kind": "podcast-episode",
+                  "trackId": 1000654321000,
+                  "trackName": "Wrong episode",
+                  "collectionName": "The Daily",
+                  "episodeUrl": "https://cdn.example.com/audio/wrong.mp3"
+                },
+                {
+                  "wrapperType": "podcastEpisode",
+                  "kind": "podcast-episode",
+                  "trackId": 1000654321987,
+                  "trackName": "Episode 42: On Patience",
+                  "collectionName": "The Daily",
+                  "feedUrl": "https://feeds.example.com/thedaily.rss",
+                  "episodeUrl": "https://cdn.example.com/audio/42.mp3",
+                  "artworkUrl600": "https://art.example.com/600.jpg",
+                  "artworkUrl100": "https://art.example.com/100.jpg",
+                  "description": "A long-form episode description.",
+                  "releaseDate": "2024-06-01T07:00:00Z",
+                  "trackTimeMillis": 1830000
+                }
+              ]
             }
-          ]
-        }
-        """
+            """
         let resolver = PodcastEpisodeResolver(dataFetcher: Self.fixtureFetcher(json))
 
         let episode = try await resolver.resolve(
@@ -56,14 +56,14 @@ final class PodcastEpisodeResolverTests: XCTestCase {
         // A show lookup returns the collection (no episodeUrl) followed by
         // episodes newest-first; the resolver takes the latest playable one.
         let json = """
-        {
-          "resultCount": 2,
-          "results": [
-            { "wrapperType": "track", "kind": "podcast", "collectionName": "The Show", "feedUrl": "https://feeds.example.com/show.rss" },
-            { "wrapperType": "podcastEpisode", "trackName": "Latest", "collectionName": "The Show", "episodeUrl": "https://cdn.example.com/latest.mp3", "trackTimeMillis": 600000 }
-          ]
-        }
-        """
+            {
+              "resultCount": 2,
+              "results": [
+                { "wrapperType": "track", "kind": "podcast", "collectionName": "The Show", "feedUrl": "https://feeds.example.com/show.rss" },
+                { "wrapperType": "podcastEpisode", "trackName": "Latest", "collectionName": "The Show", "episodeUrl": "https://cdn.example.com/latest.mp3", "trackTimeMillis": 600000 }
+              ]
+            }
+            """
         let resolver = PodcastEpisodeResolver(dataFetcher: Self.fixtureFetcher(json))
 
         let episode = try await resolver.resolve(url: "https://podcasts.apple.com/us/podcast/the-show/id555")
@@ -92,7 +92,8 @@ final class PodcastEpisodeResolverTests: XCTestCase {
     }
 
     func testResultsWithoutEnclosureThrowsNoPlayableAudio() async {
-        let json = #"{ "resultCount": 1, "results": [ { "wrapperType": "podcastEpisode", "kind": "podcast-episode", "trackId": 2, "collectionName": "X" } ] }"#
+        let json =
+            #"{ "resultCount": 1, "results": [ { "wrapperType": "podcastEpisode", "kind": "podcast-episode", "trackId": 2, "collectionName": "X" } ] }"#
         let resolver = PodcastEpisodeResolver(dataFetcher: Self.fixtureFetcher(json))
         await assertThrows(PodcastResolveError.noPlayableAudio) {
             _ = try await resolver.resolve(url: "https://podcasts.apple.com/us/podcast/x/id1?i=2")
@@ -129,14 +130,14 @@ final class PodcastEpisodeResolverTests: XCTestCase {
 
     func testEpisodeURLThrowsWhenTrackIDIsNotInLookupResults() async {
         let json = """
-        {
-          "resultCount": 2,
-          "results": [
-            { "wrapperType": "track", "kind": "podcast", "collectionName": "The Show" },
-            { "wrapperType": "podcastEpisode", "trackId": 111, "trackName": "Latest", "episodeUrl": "https://cdn.example.com/latest.mp3" }
-          ]
-        }
-        """
+            {
+              "resultCount": 2,
+              "results": [
+                { "wrapperType": "track", "kind": "podcast", "collectionName": "The Show" },
+                { "wrapperType": "podcastEpisode", "trackId": 111, "trackName": "Latest", "episodeUrl": "https://cdn.example.com/latest.mp3" }
+              ]
+            }
+            """
         let resolver = PodcastEpisodeResolver(dataFetcher: Self.fixtureFetcher(json))
         await assertThrows(PodcastResolveError.episodeNotFound) {
             _ = try await resolver.resolve(url: "https://podcasts.apple.com/us/podcast/x/id1?i=222")

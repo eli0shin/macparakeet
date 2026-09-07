@@ -216,8 +216,9 @@ final class MeetingMonitorTests: XCTestCase {
             remindedEventIds: [oldSlotKey],
             countdownShownEventIds: []
         )
-        XCTAssertEqual(extractIds(result), ["evt-1"],
-                       "A reschedule to a new time must re-fire — the old slot's key must not suppress it")
+        XCTAssertEqual(
+            extractIds(result), ["evt-1"],
+            "A reschedule to a new time must re-fire — the old slot's key must not suppress it")
     }
 
     func testReminderMinutesZeroDisablesReminder() {
@@ -363,7 +364,8 @@ final class MeetingMonitorTests: XCTestCase {
             remindedEventIds: [],
             countdownShownEventIds: []
         )
-        if case .autoStartDue = result.first {} else {
+        if case .autoStartDue = result.first {
+        } else {
             XCTFail("Expected .autoStartDue inside [-5s, +30s] window, got \(result)")
         }
     }
@@ -412,8 +414,9 @@ final class MeetingMonitorTests: XCTestCase {
             remindedEventIds: [],
             countdownShownEventIds: []
         )
-        XCTAssertTrue(result.isEmpty,
-                      "An invite the user hasn't accepted (.pending) must not auto-record")
+        XCTAssertTrue(
+            result.isEmpty,
+            "An invite the user hasn't accepted (.pending) must not auto-record")
     }
 
     func testAutoStartFiresForTentative() {
@@ -428,8 +431,9 @@ final class MeetingMonitorTests: XCTestCase {
             remindedEventIds: [],
             countdownShownEventIds: []
         )
-        XCTAssertTrue(result.contains { if case .autoStartDue = $0 { return true } else { return false } },
-                      "A tentatively-accepted meeting is still likely-attending — auto-start should fire")
+        XCTAssertTrue(
+            result.contains { if case .autoStartDue = $0 { return true } else { return false } },
+            "A tentatively-accepted meeting is still likely-attending — auto-start should fire")
     }
 
     func testReminderStillFiresForPendingInvite() {
@@ -445,8 +449,9 @@ final class MeetingMonitorTests: XCTestCase {
             remindedEventIds: [],
             countdownShownEventIds: []
         )
-        XCTAssertTrue(result.contains { if case .reminderDue = $0 { return true } else { return false } },
-                      "Reminders should remain lenient for pending invites")
+        XCTAssertTrue(
+            result.contains { if case .reminderDue = $0 { return true } else { return false } },
+            "Reminders should remain lenient for pending invites")
     }
 
     // MARK: - Late join

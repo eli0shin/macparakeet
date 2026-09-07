@@ -6,11 +6,11 @@ import Foundation
 public final class FnKeyStateMachine {
     public enum State: Equatable, Sendable {
         case idle
-        case waitingForSecondTap   // Fn pressed once, waiting to see if double-tap
-        case persistent            // Double-tap confirmed, recording
-        case holdToTalk            // Held past threshold, recording
-        case cancelWindow          // Esc pressed, in undo window
-        case blocked               // Fn blocked during cancel window
+        case waitingForSecondTap  // Fn pressed once, waiting to see if double-tap
+        case persistent  // Double-tap confirmed, recording
+        case holdToTalk  // Held past threshold, recording
+        case cancelWindow  // Esc pressed, in undo window
+        case blocked  // Fn blocked during cancel window
     }
 
     public enum Action: Equatable, Sendable {
@@ -22,8 +22,8 @@ public final class FnKeyStateMachine {
     }
 
     public enum RecordingMode: Equatable, Sendable {
-        case persistent   // Double-tap: stays on until explicitly stopped
-        case holdToTalk   // Hold: stops when Fn released
+        case persistent  // Double-tap: stays on until explicitly stopped
+        case holdToTalk  // Hold: stops when Fn released
     }
 
     /// Default threshold distinguishing taps from holds.
@@ -200,7 +200,9 @@ public final class FnKeyStateMachine {
     /// Called when cancel is triggered via UI button (not Esc key).
     /// Transitions to cancelWindow so Fn is blocked during the countdown.
     public func cancelledByUI() {
-        if state == .persistent || state == .holdToTalk || (state == .waitingForSecondTap && hasActiveProvisionalRecording) {
+        if state == .persistent || state == .holdToTalk
+            || (state == .waitingForSecondTap && hasActiveProvisionalRecording)
+        {
             state = .cancelWindow
             hasActiveProvisionalRecording = false
         }

@@ -33,12 +33,14 @@ final class RetranscribeCommandTests: XCTestCase {
     }
 
     func testRejectsJSONAndEnvelopeTogether() {
-        XCTAssertThrowsError(try RetranscribeCommand.parse([
-            "abcd",
-            "--update",
-            "--json",
-            "--envelope",
-        ])) { error in
+        XCTAssertThrowsError(
+            try RetranscribeCommand.parse([
+                "abcd",
+                "--update",
+                "--json",
+                "--envelope",
+            ])
+        ) { error in
             XCTAssertTrue(String(describing: error).contains("--json and --envelope cannot be combined"))
         }
     }
@@ -47,14 +49,15 @@ final class RetranscribeCommandTests: XCTestCase {
         let harness = try makeHarness()
         defer { harness.cleanup() }
         let id = UUID(uuidString: "A1111111-1111-1111-1111-111111111111")!
-        try harness.transcriptions.save(Transcription(
-            id: id,
-            fileName: "Client Review.m4a",
-            filePath: "/tmp/client-review.m4a",
-            rawTranscript: "old",
-            status: .completed,
-            sourceType: .file
-        ))
+        try harness.transcriptions.save(
+            Transcription(
+                id: id,
+                fileName: "Client Review.m4a",
+                filePath: "/tmp/client-review.m4a",
+                rawTranscript: "old",
+                status: .completed,
+                sourceType: .file
+            ))
 
         let target = try RetranscribeCommand.resolveTarget(
             "Client Review.m4a",
@@ -73,14 +76,15 @@ final class RetranscribeCommandTests: XCTestCase {
         let harness = try makeHarness()
         defer { harness.cleanup() }
         let id = UUID(uuidString: "B2222222-2222-2222-2222-222222222222")!
-        try harness.transcriptions.save(Transcription(
-            id: id,
-            fileName: "Weekly Sync",
-            filePath: "/tmp/weekly-sync.m4a",
-            rawTranscript: "old",
-            status: .completed,
-            sourceType: .meeting
-        ))
+        try harness.transcriptions.save(
+            Transcription(
+                id: id,
+                fileName: "Weekly Sync",
+                filePath: "/tmp/weekly-sync.m4a",
+                rawTranscript: "old",
+                status: .completed,
+                sourceType: .meeting
+            ))
 
         let target = try RetranscribeCommand.resolveTarget(
             "Weekly Sync",
@@ -99,13 +103,14 @@ final class RetranscribeCommandTests: XCTestCase {
         let harness = try makeHarness()
         defer { harness.cleanup() }
         let id = UUID(uuidString: "C3333333-3333-3333-3333-333333333333")!
-        try harness.dictations.save(Dictation(
-            id: id,
-            durationMs: 1_000,
-            rawTranscript: "old dictation",
-            audioPath: "/tmp/dictation.wav",
-            wordCount: 2
-        ))
+        try harness.dictations.save(
+            Dictation(
+                id: id,
+                durationMs: 1_000,
+                rawTranscript: "old dictation",
+                audioPath: "/tmp/dictation.wav",
+                wordCount: 2
+            ))
 
         let target = try RetranscribeCommand.resolveTarget(
             "c333",
@@ -123,27 +128,31 @@ final class RetranscribeCommandTests: XCTestCase {
     func testResolveAutoRejectsCrossTablePrefixAmbiguity() throws {
         let harness = try makeHarness()
         defer { harness.cleanup() }
-        try harness.transcriptions.save(Transcription(
-            id: UUID(uuidString: "D4440000-1111-1111-1111-111111111111")!,
-            fileName: "Ambiguous.m4a",
-            filePath: "/tmp/ambiguous.m4a",
-            rawTranscript: "old",
-            status: .completed
-        ))
-        try harness.dictations.save(Dictation(
-            id: UUID(uuidString: "D4449999-2222-2222-2222-222222222222")!,
-            durationMs: 1_000,
-            rawTranscript: "old dictation",
-            audioPath: "/tmp/dictation.wav",
-            wordCount: 2
-        ))
+        try harness.transcriptions.save(
+            Transcription(
+                id: UUID(uuidString: "D4440000-1111-1111-1111-111111111111")!,
+                fileName: "Ambiguous.m4a",
+                filePath: "/tmp/ambiguous.m4a",
+                rawTranscript: "old",
+                status: .completed
+            ))
+        try harness.dictations.save(
+            Dictation(
+                id: UUID(uuidString: "D4449999-2222-2222-2222-222222222222")!,
+                durationMs: 1_000,
+                rawTranscript: "old dictation",
+                audioPath: "/tmp/dictation.wav",
+                wordCount: 2
+            ))
 
-        XCTAssertThrowsError(try RetranscribeCommand.resolveTarget(
-            "d444",
-            kind: .auto,
-            transcriptionRepo: harness.transcriptions,
-            dictationRepo: harness.dictations
-        )) { error in
+        XCTAssertThrowsError(
+            try RetranscribeCommand.resolveTarget(
+                "d444",
+                kind: .auto,
+                transcriptionRepo: harness.transcriptions,
+                dictationRepo: harness.dictations
+            )
+        ) { error in
             guard case CLIRetranscribeError.ambiguousRecord = error else {
                 return XCTFail("Expected ambiguousRecord, got \(error)")
             }
@@ -154,12 +163,14 @@ final class RetranscribeCommandTests: XCTestCase {
         let harness = try makeHarness()
         defer { harness.cleanup() }
 
-        XCTAssertThrowsError(try RetranscribeCommand.resolveTarget(
-            "abc",
-            kind: .auto,
-            transcriptionRepo: harness.transcriptions,
-            dictationRepo: harness.dictations
-        )) { error in
+        XCTAssertThrowsError(
+            try RetranscribeCommand.resolveTarget(
+                "abc",
+                kind: .auto,
+                transcriptionRepo: harness.transcriptions,
+                dictationRepo: harness.dictations
+            )
+        ) { error in
             guard case CLILookupError.shortUUIDPrefix(let minimumLength) = error else {
                 return XCTFail("Expected shortUUIDPrefix, got \(error)")
             }
@@ -169,7 +180,8 @@ final class RetranscribeCommandTests: XCTestCase {
 
     func testRetainedAudioURLRequiresStoredPathAndExistingFile() throws {
         let id = UUID(uuidString: "E5555555-5555-5555-5555-555555555555")!
-        XCTAssertThrowsError(try RetranscribeCommand.retainedAudioURL(path: nil, kind: "transcription", id: id)) { error in
+        XCTAssertThrowsError(try RetranscribeCommand.retainedAudioURL(path: nil, kind: "transcription", id: id)) {
+            error in
             guard case CLIRetranscribeError.noRetainedAudio = error else {
                 return XCTFail("Expected noRetainedAudio, got \(error)")
             }
@@ -177,7 +189,9 @@ final class RetranscribeCommandTests: XCTestCase {
 
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent("missing-\(UUID().uuidString).wav")
-        XCTAssertThrowsError(try RetranscribeCommand.retainedAudioURL(path: missing.path, kind: "transcription", id: id)) { error in
+        XCTAssertThrowsError(
+            try RetranscribeCommand.retainedAudioURL(path: missing.path, kind: "transcription", id: id)
+        ) { error in
             guard case CLIRetranscribeError.missingAudio = error else {
                 return XCTFail("Expected missingAudio, got \(error)")
             }
@@ -305,12 +319,13 @@ final class RetranscribeCommandTests: XCTestCase {
         let harness = try makeHarness()
         defer { harness.cleanup() }
         let id = UUID(uuidString: "A7777777-7777-7777-7777-777777777777")!
-        try harness.transcriptions.save(Transcription(
-            id: id,
-            fileName: "No Audio",
-            rawTranscript: "old",
-            status: .completed
-        ))
+        try harness.transcriptions.save(
+            Transcription(
+                id: id,
+                fileName: "No Audio",
+                rawTranscript: "old",
+                status: .completed
+            ))
         let command = try RetranscribeCommand.parse([
             id.uuidString,
             "--kind", "transcription",

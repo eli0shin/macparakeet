@@ -75,7 +75,9 @@ public enum PromptTemplateRenderer {
                 // Unknown variable → empty-string fallback (per ADR §4).
                 // Typos like `{{Usernotes}}` produce empty rather than the literal token.
                 // Log so prompt authors can spot the typo in Console.app.
-                logger.notice("Prompt template references unknown variable `\(key, privacy: .public)`; substituting empty string.")
+                logger.notice(
+                    "Prompt template references unknown variable `\(key, privacy: .public)`; substituting empty string."
+                )
             }
 
             index = closeRange.upperBound

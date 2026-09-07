@@ -95,21 +95,23 @@ final class LLMJSONOutputTests: XCTestCase {
 
     func testSummarizeAcceptsJSONWithoutStream() throws {
         // The complement: --json on its own must parse cleanly.
-        XCTAssertNoThrow(try LLMSummarizeCommand.parse([
-            "--provider", "ollama",
-            "--model", "qwen3.5:4b",
-            "--json",
-            "-",
-        ]))
+        XCTAssertNoThrow(
+            try LLMSummarizeCommand.parse([
+                "--provider", "ollama",
+                "--model", "qwen3.5:4b",
+                "--json",
+                "-",
+            ]))
     }
 
     func testSummarizeAcceptsStreamWithoutJSON() throws {
-        XCTAssertNoThrow(try LLMSummarizeCommand.parse([
-            "--provider", "ollama",
-            "--model", "qwen3.5:4b",
-            "--stream",
-            "-",
-        ]))
+        XCTAssertNoThrow(
+            try LLMSummarizeCommand.parse([
+                "--provider", "ollama",
+                "--model", "qwen3.5:4b",
+                "--stream",
+                "-",
+            ]))
     }
 
     // MARK: - --json failure envelope (AUDIT-007)

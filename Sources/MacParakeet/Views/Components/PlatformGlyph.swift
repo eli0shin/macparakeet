@@ -37,14 +37,16 @@ private struct GenericGlobe: View {
             let r = CGRect(origin: .zero, size: size)
                 .insetBy(dx: size.width * 0.07, dy: size.height * 0.07)
             let lw = r.width * 0.08
-            ctx.stroke(Path(ellipseIn: r.insetBy(dx: lw / 2, dy: lw / 2)),
-                       with: .color(color), style: StrokeStyle(lineWidth: lw))
+            ctx.stroke(
+                Path(ellipseIn: r.insetBy(dx: lw / 2, dy: lw / 2)),
+                with: .color(color), style: StrokeStyle(lineWidth: lw))
             var equator = Path()
             equator.move(to: CGPoint(x: r.minX + r.width * 0.06, y: r.midY))
             equator.addLine(to: CGPoint(x: r.minX + r.width * 0.94, y: r.midY))
             ctx.stroke(equator, with: .color(color), style: StrokeStyle(lineWidth: lw * 0.8))
-            let meridian = CGRect(x: r.midX - r.width * 0.18, y: r.minY + lw / 2,
-                                  width: r.width * 0.36, height: r.height - lw)
+            let meridian = CGRect(
+                x: r.midX - r.width * 0.18, y: r.minY + lw / 2,
+                width: r.width * 0.36, height: r.height - lw)
             ctx.stroke(Path(ellipseIn: meridian), with: .color(color), style: StrokeStyle(lineWidth: lw * 0.8))
         }
     }

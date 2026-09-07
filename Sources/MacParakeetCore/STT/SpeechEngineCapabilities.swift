@@ -90,7 +90,7 @@ public struct SpeechEngineLanguagePolicy: Equatable, Sendable {
     }
 }
 
-public enum SpeechEngineTelemetryVariant: Equatable, Sendable {
+public enum SpeechEngineVariant: Equatable, Sendable {
     case none
     case fixed(String)
     case cohereComputePolicy
@@ -107,9 +107,8 @@ public enum SpeechEngineTelemetryVariant: Equatable, Sendable {
     }
 }
 
-public struct SpeechEngineTelemetryIdentity: Equatable, Sendable {
-    public let modelKind: TelemetryModelKind
-    public let engineVariant: SpeechEngineTelemetryVariant
+public struct SpeechEngineIdentity: Equatable, Sendable {
+    public let engineVariant: SpeechEngineVariant
 }
 
 public struct SpeechEngineModelLifecycle: Equatable, Sendable {
@@ -129,7 +128,7 @@ public struct SpeechEngineCapabilities: Equatable, Sendable {
     public let supportedLanguages: SpeechEngineLanguagePolicy
     public let supportsCustomVocabulary: Bool
     public let modelLifecycle: SpeechEngineModelLifecycle
-    public let telemetryIdentity: SpeechEngineTelemetryIdentity
+    public let identity: SpeechEngineIdentity
 
     /// Whether the current meeting preview pipeline can render this engine's
     /// chunk results. Preview segmentation requires word timings today, so keep
@@ -226,12 +225,14 @@ public enum SpeechEngineCapabilityRegistry {
         nemotronModelVariant: NemotronModelVariant = SpeechEnginePreference.defaultNemotronModelVariant,
         whisperModelVariant: String = SpeechEnginePreference.defaultWhisperModelVariant
     ) -> SpeechEngineCapabilities? {
-        guard let key = variantKey(
-            for: engine,
-            parakeetModelVariant: parakeetModelVariant,
-            nemotronModelVariant: nemotronModelVariant,
-            whisperModelVariant: whisperModelVariant
-        ) else {
+        guard
+            let key = variantKey(
+                for: engine,
+                parakeetModelVariant: parakeetModelVariant,
+                nemotronModelVariant: nemotronModelVariant,
+                whisperModelVariant: whisperModelVariant
+            )
+        else {
             return nil
         }
         return capabilities(for: key)
@@ -244,12 +245,14 @@ public enum SpeechEngineCapabilityRegistry {
         whisperModelVariant: String = SpeechEnginePreference.defaultWhisperModelVariant,
         physicalMemoryBytes: UInt64 = ProcessInfo.processInfo.physicalMemory
     ) -> SpeechEngineMemoryRequirementStatus? {
-        guard let key = variantKey(
-            for: engine,
-            parakeetModelVariant: parakeetModelVariant,
-            nemotronModelVariant: nemotronModelVariant,
-            whisperModelVariant: whisperModelVariant
-        ) else {
+        guard
+            let key = variantKey(
+                for: engine,
+                parakeetModelVariant: parakeetModelVariant,
+                nemotronModelVariant: nemotronModelVariant,
+                whisperModelVariant: whisperModelVariant
+            )
+        else {
             return nil
         }
         return memoryRequirementStatus(for: key, physicalMemoryBytes: physicalMemoryBytes)
@@ -288,8 +291,7 @@ public enum SpeechEngineCapabilityRegistry {
                     isUserDeletable: true,
                     minimumMemoryBytes: nil
                 ),
-                telemetryIdentity: SpeechEngineTelemetryIdentity(
-                    modelKind: .parakeetSTT,
+                identity: SpeechEngineIdentity(
                     engineVariant: .fixed(variant.rawValue)
                 )
             )
@@ -313,8 +315,7 @@ public enum SpeechEngineCapabilityRegistry {
                     isUserDeletable: true,
                     minimumMemoryBytes: nil
                 ),
-                telemetryIdentity: SpeechEngineTelemetryIdentity(
-                    modelKind: .nemotronSTT,
+                identity: SpeechEngineIdentity(
                     engineVariant: .fixed(variant.rawValue)
                 )
             )
@@ -342,8 +343,7 @@ public enum SpeechEngineCapabilityRegistry {
                     isUserDeletable: true,
                     minimumMemoryBytes: nil
                 ),
-                telemetryIdentity: SpeechEngineTelemetryIdentity(
-                    modelKind: .whisperSTT,
+                identity: SpeechEngineIdentity(
                     engineVariant: .fixed(variant.rawValue)
                 )
             )
@@ -369,8 +369,7 @@ public enum SpeechEngineCapabilityRegistry {
                 isUserDeletable: true,
                 minimumMemoryBytes: cohereMinimumMemoryBytes
             ),
-            telemetryIdentity: SpeechEngineTelemetryIdentity(
-                modelKind: .cohereSTT,
+            identity: SpeechEngineIdentity(
                 engineVariant: .cohereComputePolicy
             )
         )

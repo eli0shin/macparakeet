@@ -23,7 +23,7 @@ public enum STTSchedulerError: Error, LocalizedError, Equatable {
 /// meeting and file work share an explicitly prioritized background path.
 public actor STTScheduler: STTManaging, STTDictationPreviewTranscribing, SpeechEngineRoutedTranscribing,
     STTLiveDictationTranscribing, SpeechEngineSwitching, SpeechEngineSwitchAvailabilityProviding,
-    SpeechEngineSessionManaging, SpeechEngineTelemetryAttributing, SpeechEngineRoutedWarmUpManaging
+    SpeechEngineSessionManaging, SpeechEngineRoutedWarmUpManaging
 {
     private struct ScheduledJob: Sendable {
         let id: UUID
@@ -102,7 +102,7 @@ public actor STTScheduler: STTManaging, STTDictationPreviewTranscribing, SpeechE
     ///   seconds, enough to absorb a prolonged dictation burst before preview starts dropping.
     /// - Parameter runtimeOperationWatchdogTimeout: How long an STT runtime call (cancel-drain,
     ///   model-cache clear, shutdown, engine swap) may take before we emit
-    ///   `stt_runtime_unhealthy` telemetry. Detection-only — no behavior changes; the caller
+    ///   local runtime diagnostics. Detection-only — no behavior changes; the caller
     ///   continues to await regardless. 30 s is generous enough that legitimate slow operations
     ///   on thermally throttled hardware should not trip it.
     public init(
@@ -172,10 +172,6 @@ public actor STTScheduler: STTManaging, STTDictationPreviewTranscribing, SpeechE
 
     public func currentSpeechEngineSelection() async -> SpeechEngineSelection {
         await runtime.currentSpeechEngineSelection()
-    }
-
-    public func currentSpeechEngineTelemetryAttribution() async -> SpeechEngineTelemetryAttribution? {
-        await runtime.currentSpeechEngineTelemetryAttribution()
     }
 
     public func transcribe(
@@ -772,8 +768,6 @@ public actor STTScheduler: STTManaging, STTDictationPreviewTranscribing, SpeechE
         let drained = await waitForDictationPreviewDrain(execution.task)
         if drained {
             clearDictationPreviewExecution(id: execution.id)
-        } else {
-            Telemetry.send(.sttRuntimeUnhealthy(reason: "dictation_preview_cancel_drain"))
         }
         return drained
     }
@@ -824,7 +818,7 @@ public actor STTScheduler: STTManaging, STTDictationPreviewTranscribing, SpeechE
     /// Watchdog probe for an STT runtime call that may hang if the underlying
     /// runtime (FluidAudio / WhisperKit) ignores cancellation. If `operation`
     /// exceeds `runtimeOperationWatchdogTimeout`, emits
-    /// `stt_runtime_unhealthy` telemetry. The caller continues to await; this
+    /// local runtime diagnostics. The caller continues to await; this
     /// is observability-only.
     private func observingRuntimeTimeout<T: Sendable>(
         reason: String,
@@ -857,7 +851,6 @@ public actor STTScheduler: STTManaging, STTDictationPreviewTranscribing, SpeechE
         Task.detached(priority: .background) {
             try? await Task.sleep(for: timeout)
             guard !Task.isCancelled else { return }
-            Telemetry.send(.sttRuntimeUnhealthy(reason: reason))
         }
     }
 }

@@ -43,7 +43,7 @@ final class MeetingCleanedMicRenderer {
         let outputURL: URL
         let durationSeconds: Double
         /// Frames the processor cleaned vs. served raw (a processor that throws
-        /// falls back to raw). Emitted as diagnostics for U9 QA and telemetry,
+        /// falls back to raw). Recorded in local diagnostics for U9 QA,
         /// not a routing gate — U4 prefers the cleaned mic purely on its
         /// valid artifact (see `outputToRawRmsRatio`).
         let processedFrames: Int

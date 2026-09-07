@@ -74,14 +74,16 @@ struct TranscriptTextView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView,
-              let storage = textView.textStorage else { return }
+            let storage = textView.textStorage
+        else { return }
 
         let coordinator = context.coordinator
         if let firstChangedIndex = firstChangedLineIndex(
             oldLines: coordinator.lastRenderedLines,
             newLines: lines
         ) {
-            let replaceLocation = firstChangedIndex < coordinator.lineRanges.count
+            let replaceLocation =
+                firstChangedIndex < coordinator.lineRanges.count
                 ? coordinator.lineRanges[firstChangedIndex].location
                 : storage.length
             let replaceLength = storage.length - replaceLocation
@@ -147,7 +149,8 @@ struct TranscriptTextView: NSViewRepresentable {
         let bodyFontSize: CGFloat = 14
         let bodyFont = NSFont.systemFont(ofSize: bodyFontSize, weight: .regular)
         let serifFont: NSFont = {
-            let descriptor = NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body)
+            let descriptor =
+                NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body)
                 .withDesign(.serif) ?? NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body)
             return NSFont(descriptor: descriptor, size: bodyFontSize) ?? bodyFont
         }()
@@ -172,26 +175,32 @@ struct TranscriptTextView: NSViewRepresentable {
 
                 let color = nsColor(for: line.source)
 
-                let dot = NSAttributedString(string: "\u{25CF} ", attributes: [
-                    .font: dotFont,
-                    .foregroundColor: color,
-                    .paragraphStyle: headerPara,
-                ])
+                let dot = NSAttributedString(
+                    string: "\u{25CF} ",
+                    attributes: [
+                        .font: dotFont,
+                        .foregroundColor: color,
+                        .paragraphStyle: headerPara,
+                    ])
                 result.append(dot)
 
-                let speaker = NSAttributedString(string: "\(line.speakerLabel)  ", attributes: [
-                    .font: speakerFont,
-                    .foregroundColor: nsColor(
-                        for: line.source,
-                        alpha: DesignSystem.Colors.transcriptSpeakerLabelAlpha
-                    ),
-                ])
+                let speaker = NSAttributedString(
+                    string: "\(line.speakerLabel)  ",
+                    attributes: [
+                        .font: speakerFont,
+                        .foregroundColor: nsColor(
+                            for: line.source,
+                            alpha: DesignSystem.Colors.transcriptSpeakerLabelAlpha
+                        ),
+                    ])
                 result.append(speaker)
 
-                let timestamp = NSAttributedString(string: "\(line.timestamp)\n", attributes: [
-                    .font: timestampFont,
-                    .foregroundColor: timestampColor,
-                ])
+                let timestamp = NSAttributedString(
+                    string: "\(line.timestamp)\n",
+                    attributes: [
+                        .font: timestampFont,
+                        .foregroundColor: timestampColor,
+                    ])
                 result.append(timestamp)
             }
 
@@ -201,11 +210,13 @@ struct TranscriptTextView: NSViewRepresentable {
             textPara.firstLineHeadIndent = 11
             textPara.headIndent = 11
 
-            let text = NSAttributedString(string: "\(line.text)\n", attributes: [
-                .font: serifFont,
-                .foregroundColor: textColor,
-                .paragraphStyle: textPara,
-            ])
+            let text = NSAttributedString(
+                string: "\(line.text)\n",
+                attributes: [
+                    .font: serifFont,
+                    .foregroundColor: textColor,
+                    .paragraphStyle: textPara,
+                ])
             result.append(text)
 
             lineRanges.append(NSRange(location: lineStart, length: result.length - lineStart))

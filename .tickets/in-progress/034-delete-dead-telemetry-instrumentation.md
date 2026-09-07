@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@034-delete-dead-telemetry-instrumentation
 Tags:
   - ready-for-agent
 Parent:

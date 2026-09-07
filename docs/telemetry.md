@@ -3,11 +3,9 @@
 MacParakeet fork builds do not collect or upload usage analytics, CLI operation
 data, or crash reports.
 
-The inherited event names and `Telemetry.send(...)` call sites remain temporarily
-as inert compatibility code. Production app and CLI composition roots do not
-configure a telemetry service, and the repository contains no HTTP telemetry
-transport or telemetry endpoint. Environment variables and persisted defaults
-cannot enable delivery.
+The fork has no telemetry event catalog, send call sites, service abstraction,
+HTTP transport, or telemetry endpoint. Environment variables and persisted
+defaults cannot enable delivery.
 
 `CrashReporter` can write a local report to
 `~/Library/Application Support/MacParakeet/crash_report.txt`. The app does not

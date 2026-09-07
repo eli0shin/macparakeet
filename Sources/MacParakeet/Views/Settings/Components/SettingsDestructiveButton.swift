@@ -62,7 +62,8 @@ struct SettingsDestructiveButton: View {
         SettingsDestructiveButton(
             title: "Clear All Dictations...",
             confirmationTitle: "Clear All Dictations?",
-            confirmationMessage: "This will permanently delete all dictations and their audio files. This cannot be undone.",
+            confirmationMessage:
+                "This will permanently delete all dictations and their audio files. This cannot be undone.",
             confirmButtonLabel: "Clear All"
         ) {}
 

@@ -34,24 +34,33 @@ struct PasteShortcutKeyResolver {
         case .data(let data):
             layoutData = data
         case .missingInputSource:
-            logger.error("Failed to get current keyboard input source; falling back to QWERTY keycode \(fallbackKeyCode, privacy: .public)")
+            logger.error(
+                "Failed to get current keyboard input source; falling back to QWERTY keycode \(fallbackKeyCode, privacy: .public)"
+            )
             return fallbackKeyCode
         case .missingLayoutData:
-            logger.error("Failed to resolve keyboard layout data for paste shortcut; falling back to QWERTY keycode \(fallbackKeyCode, privacy: .public)")
+            logger.error(
+                "Failed to resolve keyboard layout data for paste shortcut; falling back to QWERTY keycode \(fallbackKeyCode, privacy: .public)"
+            )
             return fallbackKeyCode
         case .inaccessibleLayoutBytes:
-            logger.error("Failed to access keyboard layout bytes for paste shortcut; falling back to QWERTY keycode \(fallbackKeyCode, privacy: .public)")
+            logger.error(
+                "Failed to access keyboard layout bytes for paste shortcut; falling back to QWERTY keycode \(fallbackKeyCode, privacy: .public)"
+            )
             return fallbackKeyCode
         }
 
         guard let target = String(character).utf16.first else {
-            logger.error("Failed to encode character for paste shortcut lookup; falling back to QWERTY keycode \(fallbackKeyCode, privacy: .public)")
+            logger.error(
+                "Failed to encode character for paste shortcut lookup; falling back to QWERTY keycode \(fallbackKeyCode, privacy: .public)"
+            )
             return fallbackKeyCode
         }
 
         let keyboardType = keyboardTypeProvider()
         for keyCode: UInt16 in 0..<128 {
-            guard let translated = translatedCharacterProvider(layoutData, keyCode, modifierKeyState, keyboardType) else {
+            guard let translated = translatedCharacterProvider(layoutData, keyCode, modifierKeyState, keyboardType)
+            else {
                 continue
             }
 
@@ -60,7 +69,9 @@ struct PasteShortcutKeyResolver {
             }
         }
 
-        logger.error("Failed to resolve virtual keycode for character '\(String(character), privacy: .public)'; falling back to QWERTY keycode \(fallbackKeyCode, privacy: .public)")
+        logger.error(
+            "Failed to resolve virtual keycode for character '\(String(character), privacy: .public)'; falling back to QWERTY keycode \(fallbackKeyCode, privacy: .public)"
+        )
         return fallbackKeyCode
     }
 

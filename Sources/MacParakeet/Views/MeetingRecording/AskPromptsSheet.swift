@@ -38,7 +38,8 @@ struct AskPromptsSheet: View {
                     zone(
                         title: "Pinned",
                         countSuffix: "\(viewModel.pinnedCount)",
-                        subtitle: "Your most-used questions, shown as quick buttons during a live meeting. The order here is the order you'll see them in.",
+                        subtitle:
+                            "Your most-used questions, shown as quick buttons during a live meeting. The order here is the order you'll see them in.",
                         rows: viewModel.allPinned,
                         pinned: true
                     )
@@ -46,7 +47,8 @@ struct AskPromptsSheet: View {
                     zone(
                         title: "All prompts",
                         countSuffix: nil,
-                        subtitle: "Your full question library. These appear when you open Ask and in the ✨ menu while you're chatting. Add a group label to keep related questions together (CATCH UP, CAPTURE, CHALLENGE).",
+                        subtitle:
+                            "Your full question library. These appear when you open Ask and in the ✨ menu while you're chatting. Add a group label to keep related questions together (CATCH UP, CAPTURE, CHALLENGE).",
                         rows: viewModel.allUnpinned,
                         pinned: false
                     )
@@ -94,9 +96,11 @@ struct AskPromptsSheet: View {
             Button("Reset", role: .destructive) {
                 withAnimation { viewModel.restoreAllBuiltInDefaults() }
             }
-            Button("Cancel", role: .cancel) { }
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Built-in prompts return to their default labels, prompt text, group, and pin state. Your custom prompts stay untouched.")
+            Text(
+                "Built-in prompts return to their default labels, prompt text, group, and pin state. Your custom prompts stay untouched."
+            )
         }
         .sheet(
             isPresented: Binding(
@@ -113,10 +117,11 @@ struct AskPromptsSheet: View {
                     onCancel: {
                         viewModel.editingPrompt = nil
                     },
-                    onRestore: editing.isBuiltIn ? {
-                        withAnimation { viewModel.restoreSingleDefault(editing) }
-                        viewModel.editingPrompt = nil
-                    } : nil
+                    onRestore: editing.isBuiltIn
+                        ? {
+                            withAnimation { viewModel.restoreSingleDefault(editing) }
+                            viewModel.editingPrompt = nil
+                        } : nil
                 )
             }
         }
@@ -140,9 +145,11 @@ struct AskPromptsSheet: View {
                 Text("Ask Prompts")
                     .font(DesignSystem.Typography.heroTitle)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("Reusable questions for live meetings. Pin the ones you reach for most to keep them front and center — the rest stay in your library, ready when you need them.")
-                    .font(DesignSystem.Typography.body)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Text(
+                    "Reusable questions for live meetings. Pin the ones you reach for most to keep them front and center — the rest stay in your library, ready when you need them."
+                )
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
             Spacer()
 
@@ -228,9 +235,13 @@ struct AskPromptsSheet: View {
                 Image(systemName: pinned ? "pin.slash" : "tray")
                     .font(.system(size: 14))
                     .foregroundStyle(DesignSystem.Colors.textTertiary)
-                Text(pinned ? "No pinned questions yet. Pin one below to keep it handy during meetings." : "No questions yet. Add one below.")
-                    .font(DesignSystem.Typography.body)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Text(
+                    pinned
+                        ? "No pinned questions yet. Pin one below to keep it handy during meetings."
+                        : "No questions yet. Add one below."
+                )
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
                 Spacer()
             }
             .padding(DesignSystem.Spacing.lg)
@@ -250,15 +261,18 @@ struct AskPromptsSheet: View {
             } label: {
                 Image(systemName: prompt.isPinned ? "pin.fill" : "pin")
                     .font(.system(size: 13))
-                    .foregroundStyle(prompt.isPinned
-                                     ? DesignSystem.Colors.accent
-                                     : (isActive ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textTertiary))
+                    .foregroundStyle(
+                        prompt.isPinned
+                            ? DesignSystem.Colors.accent
+                            : (isActive ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textTertiary)
+                    )
                     .frame(width: 26, height: 26)
                     .background(
                         Circle()
-                            .fill(prompt.isPinned
-                                  ? DesignSystem.Colors.accent.opacity(0.12)
-                                  : (isActive ? DesignSystem.Colors.rowHoverBackground : .clear))
+                            .fill(
+                                prompt.isPinned
+                                    ? DesignSystem.Colors.accent.opacity(0.12)
+                                    : (isActive ? DesignSystem.Colors.rowHoverBackground : .clear))
                     )
             }
             .buttonStyle(.plain)
@@ -267,10 +281,13 @@ struct AskPromptsSheet: View {
             .accessibilityLabel(prompt.isPinned ? "Unpin \(prompt.label)" : "Pin \(prompt.label)")
             .padding(.top, 2)
 
-            Toggle("", isOn: Binding(
-                get: { prompt.isVisible },
-                set: { _ in withAnimation { viewModel.toggleVisibility(prompt) } }
-            ))
+            Toggle(
+                "",
+                isOn: Binding(
+                    get: { prompt.isVisible },
+                    set: { _ in withAnimation { viewModel.toggleVisibility(prompt) } }
+                )
+            )
             .toggleStyle(.switch)
             .controlSize(.small)
             .tint(DesignSystem.Colors.accent)
@@ -282,9 +299,11 @@ struct AskPromptsSheet: View {
                 HStack(spacing: 8) {
                     Text(prompt.label)
                         .font(DesignSystem.Typography.bodyLarge.weight(.semibold))
-                        .foregroundStyle(prompt.isVisible
-                                         ? DesignSystem.Colors.textPrimary
-                                         : DesignSystem.Colors.textTertiary)
+                        .foregroundStyle(
+                            prompt.isVisible
+                                ? DesignSystem.Colors.textPrimary
+                                : DesignSystem.Colors.textTertiary
+                        )
                         .lineLimit(1)
                         .truncationMode(.tail)
 
@@ -317,9 +336,11 @@ struct AskPromptsSheet: View {
 
                 Text(prompt.prompt)
                     .font(DesignSystem.Typography.body)
-                    .foregroundStyle(prompt.isVisible
-                                     ? DesignSystem.Colors.textSecondary
-                                     : DesignSystem.Colors.textTertiary)
+                    .foregroundStyle(
+                        prompt.isVisible
+                            ? DesignSystem.Colors.textSecondary
+                            : DesignSystem.Colors.textTertiary
+                    )
                     .lineLimit(2)
                     .lineSpacing(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -530,7 +551,7 @@ private struct EditPromptSheet: View {
                 onCancel()
                 dismiss()
             }
-            Button("Keep editing", role: .cancel) { }
+            Button("Keep editing", role: .cancel) {}
         } message: {
             Text("Your edits to '\(initial.label)' will be lost.")
         }
@@ -539,9 +560,11 @@ private struct EditPromptSheet: View {
                 onRestore?()
                 dismiss()
             }
-            Button("Cancel", role: .cancel) { }
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Returns to its original label, prompt, group, sort order, and pin state (when the pinned cap allows). Visibility is kept. Any unsaved edits in this sheet will also be discarded.")
+            Text(
+                "Returns to its original label, prompt, group, sort order, and pin state (when the pinned cap allows). Visibility is kept. Any unsaved edits in this sheet will also be discarded."
+            )
         }
     }
 
@@ -688,9 +711,11 @@ private struct CreatePromptSheet: View {
                             placeholder: "CATCH UP / CAPTURE / CHALLENGE"
                         )
                         promptField
-                        Text("New prompts start unpinned. Click the pin icon in the list to keep one handy during meetings.")
-                            .font(DesignSystem.Typography.bodySmall)
-                            .foregroundStyle(DesignSystem.Colors.textTertiary)
+                        Text(
+                            "New prompts start unpinned. Click the pin icon in the list to keep one handy during meetings."
+                        )
+                        .font(DesignSystem.Typography.bodySmall)
+                        .foregroundStyle(DesignSystem.Colors.textTertiary)
                     }
                 }
                 .padding(DesignSystem.Spacing.xl)
@@ -703,7 +728,7 @@ private struct CreatePromptSheet: View {
                 viewModel.cancelCreating()
                 dismiss()
             }
-            Button("Keep editing", role: .cancel) { }
+            Button("Keep editing", role: .cancel) {}
         } message: {
             Text("Your draft will be lost.")
         }
@@ -742,10 +767,12 @@ private struct CreatePromptSheet: View {
                 .font(DesignSystem.Typography.caption.weight(.medium))
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
             ZStack(alignment: .topLeading) {
-                TextEditor(text: Binding(
-                    get: { viewModel.creating?.prompt ?? "" },
-                    set: { viewModel.creating?.prompt = $0 }
-                ))
+                TextEditor(
+                    text: Binding(
+                        get: { viewModel.creating?.prompt ?? "" },
+                        set: { viewModel.creating?.prompt = $0 }
+                    )
+                )
                 .font(DesignSystem.Typography.body)
                 .scrollContentBackground(.hidden)
                 .padding(6)

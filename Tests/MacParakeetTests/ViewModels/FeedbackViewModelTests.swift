@@ -22,37 +22,6 @@ final class MockFeedbackService: FeedbackServiceProtocol, @unchecked Sendable {
     }
 }
 
-private final class FeedbackTelemetrySpy: TelemetryServiceProtocol, @unchecked Sendable {
-    private let lock = NSLock()
-    private var events: [TelemetryEventSpec] = []
-
-    func send(_ event: TelemetryEventSpec) {
-        lock.lock()
-        events.append(event)
-        lock.unlock()
-    }
-
-    func sendAndFlush(_ event: TelemetryEventSpec) async -> Bool {
-        send(event)
-        return true
-    }
-
-    func clearQueue() {
-        lock.lock()
-        events.removeAll()
-        lock.unlock()
-    }
-
-    func flush() async {}
-    func flushForTermination() {}
-
-    func snapshot() -> [TelemetryEventSpec] {
-        lock.lock()
-        defer { lock.unlock() }
-        return events
-    }
-}
-
 @MainActor
 final class FeedbackViewModelTests: XCTestCase {
     var viewModel: FeedbackViewModel!
@@ -62,7 +31,6 @@ final class FeedbackViewModelTests: XCTestCase {
         mockService = MockFeedbackService()
         viewModel = FeedbackViewModel()
         viewModel.configure(feedbackService: mockService)
-        Telemetry.configure(NoOpTelemetryService())
     }
 
     /// An ISO-8601 timestamp `secondsAgo` before now, in the writer's format —
@@ -360,60 +328,6 @@ final class FeedbackViewModelTests: XCTestCase {
         }
     }
 
-    func testDiagnosticLogReadFailureEmitsFeedbackOperationTelemetry() async throws {
-        let telemetry = FeedbackTelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        let missingURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("missing-telemetry-dictation-audio-\(UUID().uuidString).log")
-        viewModel = FeedbackViewModel(diagnosticLogURL: missingURL)
-        viewModel.configure(feedbackService: mockService)
-        viewModel.message = "Dictation acted weird"
-        viewModel.includeDiagnosticLog = true
-
-        viewModel.submit()
-        try await Task.sleep(for: .milliseconds(100))
-
-        let operation = telemetry.snapshot().compactMap { event -> (
-            category: String,
-            outcome: ObservabilityOutcome,
-            screenshotAttached: Bool,
-            diagnosticLogAttached: Bool,
-            systemInfoIncluded: Bool,
-            errorType: String?
-        )? in
-            guard case .feedbackOperation(
-                _,
-                _,
-                let category,
-                let outcome,
-                _,
-                let screenshotAttached,
-                let diagnosticLogAttached,
-                let systemInfoIncluded,
-                let errorType
-            ) = event else {
-                return nil
-            }
-            return (
-                category,
-                outcome,
-                screenshotAttached,
-                diagnosticLogAttached,
-                systemInfoIncluded,
-                errorType
-            )
-        }.first
-
-        XCTAssertEqual(operation?.category, FeedbackCategory.bug.rawValue)
-        XCTAssertEqual(operation?.outcome, .failure)
-        XCTAssertEqual(operation?.screenshotAttached, false)
-        XCTAssertEqual(operation?.diagnosticLogAttached, true)
-        XCTAssertEqual(operation?.systemInfoIncluded, true)
-        XCTAssertNotNil(operation?.errorType)
-    }
-
     func testSubmissionTrimsOversizedDiagnosticLogToRecentWindow() async throws {
         let logURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("oversized-dictation-audio-\(UUID().uuidString).log")
@@ -447,9 +361,9 @@ final class FeedbackViewModelTests: XCTestCase {
         let logURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("windowed-dictation-audio-\(UUID().uuidString).log")
         let raw = """
-        \(Self.iso(secondsAgo: 240 * 3600)) dictation_capture_stop seq=old
-        \(Self.iso(secondsAgo: 3600)) dictation_capture_stop seq=recent
-        """ + "\n"
+            \(Self.iso(secondsAgo: 240 * 3600)) dictation_capture_stop seq=old
+            \(Self.iso(secondsAgo: 3600)) dictation_capture_stop seq=recent
+            """ + "\n"
         try Data(raw.utf8).write(to: logURL)
         defer { try? FileManager.default.removeItem(at: logURL) }
 
@@ -471,9 +385,9 @@ final class FeedbackViewModelTests: XCTestCase {
         let logURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("fullhistory-dictation-audio-\(UUID().uuidString).log")
         let raw = """
-        \(Self.iso(secondsAgo: 240 * 3600)) dictation_capture_stop seq=old
-        \(Self.iso(secondsAgo: 3600)) dictation_capture_stop seq=recent
-        """ + "\n"
+            \(Self.iso(secondsAgo: 240 * 3600)) dictation_capture_stop seq=old
+            \(Self.iso(secondsAgo: 3600)) dictation_capture_stop seq=recent
+            """ + "\n"
         try Data(raw.utf8).write(to: logURL)
         defer { try? FileManager.default.removeItem(at: logURL) }
 

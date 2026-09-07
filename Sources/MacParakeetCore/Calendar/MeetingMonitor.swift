@@ -92,7 +92,8 @@ public enum MeetingMonitor {
             // not attend is a surprise.
             if config.mode == .autoStart && !activeRecording
                 && !countdownShownEventIds.contains(event.dedupeKey)
-                && shouldAutoStart(forStatus: event.userStatus) {
+                && shouldAutoStart(forStatus: event.userStatus)
+            {
                 let autoStartBegin = event.startTime.addingTimeInterval(-5)
                 let autoStartEnd = event.startTime.addingTimeInterval(30)
                 if now >= autoStartBegin && now <= autoStartEnd {

@@ -12,11 +12,11 @@ import Foundation
 /// (custom profiles still win when they match).
 public struct AIFormatterSmartDefaultsPolicy: Sendable, Equatable {
     public var isEnabled: Bool
-    public var disabledCategories: Set<TelemetryAppCategory>
+    public var disabledCategories: Set<AppCategory>
 
     public init(
         isEnabled: Bool = true,
-        disabledCategories: Set<TelemetryAppCategory> = []
+        disabledCategories: Set<AppCategory> = []
     ) {
         self.isEnabled = isEnabled
         self.disabledCategories = disabledCategories
@@ -24,20 +24,22 @@ public struct AIFormatterSmartDefaultsPolicy: Sendable, Equatable {
 
     public static let allEnabled = AIFormatterSmartDefaultsPolicy()
 
-    public func allowsCategory(_ category: TelemetryAppCategory) -> Bool {
+    public func allowsCategory(_ category: AppCategory) -> Bool {
         isEnabled && !disabledCategories.contains(category)
     }
 
     public static func current(defaults: UserDefaults = .standard) -> AIFormatterSmartDefaultsPolicy {
-        let isEnabled = defaults.object(
-            forKey: UserDefaultsAppRuntimePreferences.aiFormatterSmartDefaultsEnabledKey
-        ) as? Bool ?? true
-        let rawDisabled = defaults.stringArray(
-            forKey: UserDefaultsAppRuntimePreferences.aiFormatterDisabledSmartDefaultCategoriesKey
-        ) ?? []
+        let isEnabled =
+            defaults.object(
+                forKey: UserDefaultsAppRuntimePreferences.aiFormatterSmartDefaultsEnabledKey
+            ) as? Bool ?? true
+        let rawDisabled =
+            defaults.stringArray(
+                forKey: UserDefaultsAppRuntimePreferences.aiFormatterDisabledSmartDefaultCategoriesKey
+            ) ?? []
         return AIFormatterSmartDefaultsPolicy(
             isEnabled: isEnabled,
-            disabledCategories: Set(rawDisabled.compactMap(TelemetryAppCategory.init(rawValue:)))
+            disabledCategories: Set(rawDisabled.compactMap(AppCategory.init(rawValue:)))
         )
     }
 
@@ -53,10 +55,9 @@ public struct AIFormatterSmartDefaultsPolicy: Sendable, Equatable {
     }
 }
 
-extension TelemetryAppCategory {
+extension AppCategory {
     /// User-facing name for formatter UI and error copy. Lives next to the
-    /// smart defaults (not in the telemetry layer) because it exists for the
-    /// formatter surfaces; telemetry only ever transmits the raw bucket.
+    /// smart defaults because it exists for the formatter surfaces.
     public var formatterDisplayName: String {
         switch self {
         case .messaging: return "Messaging"
@@ -73,8 +74,8 @@ extension TelemetryAppCategory {
 
 public enum AIFormatterSmartDefaults {
     public struct CategoryDefault: Sendable, Equatable, Identifiable {
-        public var id: TelemetryAppCategory { category }
-        public let category: TelemetryAppCategory
+        public var id: AppCategory { category }
+        public let category: AppCategory
         public let name: String
         public let promptTemplate: String
     }
@@ -239,7 +240,7 @@ public enum AIFormatterSmartDefaults {
         ),
     ]
 
-    public static func categoryDefault(for category: TelemetryAppCategory) -> CategoryDefault? {
+    public static func categoryDefault(for category: AppCategory) -> CategoryDefault? {
         categoryDefaults.first { $0.category == category }
     }
 }

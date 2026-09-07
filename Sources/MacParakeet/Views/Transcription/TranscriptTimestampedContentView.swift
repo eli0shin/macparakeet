@@ -106,7 +106,8 @@ func speakerTurnCardScrollTarget(
 ) -> Int? {
     for card in cards.reversed() {
         if let firstStartMs = card.turn.segments.first?.startMs,
-           firstStartMs <= currentMs {
+            firstStartMs <= currentMs
+        {
             return firstStartMs
         }
     }
@@ -356,9 +357,10 @@ private struct TranscriptSegmentRow: View {
         .background {
             if showRowBackground {
                 RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                    .fill(isActive
-                          ? DesignSystem.Colors.accent.opacity(0.12)
-                          : DesignSystem.Colors.surfaceElevated.opacity(0.45))
+                    .fill(
+                        isActive
+                            ? DesignSystem.Colors.accent.opacity(0.12)
+                            : DesignSystem.Colors.surfaceElevated.opacity(0.45))
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -380,12 +382,13 @@ private struct TranscriptSegmentRow: View {
         guard !highlightRanges.isEmpty else {
             return Text(text).font(bodyFont)
         }
-        return Text(TranscriptFindHighlight.attributed(
-            text,
-            ranges: highlightRanges,
-            current: currentRange,
-            baseFont: bodyFont
-        ))
+        return Text(
+            TranscriptFindHighlight.attributed(
+                text,
+                ranges: highlightRanges,
+                current: currentRange,
+                baseFont: bodyFont
+            ))
     }
 
     private var hoverActions: some View {

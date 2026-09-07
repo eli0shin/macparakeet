@@ -189,7 +189,7 @@ final class MeetingActivityDetectorTests: XCTestCase {
 
     func testMicAndCameraWithSelfFilteredAudioDoesNotTrigger() {
         let processes = [
-            AudioProcessActivity(pid: 100, bundleID: "com.macparakeet", isRunningInput: true, isRunningOutput: false),
+            AudioProcessActivity(pid: 100, bundleID: "com.macparakeet", isRunningInput: true, isRunningOutput: false)
         ]
         let filtered = AudioProcessActivityCollector.filterSelf(
             processes: processes,
@@ -305,7 +305,8 @@ final class MeetingActivityDetectorTests: XCTestCase {
     ) -> ActivitySignalSnapshot {
         let inputActivities = input.map { activity($0, input: true, output: output.contains($0)) }
         let inputPIDs = Set(inputActivities.map(\.pid))
-        let outputOnlyActivities = output
+        let outputOnlyActivities =
+            output
             .filter { process in !inputPIDs.contains(process.pid) }
             .map { activity($0, input: false, output: true) }
         return ActivitySignalSnapshot(

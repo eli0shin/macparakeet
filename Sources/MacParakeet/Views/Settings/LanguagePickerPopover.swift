@@ -107,7 +107,8 @@ struct LanguagePickerPopover: View {
     private var visibleRows: [WhisperLanguage] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let results = WhisperLanguageCatalog.search(query)
-        let includesAuto = trimmed.isEmpty
+        let includesAuto =
+            trimmed.isEmpty
             || "auto".contains(trimmed)
             || "auto-detect".contains(trimmed)
         return includesAuto ? [WhisperLanguageCatalog.auto] + results : results
@@ -133,11 +134,13 @@ struct LanguagePickerPopover: View {
                 .padding(.vertical, DesignSystem.Spacing.xs)
             }
             .frame(maxHeight: LanguagePickerLayout.listMaxHeight)
-            .background(KeyEventCatcher(
-                onUp: { moveHighlight(by: -1, proxy: proxy) },
-                onDown: { moveHighlight(by: 1, proxy: proxy) },
-                onReturn: { commitHighlighted() }
-            ))
+            .background(
+                KeyEventCatcher(
+                    onUp: { moveHighlight(by: -1, proxy: proxy) },
+                    onDown: { moveHighlight(by: 1, proxy: proxy) },
+                    onReturn: { commitHighlighted() }
+                )
+            )
             .onAppear {
                 proxy.scrollTo(highlightedCode, anchor: .center)
             }
@@ -179,7 +182,8 @@ struct LanguagePickerPopover: View {
                     .lineLimit(1)
                 Spacer(minLength: DesignSystem.Spacing.sm)
                 if !language.nativeName.isEmpty
-                    && language.nativeName != language.englishName {
+                    && language.nativeName != language.englishName
+                {
                     Text(language.nativeName)
                         .font(DesignSystem.Typography.bodySmall)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
@@ -192,7 +196,9 @@ struct LanguagePickerPopover: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius, style: .continuous)
-                    .fill(isHighlighted ? DesignSystem.Colors.accent.opacity(LanguagePickerLayout.highlightOpacity) : Color.clear)
+                    .fill(
+                        isHighlighted
+                            ? DesignSystem.Colors.accent.opacity(LanguagePickerLayout.highlightOpacity) : Color.clear)
             )
             .padding(.horizontal, DesignSystem.Spacing.xs)
             .contentShape(Rectangle())

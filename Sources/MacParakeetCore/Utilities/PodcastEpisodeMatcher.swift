@@ -93,7 +93,8 @@ public enum PodcastEpisodeMatcher {
                         || titleLower.contains("#\(hintLower)")
                         || titleLower.hasPrefix("ep \(hintLower)")
                         || titleLower.hasPrefix("ep\(hintLower)")
-                        || titleLower.hasPrefix("episode \(hintLower)") {
+                        || titleLower.hasPrefix("episode \(hintLower)")
+                    {
                         score += 10
                     }
                 } else if titleLower.contains(hintLower) {

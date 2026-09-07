@@ -68,7 +68,8 @@ public final class LLMConfigStore: LLMConfigStoreProtocol, @unchecked Sendable {
     public func deleteConfig() throws {
         // Only delete the active provider's key, preserving keys for other providers
         if let data = defaults.data(forKey: Self.configKey),
-           let decoded = try? JSONDecoder().decode(LLMProviderConfig.self, from: data) {
+            let decoded = try? JSONDecoder().decode(LLMProviderConfig.self, from: data)
+        {
             try keychain.delete(Self.apiKeyKeychainKey(for: decoded.id))
         }
         defaults.removeObject(forKey: Self.configKey)
@@ -77,7 +78,8 @@ public final class LLMConfigStore: LLMConfigStoreProtocol, @unchecked Sendable {
     public func loadAPIKey() throws -> String? {
         // Load key for the currently saved provider
         guard let data = defaults.data(forKey: Self.configKey),
-              let decoded = try? JSONDecoder().decode(LLMProviderConfig.self, from: data) else {
+            let decoded = try? JSONDecoder().decode(LLMProviderConfig.self, from: data)
+        else {
             return nil
         }
         return try loadAPIKey(for: decoded.id)
@@ -90,7 +92,8 @@ public final class LLMConfigStore: LLMConfigStoreProtocol, @unchecked Sendable {
     public func saveAPIKey(_ key: String) throws {
         // Save key for the currently saved provider
         guard let data = defaults.data(forKey: Self.configKey),
-              let decoded = try? JSONDecoder().decode(LLMProviderConfig.self, from: data) else {
+            let decoded = try? JSONDecoder().decode(LLMProviderConfig.self, from: data)
+        else {
             return
         }
         try keychain.setString(key, forKey: Self.apiKeyKeychainKey(for: decoded.id))
@@ -98,7 +101,8 @@ public final class LLMConfigStore: LLMConfigStoreProtocol, @unchecked Sendable {
 
     public func deleteAPIKey() throws {
         guard let data = defaults.data(forKey: Self.configKey),
-              let decoded = try? JSONDecoder().decode(LLMProviderConfig.self, from: data) else {
+            let decoded = try? JSONDecoder().decode(LLMProviderConfig.self, from: data)
+        else {
             return
         }
         try keychain.delete(Self.apiKeyKeychainKey(for: decoded.id))

@@ -151,21 +151,22 @@ struct YouTubeInputPanelView: View {
                 onTranscribe(draft)
             } label: {
                 Label("Transcribe", systemImage: "arrow.right")
-                .font(DesignSystem.Typography.body.weight(.semibold))
-                .foregroundStyle(
-                    isValidDraft && !viewModel.isTranscribing
-                        ? DesignSystem.Colors.onAccent
-                        : DesignSystem.Colors.textTertiary
-                )
-                .lineLimit(1)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignSystem.Layout.buttonCornerRadius)
-                        .fill(isValidDraft && !viewModel.isTranscribing
-                              ? DesignSystem.Colors.accent
-                              : DesignSystem.Colors.surfaceElevated)
-                )
+                    .font(DesignSystem.Typography.body.weight(.semibold))
+                    .foregroundStyle(
+                        isValidDraft && !viewModel.isTranscribing
+                            ? DesignSystem.Colors.onAccent
+                            : DesignSystem.Colors.textTertiary
+                    )
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.Layout.buttonCornerRadius)
+                            .fill(
+                                isValidDraft && !viewModel.isTranscribing
+                                    ? DesignSystem.Colors.accent
+                                    : DesignSystem.Colors.surfaceElevated)
+                    )
             }
             .buttonStyle(.plain)
             .disabled(!isValidDraft || viewModel.isTranscribing)

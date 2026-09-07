@@ -56,7 +56,8 @@ struct CGClipboardEventPosting: ClipboardEventPosting {
         let vKeyCode = pasteShortcutKeyResolver.virtualKeyCode(for: "v", modifierKeyState: UInt32(cmdKey >> 8))
 
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false) else {
+            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false)
+        else {
             throw ClipboardServiceError.eventCreationFailed
         }
 
@@ -78,7 +79,8 @@ struct CGClipboardEventPosting: ClipboardEventPosting {
         }
 
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
+            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+        else {
             throw ClipboardServiceError.eventCreationFailed
         }
 
@@ -326,7 +328,9 @@ public final class ClipboardService: ClipboardServiceProtocol {
     }
 
     @discardableResult
-    public func pasteTextWithAction(_ text: String, postPasteAction: KeyAction?, restoresClipboard: Bool) async throws -> Bool {
+    public func pasteTextWithAction(_ text: String, postPasteAction: KeyAction?, restoresClipboard: Bool) async throws
+        -> Bool
+    {
         guard let action = postPasteAction else {
             try await pasteText(text, restoresClipboard: restoresClipboard)
             return false
@@ -352,7 +356,9 @@ public final class ClipboardService: ClipboardServiceProtocol {
             logger.notice("Post-paste keystroke skipped (task cancelled after paste succeeded)")
             return false
         } catch {
-            logger.error("Post-paste keystroke failed (text was pasted successfully): \(error.localizedDescription, privacy: .public)")
+            logger.error(
+                "Post-paste keystroke failed (text was pasted successfully): \(error.localizedDescription, privacy: .public)"
+            )
             return false
         }
     }

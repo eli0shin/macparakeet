@@ -89,8 +89,7 @@ final class SpeechEngineCapabilitiesTests: XCTestCase {
         XCTAssertTrue(parakeetV3.supportsMeetingLivePreview)
         XCTAssertTrue(parakeetV3.supportsCustomVocabulary)
         XCTAssertEqual(parakeetV3.supportedLanguages.mode, .automatic)
-        XCTAssertEqual(parakeetV3.telemetryIdentity.modelKind, .parakeetSTT)
-        XCTAssertEqual(parakeetV3.telemetryIdentity.engineVariant, .fixed("v3"))
+        XCTAssertEqual(parakeetV3.identity.engineVariant, .fixed("v3"))
 
         let parakeetUnified = SpeechEngineCapabilityRegistry.capabilities(for: .parakeet(.unified))
         XCTAssertFalse(parakeetUnified.supportsTailPreview)
@@ -116,7 +115,7 @@ final class SpeechEngineCapabilitiesTests: XCTestCase {
         XCTAssertFalse(cohere.supportsCustomVocabulary)
         XCTAssertEqual(cohere.supportedLanguages.mode, .selectable)
         XCTAssertEqual(cohere.modelLifecycle.minimumMemoryBytes, 16 * 1024 * 1024 * 1024)
-        XCTAssertEqual(cohere.telemetryIdentity.engineVariant, .cohereComputePolicy)
+        XCTAssertEqual(cohere.identity.engineVariant, .cohereComputePolicy)
     }
 
     func testMemoryRequirementStatusReadsCapabilityRegistryFloor() {

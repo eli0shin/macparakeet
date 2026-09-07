@@ -57,7 +57,8 @@ struct PromptLibraryView: View {
                     // Built-In Prompts Section
                     sectionContainer(
                         title: "Built-In Prompts",
-                        subtitle: "Toggle visibility or enable Auto-Run to generate results automatically after any non-empty transcription."
+                        subtitle:
+                            "Toggle visibility or enable Auto-Run to generate results automatically after any non-empty transcription."
                     ) {
                         cardGroup {
                             let builtIns = viewModel.prompts.filter(\.isBuiltIn)
@@ -147,7 +148,7 @@ struct PromptLibraryView: View {
                         Button("Discard", role: .destructive) {
                             viewModel.editingPrompt = nil
                         }
-                        Button("Keep editing", role: .cancel) { }
+                        Button("Keep editing", role: .cancel) {}
                     } message: {
                         Text("Your edits to '\(prompt.name)' will be lost.")
                     }
@@ -227,10 +228,13 @@ struct PromptLibraryView: View {
 
         return HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
             // Status toggle
-            Toggle("", isOn: Binding(
-                get: { prompt.isVisible },
-                set: { _ in withAnimation { viewModel.toggleVisibility(prompt) } }
-            ))
+            Toggle(
+                "",
+                isOn: Binding(
+                    get: { prompt.isVisible },
+                    set: { _ in withAnimation { viewModel.toggleVisibility(prompt) } }
+                )
+            )
             .labelsHidden()
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -244,7 +248,9 @@ struct PromptLibraryView: View {
                 HStack {
                     Text(prompt.name)
                         .font(DesignSystem.Typography.bodyLarge.weight(.semibold))
-                        .foregroundStyle(prompt.isVisible ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textTertiary)
+                        .foregroundStyle(
+                            prompt.isVisible ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textTertiary
+                        )
                         .lineLimit(1)
                         .truncationMode(.tail)
 
@@ -270,7 +276,7 @@ struct PromptLibraryView: View {
                     Spacer()
                 }
 
-                // Workaround for macOS SwiftUI bug: NSTextView (.textSelection(.enabled)) 
+                // Workaround for macOS SwiftUI bug: NSTextView (.textSelection(.enabled))
                 // does not animate height bounds correctly when lineLimit changes, and expands to full height.
                 // We use an invisible SwiftUI Text to drive the layout container's smooth animation,
                 // and place the selectable text in an overlay that is strictly clipped to those bounds.
@@ -283,7 +289,9 @@ struct PromptLibraryView: View {
                     .overlay(alignment: .topLeading) {
                         Text(prompt.content)
                             .font(DesignSystem.Typography.body)
-                            .foregroundStyle(prompt.isVisible ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textTertiary)
+                            .foregroundStyle(
+                                prompt.isVisible ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textTertiary
+                            )
                             .lineLimit(isExpanded ? nil : 2)
                             .lineSpacing(2)
                             .textSelection(.enabled)
@@ -410,13 +418,13 @@ struct PromptLibraryView: View {
                     Text("Instructions")
                         .font(DesignSystem.Typography.caption.weight(.medium))
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    
+
                     ZStack(alignment: .topLeading) {
                         TextEditor(text: $viewModel.newContent)
                             .font(DesignSystem.Typography.body)
                             .scrollContentBackground(.hidden)
                             .padding(6)
-                        
+
                         if viewModel.newContent.isEmpty {
                             Text("Extract action items and format as a bulleted list...")
                                 .font(DesignSystem.Typography.body)
@@ -436,9 +444,9 @@ struct PromptLibraryView: View {
                 }
             }
             .padding(DesignSystem.Spacing.lg)
-            
+
             Divider()
-            
+
             HStack {
                 Spacer()
                 Button {
@@ -454,7 +462,9 @@ struct PromptLibraryView: View {
                 }
                 .parakeetAction(.primaryProminent)
                 .controlSize(.large)
-                .disabled(viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.newContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(
+                    viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || viewModel.newContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(DesignSystem.Spacing.md)
             .background(DesignSystem.Colors.surfaceElevated.opacity(0.3))
@@ -477,9 +487,9 @@ struct PromptLibraryView: View {
                 Spacer()
             }
             .padding(DesignSystem.Spacing.xl)
-            
+
             Divider()
-            
+
             // Content
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
@@ -502,13 +512,13 @@ struct PromptLibraryView: View {
                     Text("Instructions")
                         .font(DesignSystem.Typography.caption.weight(.medium))
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    
+
                     ZStack(alignment: .topLeading) {
                         TextEditor(text: $editContent)
                             .font(DesignSystem.Typography.body)
                             .scrollContentBackground(.hidden)
                             .padding(6)
-                        
+
                         if editContent.isEmpty {
                             Text("Instructions...")
                                 .font(DesignSystem.Typography.body)
@@ -528,10 +538,10 @@ struct PromptLibraryView: View {
                 }
             }
             .padding(DesignSystem.Spacing.xl)
-            
+
             Spacer()
             Divider()
-            
+
             // Footer
             HStack {
                 Spacer()
@@ -553,7 +563,9 @@ struct PromptLibraryView: View {
                 // TextEditor below treats Return as a literal newline; bare
                 // Return would steal that.
                 .keyboardShortcut(.return, modifiers: .command)
-                .disabled(editName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || editContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(
+                    editName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || editContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(DesignSystem.Spacing.xl)
             .background(DesignSystem.Colors.surfaceElevated.opacity(0.3))
@@ -566,7 +578,7 @@ struct PromptLibraryView: View {
 struct AutoRunBadge: View {
     let isAutoRun: Bool
     let action: () -> Void
-    
+
     @State private var isHovered = false
 
     var body: some View {
@@ -621,7 +633,7 @@ struct AutoRunBadge: View {
                 .overlay(
                     Capsule().strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
                 )
-                .offset(x: 80) // Place tooltip nicely to the right of the button
+                .offset(x: 80)  // Place tooltip nicely to the right of the button
                 .zIndex(100)
                 .allowsHitTesting(false)
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))

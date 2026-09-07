@@ -91,7 +91,8 @@ final class TranscriptionFlowTests: XCTestCase {
             _ = try await transcriptionService.transcribe(fileURL: fileURL)
             XCTFail("Should have thrown")
         } catch let error as STTError {
-            if case .outOfMemory = error {} else {
+            if case .outOfMemory = error {
+            } else {
                 XCTFail("Expected outOfMemory error, got \(error)")
             }
         }

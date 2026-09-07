@@ -18,7 +18,7 @@ final class AIFormatterProfileMatcherTests: XCTestCase {
     }
 
     func testSmartDefaultsCoverEveryConcreteCategory() {
-        let expected = Set(TelemetryAppCategory.allCases.filter { $0 != .other })
+        let expected = Set(AppCategory.allCases.filter { $0 != .other })
         let actual = Set(AIFormatterSmartDefaults.categoryDefaults.map(\.category))
 
         XCTAssertEqual(actual, expected)

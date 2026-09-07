@@ -334,10 +334,6 @@ final class MeetingTranscriptionQueueTests: XCTestCase {
         return MeetingTranscriptionQueue.Item(
             recording: output,
             transcriptionID: UUID(),
-            operationContext: ObservabilityOperationContext(),
-            trigger: .manual,
-            liveWordCount: 0,
-            liveTranscriptLagged: false
         )
     }
 
@@ -485,7 +481,7 @@ private actor QueueTranscriptionServiceSpy: TranscriptionServiceProtocol {
 
     func transcribe(
         fileURL: URL,
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)?
     ) async throws -> Transcription {
         Transcription(fileName: fileURL.lastPathComponent, status: .completed)
@@ -493,7 +489,7 @@ private actor QueueTranscriptionServiceSpy: TranscriptionServiceProtocol {
 
     func transcribeTransient(
         fileURL: URL,
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)?
     ) async throws -> Transcription {
         try await transcribe(fileURL: fileURL, source: source, onProgress: onProgress)
@@ -561,7 +557,7 @@ private actor QueueTranscriptionServiceSpy: TranscriptionServiceProtocol {
     func retranscribe(
         existing transcription: Transcription,
         fileURL: URL,
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)?
     ) async throws -> Transcription {
         transcription

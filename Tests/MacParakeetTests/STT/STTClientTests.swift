@@ -118,7 +118,7 @@ final class STTClientTests: XCTestCase {
                 TranscriptionSegment(
                     text: "",
                     words: [WordTiming(word: "hello", tokens: [], start: 0, end: 0.5, probability: 0.9)]
-                ),
+                )
             ],
             language: "en",
             timings: TranscriptionTimings()
@@ -147,17 +147,19 @@ final class STTClientTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let modelFolder = root
+        let modelFolder =
+            root
             .appendingPathComponent("models", isDirectory: true)
             .appendingPathComponent("argmaxinc", isDirectory: true)
             .appendingPathComponent("whisperkit-coreml", isDirectory: true)
             .appendingPathComponent("openai_whisper-large-v3-v20240930_turbo_632MB", isDirectory: true)
         try FileManager.default.createDirectory(at: modelFolder, withIntermediateDirectories: true)
 
-        XCTAssertTrue(WhisperEngine.isModelDownloaded(
-            model: "whisper-large-v3-v20240930-turbo-632MB",
-            downloadBase: root
-        ))
+        XCTAssertTrue(
+            WhisperEngine.isModelDownloaded(
+                model: "whisper-large-v3-v20240930-turbo-632MB",
+                downloadBase: root
+            ))
         XCTAssertEqual(
             WhisperEngine.localModelFolder(
                 model: "large-v3-v20240930_turbo_632MB",
@@ -171,9 +173,11 @@ final class STTClientTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let boundaryMatch = root
+        let boundaryMatch =
+            root
             .appendingPathComponent("openai_whisper-large-v3-v20240930_turbo_632MB", isDirectory: true)
-        let exactMatch = root
+        let exactMatch =
+            root
             .appendingPathComponent("large-v3-v20240930_turbo_632MB", isDirectory: true)
         try FileManager.default.createDirectory(at: boundaryMatch, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: exactMatch, withIntermediateDirectories: true)
@@ -191,22 +195,27 @@ final class STTClientTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let partialMatch = root
+        let partialMatch =
+            root
             .appendingPathComponent("notlarge-v3-v20240930_turbo_632MBsuffix", isDirectory: true)
         try FileManager.default.createDirectory(at: partialMatch, withIntermediateDirectories: true)
 
-        XCTAssertNil(WhisperEngine.localModelFolder(
-            model: "whisper-large-v3-v20240930-turbo-632MB",
-            downloadBase: root
-        ))
+        XCTAssertNil(
+            WhisperEngine.localModelFolder(
+                model: "whisper-large-v3-v20240930-turbo-632MB",
+                downloadBase: root
+            ))
     }
 
     func testWhisperModelFolderFindsLaterBoundaryMatch() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let nestedMatch = root
-            .appendingPathComponent("notlarge-v3-v20240930_turbo_632MBsuffix-openai_whisper-large-v3-v20240930_turbo_632MB", isDirectory: true)
+        let nestedMatch =
+            root
+            .appendingPathComponent(
+                "notlarge-v3-v20240930_turbo_632MBsuffix-openai_whisper-large-v3-v20240930_turbo_632MB",
+                isDirectory: true)
         try FileManager.default.createDirectory(at: nestedMatch, withIntermediateDirectories: true)
 
         XCTAssertEqual(

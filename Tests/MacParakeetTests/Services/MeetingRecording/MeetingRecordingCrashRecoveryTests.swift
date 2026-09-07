@@ -33,7 +33,7 @@ final class MeetingRecordingCrashRecoveryTests: XCTestCase {
             Bundle(for: Self.self).bundleURL.path,
         ]
         process.environment = ProcessInfo.processInfo.environment.merging([
-            Self.helperFolderEnv: folderURL.path,
+            Self.helperFolderEnv: folderURL.path
         ]) { _, new in new }
 
         try process.run()
@@ -97,16 +97,18 @@ final class MeetingRecordingCrashRecoveryTests: XCTestCase {
     }
 
     private func makeSineBuffer(frameCount: Int, frequency: Double) throws -> AVAudioPCMBuffer {
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 48_000,
-            channels: 1,
-            interleaved: false
-        ),
-        let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: AVAudioFrameCount(frameCount)
-        ) else {
+        guard
+            let format = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 48_000,
+                channels: 1,
+                interleaved: false
+            ),
+            let buffer = AVAudioPCMBuffer(
+                pcmFormat: format,
+                frameCapacity: AVAudioFrameCount(frameCount)
+            )
+        else {
             throw TestError.failedToCreateBuffer
         }
 

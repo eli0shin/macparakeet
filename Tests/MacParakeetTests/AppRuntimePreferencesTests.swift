@@ -313,7 +313,8 @@ final class AppRuntimePreferencesTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        XCTAssertEqual(UserDefaultsAppRuntimePreferences(defaults: defaults).meetingAudioSourceMode, .microphoneAndSystem)
+        XCTAssertEqual(
+            UserDefaultsAppRuntimePreferences(defaults: defaults).meetingAudioSourceMode, .microphoneAndSystem)
 
         defaults.set(
             MeetingAudioSourceMode.microphoneOnly.rawValue,
@@ -324,7 +325,8 @@ final class AppRuntimePreferencesTests: XCTestCase {
 
         defaults.set("not-a-source-mode", forKey: UserDefaultsAppRuntimePreferences.meetingAudioSourceModeKey)
 
-        XCTAssertEqual(UserDefaultsAppRuntimePreferences(defaults: defaults).meetingAudioSourceMode, .microphoneAndSystem)
+        XCTAssertEqual(
+            UserDefaultsAppRuntimePreferences(defaults: defaults).meetingAudioSourceMode, .microphoneAndSystem)
     }
 
     func testMeetingAudioSourceModeCaptureBooleansAndConfigurationParsing() {
@@ -538,7 +540,8 @@ final class AppRuntimePreferencesTests: XCTestCase {
             defer { defaults.removePersistentDomain(forName: suite) }
             defaults.set(global, forKey: UserDefaultsAppRuntimePreferences.aiFormatterEnabledKey)
             if let transcripts {
-                defaults.set(transcripts, forKey: UserDefaultsAppRuntimePreferences.aiFormatterEnabledForTranscriptionsKey)
+                defaults.set(
+                    transcripts, forKey: UserDefaultsAppRuntimePreferences.aiFormatterEnabledForTranscriptionsKey)
             }
             let prefs = UserDefaultsAppRuntimePreferences(defaults: defaults)
             return prefs.aiFormatterEnabled && prefs.aiFormatterEnabledForTranscriptions

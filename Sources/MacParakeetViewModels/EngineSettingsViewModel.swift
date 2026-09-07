@@ -47,7 +47,6 @@ public final class EngineSettingsViewModel {
     public var whisperDefaultLanguage: String {
         didSet {
             SpeechEnginePreference.saveWhisperDefaultLanguage(whisperDefaultLanguage, defaults: defaults)
-            Telemetry.send(.settingChanged(setting: .whisperDefaultLanguage))
         }
     }
     /// Where Cohere runs its model — `.gpu` (fastest warm latency, pays a
@@ -59,7 +58,6 @@ public final class EngineSettingsViewModel {
     public var cohereComputePolicy: CohereTranscribeEngine.ComputePolicy {
         didSet {
             cohereComputePolicy.save(to: defaults)
-            Telemetry.send(.settingChanged(setting: .cohereComputePolicy, value: cohereComputePolicy.rawValue))
         }
     }
     /// True when the selected compute policy differs from the one the engine
@@ -279,7 +277,8 @@ public final class EngineSettingsViewModel {
     ) {
         self.sttClient = sttClient
         self.speechEngineSwitcher = speechEngineSwitcher
-        self.speechEngineSwitchAvailabilityProvider = speechEngineSwitchAvailabilityProvider
+        self.speechEngineSwitchAvailabilityProvider =
+            speechEngineSwitchAvailabilityProvider
             ?? (speechEngineSwitcher as? SpeechEngineSwitchAvailabilityProviding)
             ?? (sttClient as? SpeechEngineSwitchAvailabilityProviding)
     }
@@ -298,18 +297,9 @@ public final class EngineSettingsViewModel {
                 transcriptionSpeechEnginePreference,
                 defaults: defaults
             )
-            Telemetry.send(
-                .settingChanged(
-                    setting: .transcriptionSpeechEngine,
-                    value: transcriptionSpeechEnginePreference.rawValue
-                )
-            )
         } else {
             SpeechEnginePreference.saveFinalTranscriptionOverride(nil, defaults: defaults)
             transcriptionSpeechEnginePreference = speechEnginePreference
-            Telemetry.send(
-                .settingChanged(setting: .transcriptionSpeechEngine, value: "same_as_live")
-            )
         }
     }
 
@@ -351,7 +341,6 @@ public final class EngineSettingsViewModel {
         transcriptionSpeechEnginePreference = preference
         usesDifferentFinalTranscriptionEngine = true
         SpeechEnginePreference.saveFinalTranscriptionOverride(preference, defaults: defaults)
-        Telemetry.send(.settingChanged(setting: .transcriptionSpeechEngine, value: preference.rawValue))
         return true
     }
 
@@ -395,8 +384,9 @@ public final class EngineSettingsViewModel {
 
     public func requestSpeechEngineSwitchConfirmation(to preference: SpeechEnginePreference) {
         guard preference != speechEnginePreference,
-              !speechEngineSwitching,
-              pendingSpeechEngineSwitchConfirmation == nil else { return }
+            !speechEngineSwitching,
+            pendingSpeechEngineSwitchConfirmation == nil
+        else { return }
         speechEngineError = nil
         pendingSpeechEngineSwitchConfirmation = preference
     }
@@ -446,26 +436,27 @@ public final class EngineSettingsViewModel {
                 let disk = await Task.detached(priority: .userInitiated) {
                     (
                         parakeetDownloaded: Set(ParakeetModelVariant.allCases.filter(parakeetModelVariantCached)),
-                        nemotronDownloaded: Set(NemotronModelVariant.allCases.filter {
-                            nemotronModelVariantCached($0, nemotronLanguage)
-                        }),
+                        nemotronDownloaded: Set(
+                            NemotronModelVariant.allCases.filter {
+                                nemotronModelVariantCached($0, nemotronLanguage)
+                            }),
                         whisperDownloaded: WhisperEngine.isModelDownloaded(model: whisperModelVariant),
                         cohereDownloaded: cohereModelCached(),
                         cohereCacheDirectoryExists: cohereModelCacheDirectoryExistsOnDisk()
                     )
                 }.value
                 guard let self,
-                      self.modelStatusRefreshGeneration == refreshGeneration,
-                      self.speechEnginePreference == activeEngine,
-                      self.parakeetModelVariant == activeVariant,
-                      self.nemotronModelVariant == activeNemotronVariant else {
+                    self.modelStatusRefreshGeneration == refreshGeneration,
+                    self.speechEnginePreference == activeEngine,
+                    self.parakeetModelVariant == activeVariant,
+                    self.nemotronModelVariant == activeNemotronVariant
+                else {
                     return
                 }
                 self.downloadedParakeetVariants = disk.parakeetDownloaded
                 self.downloadedNemotronVariants = disk.nemotronDownloaded
-                let canApplyCohereStatus = !cohereOperationActiveAtRefreshStart &&
-                    !self.cohereDownloading &&
-                    !self.cohereDeleting
+                let canApplyCohereStatus =
+                    !cohereOperationActiveAtRefreshStart && !self.cohereDownloading && !self.cohereDeleting
                 if canApplyCohereStatus {
                     self.cohereCacheDirectoryExists = disk.cohereCacheDirectoryExists
                 }
@@ -504,9 +495,10 @@ public final class EngineSettingsViewModel {
             async let diskState = Task.detached(priority: .userInitiated) {
                 (
                     parakeetDownloaded: Set(ParakeetModelVariant.allCases.filter(parakeetModelVariantCached)),
-                    nemotronDownloaded: Set(NemotronModelVariant.allCases.filter {
-                        nemotronModelVariantCached($0, nemotronLanguage)
-                    }),
+                    nemotronDownloaded: Set(
+                        NemotronModelVariant.allCases.filter {
+                            nemotronModelVariantCached($0, nemotronLanguage)
+                        }),
                     whisperDownloaded: WhisperEngine.isModelDownloaded(model: whisperModelVariant),
                     cohereDownloaded: cohereModelCached(),
                     cohereCacheDirectoryExists: cohereModelCacheDirectoryExistsOnDisk()
@@ -515,17 +507,17 @@ public final class EngineSettingsViewModel {
 
             let (activeEngineIsLoaded, modelDiskState) = await (activeEngineLoaded, diskState)
             guard self.modelStatusRefreshGeneration == refreshGeneration,
-                  self.speechEnginePreference == activeEngine,
-                  self.parakeetModelVariant == activeVariant,
-                  self.nemotronModelVariant == activeNemotronVariant else {
+                self.speechEnginePreference == activeEngine,
+                self.parakeetModelVariant == activeVariant,
+                self.nemotronModelVariant == activeNemotronVariant
+            else {
                 return
             }
 
             self.downloadedParakeetVariants = modelDiskState.parakeetDownloaded
             self.downloadedNemotronVariants = modelDiskState.nemotronDownloaded
-            let canApplyCohereStatus = !cohereOperationActiveAtRefreshStart &&
-                !self.cohereDownloading &&
-                !self.cohereDeleting
+            let canApplyCohereStatus =
+                !cohereOperationActiveAtRefreshStart && !self.cohereDownloading && !self.cohereDeleting
             if canApplyCohereStatus {
                 self.cohereCacheDirectoryExists = modelDiskState.cohereCacheDirectoryExists
             }
@@ -572,9 +564,10 @@ public final class EngineSettingsViewModel {
 
     public func refreshNemotronModelStatus() {
         let language = SpeechEnginePreference.nemotronDefaultLanguage(defaults: defaults)
-        downloadedNemotronVariants = Set(NemotronModelVariant.allCases.filter {
-            nemotronModelVariantCached($0, language)
-        })
+        downloadedNemotronVariants = Set(
+            NemotronModelVariant.allCases.filter {
+                nemotronModelVariantCached($0, language)
+            })
         applyNemotronDownloadedStatus(downloadedNemotronVariants.contains(nemotronModelVariant))
     }
 
@@ -601,7 +594,8 @@ public final class EngineSettingsViewModel {
             if whisperHasBeenOptimized {
                 whisperModelStatusDetail = "\(friendly) · Installed locally, loads in seconds."
             } else {
-                whisperModelStatusDetail = "\(friendly) · Installed locally. First switch can take 3-5 minutes while Core ML optimizes it."
+                whisperModelStatusDetail =
+                    "\(friendly) · Installed locally. First switch can take 3-5 minutes while Core ML optimizes it."
             }
         } else {
             whisperModelStatus = .notDownloaded
@@ -634,84 +628,24 @@ public final class EngineSettingsViewModel {
         nemotronModelStatus = .repairing
         let modelVariant = nemotronModelVariant
         let language = SpeechEnginePreference.nemotronDefaultLanguage(defaults: defaults)
-        let operationContext = Observability.childOperationContext()
         nemotronModelStatusDetail = "Downloading \(modelVariant.modelName)..."
-        Telemetry.send(.modelDownloadStarted(
-            modelKind: .nemotronSTT,
-            speechEngine: .nemotron,
-            engineVariant: modelVariant.rawValue
-        ))
 
         Task {
             do {
                 try await STTRuntime.downloadNemotronModel(
                     modelVariant: modelVariant,
-                    language: language,
-                    emitTelemetry: false
+                    language: language
                 ) { message in
                     Task { @MainActor [weak self] in
                         self?.nemotronModelStatusDetail = message
                     }
                 }
-                let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-                Telemetry.send(.modelDownloadCompleted(
-                    durationSeconds: durationSeconds,
-                    modelKind: .nemotronSTT,
-                    speechEngine: .nemotron,
-                    engineVariant: modelVariant.rawValue
-                ))
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .download,
-                    outcome: .success,
-                    stage: .download,
-                    modelKind: .nemotronSTT,
-                    speechEngine: .nemotron,
-                    engineVariant: modelVariant.rawValue,
-                    durationSeconds: durationSeconds,
-                    errorType: nil
-                ))
                 self.nemotronDownloading = false
                 self.refreshNemotronModelStatus()
             } catch is CancellationError {
-                let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .download,
-                    outcome: .cancelled,
-                    stage: .download,
-                    modelKind: .nemotronSTT,
-                    speechEngine: .nemotron,
-                    engineVariant: modelVariant.rawValue,
-                    durationSeconds: durationSeconds,
-                    errorType: "CancellationError"
-                ))
                 self.nemotronDownloading = false
                 self.refreshNemotronModelStatus()
             } catch {
-                let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-                let errorType = TelemetryErrorClassifier.classify(error)
-                Telemetry.send(.modelDownloadFailed(
-                    errorType: errorType,
-                    errorDetail: TelemetryErrorClassifier.errorDetail(error),
-                    modelKind: .nemotronSTT,
-                    speechEngine: .nemotron,
-                    engineVariant: modelVariant.rawValue
-                ))
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .download,
-                    outcome: .failure,
-                    stage: .download,
-                    modelKind: .nemotronSTT,
-                    speechEngine: .nemotron,
-                    engineVariant: modelVariant.rawValue,
-                    durationSeconds: durationSeconds,
-                    errorType: errorType
-                ))
                 self.nemotronDownloading = false
                 self.nemotronModelStatus = .failed
                 self.nemotronModelStatusDetail = error.localizedDescription
@@ -733,13 +667,7 @@ public final class EngineSettingsViewModel {
         whisperModelStatus = .repairing
         let modelVariant = SpeechEnginePreference.whisperModelVariant(defaults: defaults)
         let friendly = SpeechEnginePreference.friendlyVariantName(modelVariant)
-        let operationContext = Observability.childOperationContext()
         whisperModelStatusDetail = "Downloading Whisper \(friendly)..."
-        Telemetry.send(.modelDownloadStarted(
-            modelKind: .whisperSTT,
-            speechEngine: .whisper,
-            engineVariant: modelVariant
-        ))
 
         Task {
             do {
@@ -749,68 +677,16 @@ public final class EngineSettingsViewModel {
                     let percent = total > 0 ? Int((Double(completed) / Double(total) * 100).rounded()) : 0
                     Task { @MainActor [weak self] in
                         guard let self else { return }
-                        self.whisperModelStatusDetail = "Downloading Whisper \(friendly)... \(min(max(percent, 0), 100))%"
+                        self.whisperModelStatusDetail =
+                            "Downloading Whisper \(friendly)... \(min(max(percent, 0), 100))%"
                     }
                 }
-                let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-                Telemetry.send(.modelDownloadCompleted(
-                    durationSeconds: durationSeconds,
-                    modelKind: .whisperSTT,
-                    speechEngine: .whisper,
-                    engineVariant: modelVariant
-                ))
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .download,
-                    outcome: .success,
-                    stage: .download,
-                    modelKind: .whisperSTT,
-                    speechEngine: .whisper,
-                    engineVariant: modelVariant,
-                    durationSeconds: durationSeconds,
-                    errorType: nil
-                ))
                 self.whisperDownloading = false
                 self.refreshWhisperModelStatus()
             } catch is CancellationError {
-                let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .download,
-                    outcome: .cancelled,
-                    stage: .download,
-                    modelKind: .whisperSTT,
-                    speechEngine: .whisper,
-                    engineVariant: modelVariant,
-                    durationSeconds: durationSeconds,
-                    errorType: "CancellationError"
-                ))
                 self.whisperDownloading = false
                 self.refreshWhisperModelStatus()
             } catch {
-                let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-                let errorType = TelemetryErrorClassifier.classify(error)
-                Telemetry.send(.modelDownloadFailed(
-                    errorType: errorType,
-                    errorDetail: TelemetryErrorClassifier.errorDetail(error),
-                    modelKind: .whisperSTT,
-                    speechEngine: .whisper,
-                    engineVariant: modelVariant
-                ))
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .download,
-                    outcome: .failure,
-                    stage: .download,
-                    modelKind: .whisperSTT,
-                    speechEngine: .whisper,
-                    engineVariant: modelVariant,
-                    durationSeconds: durationSeconds,
-                    errorType: errorType
-                ))
                 self.whisperDownloading = false
                 self.whisperModelStatus = .failed
                 self.whisperModelStatusDetail = error.localizedDescription
@@ -830,13 +706,6 @@ public final class EngineSettingsViewModel {
         cohereDownloading = true
         cohereModelStatus = .repairing
         cohereModelStatusDetail = "Downloading Cohere Transcribe..."
-        let operationContext = Observability.childOperationContext()
-        let engineVariant = CohereTranscribeEngine.ComputePolicy.current(defaults: defaults).rawValue
-        Telemetry.send(.modelDownloadStarted(
-            modelKind: .cohereSTT,
-            speechEngine: .cohere,
-            engineVariant: engineVariant
-        ))
 
         Task { @MainActor [weak self] in
             do {
@@ -845,67 +714,14 @@ public final class EngineSettingsViewModel {
                         self?.cohereModelStatusDetail = message
                     }
                 }
-                let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-                Telemetry.send(.modelDownloadCompleted(
-                    durationSeconds: durationSeconds,
-                    modelKind: .cohereSTT,
-                    speechEngine: .cohere,
-                    engineVariant: engineVariant
-                ))
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .download,
-                    outcome: .success,
-                    stage: .download,
-                    modelKind: .cohereSTT,
-                    speechEngine: .cohere,
-                    engineVariant: engineVariant,
-                    durationSeconds: durationSeconds,
-                    errorType: nil
-                ))
                 guard let self else { return }
                 self.cohereDownloading = false
                 self.refreshModelStatus()
             } catch is CancellationError {
-                let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .download,
-                    outcome: .cancelled,
-                    stage: .download,
-                    modelKind: .cohereSTT,
-                    speechEngine: .cohere,
-                    engineVariant: engineVariant,
-                    durationSeconds: durationSeconds,
-                    errorType: "CancellationError"
-                ))
                 guard let self else { return }
                 self.cohereDownloading = false
                 self.refreshModelStatus()
             } catch {
-                let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-                let errorType = TelemetryErrorClassifier.classify(error)
-                Telemetry.send(.modelDownloadFailed(
-                    errorType: errorType,
-                    errorDetail: TelemetryErrorClassifier.errorDetail(error),
-                    modelKind: .cohereSTT,
-                    speechEngine: .cohere,
-                    engineVariant: engineVariant
-                ))
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .download,
-                    outcome: .failure,
-                    stage: .download,
-                    modelKind: .cohereSTT,
-                    speechEngine: .cohere,
-                    engineVariant: engineVariant,
-                    durationSeconds: durationSeconds,
-                    errorType: errorType
-                ))
                 guard let self else { return }
                 self.cohereDownloading = false
                 self.cohereModelStatus = .failed
@@ -922,22 +738,9 @@ public final class EngineSettingsViewModel {
     private func applySpeechEngineChange(_ preference: SpeechEnginePreference) {
         speechEngineError = nil
         let previousPreference = SpeechEnginePreference.current(defaults: defaults)
-        let operationContext = Observability.childOperationContext()
-        let switchWasCold = SpeechEnginePreference.isColdSwitch(to: preference, defaults: defaults)
 
         if preference == .nemotron && !isNemotronModelAvailable {
             speechEngineError = "Download the Nemotron model before switching engines."
-            Telemetry.send(.speechEngineSwitchOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                fromEngine: previousPreference,
-                toEngine: preference,
-                outcome: .unavailable,
-                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                blockedReason: .modelNotDownloaded,
-                errorType: "model_not_downloaded",
-                wasCold: switchWasCold
-            ))
             isApplyingSpeechEngineState = true
             speechEnginePreference = previousPreference
             isApplyingSpeechEngineState = false
@@ -946,17 +749,6 @@ public final class EngineSettingsViewModel {
 
         if preference == .whisper && !isWhisperModelDownloaded {
             speechEngineError = "Download the Whisper model before switching engines."
-            Telemetry.send(.speechEngineSwitchOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                fromEngine: previousPreference,
-                toEngine: preference,
-                outcome: .unavailable,
-                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                blockedReason: .modelNotDownloaded,
-                errorType: "model_not_downloaded",
-                wasCold: switchWasCold
-            ))
             isApplyingSpeechEngineState = true
             speechEnginePreference = previousPreference
             isApplyingSpeechEngineState = false
@@ -965,17 +757,6 @@ public final class EngineSettingsViewModel {
 
         if preference == .cohere && !cohereMeetsMemoryRequirement {
             speechEngineError = Self.cohereInsufficientMemoryMessage
-            Telemetry.send(.speechEngineSwitchOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                fromEngine: previousPreference,
-                toEngine: preference,
-                outcome: .unavailable,
-                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                blockedReason: .insufficientMemory,
-                errorType: "insufficient_memory",
-                wasCold: switchWasCold
-            ))
             isApplyingSpeechEngineState = true
             speechEnginePreference = previousPreference
             isApplyingSpeechEngineState = false
@@ -983,20 +764,10 @@ public final class EngineSettingsViewModel {
         }
 
         if preference == .cohere && shouldBlockCohereSwitchForModelStatus {
-            speechEngineError = cohereDeleting
+            speechEngineError =
+                cohereDeleting
                 ? "Finish deleting Cohere Transcribe before switching engines."
                 : "Download Cohere Transcribe before switching engines."
-            Telemetry.send(.speechEngineSwitchOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                fromEngine: previousPreference,
-                toEngine: preference,
-                outcome: .unavailable,
-                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                blockedReason: .modelNotDownloaded,
-                errorType: "model_not_downloaded",
-                wasCold: switchWasCold
-            ))
             isApplyingSpeechEngineState = true
             speechEnginePreference = previousPreference
             isApplyingSpeechEngineState = false
@@ -1007,17 +778,6 @@ public final class EngineSettingsViewModel {
             preference.save(to: defaults)
             syncInheritedFinalTranscriptionPreference()
             transcriptionSpeechEngineError = nil
-            Telemetry.send(.speechEngineSwitchOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                fromEngine: previousPreference,
-                toEngine: preference,
-                outcome: .success,
-                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                blockedReason: nil,
-                errorType: nil,
-                wasCold: switchWasCold
-            ))
             return
         }
 
@@ -1040,19 +800,7 @@ public final class EngineSettingsViewModel {
             }
             let availability = await self.refreshSpeechEngineSwitchAvailabilityNow()
             guard availability == .available else {
-                let blockedReason = Self.telemetrySpeechEngineSwitchBlockedReason(for: availability)
                 self.speechEngineError = Self.speechEngineSwitchUnavailableMessage(for: availability)
-                Telemetry.send(.speechEngineSwitchOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    fromEngine: previousPreference,
-                    toEngine: preference,
-                    outcome: .unavailable,
-                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                    blockedReason: blockedReason,
-                    errorType: blockedReason?.rawValue,
-                    wasCold: switchWasCold
-                ))
                 self.isApplyingSpeechEngineState = true
                 self.speechEnginePreference = SpeechEnginePreference.current(defaults: self.defaults)
                 self.isApplyingSpeechEngineState = false
@@ -1060,57 +808,23 @@ public final class EngineSettingsViewModel {
                 return
             }
             do {
-                try await Observability.withOperationContext(operationContext) {
+                try await {
                     try await speechEngineSwitcher.setSpeechEngine(preference) { [weak self] message in
                         Task { @MainActor [weak self] in
                             self?.speechEngineSwitchDetail = message
                         }
                     }
-                }
+                }()
                 preference.save(to: self.defaults)
                 self.syncInheritedFinalTranscriptionPreference()
                 self.transcriptionSpeechEngineError = nil
-                Telemetry.send(.speechEngineSwitchOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    fromEngine: previousPreference,
-                    toEngine: preference,
-                    outcome: .success,
-                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                    blockedReason: nil,
-                    errorType: nil,
-                    wasCold: switchWasCold
-                ))
             } catch is CancellationError {
-                Telemetry.send(.speechEngineSwitchOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    fromEngine: previousPreference,
-                    toEngine: preference,
-                    outcome: .cancelled,
-                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                    blockedReason: nil,
-                    errorType: "CancellationError",
-                    wasCold: switchWasCold
-                ))
                 self.isApplyingSpeechEngineState = true
                 self.speechEnginePreference = SpeechEnginePreference.current(defaults: self.defaults)
                 self.isApplyingSpeechEngineState = false
                 self.syncInheritedFinalTranscriptionPreference()
             } catch {
-                let errorType = TelemetryErrorClassifier.classify(error)
                 self.speechEngineError = error.localizedDescription
-                Telemetry.send(.speechEngineSwitchOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    fromEngine: previousPreference,
-                    toEngine: preference,
-                    outcome: .failure,
-                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                    blockedReason: Self.telemetrySpeechEngineSwitchBlockedReason(for: error),
-                    errorType: errorType,
-                    wasCold: switchWasCold
-                ))
                 self.isApplyingSpeechEngineState = true
                 self.speechEnginePreference = SpeechEnginePreference.current(defaults: self.defaults)
                 self.isApplyingSpeechEngineState = false
@@ -1131,7 +845,6 @@ public final class EngineSettingsViewModel {
         guard let speechEngineSwitcher else {
             // No runtime wired (previews/tests): just persist the choice.
             SpeechEnginePreference.saveParakeetModelVariant(variant, defaults: defaults)
-            Telemetry.send(.settingChanged(setting: .parakeetModelVariant, value: variant.rawValue))
             return
         }
 
@@ -1161,7 +874,6 @@ public final class EngineSettingsViewModel {
                     }
                 }
                 SpeechEnginePreference.saveParakeetModelVariant(variant, defaults: self.defaults)
-                Telemetry.send(.settingChanged(setting: .parakeetModelVariant, value: variant.rawValue))
             } catch is CancellationError {
                 self.revertParakeetModelVariant()
             } catch {
@@ -1191,7 +903,6 @@ public final class EngineSettingsViewModel {
         guard let speechEngineSwitcher else {
             // No runtime wired (previews/tests): just persist the choice.
             SpeechEnginePreference.saveNemotronModelVariant(variant, defaults: defaults)
-            Telemetry.send(.settingChanged(setting: .nemotronModelVariant, value: variant.rawValue))
             return
         }
 
@@ -1221,7 +932,6 @@ public final class EngineSettingsViewModel {
                     }
                 }
                 SpeechEnginePreference.saveNemotronModelVariant(variant, defaults: self.defaults)
-                Telemetry.send(.settingChanged(setting: .nemotronModelVariant, value: variant.rawValue))
             } catch is CancellationError {
                 self.revertNemotronModelVariant()
             } catch {
@@ -1247,15 +957,17 @@ public final class EngineSettingsViewModel {
         parakeetRepairing = true
         parakeetStatus = .repairing
         parakeetStatusDetail = "Preparing speech model..."
-        let operationContext = Observability.childOperationContext()
 
         Task {
             do {
-                try await Observability.withOperationContext(operationContext) {
-                    try await runWithRetry(maxAttempts: 3, onRetry: { [weak self] attempt in
-                        guard let self else { return }
-                        self.parakeetStatusDetail = "Retrying speech model setup (attempt \(attempt)/3)..."
-                    }) {
+                try await {
+                    try await runWithRetry(
+                        maxAttempts: 3,
+                        onRetry: { [weak self] attempt in
+                            guard let self else { return }
+                            self.parakeetStatusDetail = "Retrying speech model setup (attempt \(attempt)/3)..."
+                        }
+                    ) {
                         try await sttClient.warmUp { [weak self] progressMessage in
                             Task { @MainActor [weak self] in
                                 guard let self else { return }
@@ -1263,48 +975,14 @@ public final class EngineSettingsViewModel {
                             }
                         }
                     }
-                }
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .repair,
-                    outcome: .success,
-                    stage: .warmUp,
-                    modelKind: .parakeetSTT,
-                    speechEngine: .parakeet,
-                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                    errorType: nil
-                ))
+                }()
 
                 self.parakeetRepairing = false
                 self.refreshModelStatus()
             } catch is CancellationError {
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .repair,
-                    outcome: .cancelled,
-                    stage: .warmUp,
-                    modelKind: .parakeetSTT,
-                    speechEngine: .parakeet,
-                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                    errorType: "CancellationError"
-                ))
                 self.parakeetRepairing = false
                 self.refreshModelStatus()
             } catch {
-                let errorType = TelemetryErrorClassifier.classify(error)
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .repair,
-                    outcome: .failure,
-                    stage: .warmUp,
-                    modelKind: .parakeetSTT,
-                    speechEngine: .parakeet,
-                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                    errorType: errorType
-                ))
                 self.parakeetRepairing = false
                 self.parakeetStatus = .failed
                 self.parakeetStatusDetail = error.localizedDescription
@@ -1426,42 +1104,6 @@ public final class EngineSettingsViewModel {
             guard let self else { return }
             self.cohereDeleting = false
             self.refreshModelStatus()
-        }
-    }
-
-    private static func telemetrySpeechEngineSwitchBlockedReason(
-        for error: Error
-    ) -> TelemetrySpeechEngineSwitchBlockedReason? {
-        guard let sttError = error as? STTError else { return nil }
-        switch sttError {
-        case .engineBusy:
-            return .engineBusy
-        case .modelDownloadFailed, .modelNotLoaded:
-            return .modelNotDownloaded
-        case .engineNotRunning,
-             .engineStartFailed,
-             .transcriptionFailed,
-             .timeout,
-             .outOfMemory,
-             .invalidResponse:
-            return nil
-        }
-    }
-
-    private static func telemetrySpeechEngineSwitchBlockedReason(
-        for availability: SpeechEngineSwitchAvailability
-    ) -> TelemetrySpeechEngineSwitchBlockedReason? {
-        switch availability {
-        case .available:
-            return nil
-        case .meetingActive:
-            return .meetingActive
-        case .transcribing:
-            return .transcribing
-        case .switchInProgress:
-            return .switchInProgress
-        case .unavailable:
-            return .unavailable
         }
     }
 

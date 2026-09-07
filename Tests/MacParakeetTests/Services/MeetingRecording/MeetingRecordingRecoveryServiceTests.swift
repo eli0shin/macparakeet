@@ -1310,7 +1310,7 @@ private final class RecoveryMockTranscriptionService: TranscriptionServiceProtoc
 
     func transcribe(
         fileURL: URL,
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)?
     ) async throws -> Transcription {
         fatalError("Not used")
@@ -1318,7 +1318,7 @@ private final class RecoveryMockTranscriptionService: TranscriptionServiceProtoc
 
     func transcribeTransient(
         fileURL: URL,
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)?
     ) async throws -> Transcription {
         fatalError("Not used")
@@ -1390,7 +1390,7 @@ private final class RecoveryMockTranscriptionService: TranscriptionServiceProtoc
     func retranscribe(
         existing transcription: Transcription,
         fileURL: URL,
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         speechEngineOverride: SpeechEngineSelection?,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)?
     ) async throws -> Transcription {

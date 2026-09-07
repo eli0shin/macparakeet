@@ -3,37 +3,6 @@ import CoreAudio
 @testable import MacParakeetCore
 @testable import MacParakeetViewModels
 
-private final class SettingsTelemetrySpy: TelemetryServiceProtocol, @unchecked Sendable {
-    private let lock = NSLock()
-    private var events: [TelemetryEventSpec] = []
-
-    func send(_ event: TelemetryEventSpec) {
-        lock.lock()
-        events.append(event)
-        lock.unlock()
-    }
-
-    func sendAndFlush(_ event: TelemetryEventSpec) async -> Bool {
-        send(event)
-        return true
-    }
-
-    func clearQueue() {
-        lock.lock()
-        events.removeAll()
-        lock.unlock()
-    }
-
-    func flush() async {}
-    func flushForTermination() {}
-
-    func snapshot() -> [TelemetryEventSpec] {
-        lock.lock()
-        defer { lock.unlock() }
-        return events
-    }
-}
-
 @MainActor
 final class SettingsViewModelTests: XCTestCase {
     var viewModel: SettingsViewModel!
@@ -99,8 +68,6 @@ final class SettingsViewModelTests: XCTestCase {
     }
 
     override func tearDown() {
-        Telemetry.configure(NoOpTelemetryService())
-
         // Clean up the test UserDefaults suite
         if let testDefaultsSuiteName {
             testDefaults.removePersistentDomain(forName: testDefaultsSuiteName)
@@ -164,7 +131,8 @@ final class SettingsViewModelTests: XCTestCase {
             testDefaults.stringArray(forKey: UserDefaultsAppRuntimePreferences.voiceReturnTriggersKey),
             ["zatwierdź"]
         )
-        XCTAssertEqual(testDefaults.string(forKey: UserDefaultsAppRuntimePreferences.voiceReturnTriggerKey), "zatwierdź")
+        XCTAssertEqual(
+            testDefaults.string(forKey: UserDefaultsAppRuntimePreferences.voiceReturnTriggerKey), "zatwierdź")
 
         viewModel.deleteVoiceReturnTrigger(at: 0)
 
@@ -227,7 +195,8 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.saveTranscriptionAudio, "saveTranscriptionAudio should default to true")
         XCTAssertEqual(viewModel.meetingAudioRetention, .keepForever)
         XCTAssertTrue(viewModel.saveMeetingAudio, "saveMeetingAudio should default to true")
-        XCTAssertEqual(viewModel.youtubeAudioQuality, .m4a, "youtubeAudioQuality should default to Apple-friendly saved audio")
+        XCTAssertEqual(
+            viewModel.youtubeAudioQuality, .m4a, "youtubeAudioQuality should default to Apple-friendly saved audio")
         XCTAssertTrue(viewModel.speakerDiarization, "speakerDiarization should default to true")
         XCTAssertTrue(viewModel.meetingSpeakerDiarization, "meetingSpeakerDiarization should default to true")
         XCTAssertEqual(viewModel.meetingHotkeyTrigger, .chord(modifiers: ["command", "shift"], keyCode: 46))
@@ -303,215 +272,6 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertEqual(vm.meetingHotkeyTrigger, .chord(modifiers: ["control", "option"], keyCode: 46))
     }
 
-    func testMeetingAutoStopPersistsEmitsTelemetryAndPostsNotification() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-        var notificationCount = 0
-        let observer = NotificationCenter.default.addObserver(
-            forName: .macParakeetMeetingAutoStopDidChange,
-            object: nil,
-            queue: nil
-        ) { _ in
-            notificationCount += 1
-        }
-        defer { NotificationCenter.default.removeObserver(observer) }
-
-        viewModel.meetingAutoStopEnabled = true
-
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaultsAppRuntimePreferences.meetingAutoStopEnabledKey))
-
-        viewModel.meetingAutoStopEnabled = false
-
-        XCTAssertFalse(testDefaults.bool(forKey: UserDefaultsAppRuntimePreferences.meetingAutoStopEnabledKey))
-        XCTAssertEqual(notificationCount, 2)
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.meetingAutoStop, .meetingAutoStop])
-    }
-
-    func testShowMeetingRecordingPillPersistsEmitsTelemetryAndPostsNotification() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-        var notificationCount = 0
-        let observer = NotificationCenter.default.addObserver(
-            forName: .macParakeetShowMeetingRecordingPillDidChange,
-            object: nil,
-            queue: nil
-        ) { _ in
-            notificationCount += 1
-        }
-        defer { NotificationCenter.default.removeObserver(observer) }
-
-        viewModel.showMeetingRecordingPill = false
-
-        XCTAssertFalse(testDefaults.bool(forKey: UserDefaultsAppRuntimePreferences.showMeetingRecordingPillKey))
-
-        viewModel.showMeetingRecordingPill = true
-
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaultsAppRuntimePreferences.showMeetingRecordingPillKey))
-        XCTAssertEqual(notificationCount, 2)
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.meetingRecordingPill, .meetingRecordingPill])
-    }
-
-    func testPauseMediaDuringDictationPersistsAndEmitsTelemetry() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        viewModel.pauseMediaDuringDictation = true
-
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaultsAppRuntimePreferences.pauseMediaDuringDictationKey))
-
-        viewModel.pauseMediaDuringDictation = false
-
-        XCTAssertFalse(testDefaults.bool(forKey: UserDefaultsAppRuntimePreferences.pauseMediaDuringDictationKey))
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.pauseMediaDuringDictation, .pauseMediaDuringDictation])
-    }
-
-    func testInstantDictationPersistsEmitsTelemetryAndPostsNotification() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-        var instantDictationNotificationCount = 0
-        var microphoneNotificationCount = 0
-        let observer = NotificationCenter.default.addObserver(
-            forName: .macParakeetInstantDictationDidChange,
-            object: nil,
-            queue: nil
-        ) { _ in
-            instantDictationNotificationCount += 1
-        }
-        let microphoneObserver = NotificationCenter.default.addObserver(
-            forName: .macParakeetMicrophoneSelectionDidChange,
-            object: nil,
-            queue: nil
-        ) { _ in
-            microphoneNotificationCount += 1
-        }
-        defer {
-            NotificationCenter.default.removeObserver(observer)
-            NotificationCenter.default.removeObserver(microphoneObserver)
-        }
-
-        viewModel.instantDictationEnabled = true
-
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaultsAppRuntimePreferences.instantDictationEnabledKey))
-        XCTAssertEqual(instantDictationNotificationCount, 1)
-        XCTAssertEqual(microphoneNotificationCount, 0)
-
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.instantDictation])
-    }
-
-    func testLiveDictationPreviewPersistsAndEmitsTelemetry() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        viewModel.showLiveDictationPreview = false
-
-        XCTAssertFalse(testDefaults.bool(forKey: UserDefaultsAppRuntimePreferences.showLiveDictationPreviewKey))
-
-        viewModel.showLiveDictationPreview = true
-
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaultsAppRuntimePreferences.showLiveDictationPreviewKey))
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.liveDictationPreview, .liveDictationPreview])
-    }
-
-    func testDictationPreviewTextSizeDefaultsToMediumPersistsAndEmitsTelemetry() {
-        XCTAssertEqual(viewModel.dictationPreviewTextSize, .medium)
-
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        viewModel.dictationPreviewTextSize = .large
-
-        XCTAssertEqual(
-            testDefaults.string(forKey: UserDefaultsAppRuntimePreferences.dictationPreviewTextSizeKey),
-            DictationPreviewTextSize.large.rawValue
-        )
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.liveDictationPreview])
-    }
-
-    func testDictationUndoCountdownDefaultsToFiveSecondsPersistsAndEmitsTelemetry() {
-        XCTAssertEqual(viewModel.dictationUndoCountdown, .fiveSeconds)
-
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        viewModel.dictationUndoCountdown = .off
-
-        XCTAssertEqual(
-            testDefaults.string(forKey: UserDefaultsAppRuntimePreferences.dictationUndoCountdownKey),
-            DictationUndoCountdown.off.rawValue
-        )
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.dictationUndoCountdown])
-    }
-
-    func testSettingChangedTelemetryIncludesSafeBooleanAndEnumValues() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        viewModel.meetingAutoStopEnabled = true
-        viewModel.appAppearanceMode = .dark
-        viewModel.meetingAudioSourceMode = .systemOnly
-
-        let props = settingChangedProps(in: telemetry.snapshot())
-        XCTAssertTrue(props.contains {
-            $0["setting"] == TelemetrySettingName.meetingAutoStop.rawValue
-                && $0["value"] == "true"
-        })
-        XCTAssertTrue(props.contains {
-            $0["setting"] == TelemetrySettingName.appAppearance.rawValue
-                && $0["value"] == AppAppearanceMode.dark.rawValue
-        })
-        XCTAssertTrue(props.contains {
-            $0["setting"] == TelemetrySettingName.meetingAudioSourceMode.rawValue
-                && $0["value"] == MeetingAudioSourceMode.systemOnly.rawValue
-        })
-    }
-
-    func testSettingChangedTelemetryOmitsValueForOpenOrUserAuthoredSettings() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        viewModel.selectedMicrophoneDeviceUID = "USB-Mic-User-Device"
-        viewModel.calendarExcludedIdentifiers = ["calendar-user-id"]
-
-        let props = settingChangedProps(in: telemetry.snapshot())
-        let microphone = props.last { $0["setting"] == TelemetrySettingName.microphoneSelection.rawValue }
-        XCTAssertNotNil(microphone)
-        XCTAssertNil(microphone?["value"])
-        XCTAssertFalse(microphone?.values.contains("USB-Mic-User-Device") ?? false)
-
-        let calendars = props.last { $0["setting"] == TelemetrySettingName.calendarIncludedCalendars.rawValue }
-        XCTAssertNotNil(calendars)
-        XCTAssertNil(calendars?["value"])
-        XCTAssertFalse(calendars?.values.contains("calendar-user-id") ?? false)
-    }
-
     func testSelectedMicrophonePersistsUIDAndClearsForSystemDefault() {
         var microphoneNotificationCount = 0
         var instantDictationNotificationCount = 0
@@ -548,38 +308,6 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertEqual(instantDictationNotificationCount, 0)
     }
 
-    func testSelectedMicrophoneNormalizesBlankSelectionToSystemDefault() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-        var microphoneNotificationCount = 0
-        let observer = NotificationCenter.default.addObserver(
-            forName: .macParakeetMicrophoneSelectionDidChange,
-            object: nil,
-            queue: nil
-        ) { _ in
-            microphoneNotificationCount += 1
-        }
-        defer { NotificationCenter.default.removeObserver(observer) }
-
-        viewModel.selectedMicrophoneDeviceUID = "usb-mic-uid"
-        XCTAssertEqual(
-            testDefaults.string(forKey: UserDefaultsAppRuntimePreferences.selectedMicrophoneDeviceUIDKey),
-            "usb-mic-uid"
-        )
-
-        viewModel.selectedMicrophoneDeviceUID = "   "
-
-        XCTAssertEqual(viewModel.selectedMicrophoneDeviceUID, SettingsViewModel.systemDefaultMicrophoneSelection)
-        XCTAssertNil(testDefaults.string(forKey: UserDefaultsAppRuntimePreferences.selectedMicrophoneDeviceUIDKey))
-        XCTAssertEqual(microphoneNotificationCount, 2)
-
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.microphoneSelection, .microphoneSelection])
-    }
-
     func testRefreshMicrophoneDevicesUsesInjectedDevicesAndMarksDefaultFirst() {
         let vm = SettingsViewModel(
             defaults: testDefaults,
@@ -596,7 +324,7 @@ final class SettingsViewModelTests: XCTestCase {
                         uid: "builtin-zed",
                         name: "Zed Built-In Mic",
                         transportType: kAudioDeviceTransportTypeBuiltIn
-                    )
+                    ),
                 ]
             },
             defaultInputDeviceUIDProvider: { "builtin-zed" }
@@ -873,22 +601,6 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertTrue(testDefaults.bool(forKey: AppPreferences.menuBarOnlyModeKey))
     }
 
-    func testSettingAppAppearanceModePersistsPostsNotificationAndEmitsTelemetry() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-        let expectation = expectation(forNotification: .macParakeetAppearanceModeDidChange, object: nil)
-
-        viewModel.appAppearanceMode = .dark
-
-        wait(for: [expectation], timeout: 1.0)
-        XCTAssertEqual(testDefaults.string(forKey: AppPreferences.appearanceModeKey), AppAppearanceMode.dark.rawValue)
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.appAppearance])
-    }
-
     func testSettingSilenceAutoStopPersists() {
         viewModel.silenceAutoStop = true
 
@@ -901,37 +613,6 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertEqual(testDefaults.double(forKey: "silenceDelay"), 5.0)
     }
 
-    func testSettingKeepDictationOnClipboardPersistsAndEmitsTelemetry() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        viewModel.keepDictationOnClipboard = true
-
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaultsAppRuntimePreferences.keepDictationOnClipboardKey))
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.keepDictationOnClipboard])
-    }
-
-    func testSettingDictationInsertionStylePersistsAndEmitsTelemetry() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        viewModel.dictationInsertionStyle = .inline
-
-        XCTAssertEqual(
-            testDefaults.string(forKey: UserDefaultsAppRuntimePreferences.dictationInsertionStyleKey),
-            DictationInsertionStyle.inline.rawValue
-        )
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.dictationInsertionStyle])
-    }
-
     func testSettingSaveAudioRecordingsPersists() {
         viewModel.saveAudioRecordings = false
 
@@ -942,36 +623,6 @@ final class SettingsViewModelTests: XCTestCase {
         viewModel.saveTranscriptionAudio = false
 
         XCTAssertFalse(testDefaults.bool(forKey: "saveTranscriptionAudio"))
-    }
-
-    func testSettingMeetingAudioRetentionPersistsEmitsTelemetryAndPostsNotification() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-        var notificationCount = 0
-        let observer = NotificationCenter.default.addObserver(
-            forName: .macParakeetMeetingAudioRetentionDidChange,
-            object: nil,
-            queue: nil
-        ) { _ in notificationCount += 1 }
-        defer { NotificationCenter.default.removeObserver(observer) }
-
-        viewModel.setMeetingAudioRetention(.deleteAfterDays(14))
-
-        XCTAssertEqual(
-            testDefaults.string(forKey: UserDefaultsAppRuntimePreferences.meetingAudioRetentionKey),
-            MeetingAudioRetentionMode.deleteAfterDays.rawValue
-        )
-        XCTAssertEqual(
-            testDefaults.object(forKey: UserDefaultsAppRuntimePreferences.meetingAudioRetentionDeleteAfterDaysKey) as? Int,
-            14
-        )
-        XCTAssertTrue(testDefaults.bool(forKey: UserDefaultsAppRuntimePreferences.saveMeetingAudioKey))
-        XCTAssertEqual(notificationCount, 1)
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.meetingAudioRetention])
     }
 
     func testLegacySaveMeetingAudioSetterMapsToDeleteImmediately() {
@@ -1060,20 +711,6 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertNil(testDefaults.object(forKey: UserDefaultsAppRuntimePreferences.speakerDiarizationKey))
     }
 
-    func testMeetingSpeakerDiarizationEmitsDistinctTelemetry() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        viewModel.meetingSpeakerDiarization = false
-        viewModel.speakerDiarization = false
-
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.meetingSpeakerDiarization, .speakerDiarization])
-    }
-
     func testMeetingHotkeyPersistsToDedicatedDefaultsKey() {
         let trigger = HotkeyTrigger.chord(modifiers: ["control", "option"], keyCode: 46)
         viewModel.meetingHotkeyTrigger = trigger
@@ -1119,7 +756,7 @@ final class SettingsViewModelTests: XCTestCase {
     }
 
     func testFileTranscriptionHotkeyPersistsToDedicatedDefaultsKey() {
-        let trigger = HotkeyTrigger.chord(modifiers: ["control", "shift"], keyCode: 3) // F
+        let trigger = HotkeyTrigger.chord(modifiers: ["control", "shift"], keyCode: 3)  // F
         viewModel.fileTranscriptionHotkeyTrigger = trigger
 
         XCTAssertEqual(
@@ -1133,7 +770,7 @@ final class SettingsViewModelTests: XCTestCase {
     }
 
     func testYouTubeTranscriptionHotkeyPersistsToDedicatedDefaultsKey() {
-        let trigger = HotkeyTrigger.chord(modifiers: ["control", "shift"], keyCode: 16) // Y
+        let trigger = HotkeyTrigger.chord(modifiers: ["control", "shift"], keyCode: 16)  // Y
         viewModel.youtubeTranscriptionHotkeyTrigger = trigger
 
         XCTAssertEqual(
@@ -1164,40 +801,6 @@ final class SettingsViewModelTests: XCTestCase {
         wait(for: [expectation], timeout: 1.0)
     }
 
-    func testHotkeyChangesEmitHotkeyCustomizedTelemetryBySurface() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        viewModel.hotkeyTrigger = .option
-        viewModel.pushToTalkHotkeyTrigger = .control
-        viewModel.meetingHotkeyTrigger = .chord(modifiers: ["control", "option"], keyCode: 46)
-        viewModel.fileTranscriptionHotkeyTrigger = .disabled
-        viewModel.youtubeTranscriptionHotkeyTrigger = .fromKeyCode(16)
-
-        let events = telemetry.snapshot()
-        let hotkeyEvents = events.compactMap { event -> String? in
-            guard case .hotkeyCustomized(let surface, let kind) = event else { return nil }
-            return "\(surface.rawValue):\(kind.rawValue)"
-        }
-        let hotkeySettingEvents = events.filter { event in
-            guard case .settingChanged(let setting, _) = event else { return false }
-            return [
-                .meetingHotkey,
-                .fileTranscriptionHotkey,
-                .youtubeTranscriptionHotkey,
-            ].contains(setting)
-        }
-
-        XCTAssertEqual(hotkeyEvents, [
-            "dictation:modifier",
-            "push_to_talk:modifier",
-            "meeting:chord",
-            "file_transcription:disabled",
-            "youtube_transcription:key_code",
-        ])
-        XCTAssertTrue(hotkeySettingEvents.isEmpty)
-    }
-
     func testTranscriptionHotkeysLoadFromUserDefaults() {
         let fileTrigger = HotkeyTrigger.chord(modifiers: ["control", "shift"], keyCode: 3)
         let youtubeTrigger = HotkeyTrigger.chord(modifiers: ["control", "shift"], keyCode: 16)
@@ -1225,7 +828,8 @@ final class SettingsViewModelTests: XCTestCase {
     }
 
     func testShowIdlePillPostsNotificationOnChange() {
-        let expectation = expectation(forNotification: Notification.Name("macparakeet.showIdlePillDidChange"), object: nil)
+        let expectation = expectation(
+            forNotification: Notification.Name("macparakeet.showIdlePillDidChange"), object: nil)
         viewModel.showIdlePill = false
         wait(for: [expectation], timeout: 1.0)
     }
@@ -1351,7 +955,7 @@ final class SettingsViewModelTests: XCTestCase {
 
     func testClearAllDictationsRefreshesStats() {
         mockRepo.dictations = [
-            Dictation(durationMs: 1000, rawTranscript: "Test"),
+            Dictation(durationMs: 1000, rawTranscript: "Test")
         ]
 
         viewModel.configure(
@@ -1443,7 +1047,7 @@ final class SettingsViewModelTests: XCTestCase {
 
     func testResetLifetimeStatsCallsRepo() {
         mockRepo.dictations = [
-            Dictation(durationMs: 1000, rawTranscript: "One"),
+            Dictation(durationMs: 1000, rawTranscript: "One")
         ]
 
         viewModel.configure(
@@ -1579,7 +1183,8 @@ final class SettingsViewModelTests: XCTestCase {
         let sourceFile = folder.appendingPathComponent("source-capture.wav")
         let notes = folder.appendingPathComponent("notes.md")
         XCTAssertTrue(FileManager.default.createFile(atPath: file.path, contents: Data(repeating: 0x4, count: 1024)))
-        XCTAssertTrue(FileManager.default.createFile(atPath: sourceFile.path, contents: Data(repeating: 0x4, count: 1024)))
+        XCTAssertTrue(
+            FileManager.default.createFile(atPath: sourceFile.path, contents: Data(repeating: 0x4, count: 1024)))
         try Data("notes".utf8).write(to: notes)
 
         let meeting = Transcription(
@@ -1624,7 +1229,8 @@ final class SettingsViewModelTests: XCTestCase {
         let fetchedMeeting = try XCTUnwrap(mockTranscriptionRepo.transcriptions.first(where: { $0.id == meeting.id }))
         XCTAssertNil(fetchedMeeting.filePath)
         XCTAssertEqual(fetchedMeeting.meetingArtifactFolderPath, folder.standardizedFileURL.path)
-        XCTAssertEqual(mockTranscriptionRepo.transcriptions.first(where: { $0.id == local.id })?.filePath, local.filePath)
+        XCTAssertEqual(
+            mockTranscriptionRepo.transcriptions.first(where: { $0.id == local.id })?.filePath, local.filePath)
         XCTAssertEqual(
             mockTranscriptionRepo.transcriptions.first(where: { $0.id == externalMeeting.id })?.filePath,
             externalMeeting.filePath
@@ -1811,7 +1417,9 @@ final class SettingsViewModelTests: XCTestCase {
         let capturedChecks = recorder.calls
         XCTAssertEqual(capturedChecks.first?.0, .multilingual1120)
         XCTAssertEqual(capturedChecks.first?.1, "en-US")
-        XCTAssertEqual(vm.engine.nemotronModelStatusDetail, "Nemotron 3.5 ASR Streaming 0.6B · Installed locally, loads when selected.")
+        XCTAssertEqual(
+            vm.engine.nemotronModelStatusDetail,
+            "Nemotron 3.5 ASR Streaming 0.6B · Installed locally, loads when selected.")
     }
 
     func testRepairParakeetModelUsesRetryAndEndsReady() async throws {
@@ -1841,23 +1449,6 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertEqual(warmUpCallCount, 3)
         XCTAssertFalse(vm.engine.parakeetRepairing)
         XCTAssertEqual(vm.engine.parakeetStatus, .ready)
-    }
-
-    func testWhisperDefaultLanguagePersistsNormalizedValue() {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        viewModel.engine.whisperDefaultLanguage = "KO_kr"
-        XCTAssertEqual(SpeechEnginePreference.whisperDefaultLanguage(defaults: testDefaults), "ko")
-
-        viewModel.engine.whisperDefaultLanguage = "auto"
-        XCTAssertNil(SpeechEnginePreference.whisperDefaultLanguage(defaults: testDefaults))
-
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.whisperDefaultLanguage, .whisperDefaultLanguage])
     }
 
     func testSpeechEngineSwitchConfirmationDefersChangeUntilConfirm() async throws {
@@ -1963,38 +1554,6 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertEqual(SpeechEnginePreference.current(defaults: testDefaults), .whisper)
         XCTAssertFalse(viewModel.engine.speechEngineSwitching)
         XCTAssertNil(viewModel.engine.speechEngineError)
-    }
-
-    func testSpeechEngineChangeBlocksMissingNemotronModel() async throws {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-        let switcher = MockSpeechEngineSwitcher()
-        viewModel.configure(
-            permissionService: mockPermissions,
-            dictationRepo: mockRepo,
-            entitlementsService: entitlements,
-            checkoutURL: nil,
-            speechEngineSwitcher: switcher
-        )
-
-        try await waitForInitialModelStatusRefresh()
-        viewModel.engine.nemotronModelStatus = .notDownloaded
-        viewModel.engine.speechEnginePreference = .nemotron
-
-        XCTAssertEqual(viewModel.engine.speechEnginePreference, .parakeet)
-        XCTAssertEqual(SpeechEnginePreference.current(defaults: testDefaults), .parakeet)
-        XCTAssertEqual(viewModel.engine.speechEngineError, "Download the Nemotron model before switching engines.")
-        XCTAssertFalse(viewModel.engine.speechEngineSwitching)
-        let preferences = await switcher.preferences
-        XCTAssertTrue(preferences.isEmpty)
-
-        let event = try XCTUnwrap(speechEngineSwitchEvents(in: telemetry.snapshot()).last)
-        XCTAssertEqual(event.fromEngine, .parakeet)
-        XCTAssertEqual(event.toEngine, .nemotron)
-        XCTAssertEqual(event.outcome, .unavailable)
-        XCTAssertEqual(event.blockedReason, .modelNotDownloaded)
-        XCTAssertEqual(event.errorType, "model_not_downloaded")
-        XCTAssertEqual(event.wasCold, false)
     }
 
     func testSpeechEngineChangeBlocksMissingNemotronModelAndRestoresPreviousEngine() async throws {
@@ -2203,66 +1762,6 @@ final class SettingsViewModelTests: XCTestCase {
         )
     }
 
-    func testSpeechEngineChangeBlockedByAvailabilityShowsReasonAndTelemetry() async throws {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-        let switcher = MockSpeechEngineSwitcher()
-        let provider = MockSpeechEngineSwitchAvailabilityProvider(.meetingActive)
-        viewModel.configure(
-            permissionService: mockPermissions,
-            dictationRepo: mockRepo,
-            entitlementsService: entitlements,
-            checkoutURL: nil,
-            speechEngineSwitcher: switcher,
-            speechEngineSwitchAvailabilityProvider: provider
-        )
-
-        try await waitForInitialModelStatusRefresh()
-        viewModel.engine.whisperModelStatus = .notLoaded
-        viewModel.engine.speechEnginePreference = .whisper
-        try await waitForSpeechEngineSwitchingToFinish()
-
-        XCTAssertEqual(viewModel.engine.speechEnginePreference, .parakeet)
-        XCTAssertEqual(SpeechEnginePreference.current(defaults: testDefaults), .parakeet)
-        XCTAssertEqual(viewModel.engine.speechEngineError, "Stop the meeting recording to switch engines")
-        let preferences = await switcher.preferences
-        XCTAssertTrue(preferences.isEmpty)
-
-        let event = try XCTUnwrap(speechEngineSwitchEvents(in: telemetry.snapshot()).last)
-        XCTAssertEqual(event.fromEngine, .parakeet)
-        XCTAssertEqual(event.toEngine, .whisper)
-        XCTAssertEqual(event.outcome, .unavailable)
-        XCTAssertEqual(event.blockedReason, .meetingActive)
-        XCTAssertEqual(event.errorType, "meeting_active")
-        XCTAssertEqual(event.wasCold, true)
-    }
-
-    func testSpeechEngineChangeTelemetryMarksColdWhisperSwitch() async throws {
-        let telemetry = SettingsTelemetrySpy()
-        Telemetry.configure(telemetry)
-        let switcher = MockSpeechEngineSwitcher()
-        viewModel.configure(
-            permissionService: mockPermissions,
-            dictationRepo: mockRepo,
-            entitlementsService: entitlements,
-            checkoutURL: nil,
-            speechEngineSwitcher: switcher
-        )
-
-        try await waitForInitialModelStatusRefresh()
-        viewModel.engine.whisperModelStatus = .notLoaded
-        viewModel.engine.speechEnginePreference = .whisper
-        try await waitForSpeechEngineSwitchingToFinish()
-
-        let event = try XCTUnwrap(speechEngineSwitchEvents(in: telemetry.snapshot()).last)
-        XCTAssertEqual(event.fromEngine, .parakeet)
-        XCTAssertEqual(event.toEngine, .whisper)
-        XCTAssertEqual(event.outcome, .success)
-        XCTAssertNil(event.blockedReason)
-        XCTAssertNil(event.errorType)
-        XCTAssertEqual(event.wasCold, true)
-    }
-
     func testSpeechEngineChangeShowsProgressAndClearsWhenDone() async throws {
         let switcher = MockSpeechEngineSwitcher(progressMessages: ["Optimizing Whisper for this Mac..."])
         await switcher.blockNextSwitch()
@@ -2363,53 +1862,8 @@ final class SettingsViewModelTests: XCTestCase {
     ) async throws {
         let target = vm ?? viewModel!
         try await waitUntil(timeout: timeout, file: file, line: line) {
-            target.engine.parakeetStatus != .checking &&
-                target.engine.whisperModelStatus != .checking &&
-                target.engine.nemotronModelStatus != .checking
-        }
-    }
-
-    private struct SpeechEngineSwitchEventSnapshot {
-        let fromEngine: SpeechEnginePreference
-        let toEngine: SpeechEnginePreference
-        let outcome: ObservabilityOutcome
-        let blockedReason: TelemetrySpeechEngineSwitchBlockedReason?
-        let errorType: String?
-        let wasCold: Bool
-    }
-
-    private func speechEngineSwitchEvents(
-        in events: [TelemetryEventSpec]
-    ) -> [SpeechEngineSwitchEventSnapshot] {
-        events.compactMap { event in
-            guard case .speechEngineSwitchOperation(
-                operationID: _,
-                operationContext: _,
-                fromEngine: let fromEngine,
-                toEngine: let toEngine,
-                outcome: let outcome,
-                durationSeconds: _,
-                blockedReason: let blockedReason,
-                errorType: let errorType,
-                wasCold: let wasCold
-            ) = event else {
-                return nil
-            }
-            return SpeechEngineSwitchEventSnapshot(
-                fromEngine: fromEngine,
-                toEngine: toEngine,
-                outcome: outcome,
-                blockedReason: blockedReason,
-                errorType: errorType,
-                wasCold: wasCold
-            )
-        }
-    }
-
-    private func settingChangedProps(in events: [TelemetryEventSpec]) -> [[String: String]] {
-        events.compactMap { event in
-            guard event.name == .settingChanged else { return nil }
-            return event.props ?? [:]
+            target.engine.parakeetStatus != .checking && target.engine.whisperModelStatus != .checking
+                && target.engine.nemotronModelStatus != .checking
         }
     }
 
@@ -2744,9 +2198,15 @@ final class SettingsViewModelTests: XCTestCase {
         return SettingsViewModel(
             defaults: testDefaults,
             parakeetModelVariantCached: { _ in true },
-            deleteParakeetModelOnDisk: { variant in recorder.recordParakeet(variant); return true },
-            deleteNemotronModelOnDisk: { variant, language in recorder.recordNemotron(variant, language); return true },
-            deleteWhisperModelOnDisk: { variant in recorder.recordWhisper(variant); return true }
+            deleteParakeetModelOnDisk: { variant in
+                recorder.recordParakeet(variant); return true
+            },
+            deleteNemotronModelOnDisk: { variant, language in
+                recorder.recordNemotron(variant, language); return true
+            },
+            deleteWhisperModelOnDisk: { variant in
+                recorder.recordWhisper(variant); return true
+            }
         )
     }
 

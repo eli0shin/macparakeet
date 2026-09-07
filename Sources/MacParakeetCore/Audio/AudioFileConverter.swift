@@ -32,12 +32,12 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
 
     /// Supported audio extensions
     public static let supportedAudioExtensions: Set<String> = [
-        "mp3", "wav", "m4a", "flac", "ogg", "opus"
+        "mp3", "wav", "m4a", "flac", "ogg", "opus",
     ]
 
     /// Supported video extensions (audio will be extracted)
     public static let supportedVideoExtensions: Set<String> = [
-        "mp4", "mov", "mkv", "webm", "avi"
+        "mp4", "mov", "mkv", "webm", "avi",
     ]
 
     /// All supported extensions
@@ -77,9 +77,9 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
             // If the bundled FFmpeg failed due to dyld (e.g., Team ID mismatch after
             // code signing), try the system FFmpeg from PATH as a fallback.
             guard case .conversionFailed(let reason) = error,
-                  reason.contains("dyld") || reason.contains("Library not loaded"),
-                  let fallbackPath = BinaryBootstrap.findSystemFFmpeg(),
-                  fallbackPath != primaryPath
+                reason.contains("dyld") || reason.contains("Library not loaded"),
+                let fallbackPath = BinaryBootstrap.findSystemFFmpeg(),
+                fallbackPath != primaryPath
             else { throw error }
 
             return try await runFFmpegConversion(
@@ -115,9 +115,9 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
             )
         } catch let error as AudioProcessorError {
             guard case .conversionFailed(let reason) = error,
-                  reason.contains("dyld") || reason.contains("Library not loaded"),
-                  let fallbackPath = BinaryBootstrap.findSystemFFmpeg(),
-                  fallbackPath != primaryPath
+                reason.contains("dyld") || reason.contains("Library not loaded"),
+                let fallbackPath = BinaryBootstrap.findSystemFFmpeg(),
+                fallbackPath != primaryPath
             else { throw error }
 
             try await runFFmpegMix(
@@ -173,7 +173,7 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
                     microphoneDelayMs: microphoneDelayMs,
                     systemDelayMs: systemDelayMs
                 ),
-                "-map", "[a]"
+                "-map", "[a]",
             ])
             outputArgs = [
                 "-ar", "48000",
@@ -202,9 +202,10 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
             ]
         }
 
-        args.append(contentsOf: outputArgs + [
-            "-y", outputPath,
-        ])
+        args.append(
+            contentsOf: outputArgs + [
+                "-y", outputPath,
+            ])
         return args
     }
 
@@ -327,7 +328,7 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
 
     /// FFmpeg writes a long startup banner ("ffmpeg version X... configuration:
     /// --prefix=... --enable-...") before the actual error message. The
-    /// telemetry path truncates `error_detail` to ~512 chars from the front,
+    /// diagnostic sanitizer truncates error details to ~512 chars from the front,
     /// so the banner used to crowd out the real failure reason. Keep the tail
     /// instead — `dyld` / "Library not loaded" / "No such file" / etc. are all
     /// emitted at the end of stderr, so this preserves diagnostics for the
@@ -341,17 +342,19 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
         }
 
         guard let start = stderr.firstIndex(where: isMeaningful),
-              let end = stderr.lastIndex(where: isMeaningful)
+            let end = stderr.lastIndex(where: isMeaningful)
         else {
             return "Unknown error"
         }
 
         let trimmed = stderr[start...end]
-        guard let suffixStart = trimmed.index(
-            trimmed.endIndex,
-            offsetBy: -limit,
-            limitedBy: trimmed.startIndex
-        ), suffixStart != trimmed.startIndex else {
+        guard
+            let suffixStart = trimmed.index(
+                trimmed.endIndex,
+                offsetBy: -limit,
+                limitedBy: trimmed.startIndex
+            ), suffixStart != trimmed.startIndex
+        else {
             return String(trimmed)
         }
 

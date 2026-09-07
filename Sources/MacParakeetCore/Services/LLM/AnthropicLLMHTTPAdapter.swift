@@ -101,20 +101,23 @@ struct AnthropicLLMHTTPAdapter: LLMHTTPAdapter {
                         let trimmed = line.trimmingCharacters(in: .whitespaces)
                         guard trimmed.hasPrefix("data: ") || trimmed.hasPrefix("data:") else { continue }
 
-                        let payload = trimmed.hasPrefix("data: ")
+                        let payload =
+                            trimmed.hasPrefix("data: ")
                             ? String(trimmed.dropFirst(6))
                             : String(trimmed.dropFirst(5))
 
                         guard let data = payload.data(using: .utf8),
-                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                        else {
                             continue
                         }
 
                         let eventType = json["type"] as? String
 
                         if eventType == "content_block_delta",
-                           let delta = json["delta"] as? [String: Any],
-                           let text = delta["text"] as? String {
+                            let delta = json["delta"] as? [String: Any],
+                            let text = delta["text"] as? String
+                        {
                             yieldedAnyContent = true
                             continuation.yield(text)
                         } else if eventType == "message_stop" {
@@ -127,8 +130,9 @@ struct AnthropicLLMHTTPAdapter: LLMHTTPAdapter {
                             continuation.finish()
                             return
                         } else if eventType == "error",
-                                  let error = json["error"] as? [String: Any],
-                                  let message = error["message"] as? String {
+                            let error = json["error"] as? [String: Any],
+                            let message = error["message"] as? String
+                        {
                             throw LLMHTTPErrorMapper.mapStreamingError(message: message)
                         }
                     }

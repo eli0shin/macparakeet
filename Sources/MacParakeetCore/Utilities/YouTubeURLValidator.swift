@@ -7,7 +7,8 @@ public enum YouTubeURLValidator {
         "m.youtube.com",
     ]
     private static let shortHost = "youtu.be"
-    private static let allowedVideoIDCharacters = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+    private static let allowedVideoIDCharacters = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
 
     /// Check if a string is a valid YouTube URL
     public static func isYouTubeURL(_ string: String) -> Bool {
@@ -22,7 +23,7 @@ public enum YouTubeURLValidator {
 
         let normalizedInput = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
         guard let components = URLComponents(string: normalizedInput),
-              let host = components.host?.lowercased()
+            let host = components.host?.lowercased()
         else {
             return nil
         }

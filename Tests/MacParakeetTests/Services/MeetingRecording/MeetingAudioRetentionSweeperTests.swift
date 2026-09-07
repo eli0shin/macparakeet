@@ -41,9 +41,10 @@ final class MeetingAudioRetentionSweeperTests: XCTestCase {
         XCTAssertEqual(result.skippedLockedCount, 2)
         XCTAssertTrue(FileManager.default.fileExists(atPath: eligible.folderURL.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: eligible.audioURL.path))
-        XCTAssertTrue(FileManager.default.fileExists(
-            atPath: MeetingRecordingMetadataStore.metadataURL(for: eligible.folderURL).path
-        ))
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: MeetingRecordingMetadataStore.metadataURL(for: eligible.folderURL).path
+            ))
         let retainedOut = try XCTUnwrap(repo.fetch(id: eligible.transcription.id))
         XCTAssertNil(retainedOut.filePath)
         XCTAssertEqual(retainedOut.meetingArtifactFolderPath, eligible.folderURL.standardizedFileURL.path)
@@ -100,16 +101,19 @@ final class MeetingAudioRetentionSweeperTests: XCTestCase {
     func testSweepSkipsAnyRecordingLockFileEvenWhenUnreadable() throws {
         let zeroByte = try makeMeeting(ageDays: 31, rawLockData: Data())
         let corrupt = try makeMeeting(ageDays: 31, rawLockData: Data("{not-json".utf8))
-        let futureSchema = try makeMeeting(ageDays: 31, rawLockData: Data("""
-        {
-          "schemaVersion": 999,
-          "sessionId": "\(UUID().uuidString)",
-          "startedAt": "2026-06-19T12:00:00Z",
-          "pid": -1,
-          "displayName": "Future Session",
-          "state": "awaitingTranscription"
-        }
-        """.utf8))
+        let futureSchema = try makeMeeting(
+            ageDays: 31,
+            rawLockData: Data(
+                """
+                {
+                  "schemaVersion": 999,
+                  "sessionId": "\(UUID().uuidString)",
+                  "startedAt": "2026-06-19T12:00:00Z",
+                  "pid": -1,
+                  "displayName": "Future Session",
+                  "state": "awaitingTranscription"
+                }
+                """.utf8))
         let eligible = try makeMeeting(ageDays: 31)
         for meeting in [zeroByte, corrupt, futureSchema, eligible] {
             try repo.save(meeting.transcription)
@@ -142,10 +146,11 @@ final class MeetingAudioRetentionSweeperTests: XCTestCase {
         try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
         let audioURL = folderURL.appendingPathComponent("meeting-playback.m4a")
         XCTAssertTrue(FileManager.default.createFile(atPath: audioURL.path, contents: Data("audio".utf8)))
-        XCTAssertTrue(FileManager.default.createFile(
-            atPath: MeetingRecordingMetadataStore.metadataURL(for: folderURL).path,
-            contents: Data("{}".utf8)
-        ))
+        XCTAssertTrue(
+            FileManager.default.createFile(
+                atPath: MeetingRecordingMetadataStore.metadataURL(for: folderURL).path,
+                contents: Data("{}".utf8)
+            ))
 
         if let lockState {
             try MeetingRecordingLockFileStore().write(

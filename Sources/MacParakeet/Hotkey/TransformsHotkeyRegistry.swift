@@ -103,27 +103,30 @@ public final class TransformsHotkeyRegistry {
             stop()
         }
 
-        let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
+        let eventMask: CGEventMask =
+            (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
 
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: eventMask,
-            callback: { _, type, event, refcon -> Unmanaged<CGEvent>? in
-                guard let refcon else { return Unmanaged.passUnretained(event) }
-                let registry = Unmanaged<TransformsHotkeyRegistry>
-                    .fromOpaque(refcon)
-                    .takeUnretainedValue()
-                return registry.handleEvent(type: type, event: event)
-            },
-            userInfo: {
-                let retained = Unmanaged.passRetained(self)
-                self.retainedSelf = retained
-                return retained.toOpaque()
-            }()
-        ) else {
+        guard
+            let tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: eventMask,
+                callback: { _, type, event, refcon -> Unmanaged<CGEvent>? in
+                    guard let refcon else { return Unmanaged.passUnretained(event) }
+                    let registry = Unmanaged<TransformsHotkeyRegistry>
+                        .fromOpaque(refcon)
+                        .takeUnretainedValue()
+                    return registry.handleEvent(type: type, event: event)
+                },
+                userInfo: {
+                    let retained = Unmanaged.passRetained(self)
+                    self.retainedSelf = retained
+                    return retained.toOpaque()
+                }()
+            )
+        else {
             retainedSelf?.release()
             retainedSelf = nil
             let isTrusted = AXIsProcessTrusted()

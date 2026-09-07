@@ -3,38 +3,6 @@ import os
 @testable import MacParakeetCore
 @testable import MacParakeetViewModels
 
-private final class OnboardingTelemetrySpy: TelemetryServiceProtocol, @unchecked Sendable {
-    private let lock = NSLock()
-    private var events: [TelemetryEventSpec] = []
-
-    func send(_ event: TelemetryEventSpec) {
-        lock.lock()
-        events.append(event)
-        lock.unlock()
-    }
-
-    func sendAndFlush(_ event: TelemetryEventSpec) async -> Bool {
-        send(event)
-        return true
-    }
-
-    func flush() async {}
-
-    func clearQueue() {
-        lock.lock()
-        events.removeAll()
-        lock.unlock()
-    }
-
-    func flushForTermination() {}
-
-    func snapshot() -> [TelemetryEventSpec] {
-        lock.lock()
-        defer { lock.unlock() }
-        return events
-    }
-}
-
 private actor WhisperDownloadSpy {
     private var calls: [String] = []
     var error: Error?
@@ -248,99 +216,6 @@ final class OnboardingViewModelTests: XCTestCase {
         vm.refresh()
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertTrue(vm.canContinueFromCurrentStep())
-    }
-
-    func testAccessibilityDeniedTelemetryEmitsWhenPromptedUserDismissesStillUngranted() {
-        let telemetry = OnboardingTelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        let perms = MockPermissionService()
-        perms.accessibilityPermission = false
-        perms.requestAccessibilityResult = false
-        let stt = MockSTTClient()
-        let defaults = UserDefaults(suiteName: "com.macparakeet.tests.\(UUID().uuidString)")!
-
-        let vm = makeViewModel(permissionService: perms, sttClient: stt, defaults: defaults)
-        vm.jump(to: .accessibility)
-        vm.requestAccessibilityAccess()
-
-        XCTAssertFalse(vm.accessibilityGranted)
-        XCTAssertTrue(telemetry.snapshot().contains {
-            if case .permissionPrompted(let permission) = $0 { return permission == .accessibility }
-            return false
-        })
-        XCTAssertFalse(telemetry.snapshot().contains {
-            if case .permissionDenied = $0 { return true }
-            return false
-        }, "Accessibility should not emit denied immediately after prompting")
-
-        vm.markOnboardingDismissed()
-        vm.markOnboardingDismissed()
-
-        let deniedPermissions = telemetry.snapshot().compactMap { event -> TelemetryPermission? in
-            guard case .permissionDenied(let permission) = event else { return nil }
-            return permission
-        }
-        XCTAssertEqual(deniedPermissions, [.accessibility])
-    }
-
-    func testAccessibilityGrantTelemetryCanArriveOnRefreshAfterPrompt() {
-        let telemetry = OnboardingTelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        let perms = MockPermissionService()
-        perms.accessibilityPermission = false
-        perms.requestAccessibilityResult = false
-        let stt = MockSTTClient()
-        let defaults = UserDefaults(suiteName: "com.macparakeet.tests.\(UUID().uuidString)")!
-
-        let vm = makeViewModel(permissionService: perms, sttClient: stt, defaults: defaults)
-        vm.jump(to: .accessibility)
-        vm.requestAccessibilityAccess()
-
-        perms.accessibilityPermission = true
-        vm.refreshAccessibilityPermission()
-
-        let grantedPermissions = telemetry.snapshot().compactMap { event -> TelemetryPermission? in
-            guard case .permissionGranted(let permission) = event else { return nil }
-            return permission
-        }
-        XCTAssertEqual(grantedPermissions, [.accessibility])
-        XCTAssertFalse(telemetry.snapshot().contains {
-            if case .permissionDenied = $0 { return true }
-            return false
-        })
-    }
-
-    func testAccessibilityDismissRechecksBeforeDeniedTelemetry() {
-        let telemetry = OnboardingTelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        let perms = MockPermissionService()
-        perms.accessibilityPermission = false
-        perms.requestAccessibilityResult = false
-        let stt = MockSTTClient()
-        let defaults = UserDefaults(suiteName: "com.macparakeet.tests.\(UUID().uuidString)")!
-
-        let vm = makeViewModel(permissionService: perms, sttClient: stt, defaults: defaults)
-        vm.jump(to: .accessibility)
-        vm.requestAccessibilityAccess()
-
-        perms.accessibilityPermission = true
-        vm.markOnboardingDismissed()
-
-        let grantedPermissions = telemetry.snapshot().compactMap { event -> TelemetryPermission? in
-            guard case .permissionGranted(let permission) = event else { return nil }
-            return permission
-        }
-        XCTAssertEqual(grantedPermissions, [.accessibility])
-        XCTAssertFalse(telemetry.snapshot().contains {
-            if case .permissionDenied = $0 { return true }
-            return false
-        })
     }
 
     func testHotkeyRefreshChecksAccessibilityBeforePendingFullRefreshCompletes() async throws {
@@ -690,7 +565,7 @@ final class OnboardingViewModelTests: XCTestCase {
         XCTAssertEqual(vm.step, .welcome, "head-start fires while still on Welcome")
 
         vm.startEngineWarmUp()
-        try await Task.sleep(for: .milliseconds(100)) // let the background warm-up churn
+        try await Task.sleep(for: .milliseconds(100))  // let the background warm-up churn
 
         XCTAssertTrue(vm.engineBusy, "warm-up should track its own engineBusy")
         XCTAssertFalse(vm.isBusy, "the head-start download must not hold the permission isBusy flag")
@@ -713,7 +588,7 @@ final class OnboardingViewModelTests: XCTestCase {
 
         let vm = makeViewModel(permissionService: perms, sttClient: stt, defaults: defaults)
         vm.startEngineWarmUp()
-        try await Task.sleep(for: .milliseconds(100)) // let the warm-up reach in-flight
+        try await Task.sleep(for: .milliseconds(100))  // let the warm-up reach in-flight
         XCTAssertTrue(vm.engineBusy, "warm-up in flight should set engineBusy")
 
         // Window close mid-download tears observation down without a terminal state.
@@ -745,7 +620,7 @@ final class OnboardingViewModelTests: XCTestCase {
         // Reaching the engine step re-triggers the fallback call.
         vm.jump(to: .engine)
         vm.startEngineWarmUp()
-        try await Task.sleep(for: .milliseconds(50)) // window for an erroneous 2nd download
+        try await Task.sleep(for: .milliseconds(50))  // window for an erroneous 2nd download
 
         // Assert on backgroundWarmUp call-count, which the ViewModel uniquely
         // controls: warmUpCallCount alone is masked by the mock's own dedup
@@ -819,7 +694,8 @@ final class OnboardingViewModelTests: XCTestCase {
         }
         XCTAssertTrue(message.contains("boom"), "preserved failure should retain the original error")
         XCTAssertFalse(vm.engineBusy)
-        XCTAssertTrue(vm.canContinueFromCurrentStep(), "early-step navigation must not be blocked by hidden engine failure UI")
+        XCTAssertTrue(
+            vm.canContinueFromCurrentStep(), "early-step navigation must not be blocked by hidden engine failure UI")
         let backgroundWarmUpCount = await stt.backgroundWarmUpCallCountSnapshot()
 
         // Reaching the engine step must not silently retry over the preserved
@@ -830,7 +706,9 @@ final class OnboardingViewModelTests: XCTestCase {
 
         let backgroundWarmUpCountAfterEngineAppear = await stt.backgroundWarmUpCallCountSnapshot()
         XCTAssertEqual(backgroundWarmUpCountAfterEngineAppear, backgroundWarmUpCount)
-        guard case .failed = vm.engineState else { return XCTFail("engine step should still surface the preserved failure") }
+        guard case .failed = vm.engineState else {
+            return XCTFail("engine step should still surface the preserved failure")
+        }
     }
 
     /// Guard 2 (§5.2): the head-start must honor the Whisper fork for a CJK
@@ -884,45 +762,6 @@ final class OnboardingViewModelTests: XCTestCase {
         XCTAssertEqual(vm.step, .done, "the .engine -> .done transition completes the 6-step flow")
     }
 
-    func testEngineWarmUpUsesWhisperForCJKPreferredLanguageWhenModelIsCached() async throws {
-        let telemetry = OnboardingTelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        let perms = MockPermissionService()
-        let stt = MockSTTClient()
-        let suite = "com.macparakeet.tests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-
-        let vm = makeViewModel(
-            permissionService: perms,
-            sttClient: stt,
-            defaults: defaults,
-            isWhisperModelDownloaded: { true },
-            preferredLanguages: { ["ko-KR"] }
-        )
-        vm.jump(to: .engine)
-
-        vm.startEngineWarmUp()
-        try await Task.sleep(for: .milliseconds(120))
-
-        XCTAssertEqual(vm.whisperRecommendation?.languageCode, "ko")
-        XCTAssertEqual(vm.engineState, .ready)
-        XCTAssertEqual(SpeechEnginePreference.current(defaults: defaults), .whisper)
-        XCTAssertEqual(SpeechEnginePreference.whisperDefaultLanguage(defaults: defaults), "ko")
-        let switches = await stt.speechEngineSwitchesSnapshot()
-        let warmUpCallCount = await stt.warmUpCallCountSnapshot()
-        XCTAssertEqual(switches, [.whisper])
-        XCTAssertEqual(warmUpCallCount, 0)
-
-        let settings = telemetry.snapshot().compactMap { event -> TelemetrySettingName? in
-            guard case .settingChanged(let setting, _) = event else { return nil }
-            return setting
-        }
-        XCTAssertEqual(settings, [.whisperDefaultLanguage])
-    }
-
     func testEngineWarmUpPreparesDiarizationModelsOnCJKWhisperPath() async throws {
         let perms = MockPermissionService()
         let stt = MockSTTClient()
@@ -949,54 +788,6 @@ final class OnboardingViewModelTests: XCTestCase {
         let prepared = await diarization.prepareModelsCalled
         XCTAssertTrue(prepared)
         XCTAssertEqual(vm.engineState, .ready)
-    }
-
-    func testEngineWarmUpDownloadsWhisperForCJKPreferredLanguageWhenMissing() async throws {
-        let telemetry = OnboardingTelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        let perms = MockPermissionService()
-        let stt = MockSTTClient()
-        let downloadSpy = WhisperDownloadSpy()
-        let suite = "com.macparakeet.tests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-
-        let vm = makeViewModel(
-            permissionService: perms,
-            sttClient: stt,
-            defaults: defaults,
-            isWhisperModelDownloaded: { false },
-            downloadWhisperModel: { model, progress in
-                try await downloadSpy.download(model: model, onProgress: progress)
-            },
-            preferredLanguages: { ["ja-JP"] }
-        )
-        vm.jump(to: .engine)
-
-        vm.startEngineWarmUp()
-        try await Task.sleep(for: .milliseconds(160))
-
-        XCTAssertEqual(vm.engineState, .ready)
-        let downloads = await downloadSpy.snapshot()
-        XCTAssertEqual(downloads, [SpeechEnginePreference.defaultWhisperModelVariant])
-        XCTAssertEqual(SpeechEnginePreference.current(defaults: defaults), .whisper)
-        XCTAssertEqual(SpeechEnginePreference.whisperDefaultLanguage(defaults: defaults), "ja")
-
-        let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains {
-            if case .modelDownloadStarted(let modelKind, let speechEngine, _) = $0 {
-                return modelKind == .whisperSTT && speechEngine == .whisper
-            }
-            return false
-        })
-        XCTAssertTrue(events.contains {
-            if case .modelDownloadCompleted(_, let modelKind, let speechEngine, _) = $0 {
-                return modelKind == .whisperSTT && speechEngine == .whisper
-            }
-            return false
-        })
     }
 
     func testEngineWarmUpFailsWhisperPreflightWhenCJKLocaleAndOffline() async throws {
@@ -1085,179 +876,6 @@ final class OnboardingViewModelTests: XCTestCase {
         XCTAssertTrue(vm.hasCompletedOnboarding)
     }
 
-    func testOnboardingCompletionTelemetryIncludesDuration() {
-        let telemetry = OnboardingTelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        let perms = MockPermissionService()
-        let stt = MockSTTClient()
-        let suite = "com.macparakeet.tests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        let clock = OnboardingTestClock(Date(timeIntervalSince1970: 100))
-
-        let vm = makeViewModel(
-            permissionService: perms,
-            sttClient: stt,
-            defaults: defaults,
-            now: { clock.now() }
-        )
-        clock.set(Date(timeIntervalSince1970: 142.5))
-
-        _ = vm.markOnboardingCompleted()
-
-        let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains {
-            guard case .onboardingStep(let step, let action, let elapsedSeconds, let stepIndex, let totalSteps, let engineState) = $0 else {
-                return false
-            }
-            return step == "ready"
-                && action == .completed
-                && elapsedSeconds == 42.5
-                && stepIndex == 6
-                && totalSteps == 6
-                && engineState == nil
-        })
-        XCTAssertTrue(events.contains {
-            guard case .onboardingCompleted(let durationSeconds) = $0 else { return false }
-            return durationSeconds == 42.5
-        })
-    }
-
-    func testOnboardingCompletionTelemetryIsIdempotentForCurrentRun() {
-        let telemetry = OnboardingTelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        let perms = MockPermissionService()
-        let stt = MockSTTClient()
-        let suite = "com.macparakeet.tests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        let clock = OnboardingTestClock(Date(timeIntervalSince1970: 100))
-
-        let vm = makeViewModel(
-            permissionService: perms,
-            sttClient: stt,
-            defaults: defaults,
-            now: { clock.now() }
-        )
-        clock.set(Date(timeIntervalSince1970: 120))
-        let first = vm.markOnboardingCompleted()
-        clock.set(Date(timeIntervalSince1970: 160))
-        let second = vm.markOnboardingCompleted()
-
-        XCTAssertEqual(first.completedAt, second.completedAt)
-        let completionEvents = telemetry.snapshot().filter {
-            if case .onboardingCompleted = $0 { return true }
-            return false
-        }
-        let completedSteps = telemetry.snapshot().filter {
-            guard case .onboardingStep(_, let action, _, _, _, _) = $0 else { return false }
-            return action == .completed
-        }
-        XCTAssertEqual(completionEvents.count, 1)
-        XCTAssertEqual(completedSteps.count, 1)
-    }
-
-    func testResetOnboardingRestartsTelemetryRunState() {
-        let telemetry = OnboardingTelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        let perms = MockPermissionService()
-        let stt = MockSTTClient()
-        let suite = "com.macparakeet.tests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        let clock = OnboardingTestClock(Date(timeIntervalSince1970: 100))
-
-        let vm = makeViewModel(
-            permissionService: perms,
-            sttClient: stt,
-            defaults: defaults,
-            now: { clock.now() }
-        )
-        vm.markOnboardingShown()
-        clock.set(Date(timeIntervalSince1970: 120))
-        _ = vm.markOnboardingCompleted()
-
-        clock.set(Date(timeIntervalSince1970: 200))
-        vm.resetOnboarding()
-        vm.markOnboardingShown()
-        clock.set(Date(timeIntervalSince1970: 230))
-        _ = vm.markOnboardingCompleted()
-
-        let shownSteps = telemetry.snapshot().compactMap { event -> Double? in
-            guard case .onboardingStep(_, let action, let elapsedSeconds, _, _, _) = event,
-                  action == .viewed
-            else { return nil }
-            return elapsedSeconds
-        }
-        let completionDurations = telemetry.snapshot().compactMap { event -> Double? in
-            guard case .onboardingCompleted(let durationSeconds) = event else { return nil }
-            return durationSeconds
-        }
-
-        XCTAssertEqual(shownSteps, [0, 0])
-        XCTAssertEqual(completionDurations, [20, 30])
-    }
-
-    func testOnboardingNavigationTelemetryCapturesActionsAndStepIndexes() {
-        let telemetry = OnboardingTelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        let perms = MockPermissionService()
-        let stt = MockSTTClient()
-        let suite = "com.macparakeet.tests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        let clock = OnboardingTestClock(Date(timeIntervalSince1970: 10))
-
-        let vm = makeViewModel(
-            permissionService: perms,
-            sttClient: stt,
-            defaults: defaults,
-            now: { clock.now() }
-        )
-
-        vm.markOnboardingShown()
-        clock.set(Date(timeIntervalSince1970: 12))
-        vm.goNext()
-        clock.set(Date(timeIntervalSince1970: 15))
-        vm.goBack()
-        clock.set(Date(timeIntervalSince1970: 18))
-        vm.markOnboardingDismissed()
-
-        let steps = telemetry.snapshot().compactMap { event -> (String, TelemetryOnboardingAction, Double?, Int?, Int?)? in
-            guard case .onboardingStep(let step, let action, let elapsedSeconds, let stepIndex, let totalSteps, _) = event else {
-                return nil
-            }
-            return (step, action, elapsedSeconds, stepIndex, totalSteps)
-        }
-
-        XCTAssertEqual(steps.count, 4)
-        XCTAssertEqual(steps[0].0, "welcome")
-        XCTAssertEqual(steps[0].1, .viewed)
-        XCTAssertEqual(steps[0].2, 0)
-        XCTAssertEqual(steps[0].3, 1)
-        XCTAssertEqual(steps[0].4, 6)
-        XCTAssertEqual(steps[1].0, "microphone")
-        XCTAssertEqual(steps[1].1, .forward)
-        XCTAssertEqual(steps[1].2, 2)
-        XCTAssertEqual(steps[1].3, 2)
-        XCTAssertEqual(steps[2].0, "welcome")
-        XCTAssertEqual(steps[2].1, .back)
-        XCTAssertEqual(steps[2].2, 5)
-        XCTAssertEqual(steps[2].3, 1)
-        XCTAssertEqual(steps[3].0, "welcome")
-        XCTAssertEqual(steps[3].1, .dismissed)
-        XCTAssertEqual(steps[3].2, 8)
-        XCTAssertEqual(steps[3].3, 1)
-    }
-
     func testEngineWarmUpWithProgressPhases() async throws {
         let perms = MockPermissionService()
         let stt = MockSTTClient()
@@ -1280,10 +898,15 @@ final class OnboardingViewModelTests: XCTestCase {
     }
 
     func testParseProgressFractionFromPercentage() {
-        XCTAssertEqual(OnboardingProgressParser.parseProgressFraction(from: "Downloading speech model (571 MB)... 45%"), 0.45)
-        XCTAssertEqual(OnboardingProgressParser.parseProgressFraction(from: "Downloading speech model (571 MB)... 0%"), 0.0)
-        XCTAssertEqual(OnboardingProgressParser.parseProgressFraction(from: "Downloading speech model (571 MB)... 100%"), 1.0)
-        XCTAssertEqual(OnboardingProgressParser.parseProgressFraction(from: "Speech model: Downloading speech model... 60% (3/5)"), 0.6)
+        XCTAssertEqual(
+            OnboardingProgressParser.parseProgressFraction(from: "Downloading speech model (571 MB)... 45%"), 0.45)
+        XCTAssertEqual(
+            OnboardingProgressParser.parseProgressFraction(from: "Downloading speech model (571 MB)... 0%"), 0.0)
+        XCTAssertEqual(
+            OnboardingProgressParser.parseProgressFraction(from: "Downloading speech model (571 MB)... 100%"), 1.0)
+        XCTAssertEqual(
+            OnboardingProgressParser.parseProgressFraction(from: "Speech model: Downloading speech model... 60% (3/5)"),
+            0.6)
     }
 
     func testParseProgressFractionReturnsNilForNonPercentage() {
@@ -1312,7 +935,8 @@ final class OnboardingViewModelTests: XCTestCase {
         vm.startEngineWarmUp()
         try await Task.sleep(for: .milliseconds(200))
 
-        XCTAssertEqual(vm.engineState, .failed(message: STTError.engineStartFailed("warm-up failed").localizedDescription))
+        XCTAssertEqual(
+            vm.engineState, .failed(message: STTError.engineStartFailed("warm-up failed").localizedDescription))
         let sttCalls = await stt.warmUpCallCount
         XCTAssertEqual(sttCalls, 1)
     }
@@ -1428,7 +1052,7 @@ final class OnboardingViewModelTests: XCTestCase {
             permissionService: perms,
             sttClient: stt,
             defaults: defaults,
-            availableDiskBytes: { 1_024 * 1_024 * 1_024 }, // 1 GB
+            availableDiskBytes: { 1_024 * 1_024 * 1_024 },  // 1 GB
             isSpeechModelCached: { false }
         )
         vm.jump(to: .engine)

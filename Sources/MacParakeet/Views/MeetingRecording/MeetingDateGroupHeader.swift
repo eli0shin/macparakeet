@@ -49,7 +49,8 @@ struct MeetingDateGroupHeader: View {
             comps.day = 1
             guard let date = calendar.date(from: comps) else { return "" }
             let nowYear = calendar.component(.year, from: Date())
-            let formatter = (year == nowYear)
+            let formatter =
+                (year == nowYear)
                 ? Self.monthFormatterCurrentYear
                 : Self.monthFormatterWithYear
             return formatter.string(from: date)

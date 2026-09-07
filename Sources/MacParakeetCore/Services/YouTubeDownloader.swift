@@ -380,10 +380,12 @@ public actor YouTubeDownloader {
 
     nonisolated static func removeDownloadArtifacts(in directory: URL, uuid: String) {
         let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: nil
-        ) else {
+        guard
+            let files = try? fm.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil
+            )
+        else {
             return
         }
 
@@ -443,7 +445,8 @@ public actor YouTubeDownloader {
     }
 
     nonisolated static func selectDownloadedAudioFile(from fileNames: [String], uuid: String) -> String? {
-        let candidates = fileNames
+        let candidates =
+            fileNames
             .filter { $0.hasPrefix(uuid) }
             .filter { !isYtDlpTemporaryArtifact($0) }
 
@@ -521,13 +524,14 @@ public actor YouTubeDownloader {
         guard let raw else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.count == 10,
-           trimmed[trimmed.index(trimmed.startIndex, offsetBy: 4)] == "-",
-           trimmed[trimmed.index(trimmed.startIndex, offsetBy: 7)] == "-"
+            trimmed[trimmed.index(trimmed.startIndex, offsetBy: 4)] == "-",
+            trimmed[trimmed.index(trimmed.startIndex, offsetBy: 7)] == "-"
         {
             return trimmed
         }
         guard trimmed.count == 8,
-              trimmed.allSatisfy({ $0 >= "0" && $0 <= "9" }) else {
+            trimmed.allSatisfy({ $0 >= "0" && $0 <= "9" })
+        else {
             return nil
         }
         let yearEnd = trimmed.index(trimmed.startIndex, offsetBy: 4)
@@ -537,7 +541,8 @@ public actor YouTubeDownloader {
 
     private nonisolated static func normalizedFileNamePart(_ value: String?) -> String? {
         guard let value else { return nil }
-        let normalized = value
+        let normalized =
+            value
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
@@ -547,7 +552,8 @@ public actor YouTubeDownloader {
     private nonisolated static func sanitizedReadableStem(_ raw: String) -> String {
         var disallowed = CharacterSet(charactersIn: "/:\\\"")
         disallowed.formUnion(.controlCharacters)
-        let cleaned = raw
+        let cleaned =
+            raw
             .components(separatedBy: disallowed)
             .joined(separator: " ")
             .components(separatedBy: .whitespacesAndNewlines)
@@ -559,7 +565,8 @@ public actor YouTubeDownloader {
     }
 
     private nonisolated static func normalizedFileExtension(_ fileExtension: String) -> String {
-        let normalized = fileExtension
+        let normalized =
+            fileExtension
             .trimmingCharacters(in: CharacterSet(charactersIn: ".").union(.whitespacesAndNewlines))
             .lowercased()
         return normalized.isEmpty ? "m4a" : normalized
@@ -724,20 +731,22 @@ public actor YouTubeDownloader {
 
         let normalized = trimmed.lowercased()
         if normalized.contains("no supported javascript runtime could be found") {
-            return "No supported JavaScript runtime found for media extraction. Install Node.js (recommended) or Deno and retry."
+            return
+                "No supported JavaScript runtime found for media extraction. Install Node.js (recommended) or Deno and retry."
         }
 
         if normalized.contains("ffmpeg") && normalized.contains("not found") {
             return "FFmpeg is missing or inaccessible for this runtime."
         }
 
-        let lines = trimmed
+        let lines =
+            trimmed
             .split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
         func sanitized(_ value: String) -> String {
-            String(TelemetryErrorClassifier.sanitize(value).prefix(512))
+            String(DiagnosticErrorClassifier.sanitize(value).prefix(512))
         }
 
         if let errorLine = lines.first(where: { $0.localizedCaseInsensitiveContains("error:") }) {
@@ -808,10 +817,11 @@ public actor YouTubeDownloader {
         env["PATH"] = Self.extendedPATH()
         process.environment = env
 
-        process.arguments = Self.commonYtDlpArguments(
-            ffmpegDir: try ffmpegDirectory(),
-            javaScriptRuntimeArguments: javaScriptRuntimeArguments()
-        ) + arguments
+        process.arguments =
+            Self.commonYtDlpArguments(
+                ffmpegDir: try ffmpegDirectory(),
+                javaScriptRuntimeArguments: javaScriptRuntimeArguments()
+            ) + arguments
         process.standardOutput = captureStdout ? stdoutHandle : FileHandle.nullDevice
         process.standardError = stderrHandle
 

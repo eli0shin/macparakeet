@@ -6,7 +6,7 @@ public enum AIFormatterProfileRepositoryError: Error, LocalizedError, Equatable 
     case missingBundleIdentifier
     case missingCategory
     case duplicateExactApp(String)
-    case duplicateCategory(TelemetryAppCategory)
+    case duplicateCategory(AppCategory)
 
     public var errorDescription: String? {
         switch self {
@@ -128,7 +128,8 @@ public final class AIFormatterProfileRepository: AIFormatterProfileRepositoryPro
         excluding id: UUID,
         db: Database
     ) throws {
-        let count = try AIFormatterProfile
+        let count =
+            try AIFormatterProfile
             .filter(AIFormatterProfile.Columns.targetKind == AIFormatterProfileTargetKind.bundle.rawValue)
             .filter(AIFormatterProfile.Columns.bundleIdentifier == bundleIdentifier)
             .filter(AIFormatterProfile.Columns.id != id)
@@ -139,11 +140,12 @@ public final class AIFormatterProfileRepository: AIFormatterProfileRepositoryPro
     }
 
     private func assertNoDuplicateCategory(
-        _ category: TelemetryAppCategory,
+        _ category: AppCategory,
         excluding id: UUID,
         db: Database
     ) throws {
-        let count = try AIFormatterProfile
+        let count =
+            try AIFormatterProfile
             .filter(AIFormatterProfile.Columns.targetKind == AIFormatterProfileTargetKind.category.rawValue)
             .filter(AIFormatterProfile.Columns.appCategory == category.rawValue)
             .filter(AIFormatterProfile.Columns.id != id)

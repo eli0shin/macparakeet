@@ -19,9 +19,12 @@ enum BrandGlyphImage {
         // SPM `.process` flattens resource subdirectories, so the marks (authored
         // under Resources/BrandGlyphs/) resolve by basename at the bundle root.
         for platform in MediaPlatform.allCases {
-            guard let url = Bundle.module.url(forResource: resourceName(for: platform),
-                                              withExtension: "pdf"),
-                  let image = NSImage(contentsOf: url) else { continue }
+            guard
+                let url = Bundle.module.url(
+                    forResource: resourceName(for: platform),
+                    withExtension: "pdf"),
+                let image = NSImage(contentsOf: url)
+            else { continue }
             image.isTemplate = true
             images[platform] = image
         }

@@ -66,7 +66,7 @@ func findQuickPrompt(idOrLabel: String, repo: QuickPromptRepository) throws -> Q
 private func quickPromptUUIDPrefixSearchKey(_ value: String) -> String? {
     let lowered = value.lowercased()
     guard lowered.count >= 4,
-          lowered.allSatisfy({ $0 == "-" || $0.isHexDigit })
+        lowered.allSatisfy({ $0 == "-" || $0.isHexDigit })
     else { return nil }
     return lowered
 }
@@ -74,8 +74,8 @@ private func quickPromptUUIDPrefixSearchKey(_ value: String) -> String? {
 private func quickPromptShortPrefixErrorIfApplicable(_ value: String) -> CLILookupError? {
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty,
-          trimmed.count < 4,
-          trimmed.allSatisfy({ $0 == "-" || $0.isHexDigit })
+        trimmed.count < 4,
+        trimmed.allSatisfy({ $0 == "-" || $0.isHexDigit })
     else { return nil }
     return .shortUUIDPrefix(minimumLength: 4)
 }
@@ -106,7 +106,8 @@ enum QuickPromptCLIError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .cannotDeleteBuiltIn(let label):
-            return "Cannot delete built-in quick prompt '\(label)'. Use `quick-prompts set <id> --hidden` to hide it instead."
+            return
+                "Cannot delete built-in quick prompt '\(label)'. Use `quick-prompts set <id> --hidden` to hide it instead."
         case .deleteFailed(let label):
             return "Delete failed for quick prompt '\(label)'."
         case .emptyBody:
@@ -363,7 +364,9 @@ extension QuickPromptsCommand {
                 throw ValidationError("--prompt must not be empty")
             }
             if label == nil && prompt == nil && group == nil && sortOrder == nil && !visible && !hidden {
-                throw ValidationError("specify at least one field to change (--label / --prompt / --group / --sort-order / --visible / --hidden)")
+                throw ValidationError(
+                    "specify at least one field to change (--label / --prompt / --group / --sort-order / --visible / --hidden)"
+                )
             }
         }
 
@@ -389,7 +392,7 @@ extension QuickPromptsCommand {
                     p.sortOrder = sortOrder
                 }
                 if visible { p.isVisible = true }
-                if hidden  { p.isVisible = false }
+                if hidden { p.isVisible = false }
 
                 p.updatedAt = Date()
                 try repo.save(p)
@@ -650,7 +653,11 @@ extension QuickPromptsCommand {
         @Argument(help: "Path to the bundle JSON file.")
         var path: String
 
-        @Option(name: .long, help: "Import mode: merge (default; UPSERT by id, preserve untouched rows) or replace (wipe customs, re-seed built-ins, then apply).")
+        @Option(
+            name: .long,
+            help:
+                "Import mode: merge (default; UPSERT by id, preserve untouched rows) or replace (wipe customs, re-seed built-ins, then apply)."
+        )
         var mode: ModeArg = .merge
 
         @Flag(name: .long, help: "Show planned changes without writing.")
@@ -669,7 +676,7 @@ extension QuickPromptsCommand {
             case merge, replace
             var domain: QuickPromptImport.Mode {
                 switch self {
-                case .merge:   return .merge
+                case .merge: return .merge
                 case .replace: return .replace
                 }
             }
@@ -702,7 +709,8 @@ extension QuickPromptsCommand {
                 }
 
                 if mode.domain == .replace && !yes && !json && !dryRun {
-                    let banner = "About to delete all custom quick prompts and re-seed built-ins, then apply \(bundle.prompts.count) prompt(s) from '\(path)'."
+                    let banner =
+                        "About to delete all custom quick prompts and re-seed built-ins, then apply \(bundle.prompts.count) prompt(s) from '\(path)'."
                     printErr(banner)
                     printErr("Type 'yes' to continue, anything else to abort:")
                     let response = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
@@ -742,7 +750,9 @@ extension QuickPromptsCommand {
                     try printJSON(result)
                 } else {
                     let prefix = dryRun ? "[dry-run] " : ""
-                    print("\(prefix)added: \(summary.added), updated: \(summary.updated), deleted: \(summary.deleted), unchanged: \(summary.unchanged)")
+                    print(
+                        "\(prefix)added: \(summary.added), updated: \(summary.updated), deleted: \(summary.deleted), unchanged: \(summary.unchanged)"
+                    )
                 }
             }
         }

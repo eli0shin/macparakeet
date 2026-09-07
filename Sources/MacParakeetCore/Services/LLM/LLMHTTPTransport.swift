@@ -65,7 +65,8 @@ enum LLMHTTPErrorMapper {
         if let errorBody = try? JSONDecoder().decode(OpenAIErrorResponse.self, from: data) {
             rawMessage = errorBody.error.message
         } else if let geminiArray = try? JSONDecoder().decode([GeminiErrorWrapper].self, from: data),
-                  let first = geminiArray.first {
+            let first = geminiArray.first
+        {
             rawMessage = first.error.message
         } else {
             rawMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
@@ -75,7 +76,7 @@ enum LLMHTTPErrorMapper {
         // request shape (or fragments of it) in their error responses; if a
         // misconfigured request leaked an Authorization header, sk-... key,
         // or `api-key=...` query param, the message would otherwise carry
-        // those tokens into Swift error chains, telemetry, logs, and the
+        // those tokens into Swift error chains, logs, and the
         // user-visible UI.
         let message = scrubAPIKeyArtifacts(from: rawMessage)
 
@@ -106,7 +107,8 @@ enum LLMHTTPErrorMapper {
         if lowered.contains("context")
             || lowered.contains("tokens to keep")
             || lowered.contains("too many tokens")
-            || lowered.contains("maximum number of tokens") {
+            || lowered.contains("maximum number of tokens")
+        {
             return .contextTooLong
         }
         if lowered.contains("rate limit") || lowered.contains("rate_limit") {
@@ -114,18 +116,20 @@ enum LLMHTTPErrorMapper {
         }
         if lowered.contains("unauthorized")
             || lowered.contains("authentication")
-            || lowered.contains("api key") {
+            || lowered.contains("api key")
+        {
             return .authenticationFailed(message)
         }
         if lowered.contains("model")
-            && (lowered.contains("not found") || lowered.contains("does not exist")) {
+            && (lowered.contains("not found") || lowered.contains("does not exist"))
+        {
             return .modelNotFound(message)
         }
         return .streamingError(message)
     }
 
     /// Strips obvious API-key artifacts from a provider error message before
-    /// it propagates into Swift errors / telemetry / logs / UI. Intended to
+    /// it propagates into Swift errors, logs, and UI. Intended to
     /// be idempotent and conservative -- false negatives are acceptable;
     /// false positives that mask the actual error message are not. Patterns:
     /// - `sk-...` and `sk-proj-...` style OpenAI / Anthropic keys
@@ -207,21 +211,24 @@ enum LLMHTTPStreamCompletionPolicy {
 enum LLMHTTPModelCatalog {
     static func modelsURL(for config: LLMProviderConfig) -> URL {
         if config.id.modelListEndpoint == .anthropic,
-           let url = urlByAppendingQueryItems(
-            [URLQueryItem(name: "limit", value: "1000")],
-            to: config.baseURL.appendingPathComponent("models")
-           ) {
+            let url = urlByAppendingQueryItems(
+                [URLQueryItem(name: "limit", value: "1000")],
+                to: config.baseURL.appendingPathComponent("models")
+            )
+        {
             return url
         }
         if config.id.modelListEndpoint == .gemini,
-           let url = geminiModelsURL(from: config.baseURL, apiKey: config.apiKey) {
+            let url = geminiModelsURL(from: config.baseURL, apiKey: config.apiKey)
+        {
             return url
         }
         if config.id == .openrouter,
-           let url = urlByAppendingQueryItems(
-            [URLQueryItem(name: "output_modalities", value: "text")],
-            to: config.baseURL.appendingPathComponent("models")
-           ) {
+            let url = urlByAppendingQueryItems(
+                [URLQueryItem(name: "output_modalities", value: "text")],
+                to: config.baseURL.appendingPathComponent("models")
+            )
+        {
             return url
         }
         return config.baseURL.appendingPathComponent("models")
@@ -323,7 +330,8 @@ enum LLMHTTPModelCatalog {
     private static func supportsTextInputOutput(_ architecture: ModelsListResponse.ModelArchitecture?) -> Bool {
         guard let architecture else { return true }
         if let inputModalities = architecture.input_modalities?.map({ $0.lowercased() }),
-           !inputModalities.contains("text") {
+            !inputModalities.contains("text")
+        {
             return false
         }
         if let outputModalities = architecture.output_modalities?.map({ $0.lowercased() }) {
@@ -409,18 +417,21 @@ struct StreamErrorResponse: Decodable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         if let message = try? container.decode(String.self, forKey: .message),
-           !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
             error = message
             return
         }
         if let errorMessage = try? container.decode(String.self, forKey: .error),
-           !errorMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            !errorMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
             error = errorMessage
             return
         }
         if let errorObject = try? container.decode(ErrorObject.self, forKey: .error),
-           let message = errorObject.message,
-           !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let message = errorObject.message,
+            !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
             error = message
             return
         }

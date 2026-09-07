@@ -179,8 +179,9 @@ public actor CalendarService {
         // non-optional `CalendarEvent.id` crashed (SIGTRAP); drop the event
         // instead — without a stable identifier we can't track it anyway.
         guard let startDate = ekEvent.startDate,
-              let endDate = ekEvent.endDate,
-              let id = ekEvent.eventIdentifier else {
+            let endDate = ekEvent.endDate,
+            let id = ekEvent.eventIdentifier
+        else {
             return nil
         }
 
@@ -281,5 +282,6 @@ public enum CalendarError: Error, LocalizedError {
 
 public extension CalendarService {
     /// Deep-link to the Calendar privacy pane in System Settings.
-    nonisolated static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!
+    nonisolated static let settingsURL = URL(
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!
 }

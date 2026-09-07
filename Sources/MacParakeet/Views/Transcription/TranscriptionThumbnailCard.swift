@@ -28,7 +28,8 @@ struct TranscriptionThumbnailCard<MenuContent: View>: View {
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Layout.cardCornerRadius)
                     .strokeBorder(
-                        isSelected ? DesignSystem.Colors.accent.opacity(0.72) : DesignSystem.Colors.border.opacity(0.75),
+                        isSelected
+                            ? DesignSystem.Colors.accent.opacity(0.72) : DesignSystem.Colors.border.opacity(0.75),
                         lineWidth: isSelected ? 1.25 : 0.5
                     )
             )
@@ -58,7 +59,8 @@ struct TranscriptionThumbnailCard<MenuContent: View>: View {
         .onAppear {
             // If not locally cached, trigger background download so it's cached for next render
             if sharedThumbnailCache.cachedThumbnail(for: transcription.id) == nil,
-               let urlString = transcription.thumbnailURL {
+                let urlString = transcription.thumbnailURL
+            {
                 let id = transcription.id
                 Task.detached(priority: .utility) {
                     _ = try? await ThumbnailCacheService.shared.downloadThumbnail(from: urlString, for: id)
@@ -162,7 +164,8 @@ struct TranscriptionThumbnailCard<MenuContent: View>: View {
     @ViewBuilder
     private var thumbnailContent: some View {
         if let cached = sharedThumbnailCache.cachedThumbnail(for: transcription.id),
-           let nsImage = NSImage(contentsOf: cached) {
+            let nsImage = NSImage(contentsOf: cached)
+        {
             // Locally cached thumbnail (YouTube download or local video frame)
             Image(nsImage: nsImage)
                 .resizable()
@@ -191,7 +194,8 @@ struct TranscriptionThumbnailCard<MenuContent: View>: View {
         }
         // Derive from YouTube video ID
         if let sourceURL = transcription.sourceURL,
-           let videoID = YouTubeURLValidator.extractVideoID(sourceURL) {
+            let videoID = YouTubeURLValidator.extractVideoID(sourceURL)
+        {
             return URL(string: "https://i.ytimg.com/vi/\(videoID)/hqdefault.jpg")
         }
         return nil
@@ -285,7 +289,9 @@ struct TranscriptionThumbnailCard<MenuContent: View>: View {
             }
 
             let match = String(remainder[range])
-            result = result + Text(match)
+            result =
+                result
+                + Text(match)
                 .bold()
 
             remainder = remainder[range.upperBound...]

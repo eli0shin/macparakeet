@@ -90,7 +90,7 @@ final class ExportCommandTests: XCTestCase {
                     endMs: 900,
                     confidence: 0.9,
                     speakerId: "system:S1"
-                )
+                ),
             ],
             status: .completed,
             sourceType: .meeting

@@ -31,7 +31,8 @@ final class CancelFlowTests: XCTestCase {
         // Start recording
         try await dictationService.startRecording()
         let state = await dictationService.state
-        if case .recording = state {} else {
+        if case .recording = state {
+        } else {
             XCTFail("Expected recording state, got \(state)")
         }
 
@@ -61,10 +62,12 @@ final class CancelFlowTests: XCTestCase {
 
         // Verify state is cancelled (before the idle reset timer fires)
         let state = await dictationService.state
-        if case .cancelled = state {} else {
+        if case .cancelled = state {
+        } else {
             // State may have already transitioned to idle if the 5s timer elapsed,
             // but both cancelled and idle are valid post-cancel states
-            if case .idle = state {} else {
+            if case .idle = state {
+            } else {
                 XCTFail("Expected cancelled or idle state after cancel, got \(state)")
             }
         }
@@ -76,7 +79,8 @@ final class CancelFlowTests: XCTestCase {
             _ = try await dictationService.stopRecording()
             XCTFail("Should have thrown DictationServiceError.notRecording")
         } catch let error as DictationServiceError {
-            if case .notRecording = error {} else {
+            if case .notRecording = error {
+            } else {
                 XCTFail("Expected notRecording, got \(error)")
             }
         }
@@ -90,7 +94,8 @@ final class CancelFlowTests: XCTestCase {
 
         // Should still be in recording state
         let state = await dictationService.state
-        if case .recording = state {} else {
+        if case .recording = state {
+        } else {
             XCTFail("Expected recording state")
         }
     }
@@ -168,7 +173,8 @@ final class CancelFlowTests: XCTestCase {
 
         // State should be back to idle
         let state = await dictationService.state
-        if case .idle = state {} else {
+        if case .idle = state {
+        } else {
             XCTFail("Expected idle state after error recovery, got \(state)")
         }
 
@@ -176,7 +182,8 @@ final class CancelFlowTests: XCTestCase {
         await mockSTT.configure(result: STTResult(text: "Recovery works"))
         try await dictationService.startRecording()
         let newState = await dictationService.state
-        if case .recording = newState {} else {
+        if case .recording = newState {
+        } else {
             XCTFail("Expected recording state after recovery, got \(newState)")
         }
     }
@@ -189,7 +196,8 @@ final class CancelFlowTests: XCTestCase {
             try await dictationService.startRecording()
             XCTFail("Should have thrown")
         } catch let error as AudioProcessorError {
-            if case .microphonePermissionDenied = error {} else {
+            if case .microphonePermissionDenied = error {
+            } else {
                 XCTFail("Expected microphonePermissionDenied, got \(error)")
             }
         } catch {
@@ -197,7 +205,8 @@ final class CancelFlowTests: XCTestCase {
         }
 
         let state = await dictationService.state
-        if case .idle = state {} else {
+        if case .idle = state {
+        } else {
             XCTFail("Expected idle state after start error, got \(state)")
         }
     }
@@ -243,7 +252,8 @@ final class CancelFlowTests: XCTestCase {
         XCTAssertTrue(captureStopped, "Immediate discard should stop audio capture")
 
         let state = await dictationService.state
-        if case .idle = state {} else {
+        if case .idle = state {
+        } else {
             XCTFail("Expected idle state after immediate discard, got \(state)")
         }
 
@@ -256,7 +266,6 @@ final class CancelFlowTests: XCTestCase {
 
         let startTask = Task {
             try await self.dictationService.startRecording(
-                context: DictationTelemetryContext(),
                 sessionID: 2
             )
         }
@@ -270,7 +279,8 @@ final class CancelFlowTests: XCTestCase {
         XCTAssertFalse(captureStopped, "Stale cancel should not stop the new session's capture")
 
         let state = await dictationService.state
-        if case .recording = state {} else {
+        if case .recording = state {
+        } else {
             XCTFail("Expected recording state after stale cancel, got \(state)")
         }
 
@@ -287,7 +297,6 @@ final class CancelFlowTests: XCTestCase {
 
         // Session 1: start, then soft-cancel so undo is available.
         try await dictationService.startRecording(
-            context: DictationTelemetryContext(),
             sessionID: 1
         )
         await dictationService.cancelRecording()
@@ -304,7 +313,6 @@ final class CancelFlowTests: XCTestCase {
 
         // Session 2 starts during undo's settle window and takes over.
         try await dictationService.startRecording(
-            context: DictationTelemetryContext(),
             sessionID: 2
         )
 
@@ -313,7 +321,8 @@ final class CancelFlowTests: XCTestCase {
         _ = try await undoTask.value
 
         let state = await dictationService.state
-        if case .recording = state {} else {
+        if case .recording = state {
+        } else {
             XCTFail("Expected session 2 to remain recording after stale undo, got \(state)")
         }
 
@@ -329,7 +338,8 @@ final class CancelFlowTests: XCTestCase {
             _ = try await dictationService.stopRecording()
             XCTFail("Expected emptyTranscript error")
         } catch let error as DictationServiceError {
-            if case .emptyTranscript = error {} else {
+            if case .emptyTranscript = error {
+            } else {
                 XCTFail("Expected emptyTranscript, got \(error)")
             }
         } catch {

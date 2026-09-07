@@ -106,9 +106,10 @@ struct HotkeyRecorderView: View {
                     .font(.system(size: 14))
             }
             .menuStyle(.borderlessButton)
-            .help(trigger.isDisabled
-                ? "Hotkey options, including restoring the default shortcut or recording modifier-only shortcuts."
-                : "Advanced hotkey options, including resetting to default or recording modifier-only shortcuts.")
+            .help(
+                trigger.isDisabled
+                    ? "Hotkey options, including restoring the default shortcut or recording modifier-only shortcuts."
+                    : "Advanced hotkey options, including resetting to default or recording modifier-only shortcuts.")
         }
     }
 
@@ -191,11 +192,13 @@ struct HotkeyRecorderView: View {
 
                 if !heldModifiers.isEmpty {
                     // Chord: modifier(s) + key
-                    guard let candidate = Self.keyChordTrigger(
-                        modifiers: heldModifiers,
-                        keyCode: keyCode,
-                        captureMode: modifierCaptureMode
-                    ) else {
+                    guard
+                        let candidate = Self.keyChordTrigger(
+                            modifiers: heldModifiers,
+                            keyCode: keyCode,
+                            captureMode: modifierCaptureMode
+                        )
+                    else {
                         stopRecording()
                         validationMessage = Self.sideSpecificKeyChordMessage
                         validationIsBlocked = true
@@ -371,7 +374,8 @@ struct HotkeyRecorderView: View {
         flags: NSEvent.ModifierFlags
     ) -> [HotkeyTrigger.ModifierComponent] {
         let cgFlags = CGEventFlags(rawValue: UInt64(flags.rawValue))
-        let sideSpecificHeld: [HotkeyTrigger.ModifierComponent] = HotkeyTrigger.sideSpecificModifierKeyCodes.compactMap { keyCode in
+        let sideSpecificHeld: [HotkeyTrigger.ModifierComponent] = HotkeyTrigger.sideSpecificModifierKeyCodes.compactMap
+        { keyCode in
             guard ModifierKeyMatcher.sideSpecificModifierIsPressed(flags: cgFlags, keyCode: keyCode) else {
                 return nil
             }

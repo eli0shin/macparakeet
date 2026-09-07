@@ -98,7 +98,8 @@ struct FormatterVisualView: View {
                     )
                     .frame(width: size, height: size)
                     .shadow(
-                        color: DesignSystem.Colors.accent.opacity(0.32 * Double(petalScale) * (0.6 + 0.4 * Double(breath))),
+                        color: DesignSystem.Colors.accent.opacity(
+                            0.32 * Double(petalScale) * (0.6 + 0.4 * Double(breath))),
                         radius: size * 0.14
                     )
 

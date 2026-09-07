@@ -25,7 +25,7 @@ final class DictationServiceSessionTests: XCTestCase {
 
     func testStartRecordingAssignsSessionIDsMonotonically() async throws {
         let firstSessionID = session.reserveNextSessionID()
-        try await session.startRecording(sessionID: firstSessionID, context: DictationTelemetryContext())
+        try await session.startRecording(sessionID: firstSessionID)
         XCTAssertEqual(firstSessionID, 1)
         let currentAfterFirstStart = session.currentSessionID
         XCTAssertEqual(currentAfterFirstStart, 1)
@@ -33,7 +33,7 @@ final class DictationServiceSessionTests: XCTestCase {
         await session.confirmCancel(sessionID: firstSessionID)
 
         let secondSessionID = session.reserveNextSessionID()
-        try await session.startRecording(sessionID: secondSessionID, context: DictationTelemetryContext())
+        try await session.startRecording(sessionID: secondSessionID)
         XCTAssertEqual(secondSessionID, 2)
         let currentAfterSecondStart = session.currentSessionID
         XCTAssertEqual(currentAfterSecondStart, 2)
@@ -41,7 +41,7 @@ final class DictationServiceSessionTests: XCTestCase {
 
     func testConfirmCancelActsOnCurrentSession() async throws {
         let sessionID = session.reserveNextSessionID()
-        try await session.startRecording(sessionID: sessionID, context: DictationTelemetryContext())
+        try await session.startRecording(sessionID: sessionID)
 
         await session.confirmCancel(sessionID: sessionID)
 
@@ -49,14 +49,15 @@ final class DictationServiceSessionTests: XCTestCase {
         XCTAssertTrue(captureStopped)
 
         let state = await session.state
-        if case .idle = state {} else {
+        if case .idle = state {
+        } else {
             XCTFail("Expected idle state after confirm cancel, got \(state)")
         }
     }
 
     func testConfirmCancelUsesCapturedSessionIDInsteadOfLatestReservedSession() async throws {
         let firstSessionID = session.reserveNextSessionID()
-        try await session.startRecording(sessionID: firstSessionID, context: DictationTelemetryContext())
+        try await session.startRecording(sessionID: firstSessionID)
 
         _ = session.reserveNextSessionID()
         await session.confirmCancel(sessionID: firstSessionID)
@@ -76,7 +77,7 @@ final class DictationServiceSessionTests: XCTestCase {
 
         let firstSessionID = session.reserveNextSessionID()
         let firstStart = Task {
-            try await session.startRecording(sessionID: firstSessionID, context: DictationTelemetryContext())
+            try await session.startRecording(sessionID: firstSessionID)
         }
         await audio.waitForStartCall(1)
 
@@ -84,7 +85,7 @@ final class DictationServiceSessionTests: XCTestCase {
 
         let secondSessionID = session.reserveNextSessionID()
         let secondStart = Task {
-            try await session.startRecording(sessionID: secondSessionID, context: DictationTelemetryContext())
+            try await session.startRecording(sessionID: secondSessionID)
         }
         await audio.waitForStartCall(2)
 
@@ -102,7 +103,8 @@ final class DictationServiceSessionTests: XCTestCase {
         try await secondStart.value
 
         let state = await session.state
-        if case .recording = state {} else {
+        if case .recording = state {
+        } else {
             XCTFail("Expected replacement session to still be recording, got \(state)")
         }
     }
@@ -117,7 +119,6 @@ private actor DictationRaceAudioProcessor: AudioProcessorProtocol {
 
     var audioLevel: Float { 0 }
     var isRecording: Bool { recording }
-    var recordingDeviceInfo: RecordingDeviceInfo? { nil }
 
     func convert(fileURL: URL) async throws -> URL {
         fileURL

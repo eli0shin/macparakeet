@@ -228,7 +228,9 @@ final class TranscriptChatViewModelTests: XCTestCase {
 
     func testConfigureWithNilServiceStartsDisabled() {
         let vm = TranscriptChatViewModel()
-        vm.configure(llmService: nil, transcriptText: "Transcript", transcriptionRepo: mockRepo, conversationRepo: mockConversationRepo)
+        vm.configure(
+            llmService: nil, transcriptText: "Transcript", transcriptionRepo: mockRepo,
+            conversationRepo: mockConversationRepo)
         XCTAssertFalse(vm.canSendMessage)
     }
 
@@ -458,7 +460,8 @@ final class TranscriptChatViewModelTests: XCTestCase {
         try await Task.sleep(nanoseconds: 200_000_000)
 
         let historyUserMessages = mockService.lastChatHistory?.filter { $0.role == .user } ?? []
-        XCTAssertTrue(historyUserMessages.isEmpty, "First message history should be empty — question is passed separately")
+        XCTAssertTrue(
+            historyUserMessages.isEmpty, "First message history should be empty — question is passed separately")
         XCTAssertEqual(mockService.lastChatQuestion, "What happened?")
     }
 
@@ -1010,41 +1013,12 @@ final class TranscriptChatViewModelTests: XCTestCase {
         viewModel.regenerateLastResponse()
         try await Task.sleep(nanoseconds: 100_000_000)
 
-        XCTAssertEqual(mockService.chatCallCount, chatCallsBefore, "Regenerate must not re-issue when tail isn't an assistant turn")
+        XCTAssertEqual(
+            mockService.chatCallCount, chatCallsBefore, "Regenerate must not re-issue when tail isn't an assistant turn"
+        )
         XCTAssertEqual(viewModel.messages.count, 1)
     }
 
-    // MARK: - Chat source telemetry attribution
-
-    /// Default-constructed VMs are the post-transcription transcript chat
-    /// surface, so they pass `.transcriptChat` to the LLM service for
-    /// `llm_chat_used` attribution.
-    func testChatSourceDefaultsToTranscriptChat() async throws {
-        viewModel.loadTranscript("Transcript", transcriptionId: UUID())
-        mockService.streamTokens = ["hi"]
-        viewModel.inputText = "Q"
-        viewModel.sendMessage()
-        // Match the 200ms streaming-task settle used throughout this suite.
-        try await Task.sleep(nanoseconds: 200_000_000)
-
-        XCTAssertEqual(mockService.lastChatSource, .transcriptChat)
-    }
-
-    /// Once `markAsMeetingAskSurface()` flips the VM, every subsequent
-    /// chat call attributes to `.meetingAsk` — including post-meeting
-    /// continuation chats persisted to a conversation. This keeps the live
-    /// Ask telemetry intact even after the meeting finalizes.
-    func testChatSourceBecomesMeetingAskAfterFlip() async throws {
-        viewModel.markAsMeetingAskSurface()
-        viewModel.loadTranscript("Transcript", transcriptionId: UUID())
-        mockService.streamTokens = ["hi"]
-        viewModel.inputText = "Q"
-        viewModel.sendMessage()
-        // Match the 200ms streaming-task settle used throughout this suite.
-        try await Task.sleep(nanoseconds: 200_000_000)
-
-        XCTAssertEqual(mockService.lastChatSource, .meetingAsk)
-    }
 }
 
 /// Tiny @unchecked-Sendable string box used by the closure-reevaluation test.

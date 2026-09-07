@@ -14,7 +14,6 @@ final class EngineSettingsViewModelTests: XCTestCase {
     }
 
     override func tearDown() {
-        Telemetry.configure(NoOpTelemetryService())
         defaults.removePersistentDomain(forName: defaultsSuiteName)
         defaults = nil
         defaultsSuiteName = nil
@@ -71,9 +70,8 @@ final class EngineSettingsViewModelTests: XCTestCase {
         line: UInt = #line
     ) async throws {
         try await waitUntil(file: file, line: line) {
-            vm.nemotronModelStatus != .checking &&
-                vm.whisperModelStatus != .checking &&
-                vm.cohereModelStatus != .checking
+            vm.nemotronModelStatus != .checking && vm.whisperModelStatus != .checking
+                && vm.cohereModelStatus != .checking
         }
     }
 
@@ -89,7 +87,8 @@ final class EngineSettingsViewModelTests: XCTestCase {
         XCTAssertNil(defaults.string(forKey: SpeechEnginePreference.transcriptionDefaultsKey))
         XCTAssertEqual(vm.parakeetModelVariant, SpeechEnginePreference.parakeetModelVariant(defaults: defaults))
         XCTAssertEqual(vm.nemotronModelVariant, SpeechEnginePreference.nemotronModelVariant(defaults: defaults))
-        XCTAssertEqual(vm.whisperDefaultLanguage, SpeechEnginePreference.whisperDefaultLanguage(defaults: defaults) ?? "auto")
+        XCTAssertEqual(
+            vm.whisperDefaultLanguage, SpeechEnginePreference.whisperDefaultLanguage(defaults: defaults) ?? "auto")
         XCTAssertEqual(vm.whisperDefaultLanguage, "auto")
         XCTAssertEqual(vm.cohereComputePolicy, CohereTranscribeEngine.ComputePolicy.current(defaults: defaults))
         XCTAssertEqual(vm.cohereComputePolicy, .ane)

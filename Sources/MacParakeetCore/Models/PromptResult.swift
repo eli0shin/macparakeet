@@ -55,6 +55,7 @@ extension PromptResult: FetchableRecord, PersistableRecord {
     public static let databaseTableName = "summaries"
 
     public enum Columns: String, ColumnExpression {
-        case id, transcriptionId, promptName, promptContent, extraInstructions, content, userNotesSnapshot, createdAt, updatedAt
+        case id, transcriptionId, promptName, promptContent, extraInstructions, content, userNotesSnapshot, createdAt,
+            updatedAt
     }
 }

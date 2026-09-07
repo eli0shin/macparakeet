@@ -2512,10 +2512,7 @@ final class MeetingRecordingServiceTests: XCTestCase {
                 isUserDeletable: base.modelLifecycle.isUserDeletable,
                 minimumMemoryBytes: base.modelLifecycle.minimumMemoryBytes
             ),
-            telemetryIdentity: SpeechEngineTelemetryIdentity(
-                modelKind: base.telemetryIdentity.modelKind,
-                engineVariant: .fixed("dry-run-next-variant")
-            )
+            identity: SpeechEngineIdentity(engineVariant: .fixed("dry-run-next-variant"))
         )
     }
 

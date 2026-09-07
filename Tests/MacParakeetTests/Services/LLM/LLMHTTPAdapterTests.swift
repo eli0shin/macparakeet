@@ -288,9 +288,9 @@ final class LLMHTTPAdapterTests: XCTestCase {
     func testAnthropicAdapterRejectsStrictEOFMissingMessageStop() async throws {
         AdapterRequestURLProtocol.handler = { request in
             let body = """
-            data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}
+                data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}
 
-            """
+                """
             return (self.okResponse(for: request), Data(body.utf8))
         }
 
@@ -315,9 +315,9 @@ final class LLMHTTPAdapterTests: XCTestCase {
     func testOllamaAdapterAcceptsLenientEOFWithoutDoneAfterContent() async throws {
         AdapterRequestURLProtocol.handler = { request in
             let body = """
-            {"model":"qwen3.5:4b","message":{"role":"assistant","content":"Hello"},"done":false}
+                {"model":"qwen3.5:4b","message":{"role":"assistant","content":"Hello"},"done":false}
 
-            """
+                """
             return (self.okResponse(for: request), Data(body.utf8))
         }
 
@@ -354,9 +354,9 @@ final class LLMHTTPAdapterTests: XCTestCase {
     func testAnthropicAdapterCancelsStreamingRequestMidStream() async throws {
         let server = try StreamingHTTPServer(
             firstChunk: """
-            data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}
+                data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}
 
-            """
+                """
         )
         defer { server.stop() }
         let adapter = AnthropicLLMHTTPAdapter(transport: LLMHTTPTransport(session: .shared))
@@ -374,9 +374,9 @@ final class LLMHTTPAdapterTests: XCTestCase {
     func testOllamaAdapterCancelsStreamingRequestMidStream() async throws {
         let server = try StreamingHTTPServer(
             firstChunk: """
-            {"model":"qwen3.5:4b","message":{"role":"assistant","content":"Hello"},"done":false}
+                {"model":"qwen3.5:4b","message":{"role":"assistant","content":"Hello"},"done":false}
 
-            """
+                """
         )
         defer { server.stop() }
         let adapter = OllamaLLMHTTPAdapter(transport: LLMHTTPTransport(session: .shared))
@@ -432,21 +432,24 @@ final class LLMHTTPAdapterTests: XCTestCase {
     }
 
     private func validOpenAIResponseData() -> Data {
-        Data("""
-        {"model":"gpt-4o","choices":[{"message":{"content":"OK"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}
-        """.utf8)
+        Data(
+            """
+            {"model":"gpt-4o","choices":[{"message":{"content":"OK"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}
+            """.utf8)
     }
 
     private func validAnthropicResponseData() -> Data {
-        Data("""
-        {"model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hello!"}],"usage":{"input_tokens":10,"output_tokens":5},"stop_reason":"end_turn"}
-        """.utf8)
+        Data(
+            """
+            {"model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hello!"}],"usage":{"input_tokens":10,"output_tokens":5},"stop_reason":"end_turn"}
+            """.utf8)
     }
 
     private func validOllamaResponseData() -> Data {
-        Data("""
-        {"model":"qwen3.5:4b","message":{"role":"assistant","content":"OK"},"done":true,"done_reason":"stop","prompt_eval_count":5,"eval_count":1}
-        """.utf8)
+        Data(
+            """
+            {"model":"qwen3.5:4b","message":{"role":"assistant","content":"OK"},"done":true,"done_reason":"stop","prompt_eval_count":5,"eval_count":1}
+            """.utf8)
     }
 
     private func canonicalJSONBody(from request: URLRequest) throws -> String {
@@ -504,7 +507,8 @@ private final class StreamingHTTPServer: @unchecked Sendable {
         listener.start(queue: queue)
 
         guard ready.wait(timeout: .now() + 2) == .success,
-              let port = listener.port else {
+            let port = listener.port
+        else {
             throw URLError(.cannotConnectToHost)
         }
 
@@ -526,18 +530,20 @@ private final class StreamingHTTPServer: @unchecked Sendable {
 
         let chunkData = Data(firstChunk.utf8)
         let response = """
-        HTTP/1.1 200 OK\r
-        Content-Type: text/event-stream\r
-        Transfer-Encoding: chunked\r
-        Connection: keep-alive\r
-        \r
-        \(String(chunkData.count, radix: 16))\r
-        \(firstChunk)\r
-        """
+            HTTP/1.1 200 OK\r
+            Content-Type: text/event-stream\r
+            Transfer-Encoding: chunked\r
+            Connection: keep-alive\r
+            \r
+            \(String(chunkData.count, radix: 16))\r
+            \(firstChunk)\r
+            """
 
-        connection.send(content: Data(response.utf8), completion: .contentProcessed { [weak self] _ in
-            self?.observeClose(on: connection)
-        })
+        connection.send(
+            content: Data(response.utf8),
+            completion: .contentProcessed { [weak self] _ in
+                self?.observeClose(on: connection)
+            })
     }
 
     private func observeClose(on connection: NWConnection) {

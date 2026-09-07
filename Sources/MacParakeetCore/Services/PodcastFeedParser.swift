@@ -199,13 +199,14 @@ public enum PodcastFeedParser {
 
             let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
             let desc = PodcastFeedParser.firstNonEmpty(itemDescription, itunesSummary)
-            episodes.append(PodcastFeedEpisode(
-                title: trimmedTitle.isEmpty ? "Untitled" : trimmedTitle,
-                description: desc,
-                audioURL: audioURL.trimmingCharacters(in: .whitespacesAndNewlines),
-                durationSeconds: PodcastFeedParser.parseDuration(duration),
-                published: PodcastFeedParser.firstNonEmpty(pubDate)
-            ))
+            episodes.append(
+                PodcastFeedEpisode(
+                    title: trimmedTitle.isEmpty ? "Untitled" : trimmedTitle,
+                    description: desc,
+                    audioURL: audioURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                    durationSeconds: PodcastFeedParser.parseDuration(duration),
+                    published: PodcastFeedParser.firstNonEmpty(pubDate)
+                ))
         }
     }
 

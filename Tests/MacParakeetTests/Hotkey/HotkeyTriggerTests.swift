@@ -143,7 +143,7 @@ final class HotkeyTriggerTests: XCTestCase {
             kind: .modifier,
             modifierName: "option",
             keyCode: nil,
-            modifierKeyCode: 61 // right option
+            modifierKeyCode: 61  // right option
         )
         XCTAssertEqual(trigger.formattedLabel, "R⌥ Right Option")
     }
@@ -166,7 +166,7 @@ final class HotkeyTriggerTests: XCTestCase {
 
     func testFormattedLabelChordUsesGlyphForm() {
         // Regression: Cmd+Shift+N used to render as "⇧⌘N Shift+Command+N".
-        let trigger = HotkeyTrigger.chord(modifiers: ["command", "shift"], keyCode: 45) // N
+        let trigger = HotkeyTrigger.chord(modifiers: ["command", "shift"], keyCode: 45)  // N
         XCTAssertEqual(trigger.formattedLabel, "⇧⌘N")
     }
 
@@ -277,14 +277,16 @@ final class HotkeyTriggerTests: XCTestCase {
 
     func testReturnIsWarned() {
         let trigger = HotkeyTrigger.fromKeyCode(36)
-        if case .warned = trigger.validation {} else {
+        if case .warned = trigger.validation {
+        } else {
             XCTFail("Return should produce a warning")
         }
     }
 
     func testTabIsWarned() {
         let trigger = HotkeyTrigger.fromKeyCode(48)
-        if case .warned = trigger.validation {} else {
+        if case .warned = trigger.validation {
+        } else {
             XCTFail("Tab should produce a warning")
         }
     }
@@ -399,14 +401,16 @@ final class HotkeyTriggerTests: XCTestCase {
         XCTAssertEqual(HotkeyTrigger.defaultDictation, .fn)
         XCTAssertEqual(HotkeyTrigger.defaultPushToTalk, .fn)
         XCTAssertTrue(HotkeyTrigger.defaultDictation.overlaps(with: .defaultPushToTalk))
-        XCTAssertTrue(HotkeyTrigger.isDefaultDictationGesturePreset(
-            handsFree: .defaultDictation,
-            pushToTalk: .defaultPushToTalk
-        ))
-        XCTAssertTrue(HotkeyTrigger.isSharedDictationGesture(
-            handsFree: .defaultDictation,
-            pushToTalk: .defaultPushToTalk
-        ))
+        XCTAssertTrue(
+            HotkeyTrigger.isDefaultDictationGesturePreset(
+                handsFree: .defaultDictation,
+                pushToTalk: .defaultPushToTalk
+            ))
+        XCTAssertTrue(
+            HotkeyTrigger.isSharedDictationGesture(
+                handsFree: .defaultDictation,
+                pushToTalk: .defaultPushToTalk
+            ))
     }
 
     func testSharedDictationGestureAllowsExactCustomTrigger() {
@@ -417,17 +421,19 @@ final class HotkeyTriggerTests: XCTestCase {
             modifierKeyCode: 54
         )
 
-        XCTAssertTrue(HotkeyTrigger.isSharedDictationGesture(
-            handsFree: rightCommand,
-            pushToTalk: rightCommand
-        ))
+        XCTAssertTrue(
+            HotkeyTrigger.isSharedDictationGesture(
+                handsFree: rightCommand,
+                pushToTalk: rightCommand
+            ))
     }
 
     func testSharedDictationGestureRejectsDisabledTriggers() {
-        XCTAssertFalse(HotkeyTrigger.isSharedDictationGesture(
-            handsFree: .disabled,
-            pushToTalk: .disabled
-        ))
+        XCTAssertFalse(
+            HotkeyTrigger.isSharedDictationGesture(
+                handsFree: .disabled,
+                pushToTalk: .disabled
+            ))
     }
 
     func testSharedDictationGestureRejectsNonExactOverlap() {
@@ -439,10 +445,11 @@ final class HotkeyTriggerTests: XCTestCase {
         )
 
         XCTAssertTrue(rightCommand.overlaps(with: .command))
-        XCTAssertFalse(HotkeyTrigger.isSharedDictationGesture(
-            handsFree: rightCommand,
-            pushToTalk: .command
-        ))
+        XCTAssertFalse(
+            HotkeyTrigger.isSharedDictationGesture(
+                handsFree: rightCommand,
+                pushToTalk: .command
+            ))
     }
 
     // MARK: - Chord Validation
@@ -454,7 +461,8 @@ final class HotkeyTriggerTests: XCTestCase {
 
     func testChordEscapeBlocked() {
         let trigger = HotkeyTrigger.chord(modifiers: ["command"], keyCode: 53)
-        if case .blocked = trigger.validation {} else {
+        if case .blocked = trigger.validation {
+        } else {
             XCTFail("Escape in chord should be blocked")
         }
     }
@@ -479,7 +487,7 @@ final class HotkeyTriggerTests: XCTestCase {
 
     func testChordLetterKeyAllowed() {
         // Regular letter key with modifier — chords disambiguate from typing
-        let trigger = HotkeyTrigger.chord(modifiers: ["command"], keyCode: 0) // 'A'
+        let trigger = HotkeyTrigger.chord(modifiers: ["command"], keyCode: 0)  // 'A'
         XCTAssertEqual(trigger.validation, .allowed)
     }
 
@@ -571,21 +579,24 @@ final class HotkeyTriggerTests: XCTestCase {
 
     func testChordCmdWWarned() {
         let trigger = HotkeyTrigger.chord(modifiers: ["command"], keyCode: 13)
-        if case .warned = trigger.validation {} else {
+        if case .warned = trigger.validation {
+        } else {
             XCTFail("Cmd+W should produce a warning")
         }
     }
 
     func testChordCmdHWarned() {
         let trigger = HotkeyTrigger.chord(modifiers: ["command"], keyCode: 4)
-        if case .warned = trigger.validation {} else {
+        if case .warned = trigger.validation {
+        } else {
             XCTFail("Cmd+H should produce a warning")
         }
     }
 
     func testChordCmdMWarned() {
         let trigger = HotkeyTrigger.chord(modifiers: ["command"], keyCode: 46)
-        if case .warned = trigger.validation {} else {
+        if case .warned = trigger.validation {
+        } else {
             XCTFail("Cmd+M should produce a warning")
         }
     }
@@ -618,12 +629,12 @@ final class HotkeyTriggerTests: XCTestCase {
 
     func testChordEventFlagsControl() {
         let trigger = HotkeyTrigger.chord(modifiers: ["control"], keyCode: 25)
-        XCTAssertEqual(trigger.chordEventFlags, 0x00040000) // maskControl
+        XCTAssertEqual(trigger.chordEventFlags, 0x00040000)  // maskControl
     }
 
     func testChordEventFlagsOption() {
         let trigger = HotkeyTrigger.chord(modifiers: ["option"], keyCode: 25)
-        XCTAssertEqual(trigger.chordEventFlags, 0x00080000) // maskAlternate
+        XCTAssertEqual(trigger.chordEventFlags, 0x00080000)  // maskAlternate
     }
 
     func testChordEventFlagsAllFour() {
@@ -792,15 +803,15 @@ final class HotkeyTriggerTests: XCTestCase {
 
     func testModifierChordDecodingNormalizesStoredComponents() throws {
         let data = """
-        {
-          "kind": "modifierChord",
-          "modifierChordComponents": [
-            { "modifierName": "command", "keyCode": 54 },
-            { "modifierName": "option", "keyCode": 61 },
-            { "modifierName": "fn", "keyCode": 63 }
-          ]
-        }
-        """.data(using: .utf8)!
+            {
+              "kind": "modifierChord",
+              "modifierChordComponents": [
+                { "modifierName": "command", "keyCode": 54 },
+                { "modifierName": "option", "keyCode": 61 },
+                { "modifierName": "fn", "keyCode": 63 }
+              ]
+            }
+            """.data(using: .utf8)!
 
         let decoded = try JSONDecoder().decode(HotkeyTrigger.self, from: data)
 
@@ -981,35 +992,5 @@ final class HotkeyTriggerTests: XCTestCase {
 
         XCTAssertTrue(rightCommand.conflicts(with: .command, selfMode: .bareModifierDictation))
         XCTAssertTrue(rightCommand.conflicts(with: .command, otherMode: .bareModifierDictation))
-    }
-
-    // MARK: - Telemetry
-
-    func testTelemetryKindMapsOnlyStructuralTriggerKind() {
-        XCTAssertEqual(HotkeyTrigger.disabled.telemetryKind, .disabled)
-        XCTAssertEqual(HotkeyTrigger.option.telemetryKind, .modifier)
-        XCTAssertEqual(HotkeyTrigger.fromKeyCode(119).telemetryKind, .keyCode)
-        XCTAssertEqual(HotkeyTrigger.chord(modifiers: ["command", "shift"], keyCode: 25).telemetryKind, .chord)
-        XCTAssertEqual(HotkeyTrigger.modifierChord(modifiers: ["command", "option"]).telemetryKind, .chord)
-    }
-
-    func testCustomizedEventDoesNotExposeSpecificKeySelection() {
-        let event = HotkeyTrigger.modifierChord(modifiers: ["command", "option"])
-            .customizedEvent(surface: .meeting)
-        let payload = TelemetryEvent(
-            spec: event,
-            appVer: "0.6.3",
-            osVer: "15.4",
-            locale: "en-US",
-            chip: "Apple M4",
-            session: "session"
-        )
-
-        XCTAssertEqual(payload.event, TelemetryEventName.hotkeyCustomized.rawValue)
-        XCTAssertEqual(payload.props?["surface"], "meeting")
-        XCTAssertEqual(payload.props?["kind"], "chord")
-        XCTAssertNil(payload.props?["modifier"])
-        XCTAssertNil(payload.props?["key_code"])
-        XCTAssertNil(payload.props?["chord_modifiers"])
     }
 }

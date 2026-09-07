@@ -127,10 +127,12 @@ struct TransformsView: View {
                 .font(DesignSystem.Typography.heroTitle)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-            Text("Press a hotkey on any selected text to rewrite it through your LLM provider — in Slack, Notes, Gmail, your editor, anywhere on Mac.")
-                .font(DesignSystem.Typography.bodyLarge)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .frame(maxWidth: 640, alignment: .leading)
+            Text(
+                "Press a hotkey on any selected text to rewrite it through your LLM provider — in Slack, Notes, Gmail, your editor, anywhere on Mac."
+            )
+            .font(DesignSystem.Typography.bodyLarge)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .frame(maxWidth: 640, alignment: .leading)
         }
         .padding(.top, DesignSystem.Spacing.md)
     }
@@ -145,9 +147,12 @@ struct TransformsView: View {
                 Label(viewModel.heroShortcutInstruction, systemImage: "2.circle.fill")
                     .font(DesignSystem.Typography.body)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Label("The result is pasted into your current app. ⌘Z to undo where supported.", systemImage: "3.circle.fill")
-                    .font(DesignSystem.Typography.body)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Label(
+                    "The result is pasted into your current app. ⌘Z to undo where supported.",
+                    systemImage: "3.circle.fill"
+                )
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
             }
             .padding(.vertical, DesignSystem.Spacing.lg)
             .padding(.horizontal, DesignSystem.Spacing.lg)
@@ -172,9 +177,11 @@ struct TransformsView: View {
                 Text("Add an LLM provider to apply Transforms")
                     .font(DesignSystem.Typography.body.weight(.semibold))
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("Transforms call your LLM provider on each run. Use Claude, GPT, Ollama, LM Studio — your key, your terms.")
-                    .font(DesignSystem.Typography.bodySmall)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Text(
+                    "Transforms call your LLM provider on each run. Use Claude, GPT, Ollama, LM Studio — your key, your terms."
+                )
+                .font(DesignSystem.Typography.bodySmall)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
 
             Spacer(minLength: DesignSystem.Spacing.md)
@@ -318,7 +325,8 @@ struct TransformsView: View {
                     ForEach(visibleHistory) { entry in
                         TransformHistoryRow(
                             entry: entry,
-                            copiedTarget: viewModel.copiedHistoryEntryID == entry.id ? viewModel.copiedHistoryTarget : nil,
+                            copiedTarget: viewModel.copiedHistoryEntryID == entry.id
+                                ? viewModel.copiedHistoryTarget : nil,
                             isExpanded: expandedHistoryEntryIDs.contains(entry.id),
                             onToggleExpanded: {
                                 withAnimation(DesignSystem.Animation.contentSwap) {
@@ -345,10 +353,12 @@ struct TransformsView: View {
                 }
 
                 if !isHistoryFiltering && viewModel.totalHistoryCount > viewModel.history.count {
-                    Text("Showing the most recent \(viewModel.history.count) of \(viewModel.totalHistoryCount) saved runs.")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textTertiary)
-                        .padding(.top, DesignSystem.Spacing.xs)
+                    Text(
+                        "Showing the most recent \(viewModel.history.count) of \(viewModel.totalHistoryCount) saved runs."
+                    )
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+                    .padding(.top, DesignSystem.Spacing.xs)
                 }
             }
         }
@@ -488,7 +498,9 @@ private struct TransformHistoryRow: View {
         )
         .overlay {
             RoundedRectangle(cornerRadius: DesignSystem.Layout.cardCornerRadius)
-                .stroke(isHovered ? DesignSystem.Colors.accent.opacity(0.25) : DesignSystem.Colors.border.opacity(0.55), lineWidth: 0.5)
+                .stroke(
+                    isHovered ? DesignSystem.Colors.accent.opacity(0.25) : DesignSystem.Colors.border.opacity(0.55),
+                    lineWidth: 0.5)
         }
         .onHover { hovering in
             withAnimation(DesignSystem.Animation.hoverTransition) {
@@ -848,7 +860,8 @@ private struct TransformHistoryIconButton: View {
 
 private extension TransformHistoryEntry {
     func matchesSearch(_ query: String) -> Bool {
-        let terms = query
+        let terms =
+            query
             .split(whereSeparator: { $0.isWhitespace })
             .map(String.init)
 
@@ -859,7 +872,7 @@ private extension TransformHistoryEntry {
             sourceAppDisplayName,
             sourceAppBundleID ?? "",
             inputText,
-            outputText
+            outputText,
         ].joined(separator: "\n")
 
         return terms.allSatisfy { searchableText.localizedCaseInsensitiveContains($0) }
@@ -934,7 +947,8 @@ private struct TransformCard: View {
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Layout.cardCornerRadius))
         .overlay {
             RoundedRectangle(cornerRadius: DesignSystem.Layout.cardCornerRadius)
-                .stroke(isHovered ? DesignSystem.Colors.accent.opacity(0.35) : DesignSystem.Colors.border, lineWidth: 0.5)
+                .stroke(
+                    isHovered ? DesignSystem.Colors.accent.opacity(0.35) : DesignSystem.Colors.border, lineWidth: 0.5)
         }
         .shadow(
             color: (isHovered ? DesignSystem.Shadows.cardHover : DesignSystem.Shadows.cardRest).color,
@@ -973,7 +987,8 @@ private struct TransformCard: View {
     }
 
     private func firstSentence(of body: String) -> String {
-        let trimmed = body
+        let trimmed =
+            body
             .split(whereSeparator: { $0.isNewline })
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
             .first(where: { !$0.isEmpty }) ?? ""
@@ -1067,14 +1082,16 @@ struct KeycapBadge: View {
     private var orderedModifierGlyphs: [String] {
         // Canonical macOS order: ⌃ ⌥ ⇧ ⌘.
         let ordered: [TransformShortcut.ModifierFlag] = [.control, .option, .shift, .command]
-        return ordered
+        return
+            ordered
             .filter { (shortcut.modifiers & $0.rawValue) != 0 }
             .map(\.displayGlyph)
     }
 
     private var shortcutAccessibilityLabel: String {
         let ordered: [TransformShortcut.ModifierFlag] = [.control, .option, .shift, .command]
-        let modifierNames = ordered
+        let modifierNames =
+            ordered
             .filter { (shortcut.modifiers & $0.rawValue) != 0 }
             .map(\.displayName)
         return (modifierNames + [shortcut.displayKeyLabel]).joined(separator: " ")

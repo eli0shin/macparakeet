@@ -37,9 +37,10 @@ public enum MeetingAudioRetentionPolicy {
         let retentionInterval = TimeInterval(config.deleteAfterDays * 24 * 60 * 60)
         return candidates.compactMap { candidate in
             guard candidate.hasAudioOnDisk,
-                  candidate.isCompleted,
-                  !candidate.hasRecoveryLock,
-                  now.timeIntervalSince(candidate.ageReferenceDate) > retentionInterval else {
+                candidate.isCompleted,
+                !candidate.hasRecoveryLock,
+                now.timeIntervalSince(candidate.ageReferenceDate) > retentionInterval
+            else {
                 return nil
             }
             return candidate.id

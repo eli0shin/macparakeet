@@ -59,16 +59,18 @@ final class YouTubeAudioPlaybackConverterTests: XCTestCase {
             outputPath: "/tmp/source.m4a"
         )
 
-        XCTAssertEqual(args, [
-            "-nostdin",
-            "-i", "/tmp/source.webm",
-            "-vn",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-movflags", "+faststart",
-            "-y",
-            "/tmp/source.m4a",
-        ])
+        XCTAssertEqual(
+            args,
+            [
+                "-nostdin",
+                "-i", "/tmp/source.webm",
+                "-vn",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-movflags", "+faststart",
+                "-y",
+                "/tmp/source.m4a",
+            ])
     }
 
     func testFFmpegArgumentsEmbedMetadataTags() {
@@ -96,20 +98,22 @@ final class YouTubeAudioPlaybackConverterTests: XCTestCase {
             thumbnailPath: "/tmp/thumb.jpg"
         )
 
-        XCTAssertEqual(args, [
-            "-nostdin",
-            "-i", "/tmp/source.webm",
-            "-i", "/tmp/thumb.jpg",
-            "-map", "0:a:0",
-            "-map", "1:v:0",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-c:v", "mjpeg",
-            "-disposition:v", "attached_pic",
-            "-movflags", "+faststart",
-            "-y",
-            "/tmp/source.m4a",
-        ])
+        XCTAssertEqual(
+            args,
+            [
+                "-nostdin",
+                "-i", "/tmp/source.webm",
+                "-i", "/tmp/thumb.jpg",
+                "-map", "0:a:0",
+                "-map", "1:v:0",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-c:v", "mjpeg",
+                "-disposition:v", "attached_pic",
+                "-movflags", "+faststart",
+                "-y",
+                "/tmp/source.m4a",
+            ])
     }
 
     func testTemporaryOutputURLKeepsM4AExtensionForFFmpegFormatDetection() {

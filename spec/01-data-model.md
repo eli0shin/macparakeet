@@ -545,7 +545,7 @@ CREATE TABLE ai_formatter_profiles (
     targetKind       TEXT NOT NULL,                       -- bundle / category
     bundleIdentifier TEXT,                                -- normalized lowercase bundle id
     appDisplayName   TEXT,                                -- local display name snapshot
-    appCategory      TEXT,                                -- TelemetryAppCategory raw value
+    appCategory      TEXT,                                -- AppCategory raw value
     promptTemplate   TEXT NOT NULL,
     origin           TEXT NOT NULL DEFAULT 'custom',      -- custom / template
     sortOrder        INTEGER NOT NULL DEFAULT 0,
@@ -588,7 +588,7 @@ CREATE UNIQUE INDEX idx_ai_formatter_profiles_category_unique
 - Exact app profiles store bundle IDs and display names as local user data only. They are used for prompt resolution and local history/debug provenance, not telemetry.
 - Matching precedence is exact bundle, then custom coarse category, then built-in category smart default, then the fallback AI Formatter prompt.
 - Duplicate exact-bundle and category targets are rejected by both schema unique indexes and `AIFormatterProfileRepository` so the matching rule stays deterministic and direct/future write paths cannot create ambiguous routing.
-- Bundle profile rows require a non-empty lowercased/trimmed bundle ID. Category profile rows require a valid `TelemetryAppCategory` raw value.
+- Bundle profile rows require a non-empty lowercased/trimmed bundle ID. Category profile rows require a valid `AppCategory` raw value.
 - Browser hostname/domain matching is intentionally not represented in this schema. V1 treats browsers as exact browser apps or the coarse `browser` category.
 
 ---
@@ -1021,7 +1021,7 @@ public struct AIFormatterProfile: Codable, Identifiable, Sendable, Equatable {
     public var targetKind: AIFormatterProfileTargetKind
     public var bundleIdentifier: String?
     public var appDisplayName: String?
-    public var appCategory: TelemetryAppCategory?
+    public var appCategory: AppCategory?
     public var promptTemplate: String
     public var origin: AIFormatterProfileOrigin
     public var sortOrder: Int

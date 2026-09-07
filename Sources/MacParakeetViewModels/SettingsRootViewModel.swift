@@ -66,7 +66,8 @@ public final class SettingsRootViewModel {
     public init(defaults: UserDefaults = .standard, initialTab: SettingsTab? = nil) {
         self.defaults = defaults
         if let raw = defaults.string(forKey: Self.lastCaptureWorkflowKey),
-           let restored = SettingsCaptureWorkflow(rawValue: raw) {
+            let restored = SettingsCaptureWorkflow(rawValue: raw)
+        {
             self.activeCaptureWorkflow = restored
         } else {
             self.activeCaptureWorkflow = .default
@@ -75,7 +76,8 @@ public final class SettingsRootViewModel {
             self.activeTab = initialTab
             defaults.set(initialTab.rawValue, forKey: Self.lastViewedTabKey)
         } else if let raw = defaults.string(forKey: Self.lastViewedTabKey),
-           let restored = SettingsTab(rawValue: raw) {
+            let restored = SettingsTab(rawValue: raw)
+        {
             self.activeTab = restored
         } else {
             self.activeTab = .default

@@ -76,7 +76,8 @@ public final class PromptResultRepository: PromptResultRepositoryProtocol {
 
     public func hasPromptResults(transcriptionId: UUID) throws -> Bool {
         try dbQueue.read { db in
-            try !PromptResult
+            try
+                !PromptResult
                 .filter(PromptResult.Columns.transcriptionId == transcriptionId)
                 .isEmpty(db)
         }

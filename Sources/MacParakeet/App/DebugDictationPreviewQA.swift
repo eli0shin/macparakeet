@@ -32,7 +32,8 @@ final class DebugDictationPreviewQA {
         viewModel.recordingElapsedSeconds = 8
         viewModel.audioLevel = 0.45
         viewModel.liveTranscript = arguments.value(after: Self.transcriptArgument) ?? Self.defaultTranscript
-        viewModel.previewTextSize = arguments.value(after: Self.sizeArgument)
+        viewModel.previewTextSize =
+            arguments.value(after: Self.sizeArgument)
             .flatMap(DictationPreviewTextSize.init(rawValue:)) ?? .medium
         viewModel.onCancel = { [weak self] in self?.hide() }
         viewModel.onStop = { [weak self] in self?.hide() }
@@ -65,7 +66,8 @@ final class DebugDictationPreviewQA {
         }
     }
 
-    private static let defaultTranscript = "Drafting the launch notes now. The live preview should update while the final transcript is still streaming in."
+    private static let defaultTranscript =
+        "Drafting the launch notes now. The live preview should update while the final transcript is still streaming in."
 }
 
 private extension Array where Element == String {

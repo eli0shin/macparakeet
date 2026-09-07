@@ -62,16 +62,21 @@ struct TransformEditorSheet: View {
                 .font(DesignSystem.Typography.heroTitle)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-            Text("Set up a keyboard shortcut and a prompt. MacParakeet runs the prompt against your selected text every time you press the shortcut.")
-                .font(DesignSystem.Typography.body)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Text(
+                "Set up a keyboard shortcut and a prompt. MacParakeet runs the prompt against your selected text every time you press the shortcut."
+            )
+            .font(DesignSystem.Typography.body)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
 
             Spacer(minLength: 0)
 
             if viewModel.isBuiltIn {
-                Label("Built-in Transform — you can edit it freely. Your changes survive app launches.", systemImage: "checkmark.seal")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+                Label(
+                    "Built-in Transform — you can edit it freely. Your changes survive app launches.",
+                    systemImage: "checkmark.seal"
+                )
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textTertiary)
             }
         }
     }
@@ -142,9 +147,11 @@ struct TransformEditorSheet: View {
                 if let error = viewModel.contentError {
                     ValidationRow(message: error)
                 } else {
-                    Text("Tell the LLM how to change the selected text. Be specific — the prompt runs verbatim on every press.")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textTertiary)
+                    Text(
+                        "Tell the LLM how to change the selected text. Be specific — the prompt runs verbatim on every press."
+                    )
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textTertiary)
                 }
             }
         }
@@ -323,7 +330,7 @@ struct ShortcutRecorderField: View {
                 keyLabel: label
             )
             isRecording = false
-            return nil // swallow the event
+            return nil  // swallow the event
         }
     }
 
@@ -360,7 +367,8 @@ struct ShortcutRecorderField: View {
 
     private func shortcutAccessibilityLabel(_ shortcut: TransformShortcut) -> String {
         let ordered: [TransformShortcut.ModifierFlag] = [.control, .option, .shift, .command]
-        let modifierNames = ordered
+        let modifierNames =
+            ordered
             .filter { (shortcut.modifiers & $0.rawValue) != 0 }
             .map(\.displayName)
         return (modifierNames + [shortcut.displayKeyLabel]).joined(separator: " ")

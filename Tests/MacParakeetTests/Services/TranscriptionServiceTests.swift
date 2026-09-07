@@ -13,7 +13,8 @@ private actor MockYouTubeDownloader: YouTubeDownloading {
         self.progressUpdates = progressUpdates
     }
 
-    func download(url: String, onProgress: (@Sendable (Int) -> Void)?) async throws -> YouTubeDownloader.DownloadResult {
+    func download(url: String, onProgress: (@Sendable (Int) -> Void)?) async throws -> YouTubeDownloader.DownloadResult
+    {
         downloadCallCount += 1
         lastURL = url
         for pct in progressUpdates {
@@ -68,38 +69,6 @@ private actor TestAsyncSignal {
     }
 }
 
-private final class TelemetrySpy: TelemetryServiceProtocol, @unchecked Sendable {
-    private let lock = NSLock()
-    private var events: [TelemetryEventSpec] = []
-
-    func send(_ event: TelemetryEventSpec) {
-        lock.lock()
-        events.append(event)
-        lock.unlock()
-    }
-
-    func sendAndFlush(_ event: TelemetryEventSpec) async -> Bool {
-        send(event)
-        return true
-    }
-
-    func flush() async {}
-
-    func clearQueue() {
-        lock.lock()
-        events.removeAll()
-        lock.unlock()
-    }
-
-    func flushForTermination() {}
-
-    func snapshot() -> [TelemetryEventSpec] {
-        lock.lock()
-        defer { lock.unlock() }
-        return events
-    }
-}
-
 private actor FailingYouTubeDownloader: YouTubeDownloading {
     private let error: Error
 
@@ -107,7 +76,8 @@ private actor FailingYouTubeDownloader: YouTubeDownloading {
         self.error = error
     }
 
-    func download(url: String, onProgress: (@Sendable (Int) -> Void)?) async throws -> YouTubeDownloader.DownloadResult {
+    func download(url: String, onProgress: (@Sendable (Int) -> Void)?) async throws -> YouTubeDownloader.DownloadResult
+    {
         throw error
     }
 }
@@ -232,7 +202,8 @@ private actor CapturingMeetingArtifactStore: MeetingArtifactStoring {
         capturedTranscription = transcription
         capturedPromptResults = promptResults
 
-        let folderURL = MeetingArtifactStore.sessionFolderURL(for: transcription)
+        let folderURL =
+            MeetingArtifactStore.sessionFolderURL(for: transcription)
             ?? FileManager.default.temporaryDirectory
         return MeetingArtifactSnapshot(
             generatedAt: Date(),
@@ -357,8 +328,6 @@ final class TranscriptionServiceTests: XCTestCase {
         cardRepo = CardRepository(dbQueue: dbManager.dbQueue)
         promptResultRepo = PromptResultRepository(dbQueue: dbManager.dbQueue)
         llmRunRepo = LLMRunRepository(dbQueue: dbManager.dbQueue)
-        Telemetry.configure(NoOpTelemetryService())
-
         service = TranscriptionService(
             audioProcessor: mockAudio,
             sttTranscriber: mockSTT,
@@ -488,121 +457,6 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(selections.map(\.engine), [.cohere])
     }
 
-    func testTranscribeFilePersistsDetectedLanguage() async throws {
-        let telemetry = TelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        await mockSTT.configure(result: STTResult(text: "hello world", language: "KO-kr"))
-
-        let result = try await service.transcribe(fileURL: URL(fileURLWithPath: "/tmp/korean.mp3"))
-
-        XCTAssertEqual(result.language, "ko")
-        XCTAssertEqual(try transcriptionRepo.fetch(id: result.id)?.language, "ko")
-
-        let completed = try XCTUnwrap(telemetry.snapshot().reversed().first {
-            if case .transcriptionCompleted = $0 { return true }
-            return false
-        })
-        let props = try telemetryProps(for: completed)
-        XCTAssertEqual(props["language"], "ko")
-    }
-
-    func testTranscribeFilePersistsEngineAttributionFromSTTResult() async throws {
-        let telemetry = TelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        await mockSTT.configure(result: STTResult(
-            text: "hello world",
-            engine: .whisper,
-            engineVariant: SpeechEnginePreference.defaultWhisperModelVariant
-        ))
-
-        let result = try await service.transcribe(fileURL: URL(fileURLWithPath: "/tmp/whisper.mp3"))
-
-        XCTAssertEqual(result.engine, "whisper")
-        XCTAssertEqual(result.engineVariant, SpeechEnginePreference.defaultWhisperModelVariant)
-        let fetched = try transcriptionRepo.fetch(id: result.id)
-        XCTAssertEqual(fetched?.engine, "whisper")
-        XCTAssertEqual(fetched?.engineVariant, SpeechEnginePreference.defaultWhisperModelVariant)
-
-        let operation = telemetry.snapshot().reversed().first {
-            if case .transcriptionOperation = $0 { return true }
-            return false
-        }
-        let operationEvent = try XCTUnwrap(operation)
-        let props = try XCTUnwrap(operationEvent.props)
-        XCTAssertEqual(props["speech_engine"], "whisper")
-        XCTAssertEqual(props["engine_variant"], SpeechEnginePreference.defaultWhisperModelVariant)
-    }
-
-    func testTranscribeFileSkipsDiarizationWhenSTTProvidesNoWordTimings() async throws {
-        let telemetry = TelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        await mockSTT.configure(result: STTResult(text: "cohere final", words: [], engine: .cohere))
-        let diarization = MockDiarizationService()
-        await diarization.configure(result: MacParakeetDiarizationResult(
-            segments: [
-                SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 500),
-                SpeakerSegment(speakerId: "S2", startMs: 500, endMs: 1_000),
-            ],
-            speakerCount: 2,
-            speakers: [
-                SpeakerInfo(id: "S1", label: "Speaker 1"),
-                SpeakerInfo(id: "S2", label: "Speaker 2"),
-            ]
-        ))
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            shouldDiarize: { true },
-            diarizationService: diarization
-        )
-
-        let result = try await service.transcribe(fileURL: URL(fileURLWithPath: "/tmp/cohere.mp3"))
-
-        let diarizeCalled = await diarization.diarizeCalled
-        XCTAssertFalse(diarizeCalled)
-        XCTAssertEqual(result.rawTranscript, "cohere final")
-        XCTAssertEqual(result.engine, "cohere")
-        XCTAssertEqual(result.wordTimestamps?.isEmpty, true)
-        XCTAssertNil(result.speakerCount)
-        XCTAssertNil(result.speakers)
-        XCTAssertNil(result.diarizationSegments)
-
-        let fetched = try XCTUnwrap(transcriptionRepo.fetch(id: result.id))
-        XCTAssertNil(fetched.speakerCount)
-        XCTAssertNil(fetched.speakers)
-        XCTAssertNil(fetched.diarizationSegments)
-
-        let completed = try XCTUnwrap(telemetry.snapshot().reversed().first {
-            if case .transcriptionCompleted = $0 { return true }
-            return false
-        })
-        guard case .transcriptionCompleted(
-            _,
-            _,
-            _,
-            _,
-            let speakerCount,
-            let diarizationRequested,
-            let diarizationApplied,
-            _,
-            _,
-            _
-        ) = completed else {
-            return XCTFail("Expected transcription_completed telemetry")
-        }
-        XCTAssertNil(speakerCount)
-        XCTAssertTrue(diarizationRequested)
-        XCTAssertFalse(diarizationApplied)
-    }
-
     func testTranscribeTransientFileDoesNotPersistCompletedRow() async throws {
         await mockSTT.configure(result: STTResult(text: "private transcript"))
 
@@ -651,13 +505,14 @@ final class TranscriptionServiceTests: XCTestCase {
     }
 
     func testTranscribeFileDurationUsesMaximumWordEnd() async throws {
-        await mockSTT.configure(result: STTResult(
-            text: "out of order",
-            words: [
-                TimestampedWord(word: "later", startMs: 3000, endMs: 5000, confidence: 0.9),
-                TimestampedWord(word: "earlier", startMs: 1000, endMs: 1500, confidence: 0.9),
-            ]
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "out of order",
+                words: [
+                    TimestampedWord(word: "later", startMs: 3000, endMs: 5000, confidence: 0.9),
+                    TimestampedWord(word: "earlier", startMs: 1000, endMs: 1500, confidence: 0.9),
+                ]
+            ))
 
         let result = try await service.transcribe(fileURL: URL(fileURLWithPath: "/tmp/out-of-order.mp3"))
 
@@ -680,21 +535,23 @@ final class TranscriptionServiceTests: XCTestCase {
             audioProcessor: mockAudio,
             sttTranscriber: mockSTT,
             transcriptionRepo: transcriptionRepo,
-            mediaMetadataExtractor: StubMediaMetadataExtractor(metadata: MediaMetadata(
-                title: "Episode Title",
-                author: "Show Host",
-                description: "Episode notes",
-                artworkData: artwork,
-                durationMs: 12_000
-            )),
+            mediaMetadataExtractor: StubMediaMetadataExtractor(
+                metadata: MediaMetadata(
+                    title: "Episode Title",
+                    author: "Show Host",
+                    description: "Episode notes",
+                    artworkData: artwork,
+                    durationMs: 12_000
+                )),
             thumbnailCache: thumbnailCache
         )
-        await mockSTT.configure(result: STTResult(
-            text: "short transcript",
-            words: [
-                TimestampedWord(word: "short", startMs: 0, endMs: 900, confidence: 0.95),
-            ]
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "short transcript",
+                words: [
+                    TimestampedWord(word: "short", startMs: 0, endMs: 900, confidence: 0.95)
+                ]
+            ))
 
         let result = try await service.transcribe(fileURL: fileURL, source: .dragDrop)
         let fetched = try XCTUnwrap(transcriptionRepo.fetch(id: result.id))
@@ -720,24 +577,26 @@ final class TranscriptionServiceTests: XCTestCase {
         let downloadedURL = try makeTempDownloadedAudio()
         defer { try? FileManager.default.removeItem(at: downloadedURL) }
 
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "",
-            durationSeconds: nil
-        ))
+        let downloader = MockYouTubeDownloader(
+            result: YouTubeDownloader.DownloadResult(
+                audioFileURL: downloadedURL,
+                title: "",
+                durationSeconds: nil
+            ))
         let thumbnailCache = ThumbnailCacheService(cacheDir: tempDir.appendingPathComponent("thumbs").path)
         let service = TranscriptionService(
             audioProcessor: mockAudio,
             sttTranscriber: mockSTT,
             transcriptionRepo: transcriptionRepo,
             youtubeDownloader: downloader,
-            mediaMetadataExtractor: StubMediaMetadataExtractor(metadata: MediaMetadata(
-                title: "Embedded Video Title",
-                author: "Embedded Channel",
-                description: "Embedded description",
-                artworkData: Data([0xFF, 0xD8, 0xFF, 0xD9]),
-                durationMs: 42_000
-            )),
+            mediaMetadataExtractor: StubMediaMetadataExtractor(
+                metadata: MediaMetadata(
+                    title: "Embedded Video Title",
+                    author: "Embedded Channel",
+                    description: "Embedded description",
+                    artworkData: Data([0xFF, 0xD8, 0xFF, 0xD9]),
+                    durationMs: 42_000
+                )),
             thumbnailCache: thumbnailCache
         )
         await mockSTT.configure(result: STTResult(text: "Downloaded transcript"))
@@ -760,11 +619,12 @@ final class TranscriptionServiceTests: XCTestCase {
         let downloadedURL = try makeTempDownloadedAudio()
         defer { try? FileManager.default.removeItem(at: downloadedURL) }
 
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Downloaded Title",
-            durationSeconds: 0
-        ))
+        let downloader = MockYouTubeDownloader(
+            result: YouTubeDownloader.DownloadResult(
+                audioFileURL: downloadedURL,
+                title: "Downloaded Title",
+                durationSeconds: 0
+            ))
         let service = TranscriptionService(
             audioProcessor: mockAudio,
             sttTranscriber: mockSTT,
@@ -803,52 +663,6 @@ final class TranscriptionServiceTests: XCTestCase {
         let all = try transcriptionRepo.fetchAll(limit: nil)
         XCTAssertEqual(all.count, 1)
         XCTAssertEqual(all[0].status, .error)
-    }
-
-    func testTranscribeFileEntitlementFailureEmitsPreflightOperation() async throws {
-        let telemetry = TelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            entitlements: FailingEntitlements(error: EntitlementsError.trialExpired)
-        )
-
-        do {
-            _ = try await service.transcribe(fileURL: URL(fileURLWithPath: "/tmp/test.mp3"))
-            XCTFail("Should have thrown")
-        } catch EntitlementsError.trialExpired {
-            // Expected
-        } catch {
-            XCTFail("Unexpected error type: \(error)")
-        }
-
-        let operation = telemetry.snapshot().reversed().first {
-            if case .transcriptionOperation = $0 { return true }
-            return false
-        }
-        let event = TelemetryEvent(
-            spec: try XCTUnwrap(operation),
-            appVer: "test",
-            osVer: "test",
-            locale: "en-US",
-            chip: "test",
-            session: "test"
-        )
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        let data = try encoder.encode(event)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let props = try XCTUnwrap(json["props"] as? [String: String])
-
-        XCTAssertEqual(json["event"] as? String, "transcription_operation")
-        XCTAssertEqual(props["outcome"], "unavailable")
-        XCTAssertEqual(props["source"], "file")
-        XCTAssertEqual(props["stage"], "preflight")
-        XCTAssertEqual(props["error_type"], "EntitlementsError.trialExpired")
-        XCTAssertNil(props["processing_seconds"])
     }
 
     func testTranscribeFileCancellationMarksRecordCancelled() async throws {
@@ -1062,11 +876,12 @@ final class TranscriptionServiceTests: XCTestCase {
         let downloadedURL = try makeTempDownloadedAudio()
         defer { try? FileManager.default.removeItem(at: downloadedURL) }
 
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Video",
-            durationSeconds: 120
-        ))
+        let downloader = MockYouTubeDownloader(
+            result: YouTubeDownloader.DownloadResult(
+                audioFileURL: downloadedURL,
+                title: "Video",
+                durationSeconds: 120
+            ))
 
         let expectedResult = STTResult(text: "Downloaded transcript")
         await mockSTT.configure(result: expectedResult)
@@ -1088,11 +903,12 @@ final class TranscriptionServiceTests: XCTestCase {
         let downloadedURL = try makeTempDownloadedAudio()
         defer { try? FileManager.default.removeItem(at: downloadedURL) }
 
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Video",
-            durationSeconds: 120
-        ))
+        let downloader = MockYouTubeDownloader(
+            result: YouTubeDownloader.DownloadResult(
+                audioFileURL: downloadedURL,
+                title: "Video",
+                durationSeconds: 120
+            ))
 
         let expectedResult = STTResult(text: "Downloaded transcript")
         await mockSTT.configure(result: expectedResult)
@@ -1115,11 +931,12 @@ final class TranscriptionServiceTests: XCTestCase {
         let downloadedURL = try makeTempDownloadedAudio()
         defer { try? FileManager.default.removeItem(at: downloadedURL) }
 
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Video",
-            durationSeconds: 120
-        ))
+        let downloader = MockYouTubeDownloader(
+            result: YouTubeDownloader.DownloadResult(
+                audioFileURL: downloadedURL,
+                title: "Video",
+                durationSeconds: 120
+            ))
 
         await mockSTT.configure(result: STTResult(text: "Downloaded transcript"))
 
@@ -1146,11 +963,12 @@ final class TranscriptionServiceTests: XCTestCase {
         let downloadedURL = try makeTempDownloadedAudio()
         defer { try? FileManager.default.removeItem(at: downloadedURL) }
 
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Video",
-            durationSeconds: 120
-        ))
+        let downloader = MockYouTubeDownloader(
+            result: YouTubeDownloader.DownloadResult(
+                audioFileURL: downloadedURL,
+                title: "Video",
+                durationSeconds: 120
+            ))
 
         let service = TranscriptionService(
             audioProcessor: mockAudio,
@@ -1213,14 +1031,15 @@ final class TranscriptionServiceTests: XCTestCase {
         let downloadedURL = try makeTempDownloadedAudio(fileExtension: "webm")
         defer { try? FileManager.default.removeItem(at: downloadedURL) }
 
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Video Title",
-            durationSeconds: 120,
-            channelName: "Channel Name",
-            thumbnailURL: "https://img.example/thumb.jpg",
-            videoDescription: "Video description"
-        ))
+        let downloader = MockYouTubeDownloader(
+            result: YouTubeDownloader.DownloadResult(
+                audioFileURL: downloadedURL,
+                title: "Video Title",
+                durationSeconds: 120,
+                channelName: "Channel Name",
+                thumbnailURL: "https://img.example/thumb.jpg",
+                videoDescription: "Video description"
+            ))
         let conversionExpectation = expectation(description: "playback conversion received metadata")
         let converter = CapturingPlaybackConverter(
             transformedPath: downloadedURL.deletingPathExtension().appendingPathExtension("m4a").path,
@@ -1252,11 +1071,12 @@ final class TranscriptionServiceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: downloadedURL) }
         let facebookURL = "https://www.facebook.com/reel/1998924354042801"
 
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Facebook Reel",
-            durationSeconds: 85
-        ))
+        let downloader = MockYouTubeDownloader(
+            result: YouTubeDownloader.DownloadResult(
+                audioFileURL: downloadedURL,
+                title: "Facebook Reel",
+                durationSeconds: 85
+            ))
 
         await mockSTT.configure(result: STTResult(text: "Downloaded transcript"))
 
@@ -1286,15 +1106,16 @@ final class TranscriptionServiceTests: XCTestCase {
         let applePodcastsURL = "https://podcasts.apple.com/us/podcast/the-daily/id1200361736?i=1000654321987"
         let enclosureURL = "https://cdn.example.com/audio/42.mp3"
 
-        let resolver = StubPodcastResolver(episode: ResolvedPodcastEpisode(
-            audioURL: enclosureURL,
-            episodeTitle: "Episode 42: On Patience",
-            showName: "The Daily",
-            artworkURL: "https://art.example.com/600.jpg",
-            episodeDescription: "A long-form episode description.",
-            durationSeconds: 1830,
-            releaseDate: "2024-06-01"
-        ))
+        let resolver = StubPodcastResolver(
+            episode: ResolvedPodcastEpisode(
+                audioURL: enclosureURL,
+                episodeTitle: "Episode 42: On Patience",
+                showName: "The Daily",
+                artworkURL: "https://art.example.com/600.jpg",
+                episodeDescription: "A long-form episode description.",
+                durationSeconds: 1830,
+                releaseDate: "2024-06-01"
+            ))
         // Podcasts fetch the enclosure with the native downloader, not yt-dlp.
         let fetcher = StubPodcastAudioFetcher(fileURL: downloadedURL)
 
@@ -1334,15 +1155,16 @@ final class TranscriptionServiceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: downloadedURL) }
         let enclosureURL = "https://cdn.example.com/705.mp3"
 
-        let searchResolver = StubPodcastSearchResolver(episode: ResolvedPodcastEpisode(
-            audioURL: enclosureURL,
-            episodeTitle: "Episode 705: Train Your AI Team",
-            showName: "Everyday AI",
-            artworkURL: "https://art.example.com/eai.jpg",
-            episodeDescription: "Training your team.",
-            durationSeconds: 2700,
-            releaseDate: "2024-07-01"
-        ))
+        let searchResolver = StubPodcastSearchResolver(
+            episode: ResolvedPodcastEpisode(
+                audioURL: enclosureURL,
+                episodeTitle: "Episode 705: Train Your AI Team",
+                showName: "Everyday AI",
+                artworkURL: "https://art.example.com/eai.jpg",
+                episodeDescription: "Training your team.",
+                durationSeconds: 2700,
+                releaseDate: "2024-07-01"
+            ))
         let fetcher = StubPodcastAudioFetcher(fileURL: downloadedURL)
         await mockSTT.configure(result: STTResult(text: "Search transcript"))
 
@@ -1371,154 +1193,6 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(result.rawTranscript, "Search transcript")
     }
 
-    func testTranscribeURLEmitsPodcastSourceTelemetryOnResolveFailure() async throws {
-        let telemetry = TelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        let fetcher = StubPodcastAudioFetcher(fileURL: URL(fileURLWithPath: "/tmp/unused.mp3"))
-        let resolver = StubPodcastResolver(error: PodcastResolveError.episodeNotFound)
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            podcastResolver: resolver,
-            podcastAudioFetcher: fetcher
-        )
-
-        do {
-            _ = try await service.transcribeURL(urlString: "https://podcasts.apple.com/us/podcast/x/id1?i=2")
-            XCTFail("Should have thrown")
-        } catch let error as PodcastResolveError {
-            XCTAssertEqual(error, .episodeNotFound)
-        }
-
-        let fetchCount = await fetcher.fetchCallCount
-        XCTAssertEqual(fetchCount, 0, "Audio fetch must not run when resolution fails")
-
-        let failedEvent = telemetry.snapshot().reversed().first {
-            if case .transcriptionFailed = $0 { return true }
-            return false
-        }
-        guard case .transcriptionFailed(let source, let stage, _, _) = try XCTUnwrap(failedEvent) else {
-            return XCTFail("Expected transcription_failed telemetry")
-        }
-        XCTAssertEqual(source, .podcast)
-        XCTAssertEqual(stage, .download)
-    }
-
-    func testTranscribeMeetingUsesFinalizeLaneAndMergesFreshSourceTranscriptsByAlignment() async throws {
-        let telemetry = TelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-        let recordingFolder = URL(fileURLWithPath: AppPaths.tempDir)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: recordingFolder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: recordingFolder) }
-
-        let mixedURL = recordingFolder.appendingPathComponent("meeting-playback.m4a")
-        let microphoneURL = recordingFolder.appendingPathComponent("microphone-raw.m4a")
-        let systemURL = recordingFolder.appendingPathComponent("system-raw.m4a")
-        XCTAssertTrue(FileManager.default.createFile(atPath: mixedURL.path, contents: Data("mixed".utf8)))
-        XCTAssertTrue(FileManager.default.createFile(atPath: microphoneURL.path, contents: Data("microphone".utf8)))
-        XCTAssertTrue(FileManager.default.createFile(atPath: systemURL.path, contents: Data("system".utf8)))
-
-        await mockSTT.configureSequence(results: [
-            STTResult(
-                text: "Hello there",
-                words: [
-                    TimestampedWord(word: "Hello", startMs: 50, endMs: 260, confidence: 0.9),
-                    TimestampedWord(word: "there", startMs: 300, endMs: 540, confidence: 0.9),
-                ]
-            ),
-            STTResult(
-                text: "Sounds good",
-                words: [
-                    TimestampedWord(word: "Sounds", startMs: 20, endMs: 280, confidence: 0.9),
-                    TimestampedWord(word: "good", startMs: 320, endMs: 560, confidence: 0.9),
-                ]
-            ),
-        ])
-
-        let recording = MeetingRecordingOutput(
-            sessionID: UUID(),
-            displayName: "Meeting Demo",
-            folderURL: recordingFolder,
-            mixedAudioURL: mixedURL,
-            microphoneAudioURL: microphoneURL,
-            systemAudioURL: systemURL,
-            durationSeconds: 1.5,
-            sourceAlignment: MeetingSourceAlignment(
-                meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
-                system: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 900, writtenFrameCount: 24_000, sampleRate: 48_000)
-            )
-        )
-
-        let phasesLock = OSAllocatedUnfairLock(initialState: [TranscriptionProgress]())
-        let result = try await service.transcribeMeeting(recording: recording) { progress in
-            phasesLock.withLock { $0.append(progress) }
-        }
-        let sttCallCount = await mockSTT.transcribeCallCount
-        let jobs = await mockSTT.jobs
-        let convertCallCount = await mockAudio.convertCallCount
-        let convertURLs = await mockAudio.convertURLs
-
-        XCTAssertEqual(result.fileName, "Meeting Demo")
-        XCTAssertEqual(result.filePath, mixedURL.path)
-        XCTAssertEqual(result.rawTranscript, "Hello there Sounds good")
-        XCTAssertEqual(result.speakerCount, 2)
-        XCTAssertEqual(result.speakers, [
-            SpeakerInfo(id: "microphone", label: "Me"),
-            SpeakerInfo(id: "system", label: "Others"),
-        ])
-        XCTAssertEqual(result.diarizationSegments, [
-            DiarizationSegmentRecord(speakerId: "microphone", startMs: 50, endMs: 540),
-            DiarizationSegmentRecord(speakerId: "system", startMs: 920, endMs: 1460),
-        ])
-        XCTAssertEqual(result.wordTimestamps?.map(\.speakerId), ["microphone", "microphone", "system", "system"])
-        XCTAssertEqual(result.wordTimestamps?.map(\.startMs), [50, 300, 920, 1220])
-        let indexedText: [String] = try segmentRepo.fetch(transcriptionId: result.id).map(\.text)
-        let durableText: [String]? = result.transcriptSegments?.map(\.text)
-        XCTAssertEqual(indexedText, durableText)
-        XCTAssertEqual(sttCallCount, 2)
-        XCTAssertEqual(jobs, [.meetingFinalize, .meetingFinalize])
-        XCTAssertEqual(convertCallCount, 2)
-        XCTAssertEqual(convertURLs, [microphoneURL, systemURL])
-        XCTAssertEqual(
-            phasesLock.withLock { phases in
-                phases.filter { if case .preparingSpeechModel = $0 { true } else { false } }.count
-            },
-            2,
-            "Each separately scheduled meeting source should report indeterminate model preparation"
-        )
-
-        let events = telemetry.snapshot()
-        let completedEvent = events.reversed().first {
-            if case .transcriptionCompleted = $0 { return true }
-            return false
-        }
-        guard case .transcriptionCompleted(
-            let source,
-            _,
-            _,
-            _,
-            let speakerCount,
-            let diarizationRequested,
-            let diarizationApplied,
-            _,
-            _,
-            _
-        ) = try XCTUnwrap(completedEvent) else {
-            return XCTFail("Expected transcription_completed telemetry")
-        }
-        XCTAssertEqual(source, .meeting)
-        XCTAssertEqual(speakerCount, 2)
-        XCTAssertFalse(diarizationRequested)
-        XCTAssertFalse(diarizationApplied)
-    }
-
     func testTranscribeMeetingUsesValidatedCleanedMicForMicrophoneSource() async throws {
         let recordingFolder = URL(fileURLWithPath: AppPaths.tempDir)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -1539,12 +1213,16 @@ final class TranscriptionServiceTests: XCTestCase {
             fileManager: .default)
 
         await mockSTT.configureSequence(results: [
-            STTResult(text: "local words", words: [
-                TimestampedWord(word: "local", startMs: 0, endMs: 200, confidence: 0.9),
-            ]),
-            STTResult(text: "remote words", words: [
-                TimestampedWord(word: "remote", startMs: 0, endMs: 200, confidence: 0.9),
-            ]),
+            STTResult(
+                text: "local words",
+                words: [
+                    TimestampedWord(word: "local", startMs: 0, endMs: 200, confidence: 0.9)
+                ]),
+            STTResult(
+                text: "remote words",
+                words: [
+                    TimestampedWord(word: "remote", startMs: 0, endMs: 200, confidence: 0.9)
+                ]),
         ])
 
         let recording = MeetingRecordingOutput(
@@ -1771,14 +1449,15 @@ final class TranscriptionServiceTests: XCTestCase {
     func testFinalizeMeetingTranscriptionUpdatesExistingStubWithoutDuplicatingLibraryRow() async throws {
         let recording = try makeOneSourceMeetingRecording(displayName: "Queued Meeting")
         defer { try? FileManager.default.removeItem(at: recording.folderURL) }
-        await mockSTT.configure(result: STTResult(
-            text: "Queued meeting finished",
-            words: [
-                TimestampedWord(word: "Queued", startMs: 0, endMs: 250, confidence: 0.95),
-                TimestampedWord(word: "meeting", startMs: 280, endMs: 520, confidence: 0.95),
-                TimestampedWord(word: "finished", startMs: 560, endMs: 900, confidence: 0.95),
-            ]
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "Queued meeting finished",
+                words: [
+                    TimestampedWord(word: "Queued", startMs: 0, endMs: 250, confidence: 0.95),
+                    TimestampedWord(word: "meeting", startMs: 280, endMs: 520, confidence: 0.95),
+                    TimestampedWord(word: "finished", startMs: 560, endMs: 900, confidence: 0.95),
+                ]
+            ))
 
         let stub = try await service.prepareMeetingTranscription(recording: recording)
         let result = try await service.finalizeMeetingTranscription(
@@ -1823,13 +1502,14 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1
         )
         defer { try? FileManager.default.removeItem(at: recording.folderURL) }
-        await mockSTT.configure(result: STTResult(
-            text: "Only the captured minute is available",
-            words: [
-                TimestampedWord(word: "Only", startMs: 0, endMs: 300, confidence: 0.95),
-                TimestampedWord(word: "available", startMs: 700, endMs: 1_500, confidence: 0.95),
-            ]
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "Only the captured minute is available",
+                words: [
+                    TimestampedWord(word: "Only", startMs: 0, endMs: 300, confidence: 0.95),
+                    TimestampedWord(word: "available", startMs: 700, endMs: 1_500, confidence: 0.95),
+                ]
+            ))
 
         let stub = try await service.prepareMeetingTranscription(recording: recording)
         XCTAssertEqual(stub.durationMs, 1_000)
@@ -1902,17 +1582,18 @@ final class TranscriptionServiceTests: XCTestCase {
             turnTexts.joined(separator: " ").count,
             AIFormatter.maxTranscriptionInputChars
         )
-        await mockSTT.configure(result: STTResult(
-            text: turnTexts.joined(separator: " "),
-            words: turnTexts.enumerated().map { index, text in
-                TimestampedWord(
-                    word: text,
-                    startMs: index * 4_000,
-                    endMs: index * 4_000 + 500,
-                    confidence: 0.95
-                )
-            }
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: turnTexts.joined(separator: " "),
+                words: turnTexts.enumerated().map { index, text in
+                    TimestampedWord(
+                        word: text,
+                        startMs: index * 4_000,
+                        endMs: index * 4_000 + 500,
+                        confidence: 0.95
+                    )
+                }
+            ))
         let llm = MockLLMService()
         llm.formatTranscriptTransform = { $0.uppercased() }
         let service = TranscriptionService(
@@ -1934,19 +1615,21 @@ final class TranscriptionServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(llm.formatTranscriptCallCount, 3)
-        XCTAssertTrue(llm.formattedTranscripts.allSatisfy {
-            $0.count <= AIFormatter.maxTranscriptionInputChars
-        })
+        XCTAssertTrue(
+            llm.formattedTranscripts.allSatisfy {
+                $0.count <= AIFormatter.maxTranscriptionInputChars
+            })
         XCTAssertEqual(result.meetingReadingTurnFormatting?.count, 3)
         XCTAssertEqual(result.cleanTranscript, turnTexts.map { $0.uppercased() }.joined(separator: "\n\n"))
         XCTAssertEqual(result.rawTranscript, turnTexts.joined(separator: " "))
         XCTAssertEqual(result.wordTimestamps?.map(\.word), turnTexts)
-        XCTAssertTrue(progress.withLock { updates in
-            updates.contains { update in
-                if case .formatting(completed: 3, total: 3) = update { return true }
-                return false
-            }
-        })
+        XCTAssertTrue(
+            progress.withLock { updates in
+                updates.contains { update in
+                    if case .formatting(completed: 3, total: 3) = update { return true }
+                    return false
+                }
+            })
 
         let persisted = try XCTUnwrap(transcriptionRepo.fetch(id: result.id))
         XCTAssertEqual(persisted.meetingReadingTurnFormatting, result.meetingReadingTurnFormatting)
@@ -1954,17 +1637,18 @@ final class TranscriptionServiceTests: XCTestCase {
     }
 
     func testMeetingCancellationDuringFormattingThrowsAndPersistsCancelledStatus() async throws {
-        await mockSTT.configure(result: STTResult(
-            text: "Cancel during formatting.",
-            words: [
-                TimestampedWord(
-                    word: "Cancel during formatting.",
-                    startMs: 0,
-                    endMs: 500,
-                    confidence: 0.95
-                )
-            ]
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "Cancel during formatting.",
+                words: [
+                    TimestampedWord(
+                        word: "Cancel during formatting.",
+                        startMs: 0,
+                        endMs: 500,
+                        confidence: 0.95
+                    )
+                ]
+            ))
         let llm = MockLLMService()
         llm.formatTranscriptTransform = { input in
             withUnsafeCurrentTask { $0?.cancel() }
@@ -2000,17 +1684,18 @@ final class TranscriptionServiceTests: XCTestCase {
     }
 
     func testMeetingWithAIFormattingDisabledDoesNotBuildFormattingRequests() async throws {
-        await mockSTT.configure(result: STTResult(
-            text: "deterministic meeting text.",
-            words: [
-                TimestampedWord(
-                    word: "deterministic meeting text.",
-                    startMs: 0,
-                    endMs: 500,
-                    confidence: 0.95
-                )
-            ]
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "deterministic meeting text.",
+                words: [
+                    TimestampedWord(
+                        word: "deterministic meeting text.",
+                        startMs: 0,
+                        endMs: 500,
+                        confidence: 0.95
+                    )
+                ]
+            ))
         let llm = MockLLMService()
         let service = TranscriptionService(
             audioProcessor: mockAudio,
@@ -2063,15 +1748,19 @@ final class TranscriptionServiceTests: XCTestCase {
 
         // Mic source says "acme"; system source says "kubernetes" — both raw STT.
         await mockSTT.configureSequence(results: [
-            STTResult(text: "sync with acme", words: [
-                TimestampedWord(word: "sync", startMs: 50, endMs: 260, confidence: 0.9),
-                TimestampedWord(word: "with", startMs: 300, endMs: 420, confidence: 0.9),
-                TimestampedWord(word: "acme", startMs: 440, endMs: 700, confidence: 0.9),
-            ]),
-            STTResult(text: "kubernetes rollout", words: [
-                TimestampedWord(word: "kubernetes", startMs: 20, endMs: 360, confidence: 0.9),
-                TimestampedWord(word: "rollout", startMs: 400, endMs: 640, confidence: 0.9),
-            ]),
+            STTResult(
+                text: "sync with acme",
+                words: [
+                    TimestampedWord(word: "sync", startMs: 50, endMs: 260, confidence: 0.9),
+                    TimestampedWord(word: "with", startMs: 300, endMs: 420, confidence: 0.9),
+                    TimestampedWord(word: "acme", startMs: 440, endMs: 700, confidence: 0.9),
+                ]),
+            STTResult(
+                text: "kubernetes rollout",
+                words: [
+                    TimestampedWord(word: "kubernetes", startMs: 20, endMs: 360, confidence: 0.9),
+                    TimestampedWord(word: "rollout", startMs: 400, endMs: 640, confidence: 0.9),
+                ]),
         ])
 
         let recording = MeetingRecordingOutput(
@@ -2084,8 +1773,12 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1.5,
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
-                system: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 900, writtenFrameCount: 24_000, sampleRate: 48_000)
+                microphone: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000),
+                system: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 900, writtenFrameCount: 24_000,
+                    sampleRate: 48_000)
             )
         )
 
@@ -2116,11 +1809,13 @@ final class TranscriptionServiceTests: XCTestCase {
     }
 
     func testTranscribeMeetingAutoGeneratesTitleForFallbackDisplayName() async throws {
-        let transcript = "We reviewed the product roadmap launch plan, customer onboarding risks, and next milestones for the mobile beta release."
-        await mockSTT.configure(result: STTResult(
-            text: transcript,
-            words: timestampedWords(from: transcript)
-        ))
+        let transcript =
+            "We reviewed the product roadmap launch plan, customer onboarding risks, and next milestones for the mobile beta release."
+        await mockSTT.configure(
+            result: STTResult(
+                text: transcript,
+                words: timestampedWords(from: transcript)
+            ))
         let llm = MockLLMService()
         llm.summarizeResult = "  \"Product Roadmap Review\"  "
         let service = TranscriptionService(
@@ -2147,11 +1842,13 @@ final class TranscriptionServiceTests: XCTestCase {
     }
 
     func testTranscribeMeetingSkipsAutoTitleWhenSettingDisabled() async throws {
-        let transcript = "We reviewed the product roadmap launch plan, customer onboarding risks, and next milestones for the mobile beta release."
-        await mockSTT.configure(result: STTResult(
-            text: transcript,
-            words: timestampedWords(from: transcript)
-        ))
+        let transcript =
+            "We reviewed the product roadmap launch plan, customer onboarding risks, and next milestones for the mobile beta release."
+        await mockSTT.configure(
+            result: STTResult(
+                text: transcript,
+                words: timestampedWords(from: transcript)
+            ))
         let llm = MockLLMService()
         llm.summarizeResult = "Product Roadmap Review"
         let service = TranscriptionService(
@@ -2173,11 +1870,13 @@ final class TranscriptionServiceTests: XCTestCase {
     }
 
     func testTranscribeMeetingKeepsFallbackTitleWhenGeneratedTitleIsGeneric() async throws {
-        let transcript = "We reviewed the product roadmap launch plan, customer onboarding risks, and next milestones for the mobile beta release."
-        await mockSTT.configure(result: STTResult(
-            text: transcript,
-            words: timestampedWords(from: transcript)
-        ))
+        let transcript =
+            "We reviewed the product roadmap launch plan, customer onboarding risks, and next milestones for the mobile beta release."
+        await mockSTT.configure(
+            result: STTResult(
+                text: transcript,
+                words: timestampedWords(from: transcript)
+            ))
         let llm = MockLLMService()
         llm.summarizeResult = "Meeting"
         let service = TranscriptionService(
@@ -2199,11 +1898,13 @@ final class TranscriptionServiceTests: XCTestCase {
     }
 
     func testTranscribeMeetingDoesNotReplaceCalendarOrCustomTitle() async throws {
-        let transcript = "We reviewed the product roadmap launch plan, customer onboarding risks, and next milestones for the mobile beta release."
-        await mockSTT.configure(result: STTResult(
-            text: transcript,
-            words: timestampedWords(from: transcript)
-        ))
+        let transcript =
+            "We reviewed the product roadmap launch plan, customer onboarding risks, and next milestones for the mobile beta release."
+        await mockSTT.configure(
+            result: STTResult(
+                text: transcript,
+                words: timestampedWords(from: transcript)
+            ))
         let llm = MockLLMService()
         llm.summarizeResult = "Product Roadmap Review"
         let service = TranscriptionService(
@@ -2235,13 +1936,14 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.createFile(atPath: mixedURL.path, contents: Data("mixed".utf8)))
         XCTAssertTrue(FileManager.default.createFile(atPath: microphoneURL.path, contents: Data("microphone".utf8)))
 
-        await mockSTT.configure(result: STTResult(
-            text: "안녕하세요",
-            words: [
-                TimestampedWord(word: "안녕하세요", startMs: 0, endMs: 700, confidence: 0.9),
-            ],
-            language: "ko"
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "안녕하세요",
+                words: [
+                    TimestampedWord(word: "안녕하세요", startMs: 0, endMs: 700, confidence: 0.9)
+                ],
+                language: "ko"
+            ))
 
         let recording = MeetingRecordingOutput(
             sessionID: UUID(),
@@ -2253,7 +1955,9 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1.0,
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
+                microphone: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000),
                 system: nil
             ),
             speechEngine: SpeechEngineSelection(engine: .whisper, language: "KO")
@@ -2326,13 +2030,14 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.createFile(atPath: mixedURL.path, contents: Data("mixed".utf8)))
         XCTAssertTrue(FileManager.default.createFile(atPath: microphoneURL.path, contents: Data("microphone".utf8)))
 
-        await mockSTT.configure(result: STTResult(
-            text: "Retried with Parakeet",
-            words: [
-                TimestampedWord(word: "Retried", startMs: 0, endMs: 400, confidence: 0.9),
-            ],
-            language: "en"
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "Retried with Parakeet",
+                words: [
+                    TimestampedWord(word: "Retried", startMs: 0, endMs: 400, confidence: 0.9)
+                ],
+                language: "en"
+            ))
 
         let recording = MeetingRecordingOutput(
             sessionID: UUID(),
@@ -2344,7 +2049,9 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1.0,
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
+                microphone: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000),
                 system: nil
             ),
             speechEngine: SpeechEngineSelection(engine: .whisper, language: "ko")
@@ -2386,12 +2093,13 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.createFile(atPath: mixedURL.path, contents: Data("mixed".utf8)))
         XCTAssertTrue(FileManager.default.createFile(atPath: microphoneURL.path, contents: Data("microphone".utf8)))
 
-        await mockSTT.configure(result: STTResult(
-            text: "Legacy rerun",
-            words: [
-                TimestampedWord(word: "Legacy", startMs: 0, endMs: 400, confidence: 0.9),
-            ]
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "Legacy rerun",
+                words: [
+                    TimestampedWord(word: "Legacy", startMs: 0, endMs: 400, confidence: 0.9)
+                ]
+            ))
 
         let recording = MeetingRecordingOutput(
             sessionID: UUID(),
@@ -2403,7 +2111,9 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1.0,
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
+                microphone: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000),
                 system: nil
             ),
             speechEngine: SpeechEngineSelection(engine: .parakeet),
@@ -2441,21 +2151,23 @@ final class TranscriptionServiceTests: XCTestCase {
             sourceType: .meeting
         )
         try transcriptionRepo.save(original)
-        try promptResultRepo.save(PromptResult(
-            transcriptionId: original.id,
-            promptName: "Action Items",
-            promptContent: "Extract action items.",
-            content: "Ship the artifact refresh.",
-            userNotesSnapshot: "Focus on follow-through."
-        ))
+        try promptResultRepo.save(
+            PromptResult(
+                transcriptionId: original.id,
+                promptName: "Action Items",
+                promptContent: "Extract action items.",
+                content: "Ship the artifact refresh.",
+                userNotesSnapshot: "Focus on follow-through."
+            ))
 
-        await mockSTT.configure(result: STTResult(
-            text: "Fresh text",
-            words: [
-                TimestampedWord(word: "Fresh", startMs: 0, endMs: 300, confidence: 0.9),
-                TimestampedWord(word: "text", startMs: 320, endMs: 520, confidence: 0.9),
-            ]
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "Fresh text",
+                words: [
+                    TimestampedWord(word: "Fresh", startMs: 0, endMs: 300, confidence: 0.9),
+                    TimestampedWord(word: "text", startMs: 320, endMs: 520, confidence: 0.9),
+                ]
+            ))
 
         let artifactStore = CapturingMeetingArtifactStore()
         let service = TranscriptionService(
@@ -2476,7 +2188,9 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1.0,
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
+                microphone: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000),
                 system: nil
             )
         )
@@ -2583,7 +2297,9 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1.0,
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
+                microphone: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000),
                 system: nil
             ),
             speechEngine: SpeechEngineSelection(engine: .whisper, language: "ko")
@@ -2617,7 +2333,7 @@ final class TranscriptionServiceTests: XCTestCase {
             STTResult(
                 text: "Hello",
                 words: [
-                    TimestampedWord(word: "Hello", startMs: 0, endMs: 240, confidence: 0.9),
+                    TimestampedWord(word: "Hello", startMs: 0, endMs: 240, confidence: 0.9)
                 ]
             ),
             STTResult(
@@ -2630,17 +2346,18 @@ final class TranscriptionServiceTests: XCTestCase {
         ])
 
         let diarization = MockDiarizationService()
-        await diarization.configure(result: MacParakeetDiarizationResult(
-            segments: [
-                SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 240),
-                SpeakerSegment(speakerId: "S2", startMs: 260, endMs: 520),
-            ],
-            speakerCount: 2,
-            speakers: [
-                SpeakerInfo(id: "S1", label: "Speaker 1"),
-                SpeakerInfo(id: "S2", label: "Speaker 2"),
-            ]
-        ))
+        await diarization.configure(
+            result: MacParakeetDiarizationResult(
+                segments: [
+                    SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 240),
+                    SpeakerSegment(speakerId: "S2", startMs: 260, endMs: 520),
+                ],
+                speakerCount: 2,
+                speakers: [
+                    SpeakerInfo(id: "S1", label: "Speaker 1"),
+                    SpeakerInfo(id: "S2", label: "Speaker 2"),
+                ]
+            ))
 
         let service = TranscriptionService(
             audioProcessor: mockAudio,
@@ -2660,8 +2377,12 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1.5,
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
-                system: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 900, writtenFrameCount: 24_000, sampleRate: 48_000)
+                microphone: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000),
+                system: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 900, writtenFrameCount: 24_000,
+                    sampleRate: 48_000)
             )
         )
 
@@ -2670,17 +2391,21 @@ final class TranscriptionServiceTests: XCTestCase {
 
         XCTAssertTrue(diarizeCalled)
         XCTAssertEqual(result.speakerCount, 3)
-        XCTAssertEqual(result.speakers, [
-            SpeakerInfo(id: "microphone", label: "Me"),
-            SpeakerInfo(id: "system:S1", label: "Others 1"),
-            SpeakerInfo(id: "system:S2", label: "Others 2"),
-        ])
+        XCTAssertEqual(
+            result.speakers,
+            [
+                SpeakerInfo(id: "microphone", label: "Me"),
+                SpeakerInfo(id: "system:S1", label: "Others 1"),
+                SpeakerInfo(id: "system:S2", label: "Others 2"),
+            ])
         XCTAssertEqual(result.wordTimestamps?.map(\.speakerId), ["microphone", "system:S1", "system:S2"])
-        XCTAssertEqual(result.diarizationSegments, [
-            DiarizationSegmentRecord(speakerId: "microphone", startMs: 0, endMs: 240),
-            DiarizationSegmentRecord(speakerId: "system:S1", startMs: 900, endMs: 1140),
-            DiarizationSegmentRecord(speakerId: "system:S2", startMs: 1160, endMs: 1420),
-        ])
+        XCTAssertEqual(
+            result.diarizationSegments,
+            [
+                DiarizationSegmentRecord(speakerId: "microphone", startMs: 0, endMs: 240),
+                DiarizationSegmentRecord(speakerId: "system:S1", startMs: 900, endMs: 1140),
+                DiarizationSegmentRecord(speakerId: "system:S2", startMs: 1160, endMs: 1420),
+            ])
     }
 
     func testTranscribeMeetingUsesMeetingDiarizationPreference() async throws {
@@ -2690,15 +2415,16 @@ final class TranscriptionServiceTests: XCTestCase {
         await mockSTT.configureSequence(results: meetingSourceSTTResults())
 
         let diarization = MockDiarizationService()
-        await diarization.configure(result: MacParakeetDiarizationResult(
-            segments: [
-                SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 200),
-            ],
-            speakerCount: 1,
-            speakers: [
-                SpeakerInfo(id: "S1", label: "Speaker 1"),
-            ]
-        ))
+        await diarization.configure(
+            result: MacParakeetDiarizationResult(
+                segments: [
+                    SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 200)
+                ],
+                speakerCount: 1,
+                speakers: [
+                    SpeakerInfo(id: "S1", label: "Speaker 1")
+                ]
+            ))
 
         let service = TranscriptionService(
             audioProcessor: mockAudio,
@@ -2714,10 +2440,12 @@ final class TranscriptionServiceTests: XCTestCase {
 
         XCTAssertFalse(diarizeCalled)
         XCTAssertEqual(result.speakerCount, 2)
-        XCTAssertEqual(result.speakers, [
-            SpeakerInfo(id: "microphone", label: "Me"),
-            SpeakerInfo(id: "system", label: "Others"),
-        ])
+        XCTAssertEqual(
+            result.speakers,
+            [
+                SpeakerInfo(id: "microphone", label: "Me"),
+                SpeakerInfo(id: "system", label: "Others"),
+            ])
         XCTAssertEqual(result.wordTimestamps?.map(\.speakerId), ["microphone", "system"])
     }
 
@@ -2765,21 +2493,29 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1.5,
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
-                system: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000)
+                microphone: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000),
+                system: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000)
             )
         )
 
         let result = try await service.transcribeMeeting(recording: recording)
 
         XCTAssertEqual(result.rawTranscript, "Can Can you hear you hear me me")
-        XCTAssertEqual(result.wordTimestamps?.map(\.speakerId), [
-            "system", "microphone", "system", "system", "microphone", "microphone", "system", "microphone",
-        ])
-        XCTAssertEqual(result.speakers, [
-            SpeakerInfo(id: "microphone", label: "Me"),
-            SpeakerInfo(id: "system", label: "Others"),
-        ])
+        XCTAssertEqual(
+            result.wordTimestamps?.map(\.speakerId),
+            [
+                "system", "microphone", "system", "system", "microphone", "microphone", "system", "microphone",
+            ])
+        XCTAssertEqual(
+            result.speakers,
+            [
+                SpeakerInfo(id: "microphone", label: "Me"),
+                SpeakerInfo(id: "system", label: "Others"),
+            ])
     }
 
     func testTranscribeMeetingKeepsFallbackSystemSpeakerWhenDiarizationDoesNotCoverEveryWord() async throws {
@@ -2800,19 +2536,20 @@ final class TranscriptionServiceTests: XCTestCase {
                     TimestampedWord(word: "Hello", startMs: 0, endMs: 180, confidence: 0.9),
                     TimestampedWord(word: "there", startMs: 200, endMs: 360, confidence: 0.9),
                 ]
-            ),
+            )
         ])
 
         let diarization = MockDiarizationService()
-        await diarization.configure(result: MacParakeetDiarizationResult(
-            segments: [
-                SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 180),
-            ],
-            speakerCount: 1,
-            speakers: [
-                SpeakerInfo(id: "S1", label: "Speaker 1"),
-            ]
-        ))
+        await diarization.configure(
+            result: MacParakeetDiarizationResult(
+                segments: [
+                    SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 180)
+                ],
+                speakerCount: 1,
+                speakers: [
+                    SpeakerInfo(id: "S1", label: "Speaker 1")
+                ]
+            ))
 
         let service = TranscriptionService(
             audioProcessor: mockAudio,
@@ -2833,17 +2570,21 @@ final class TranscriptionServiceTests: XCTestCase {
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
                 microphone: nil,
-                system: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000)
+                system: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000)
             )
         )
 
         let result = try await service.transcribeMeeting(recording: recording)
 
         XCTAssertEqual(result.wordTimestamps?.map(\.speakerId), ["system:S1", "system"])
-        XCTAssertEqual(result.speakers, [
-            SpeakerInfo(id: "system", label: "Others"),
-            SpeakerInfo(id: "system:S1", label: "Others 1"),
-        ])
+        XCTAssertEqual(
+            result.speakers,
+            [
+                SpeakerInfo(id: "system", label: "Others"),
+                SpeakerInfo(id: "system:S1", label: "Others 1"),
+            ])
     }
 
     func testTranscribeMeetingPreservesSingleSourceModelText() async throws {
@@ -2864,7 +2605,7 @@ final class TranscriptionServiceTests: XCTestCase {
                     TimestampedWord(word: "Hello", startMs: 0, endMs: 180, confidence: 0.9),
                     TimestampedWord(word: "there", startMs: 220, endMs: 420, confidence: 0.9),
                 ]
-            ),
+            )
         ])
 
         let recording = MeetingRecordingOutput(
@@ -2877,7 +2618,9 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1.0,
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
+                microphone: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000),
                 system: nil
             )
         )
@@ -2903,7 +2646,7 @@ final class TranscriptionServiceTests: XCTestCase {
             STTResult(
                 text: "Hello, there.",
                 words: []
-            ),
+            )
         ])
 
         let recording = MeetingRecordingOutput(
@@ -2916,7 +2659,9 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1.0,
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
+                microphone: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000),
                 system: nil
             )
         )
@@ -2968,8 +2713,12 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1.5,
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
-                system: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 900, writtenFrameCount: 24_000, sampleRate: 48_000)
+                microphone: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000),
+                system: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 900, writtenFrameCount: 24_000,
+                    sampleRate: 48_000)
             )
         )
 
@@ -3015,8 +2764,12 @@ final class TranscriptionServiceTests: XCTestCase {
             durationSeconds: 1.5,
             sourceAlignment: MeetingSourceAlignment(
                 meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
-                system: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 900, writtenFrameCount: 24_000, sampleRate: 48_000)
+                microphone: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000,
+                    sampleRate: 48_000),
+                system: .init(
+                    firstHostTime: nil, lastHostTime: nil, startOffsetMs: 900, writtenFrameCount: 24_000,
+                    sampleRate: 48_000)
             )
         )
 
@@ -3024,60 +2777,6 @@ final class TranscriptionServiceTests: XCTestCase {
 
         XCTAssertEqual(result.rawTranscript, "Hello, there. Sounds good.")
         XCTAssertEqual(result.wordTimestamps?.map(\.speakerId), ["system", "system"])
-    }
-
-    func testTranscribeMeetingSttFailureEmitsSttStageTelemetry() async throws {
-        let telemetry = TelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-
-        let recordingFolder = URL(fileURLWithPath: AppPaths.tempDir)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: recordingFolder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: recordingFolder) }
-
-        let mixedURL = recordingFolder.appendingPathComponent("meeting-playback.m4a")
-        let microphoneURL = recordingFolder.appendingPathComponent("microphone-raw.m4a")
-        XCTAssertTrue(FileManager.default.createFile(atPath: mixedURL.path, contents: Data("mixed".utf8)))
-        XCTAssertTrue(FileManager.default.createFile(atPath: microphoneURL.path, contents: Data("microphone".utf8)))
-
-        await mockSTT.configure(error: STTError.transcriptionFailed("Model error"))
-
-        let recording = MeetingRecordingOutput(
-            sessionID: UUID(),
-            displayName: "Meeting Demo",
-            folderURL: recordingFolder,
-            mixedAudioURL: mixedURL,
-            microphoneAudioURL: microphoneURL,
-            systemAudioURL: recordingFolder.appendingPathComponent("system-raw.m4a"),
-            durationSeconds: 1.0,
-            sourceAlignment: MeetingSourceAlignment(
-                meetingOriginHostTime: nil,
-                microphone: .init(firstHostTime: nil, lastHostTime: nil, startOffsetMs: 0, writtenFrameCount: 24_000, sampleRate: 48_000),
-                system: nil
-            )
-        )
-
-        do {
-            _ = try await service.transcribeMeeting(recording: recording)
-            XCTFail("Should have thrown")
-        } catch let error as STTError {
-            guard case .transcriptionFailed = error else {
-                return XCTFail("Unexpected STT error: \(error)")
-            }
-        }
-
-        let events = telemetry.snapshot()
-        let failedEvent = events.reversed().first {
-            if case .transcriptionFailed = $0 { return true }
-            return false
-        }
-        guard case .transcriptionFailed(let source, let stage, let errorType, _) = try XCTUnwrap(failedEvent) else {
-            return XCTFail("Expected transcription_failed telemetry")
-        }
-        XCTAssertEqual(source, .meeting)
-        XCTAssertEqual(stage, .stt)
-        XCTAssertEqual(errorType, "STTError.transcriptionFailed")
     }
 
     func testMeetingSourceRetranscribeUsesBatchLane() async throws {
@@ -3115,13 +2814,14 @@ final class TranscriptionServiceTests: XCTestCase {
             sourceType: .youtube
         )
         try transcriptionRepo.save(original)
-        await mockSTT.configure(result: STTResult(
-            text: "New transcript",
-            words: [
-                TimestampedWord(word: "New", startMs: 0, endMs: 120, confidence: 0.98),
-                TimestampedWord(word: "transcript", startMs: 150, endMs: 420, confidence: 0.97),
-            ]
-        ))
+        await mockSTT.configure(
+            result: STTResult(
+                text: "New transcript",
+                words: [
+                    TimestampedWord(word: "New", startMs: 0, endMs: 120, confidence: 0.98),
+                    TimestampedWord(word: "transcript", startMs: 150, endMs: 420, confidence: 0.97),
+                ]
+            ))
 
         let result = try await service.retranscribe(
             existing: original,
@@ -3281,43 +2981,6 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertNil(all[0].errorMessage)
     }
 
-    func testTranscribeURLDownloadFailureEmitsDownloadStageTelemetry() async throws {
-        let telemetry = TelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-        let downloader = FailingYouTubeDownloader(
-            error: YouTubeDownloadError.downloadFailed("yt-dlp failed")
-        )
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            youtubeDownloader: downloader
-        )
-
-        do {
-            _ = try await service.transcribeURL(urlString: "https://youtu.be/dQw4w9WgXcQ")
-            XCTFail("Should have thrown")
-        } catch let error as YouTubeDownloadError {
-            guard case .downloadFailed = error else {
-                return XCTFail("Unexpected download error: \(error)")
-            }
-        }
-
-        let events = telemetry.snapshot()
-        let failedEvent = events.reversed().first {
-            if case .transcriptionFailed = $0 { return true }
-            return false
-        }
-        guard case .transcriptionFailed(let source, let stage, let errorType, _) = try XCTUnwrap(failedEvent) else {
-            return XCTFail("Expected transcription_failed telemetry")
-        }
-        XCTAssertEqual(source, .youtube)
-        XCTAssertEqual(stage, .download)
-        XCTAssertEqual(errorType, "YouTubeDownloadError.downloadFailed")
-    }
-
     private func timestampedWords(from transcript: String) -> [TimestampedWord] {
         var startMs = 0
         return transcript.split(whereSeparator: \.isWhitespace).map { word in
@@ -3435,12 +3098,16 @@ final class TranscriptionServiceTests: XCTestCase {
 
     private func meetingSourceSTTResults() -> [STTResult] {
         [
-            STTResult(text: "local words", words: [
-                TimestampedWord(word: "local", startMs: 0, endMs: 200, confidence: 0.9),
-            ]),
-            STTResult(text: "remote words", words: [
-                TimestampedWord(word: "remote", startMs: 0, endMs: 200, confidence: 0.9),
-            ]),
+            STTResult(
+                text: "local words",
+                words: [
+                    TimestampedWord(word: "local", startMs: 0, endMs: 200, confidence: 0.9)
+                ]),
+            STTResult(
+                text: "remote words",
+                words: [
+                    TimestampedWord(word: "remote", startMs: 0, endMs: 200, confidence: 0.9)
+                ]),
         ]
     }
 
@@ -3465,10 +3132,11 @@ final class TranscriptionServiceTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let log = (try? String(
-            contentsOf: AudioCaptureDiagnostics.diagnosticLogURL(),
-            encoding: .utf8
-        )) ?? ""
+        let log =
+            (try? String(
+                contentsOf: AudioCaptureDiagnostics.diagnosticLogURL(),
+                encoding: .utf8
+            )) ?? ""
         let expectedSession = "session=\(sessionID.uuidString)"
         let expectedReason = "reason=\(reason.rawValue)"
         let found = log.split(separator: "\n").contains { line in
@@ -3482,22 +3150,6 @@ final class TranscriptionServiceTests: XCTestCase {
             file: file,
             line: line
         )
-    }
-
-    private func telemetryProps(for spec: TelemetryEventSpec) throws -> [String: String] {
-        let event = TelemetryEvent(
-            spec: spec,
-            appVer: "test",
-            osVer: "test",
-            locale: "en-US",
-            chip: "test",
-            session: "test"
-        )
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        let data = try encoder.encode(event)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        return try XCTUnwrap(json["props"] as? [String: String])
     }
 
     private func makeTempDownloadedAudio(fileExtension: String = "m4a") throws -> URL {

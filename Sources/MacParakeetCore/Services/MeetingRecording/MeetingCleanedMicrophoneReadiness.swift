@@ -55,8 +55,9 @@ public struct MeetingCleanedMicrophoneReadinessPolicy: Sendable, Equatable {
 
     public func shouldAttemptRender(for recordingDuration: TimeInterval) -> Bool {
         guard recordingDuration.isFinite, recordingDuration > 0 else { return true }
-        return recordingDuration / Self.bestMeasuredRealtimeFactor <= timeoutSeconds(
-            for: recordingDuration)
+        return recordingDuration / Self.bestMeasuredRealtimeFactor
+            <= timeoutSeconds(
+                for: recordingDuration)
     }
 }
 
@@ -755,7 +756,7 @@ extension MeetingRecordingOutput {
                     probeBestCorrelation: existing.probeBestCorrelation
                 )
             case .rawTimeout, .rawRenderFailed, .rawMissingSystemReference, .rawNoAECAssets,
-                    .skippedNoEchoPath, .predictedRenderTimeout:
+                .skippedNoEchoPath, .predictedRenderTimeout:
                 break
             }
         }

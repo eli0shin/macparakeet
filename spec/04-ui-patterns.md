@@ -377,8 +377,6 @@ coexist.
   title, 9.5pt rounded regular subcopy
 - Motion: 220ms ease-in-out opacity + 4pt upward offset; Reduce Motion uses
   opacity only
-- Telemetry: one `dictation_first_load_caption_shown` event on appear and one
-  `dictation_first_load_caption_duration` event on dismiss
 ```
 
 **4. Formatting (AI Formatter refinement)**

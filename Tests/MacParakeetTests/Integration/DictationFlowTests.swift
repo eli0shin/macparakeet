@@ -42,7 +42,8 @@ final class DictationFlowTests: XCTestCase {
         // 1. Start recording
         try await dictationService.startRecording()
         let recordingState = await dictationService.state
-        if case .recording = recordingState {} else {
+        if case .recording = recordingState {
+        } else {
             XCTFail("Expected recording state")
         }
 

@@ -105,10 +105,11 @@ public enum AIFormatterProfileMatcher {
         let ordered = sortedByPrecedence(profiles.filter(\.isEnabled))
 
         if let bundleIdentifier = context.bundleIdentifier,
-           let exactMatch = ordered.first(where: { profile in
-               profile.targetKind == .bundle
-                   && profile.bundleIdentifier == bundleIdentifier
-           }) {
+            let exactMatch = ordered.first(where: { profile in
+                profile.targetKind == .bundle
+                    && profile.bundleIdentifier == bundleIdentifier
+            })
+        {
             return exactMatch
         }
 
@@ -135,8 +136,9 @@ public enum AIFormatterProfileMatcher {
         }
 
         if let context,
-           smartDefaultsPolicy.allowsCategory(context.category),
-           let categoryDefault = AIFormatterSmartDefaults.categoryDefault(for: context.category) {
+            smartDefaultsPolicy.allowsCategory(context.category),
+            let categoryDefault = AIFormatterSmartDefaults.categoryDefault(for: context.category)
+        {
             return AIFormatterPromptResolution(
                 promptTemplate: categoryDefault.promptTemplate,
                 matchKind: .category,

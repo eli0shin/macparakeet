@@ -295,10 +295,7 @@ public final class DictationHistoryViewModel {
         let targets = dictations.map { DeleteTarget(id: $0.id, audioPath: $0.audioPath) }
 
         Task { [repo, targets] in
-            let deletedIDs = await Self.deleteTargets(targets, using: repo)
-            for _ in deletedIDs {
-                Telemetry.send(.dictationDeleted)
-            }
+            _ = await Self.deleteTargets(targets, using: repo)
             loadDictations()
         }
     }
@@ -341,7 +338,8 @@ public final class DictationHistoryViewModel {
 
     public func downloadAudio(for dictation: Dictation) {
         guard let audioPath = dictation.audioPath,
-              FileManager.default.fileExists(atPath: audioPath) else { return }
+            FileManager.default.fileExists(atPath: audioPath)
+        else { return }
         let sourceURL = URL(fileURLWithPath: audioPath)
         let panel = NSSavePanel()
         panel.nameFieldStringValue = sourceURL.lastPathComponent
@@ -357,7 +355,6 @@ public final class DictationHistoryViewModel {
         let text = dictation.displayText
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        Telemetry.send(.copyToClipboard(source: .history))
 
         copiedResetTask?.cancel()
         copiedDictationId = dictation.id
@@ -448,7 +445,6 @@ public final class DictationHistoryViewModel {
             playbackDelegate = delegate
             playingDictationId = dictation.id
             isPlaying = true
-            Telemetry.send(.historyReplayed)
             playbackDuration = player.duration
             playbackCurrentTime = 0
             startPlaybackTimer()
@@ -488,8 +484,7 @@ public final class DictationHistoryViewModel {
         searchDebounceTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
             guard let self, !Task.isCancelled else { return }
-            let resultCount = self.loadDictations(shouldRefreshStats: false)
-            Telemetry.send(.historySearched(resultCountBucket: Self.searchResultCountBucket(resultCount)))
+            _ = self.loadDictations(shouldRefreshStats: false)
         }
     }
 

@@ -36,7 +36,7 @@ final class LLMConfigCommandTests: XCTestCase {
         let options = try LLMInlineOptions.parse([
             "--provider", "ollama",
             "--base-url", "http://127.0.0.1:11435/v1",
-            "--model", "llama3.2"
+            "--model", "llama3.2",
         ])
 
         let config = try options.buildConfig()
@@ -48,7 +48,7 @@ final class LLMConfigCommandTests: XCTestCase {
         let options = try LLMInlineOptions.parse([
             "--provider", "ollama",
             "--base-url", "http://192.168.1.5:11434/v1",
-            "--model", "llama3.2"
+            "--model", "llama3.2",
         ])
 
         let config = try options.buildConfig()
@@ -62,7 +62,7 @@ final class LLMConfigCommandTests: XCTestCase {
             "--provider", "openai-compatible",
             "--api-key", "sk-third-party",
             "--base-url", "https://api.example.com/v1",
-            "--model", "vendor/model"
+            "--model", "vendor/model",
         ])
 
         let config = try options.buildConfig()
@@ -76,7 +76,7 @@ final class LLMConfigCommandTests: XCTestCase {
         let options = try LLMInlineOptions.parse([
             "--provider", "openai-compatible",
             "--base-url", "https://api.example.com/v1",
-            "--model", "vendor/model"
+            "--model", "vendor/model",
         ])
 
         let config = try options.buildConfig()
@@ -182,7 +182,7 @@ final class LLMConfigCommandTests: XCTestCase {
         let options = try LLMInlineOptions.parse([
             "--provider", "openai-compatible",
             "--base-url", "http://localhost:8000/v1",
-            "--model", "local-model"
+            "--model", "local-model",
         ])
 
         let config = try options.buildConfig()
@@ -194,7 +194,7 @@ final class LLMConfigCommandTests: XCTestCase {
         let options = try LLMInlineOptions.parse([
             "--provider", "openai-compatible",
             "--base-url", "http://192.168.1.5:8000/v1",
-            "--model", "local-model"
+            "--model", "local-model",
         ])
 
         XCTAssertThrowsError(try options.buildConfig(emitWarnings: false)) { error in
@@ -208,7 +208,7 @@ final class LLMConfigCommandTests: XCTestCase {
             "--provider", "openai-compatible",
             "--base-url", "http://192.168.1.5:8000/v1",
             "--allow-insecure-http",
-            "--model", "local-model"
+            "--model", "local-model",
         ])
 
         let config = try options.buildConfig(emitWarnings: false)
@@ -222,7 +222,7 @@ final class LLMConfigCommandTests: XCTestCase {
             "--provider", "openai",
             "--api-key-env", "OPENAI_API_KEY",
             "--base-url", "http://api.example.com/v1",
-            "--model", "gpt-4.1"
+            "--model", "gpt-4.1",
         ])
 
         XCTAssertThrowsError(
@@ -242,7 +242,7 @@ final class LLMConfigCommandTests: XCTestCase {
             "--api-key-env", "OPENAI_API_KEY",
             "--base-url", "http://api.example.com/v1",
             "--allow-insecure-http",
-            "--model", "gpt-4.1"
+            "--model", "gpt-4.1",
         ])
 
         let config = try options.buildConfig(
@@ -271,7 +271,7 @@ final class LLMConfigCommandTests: XCTestCase {
             "--provider", "openai-compatible",
             "--base-url", "https://lan-proxy.example/v1",
             "--model", "self-hosted-model",
-            "--local"
+            "--local",
         ])
 
         let config = try options.buildConfig()

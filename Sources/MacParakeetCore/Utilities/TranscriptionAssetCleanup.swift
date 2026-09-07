@@ -75,7 +75,8 @@ public enum TranscriptionAssetCleanup {
         fileManager: FileManager = .default
     ) throws -> Bool {
         guard transcription.sourceType == .meeting,
-              let folderURL = MeetingArtifactStore.sessionFolderURL(for: transcription)?.standardizedFileURL else {
+            let folderURL = MeetingArtifactStore.sessionFolderURL(for: transcription)?.standardizedFileURL
+        else {
             return false
         }
 
@@ -116,7 +117,8 @@ public enum TranscriptionAssetCleanup {
             // retention sweeper stops re-selecting and re-failing on it forever.
             // Re-throw so callers still learn the removal was incomplete.
             if let mixedAudioURL = removalPlan.mixedAudioURL,
-               !fileManager.fileExists(atPath: mixedAudioURL.path) {
+                !fileManager.fileExists(atPath: mixedAudioURL.path)
+            {
                 do {
                     try repository.updateFilePath(id: transcription.id, filePath: nil)
                 } catch {
@@ -136,13 +138,15 @@ public enum TranscriptionAssetCleanup {
         fileManager: FileManager
     ) throws -> MeetingAudioRemovalPlan? {
         guard transcription.sourceType == .meeting,
-              let filePath = transcription.filePath,
-              !filePath.isEmpty else {
+            let filePath = transcription.filePath,
+            !filePath.isEmpty
+        else {
             return nil
         }
 
         let mixedAudioURL = URL(fileURLWithPath: filePath).standardizedFileURL
-        let folderURL = (MeetingArtifactStore.sessionFolderURL(for: transcription)
+        let folderURL =
+            (MeetingArtifactStore.sessionFolderURL(for: transcription)
             ?? mixedAudioURL.deletingLastPathComponent())
             .standardizedFileURL
 
@@ -179,7 +183,8 @@ public enum TranscriptionAssetCleanup {
             standardMeetingAudioFileNames.map { folderURL.appendingPathComponent($0).standardizedFileURL }
         )
         if mixedAudioURL.deletingLastPathComponent().standardizedFileURL == folderURL,
-           managedMeetingAudioExtensions.contains(mixedAudioURL.pathExtension.lowercased()) {
+            managedMeetingAudioExtensions.contains(mixedAudioURL.pathExtension.lowercased())
+        {
             candidates.insert(mixedAudioURL)
         }
         return candidates
@@ -200,7 +205,8 @@ public enum TranscriptionAssetCleanup {
 
         let sessionFolders = sessionURLs.compactMap { sessionURL -> URL? in
             guard let values = try? sessionURL.resourceValues(forKeys: [.isDirectoryKey]),
-                  values.isDirectory == true else { return nil }
+                values.isDirectory == true
+            else { return nil }
             return sessionURL.standardizedFileURL
         }
 
@@ -266,14 +272,15 @@ public enum TranscriptionAssetCleanup {
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         )
 
-        return Set(files.compactMap { fileURL -> URL? in
-            guard
-                isManagedMeetingAudioFileName(fileURL.lastPathComponent),
-                let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
-                values.isRegularFile == true
-            else { return nil }
-            return fileURL.standardizedFileURL
-        })
+        return Set(
+            files.compactMap { fileURL -> URL? in
+                guard
+                    isManagedMeetingAudioFileName(fileURL.lastPathComponent),
+                    let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
+                    values.isRegularFile == true
+                else { return nil }
+                return fileURL.standardizedFileURL
+            })
     }
 
     private static func assertMeetingFolderUnlocked(
@@ -310,7 +317,8 @@ public enum TranscriptionAssetCleanup {
     private static func hasMeetingArtifactManifest(in folderURL: URL) -> Bool {
         let manifestURL = folderURL.appendingPathComponent(MeetingArtifactStore.manifestFileName)
         guard let data = try? Data(contentsOf: manifestURL) else { return false }
-        return ((try? JSONDecoder().decode(MeetingArtifactManifestProbe.self, from: data))?.schema) == MeetingArtifactStore.schema
+        return ((try? JSONDecoder().decode(MeetingArtifactManifestProbe.self, from: data))?.schema)
+            == MeetingArtifactStore.schema
     }
 
     private static func removeItem(at url: URL, fileManager: FileManager) throws {

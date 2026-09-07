@@ -227,7 +227,6 @@ public final class TranscriptionLibraryViewModel {
                 }
                 publishLoadedItems(transcriptions, hasMore: hasMore)
             }
-            Telemetry.send(.transcriptionFavorited(isFavorite: newValue))
         } catch {
             logger.error("Failed to update transcription favorite: \(error.localizedDescription, privacy: .private)")
             errorMessage = "Failed to update favorite: \(error.localizedDescription)"
@@ -399,9 +398,6 @@ public final class TranscriptionLibraryViewModel {
             let result = await Task.detached(priority: .userInitiated) {
                 Self.deleteTargets(targets, using: repo)
             }.value
-            for _ in 0..<result.succeededIDs.count {
-                Telemetry.send(.transcriptionDeleted)
-            }
             if !result.succeededIDs.isEmpty {
                 removeLoadedTranscriptions(withIDs: Set(result.succeededIDs))
             }
@@ -455,7 +451,6 @@ public final class TranscriptionLibraryViewModel {
             transcriptions.removeAll { $0.id == transcription.id }
             selectedTranscriptionIDs.remove(transcription.id)
             publishLoadedItems(transcriptions, hasMore: hasMore)
-            Telemetry.send(.transcriptionDeleted)
         } catch {
             logger.error("Failed to delete transcription: \(error.localizedDescription, privacy: .private)")
             errorMessage = "Failed to delete transcription: \(error.localizedDescription)"

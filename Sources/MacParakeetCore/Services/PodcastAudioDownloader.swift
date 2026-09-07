@@ -55,7 +55,7 @@ public actor PodcastAudioDownloader: PodcastAudioFetching {
     ) async throws -> URL {
         let trimmed = audioURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(),
-              scheme == "http" || scheme == "https"
+            scheme == "http" || scheme == "https"
         else {
             throw PodcastAudioFetchError.invalidURL
         }
@@ -154,7 +154,8 @@ public actor PodcastAudioDownloader: PodcastAudioFetching {
         guard let raw else { return "Podcast Episode" }
         var disallowed = CharacterSet(charactersIn: "/:\\\"")
         disallowed.formUnion(.controlCharacters)
-        let cleaned = raw
+        let cleaned =
+            raw
             .components(separatedBy: disallowed)
             .joined(separator: " ")
             .components(separatedBy: .whitespacesAndNewlines)
@@ -226,7 +227,7 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, @unc
         task: URLSessionTask,
         didCompleteWithError error: Error?
     ) {
-        guard let error else { return } // success already resumed in didFinishDownloadingTo
+        guard let error else { return }  // success already resumed in didFinishDownloadingTo
         if (error as NSError).code == NSURLErrorCancelled {
             resume(.failure(CancellationError()))
         } else {

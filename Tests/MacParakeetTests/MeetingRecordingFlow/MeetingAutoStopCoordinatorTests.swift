@@ -25,7 +25,6 @@ final class MeetingAutoStopCoordinatorTests: XCTestCase {
         suiteName = suite
         defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
-        Telemetry.configure(NoOpTelemetryService())
         settings = SettingsViewModel(defaults: defaults)
         settings.meetingAutoStopEnabled = true
         recordingActive = true
@@ -39,7 +38,6 @@ final class MeetingAutoStopCoordinatorTests: XCTestCase {
     }
 
     override func tearDown() {
-        Telemetry.configure(NoOpTelemetryService())
         if let suiteName {
             defaults?.removePersistentDomain(forName: suiteName)
         }

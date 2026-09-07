@@ -38,10 +38,11 @@ public struct FeedbackPayload: Sendable, Encodable {
     ) {
         let normalizedScreenshots: [FeedbackScreenshot]
         if screenshots.isEmpty,
-           let screenshotBase64,
-           let screenshotFilename {
+            let screenshotBase64,
+            let screenshotFilename
+        {
             normalizedScreenshots = [
-                FeedbackScreenshot(filename: screenshotFilename, base64: screenshotBase64),
+                FeedbackScreenshot(filename: screenshotFilename, base64: screenshotBase64)
             ]
         } else {
             normalizedScreenshots = screenshots
@@ -119,7 +120,8 @@ public final class FeedbackService: FeedbackServiceProtocol {
         if let baseURL {
             self.baseURL = baseURL
         } else if let envURL = ProcessInfo.processInfo.environment["MACPARAKEET_FEEDBACK_URL"],
-                  let url = URL(string: envURL) {
+            let url = URL(string: envURL)
+        {
             self.baseURL = url
         } else {
             self.baseURL = URL(string: "https://macparakeet.com/api")!

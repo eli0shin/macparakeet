@@ -93,10 +93,12 @@ final class BinaryBootstrapTests: XCTestCase {
     }
 
     func testEnsureYtDlpAvailableSeedsManagedCopyFromBundledBinaryWithoutNetwork() async throws {
-        let bundledPath = rootDir
+        let bundledPath =
+            rootDir
             .appendingPathComponent("bundle", isDirectory: true)
             .appendingPathComponent("yt-dlp")
-        try FileManager.default.createDirectory(at: bundledPath.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: bundledPath.deletingLastPathComponent(), withIntermediateDirectories: true)
         let bundledData = Data("bundled-yt-dlp".utf8)
         try bundledData.write(to: bundledPath)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bundledPath.path)
@@ -160,10 +162,12 @@ final class BinaryBootstrapTests: XCTestCase {
         try Data("bad-managed-yt-dlp".utf8).write(to: ytDlpPath)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ytDlpPath.path)
 
-        let bundledPath = rootDir
+        let bundledPath =
+            rootDir
             .appendingPathComponent("bundle", isDirectory: true)
             .appendingPathComponent("yt-dlp")
-        try FileManager.default.createDirectory(at: bundledPath.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: bundledPath.deletingLastPathComponent(), withIntermediateDirectories: true)
         let bundledData = Data("fixed-bundled-yt-dlp".utf8)
         try bundledData.write(to: bundledPath)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bundledPath.path)
@@ -348,7 +352,7 @@ final class BinaryBootstrapTests: XCTestCase {
             bundledFFmpegPath: nil,
             environment: [
                 "MACPARAKEET_FFMPEG_PATH": ffmpeg.path,
-                "PATH": "/usr/bin:/bin"
+                "PATH": "/usr/bin:/bin",
             ],
             fileManager: .default
         )
@@ -385,10 +389,12 @@ final class BinaryBootstrapTests: XCTestCase {
     }
 
     func testResolveYtDlpPathPrefersManagedCopyOverBundledSeed() throws {
-        let bundledPath = rootDir
+        let bundledPath =
+            rootDir
             .appendingPathComponent("bundle", isDirectory: true)
             .appendingPathComponent("yt-dlp")
-        try FileManager.default.createDirectory(at: bundledPath.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: bundledPath.deletingLastPathComponent(), withIntermediateDirectories: true)
         try createExecutable(at: bundledPath)
         try FileManager.default.createDirectory(at: binDir, withIntermediateDirectories: true)
         try createExecutable(at: ytDlpPath)
@@ -402,10 +408,12 @@ final class BinaryBootstrapTests: XCTestCase {
     }
 
     func testResolveYtDlpPathFallsBackToBundledSeed() throws {
-        let bundledPath = rootDir
+        let bundledPath =
+            rootDir
             .appendingPathComponent("bundle", isDirectory: true)
             .appendingPathComponent("yt-dlp")
-        try FileManager.default.createDirectory(at: bundledPath.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: bundledPath.deletingLastPathComponent(), withIntermediateDirectories: true)
         try createExecutable(at: bundledPath)
 
         let resolved = BinaryBootstrap.resolveYtDlpPath(
@@ -461,10 +469,11 @@ final class BinaryBootstrapTests: XCTestCase {
     }
 
     private func tempBinaryArtifactCount() -> Int {
-        let contents = (try? FileManager.default.contentsOfDirectory(
-            at: tempDir,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles])) ?? []
+        let contents =
+            (try? FileManager.default.contentsOfDirectory(
+                at: tempDir,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles])) ?? []
         return contents.filter { $0.lastPathComponent.hasPrefix("yt-dlp-") }.count
     }
 

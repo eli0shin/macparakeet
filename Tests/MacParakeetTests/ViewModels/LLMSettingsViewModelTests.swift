@@ -448,7 +448,9 @@ final class LLMSettingsViewModelTests: XCTestCase {
 
     func testClearResetsAIFormatterPreferences() {
         defaults.set(true, forKey: UserDefaultsAppRuntimePreferences.aiFormatterEnabledKey)
-        defaults.set("Rewrite:\n\(AIFormatter.transcriptPlaceholder)", forKey: UserDefaultsAppRuntimePreferences.aiFormatterPromptKey)
+        defaults.set(
+            "Rewrite:\n\(AIFormatter.transcriptPlaceholder)",
+            forKey: UserDefaultsAppRuntimePreferences.aiFormatterPromptKey)
         mockConfigStore.config = .openai(apiKey: "sk-test")
         viewModel.configure(configStore: mockConfigStore, llmClient: mockClient)
 
@@ -568,7 +570,8 @@ final class LLMSettingsViewModelTests: XCTestCase {
     func testChangingCategoryProfileDraftPreservesCustomNameAndPrompt() {
         viewModel.startCreatingAIFormatterProfile(targetKind: .category)
         viewModel.updateAIFormatterProfileDraft(\.name, to: "My Messages")
-        viewModel.updateAIFormatterProfileDraft(\.promptTemplate, to: "Custom prompt \(AIFormatter.transcriptPlaceholder)")
+        viewModel.updateAIFormatterProfileDraft(
+            \.promptTemplate, to: "Custom prompt \(AIFormatter.transcriptPlaceholder)")
 
         viewModel.applyAIFormatterProfileDraftCategory(.email)
 
@@ -868,24 +871,27 @@ final class LLMSettingsViewModelTests: XCTestCase {
     func testProfilesAreListedInMatchPrecedenceOrder() throws {
         let dbManager = try DatabaseManager()
         let repo = AIFormatterProfileRepository(dbQueue: dbManager.dbQueue)
-        try repo.save(AIFormatterProfile.exactApp(
-            name: "zoom",
-            bundleIdentifier: "us.zoom.xos",
-            promptTemplate: "p",
-            sortOrder: 1
-        ))
-        try repo.save(AIFormatterProfile.exactApp(
-            name: "Apple Mail",
-            bundleIdentifier: "com.apple.mail",
-            promptTemplate: "p",
-            sortOrder: 1
-        ))
-        try repo.save(AIFormatterProfile.category(
-            name: "browser",
-            appCategory: .browser,
-            promptTemplate: "p",
-            sortOrder: 0
-        ))
+        try repo.save(
+            AIFormatterProfile.exactApp(
+                name: "zoom",
+                bundleIdentifier: "us.zoom.xos",
+                promptTemplate: "p",
+                sortOrder: 1
+            ))
+        try repo.save(
+            AIFormatterProfile.exactApp(
+                name: "Apple Mail",
+                bundleIdentifier: "com.apple.mail",
+                promptTemplate: "p",
+                sortOrder: 1
+            ))
+        try repo.save(
+            AIFormatterProfile.category(
+                name: "browser",
+                appCategory: .browser,
+                promptTemplate: "p",
+                sortOrder: 0
+            ))
 
         viewModel.configure(
             configStore: mockConfigStore,
@@ -912,7 +918,7 @@ final class LLMSettingsViewModelTests: XCTestCase {
 
         viewModel.startCreatingAIFormatterProfile(targetKind: .category)
         viewModel.updateAIFormatterProfileDraft(\.name, to: "Email")
-        viewModel.updateAIFormatterProfileDraft(\.appCategory, to: TelemetryAppCategory.email)
+        viewModel.updateAIFormatterProfileDraft(\.appCategory, to: AppCategory.email)
         viewModel.updateAIFormatterProfileDraft(\.promptTemplate, to: "   ")
 
         XCTAssertFalse(viewModel.saveAIFormatterProfileDraft())
@@ -924,11 +930,12 @@ final class LLMSettingsViewModelTests: XCTestCase {
     func testDuplicateAIFormatterProfileSurfacesErrorAndKeepsDraft() throws {
         let dbManager = try DatabaseManager()
         let repo = AIFormatterProfileRepository(dbQueue: dbManager.dbQueue)
-        try repo.save(AIFormatterProfile.category(
-            name: "Email",
-            appCategory: .email,
-            promptTemplate: "Email prompt"
-        ))
+        try repo.save(
+            AIFormatterProfile.category(
+                name: "Email",
+                appCategory: .email,
+                promptTemplate: "Email prompt"
+            ))
         viewModel.configure(
             configStore: mockConfigStore,
             llmClient: mockClient,
@@ -937,7 +944,7 @@ final class LLMSettingsViewModelTests: XCTestCase {
 
         viewModel.startCreatingAIFormatterProfile(targetKind: .category)
         viewModel.updateAIFormatterProfileDraft(\.name, to: "Email 2")
-        viewModel.updateAIFormatterProfileDraft(\.appCategory, to: TelemetryAppCategory.email)
+        viewModel.updateAIFormatterProfileDraft(\.appCategory, to: AppCategory.email)
 
         XCTAssertFalse(viewModel.saveAIFormatterProfileDraft())
         XCTAssertEqual(viewModel.aiFormatterProfileError, "A profile already exists for Email.")
@@ -1407,7 +1414,9 @@ final class LLMSettingsViewModelTests: XCTestCase {
 
     func testLoadsStoredAIFormatterPreferences() {
         defaults.set(true, forKey: UserDefaultsAppRuntimePreferences.aiFormatterEnabledKey)
-        defaults.set("Rewrite:\n\(AIFormatter.transcriptPlaceholder)", forKey: UserDefaultsAppRuntimePreferences.aiFormatterPromptKey)
+        defaults.set(
+            "Rewrite:\n\(AIFormatter.transcriptPlaceholder)",
+            forKey: UserDefaultsAppRuntimePreferences.aiFormatterPromptKey)
         mockConfigStore.config = .openai(apiKey: "sk-test")
 
         viewModel.configure(configStore: mockConfigStore, llmClient: mockClient)
@@ -1418,7 +1427,8 @@ final class LLMSettingsViewModelTests: XCTestCase {
     }
 
     func testLoadsLegacyDefaultAIFormatterPromptAsUpdatedDefault() {
-        defaults.set(AIFormatter.legacyDefaultPromptTemplateV1, forKey: UserDefaultsAppRuntimePreferences.aiFormatterPromptKey)
+        defaults.set(
+            AIFormatter.legacyDefaultPromptTemplateV1, forKey: UserDefaultsAppRuntimePreferences.aiFormatterPromptKey)
         mockConfigStore.config = .openai(apiKey: "sk-test")
 
         viewModel.configure(configStore: mockConfigStore, llmClient: mockClient)

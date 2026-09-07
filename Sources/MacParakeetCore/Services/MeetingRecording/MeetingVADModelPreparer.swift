@@ -57,10 +57,7 @@ public struct MeetingVADModelPreparer: MeetingVADModelPreparing {
 /// This is the flag-and-cache gate factored out of `AppDelegate` so the
 /// decision is unit-testable without driving the deferred launch timer.
 public enum MeetingVADLaunchPrep {
-    /// Outcome of a single launch-prep attempt. `disabled` (feature off),
-    /// `alreadyCached` (steady state), and `cancelled` (app quit mid-download)
-    /// are silent — only `prepared` / `failed` are worth a telemetry event.
-    /// See `TelemetryVADModelPrepOutcome`.
+    /// Outcome of a single launch-prep attempt.
     public enum Outcome: Sendable, Equatable {
         /// Feature flag is off — prep was not attempted.
         case disabled
@@ -71,9 +68,8 @@ public enum MeetingVADLaunchPrep {
         /// Download/compile failed; swallowed. The meeting path falls back to
         /// fixed chunking and the next launch retries (natural backoff).
         case failed
-        /// The launch task was cancelled mid-download (e.g. app quit). Distinct
-        /// from `.failed` so a normal-shutdown cancellation never emits a
-        /// spurious failure telemetry event. The next launch retries.
+        /// The launch task was cancelled mid-download (for example, app quit).
+        /// Distinct from `.failed`; the next launch retries.
         case cancelled
     }
 

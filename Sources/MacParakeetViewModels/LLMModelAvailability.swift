@@ -39,7 +39,8 @@ enum LLMModelAvailability {
 
     static func normalize(_ models: [String]) -> [String] {
         var seen = Set<String>()
-        return models
+        return
+            models
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .filter { seen.insert($0).inserted }

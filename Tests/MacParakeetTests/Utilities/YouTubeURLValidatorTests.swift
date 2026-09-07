@@ -50,7 +50,8 @@ final class YouTubeURLValidatorTests: XCTestCase {
 
     func testURLWithExtraParams() {
         XCTAssertTrue(YouTubeURLValidator.isYouTubeURL("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42"))
-        XCTAssertEqual(YouTubeURLValidator.extractVideoID("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42"), "dQw4w9WgXcQ")
+        XCTAssertEqual(
+            YouTubeURLValidator.extractVideoID("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42"), "dQw4w9WgXcQ")
     }
 
     func testVideoIDWithDashAndUnderscore() {

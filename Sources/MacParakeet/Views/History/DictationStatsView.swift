@@ -36,12 +36,14 @@ struct DictationStatsView: View {
                 Text("Your stats will appear here.")
                     .font(DesignSystem.Typography.pageTitle)
                     .foregroundStyle(.primary)
-                Text(HotkeyTrigger.current.isDisabled
-                     ? "Click the dictation pill or set a hotkey in Settings to start dictating."
-                     : "Tap \(HotkeyTrigger.current.displayName) to start dictating from any app.")
-                    .font(DesignSystem.Typography.bodySmall)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                Text(
+                    HotkeyTrigger.current.isDisabled
+                        ? "Click the dictation pill or set a hotkey in Settings to start dictating."
+                        : "Tap \(HotkeyTrigger.current.displayName) to start dictating from any app."
+                )
+                .font(DesignSystem.Typography.bodySmall)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             }
             Spacer()
         }
@@ -56,7 +58,7 @@ struct DictationStatsView: View {
             columns: [
                 GridItem(.flexible(), spacing: DesignSystem.Spacing.md),
                 GridItem(.flexible(), spacing: DesignSystem.Spacing.md),
-                GridItem(.flexible(), spacing: DesignSystem.Spacing.md)
+                GridItem(.flexible(), spacing: DesignSystem.Spacing.md),
             ],
             spacing: DesignSystem.Spacing.md
         ) {
@@ -165,7 +167,7 @@ struct DictationStatsView: View {
                     LinearGradient(
                         colors: [
                             DesignSystem.Colors.cardBackground,
-                            DesignSystem.Colors.surfaceElevated.opacity(0.45)
+                            DesignSystem.Colors.surfaceElevated.opacity(0.45),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -181,7 +183,7 @@ struct DictationStatsView: View {
                     LinearGradient(
                         colors: [
                             DesignSystem.Colors.accent.opacity(0.18),
-                            Color.primary.opacity(0.04)
+                            Color.primary.opacity(0.04),
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -231,7 +233,7 @@ struct DictationStatsView: View {
                     LinearGradient(
                         colors: [
                             DesignSystem.Colors.cardBackground,
-                            DesignSystem.Colors.surfaceElevated.opacity(0.45)
+                            DesignSystem.Colors.surfaceElevated.opacity(0.45),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -286,7 +288,7 @@ private struct HeroStatTile: View {
                     LinearGradient(
                         colors: [
                             DesignSystem.Colors.cardBackground,
-                            DesignSystem.Colors.surfaceElevated.opacity(0.45)
+                            DesignSystem.Colors.surfaceElevated.opacity(0.45),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -342,7 +344,8 @@ struct StreakHeatmap: View {
             // Month-label row: free-floating Text positioned at each month-change column.
             ZStack(alignment: .topLeading) {
                 Color.clear.frame(
-                    width: CGFloat(columns.count) * Self.cellSize + CGFloat(max(0, columns.count - 1)) * Self.cellSpacing,
+                    width: CGFloat(columns.count) * Self.cellSize + CGFloat(max(0, columns.count - 1))
+                        * Self.cellSpacing,
                     height: monthLabelHeight
                 )
                 ForEach(boundaries, id: \.col) { boundary in
@@ -498,7 +501,8 @@ struct StreakHeatmap: View {
         let gridWidth = CGFloat(columnCount) * cellStride - Self.cellSpacing
         let clampedLeftX = max(0, min(gridWidth - tooltipApproxWidth, rawLeftX))
 
-        let topY = showAbove
+        let topY =
+            showAbove
             ? cellTop - tooltipApproxHeight - gap
             : cellBottom + gap
 

@@ -17,7 +17,7 @@ final class LocalCLILLMClientTests: XCTestCase {
 
     func testExtractPromptsNoSystem() {
         let messages = [
-            ChatMessage(role: .user, content: "Hello"),
+            ChatMessage(role: .user, content: "Hello")
         ]
         let (system, user) = LocalCLILLMClient.extractPrompts(from: messages)
         XCTAssertEqual(system, "")

@@ -32,7 +32,7 @@ public protocol AppRuntimePreferencesProtocol: Sendable {
     var hasCompletedFirstDictation: Bool { get }
     /// Flip the one-shot "first dictation completed" flag. Returns `true` only
     /// the first time it transitions (so callers can fire a one-shot side
-    /// effect like the activation telemetry event); `false` on every
+    /// effect); `false` on every
     /// subsequent call.
     @discardableResult
     func markFirstDictationCompleted() -> Bool
@@ -525,7 +525,7 @@ public final class UserDefaultsAppRuntimePreferences: AppRuntimePreferencesProto
     /// (default on). Off means the resolution chain skips the smart-default
     /// tier entirely — custom profiles, then the fallback prompt.
     public static let aiFormatterSmartDefaultsEnabledKey = "aiFormatterSmartDefaultsEnabled"
-    /// Raw `TelemetryAppCategory` values whose built-in smart default the user
+    /// Raw `AppCategory` values whose built-in smart default the user
     /// turned off individually (default empty).
     public static let aiFormatterDisabledSmartDefaultCategoriesKey = "aiFormatterDisabledSmartDefaultCategories"
     public static let transcriptAIContextModeKey = "transcriptAIContextMode"

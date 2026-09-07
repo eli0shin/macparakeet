@@ -32,14 +32,17 @@ public enum SpeakerDiarizationConstraint: Equatable, Sendable {
 
 public protocol DiarizationServiceProtocol: Sendable {
     func diarize(audioURL: URL) async throws -> MacParakeetDiarizationResult
-    func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult
+    func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws
+        -> MacParakeetDiarizationResult
     func prepareModels(onProgress: (@Sendable (String) -> Void)?) async throws
     func isReady() async -> Bool
     func hasCachedModels() async -> Bool
 }
 
 extension DiarizationServiceProtocol {
-    public func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult {
+    public func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws
+        -> MacParakeetDiarizationResult
+    {
         try await diarize(audioURL: audioURL)
     }
 
@@ -113,7 +116,9 @@ public actor DiarizationService: DiarizationServiceProtocol {
         try await diarize(audioURL: audioURL, speakerConstraint: nil)
     }
 
-    public func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult {
+    public func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws
+        -> MacParakeetDiarizationResult
+    {
         let selectedManager: any OfflineDiarizerManaging
         if let speakerConstraint, let constrainedManagerFactory {
             selectedManager = constrainedManagerFactory(speakerConstraint)
@@ -165,7 +170,8 @@ public actor DiarizationService: DiarizationServiceProtocol {
             return SpeakerSegment(speakerId: mappedId, startMs: startMs, endMs: endMs)
         }
 
-        let speakers: [SpeakerInfo] = idMapping
+        let speakers: [SpeakerInfo] =
+            idMapping
             .sorted { Int($0.value.dropFirst()) ?? 0 < Int($1.value.dropFirst()) ?? 0 }
             .map { _, stableId in
                 let number = String(stableId.dropFirst())
@@ -286,7 +292,9 @@ public actor MockDiarizationService: DiarizationServiceProtocol {
         try await diarize(audioURL: audioURL, speakerConstraint: nil)
     }
 
-    public func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult {
+    public func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws
+        -> MacParakeetDiarizationResult
+    {
         diarizeCalled = true
         lastSpeakerConstraint = speakerConstraint
         if let diarizeDelay { try await Task.sleep(for: diarizeDelay) }

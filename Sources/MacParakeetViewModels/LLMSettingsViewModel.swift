@@ -38,7 +38,7 @@ public final class LLMSettingsViewModel {
         public var targetKind: AIFormatterProfileTargetKind
         public var bundleIdentifier: String
         public var appDisplayName: String
-        public var appCategory: TelemetryAppCategory
+        public var appCategory: AppCategory
         public var promptTemplate: String
         public var origin: AIFormatterProfileOrigin
         public var sortOrder: Int
@@ -55,7 +55,7 @@ public final class LLMSettingsViewModel {
             targetKind: AIFormatterProfileTargetKind,
             bundleIdentifier: String = "",
             appDisplayName: String = "",
-            appCategory: TelemetryAppCategory = .messaging,
+            appCategory: AppCategory = .messaging,
             promptTemplate: String,
             origin: AIFormatterProfileOrigin = .custom,
             sortOrder: Int = 0,
@@ -89,7 +89,7 @@ public final class LLMSettingsViewModel {
                 bundleIdentifier: profile.bundleIdentifier ?? "",
                 appDisplayName: profile.appDisplayName ?? "",
                 appCategory: profile.appCategory
-                    ?? profile.bundleIdentifier.map { TelemetryAppCategory(bundleIdentifier: $0) }
+                    ?? profile.bundleIdentifier.map { AppCategory(bundleIdentifier: $0) }
                     ?? .messaging,
                 promptTemplate: profile.promptTemplate,
                 origin: profile.origin,
@@ -493,15 +493,15 @@ public final class LLMSettingsViewModel {
         }
     }
 
-    public func isAIFormatterSmartDefaultEnabled(_ category: TelemetryAppCategory) -> Bool {
+    public func isAIFormatterSmartDefaultEnabled(_ category: AppCategory) -> Bool {
         aiFormatterSmartDefaultsPolicy.allowsCategory(category)
     }
 
-    public func isAIFormatterSmartDefaultCategoryEnabled(_ category: TelemetryAppCategory) -> Bool {
+    public func isAIFormatterSmartDefaultCategoryEnabled(_ category: AppCategory) -> Bool {
         !aiFormatterSmartDefaultsPolicy.disabledCategories.contains(category)
     }
 
-    public func setAIFormatterSmartDefault(_ category: TelemetryAppCategory, enabled: Bool) {
+    public func setAIFormatterSmartDefault(_ category: AppCategory, enabled: Bool) {
         if enabled {
             aiFormatterSmartDefaultsPolicy.disabledCategories.remove(category)
         } else {
@@ -517,7 +517,7 @@ public final class LLMSettingsViewModel {
         let promptTemplate = AIFormatter.normalizedPromptTemplate(profile.promptTemplate)
         let category =
             profile.appCategory
-            ?? profile.bundleIdentifier.map { TelemetryAppCategory(bundleIdentifier: $0) }
+            ?? profile.bundleIdentifier.map { AppCategory(bundleIdentifier: $0) }
         if let category,
             let categoryDefault = AIFormatterSmartDefaults.categoryDefault(for: category),
             promptTemplate == AIFormatter.normalizedPromptTemplate(categoryDefault.promptTemplate)
@@ -782,7 +782,7 @@ public final class LLMSettingsViewModel {
 
     public func startCreatingAIFormatterProfile(targetKind: AIFormatterProfileTargetKind) {
         let nextSortOrder = (aiFormatterProfiles.map(\.sortOrder).max() ?? -1) + 1
-        let defaultCategory = TelemetryAppCategory.messaging
+        let defaultCategory = AppCategory.messaging
         let promptTemplate: String
         let name: String
         if targetKind == .category,
@@ -805,7 +805,7 @@ public final class LLMSettingsViewModel {
         aiFormatterProfileError = nil
     }
 
-    public func applyAIFormatterProfileDraftCategory(_ category: TelemetryAppCategory) {
+    public func applyAIFormatterProfileDraftCategory(_ category: AppCategory) {
         if aiFormatterProfileDraft == nil {
             startCreatingAIFormatterProfile(targetKind: .category)
         }
@@ -898,7 +898,7 @@ public final class LLMSettingsViewModel {
         let normalizedDisplayName = AppPromptContext.normalizedDisplayName(displayName)
         let previousSmartDefault = AIFormatterSmartDefaults.categoryDefault(for: draft.appCategory)
         let normalizedPrompt = AIFormatter.normalizedPromptTemplate(draft.promptTemplate)
-        let appCategory = TelemetryAppCategory(bundleIdentifier: normalizedBundleIdentifier)
+        let appCategory = AppCategory(bundleIdentifier: normalizedBundleIdentifier)
         let currentName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let previousAppDisplayName = AppPromptContext.normalizedDisplayName(draft.appDisplayName)
         let previousBundleIdentifier = AppPromptContext.normalizedBundleIdentifier(draft.bundleIdentifier)
@@ -982,7 +982,7 @@ public final class LLMSettingsViewModel {
             || previousBundleIdentifier.map { currentName == $0 } == true
 
         let normalizedBundleIdentifier = AppPromptContext.normalizedBundleIdentifier(rawValue)
-        let appCategory = TelemetryAppCategory(bundleIdentifier: normalizedBundleIdentifier)
+        let appCategory = AppCategory(bundleIdentifier: normalizedBundleIdentifier)
 
         draft.bundleIdentifier = rawValue
         draft.appCategory = appCategory
@@ -1358,7 +1358,7 @@ public final class LLMSettingsViewModel {
         )
     }
 
-    private static func aiFormatterProfileCategoryName(_ category: TelemetryAppCategory) -> String {
+    private static func aiFormatterProfileCategoryName(_ category: AppCategory) -> String {
         category.formatterDisplayName
     }
 

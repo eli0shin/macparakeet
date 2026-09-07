@@ -105,7 +105,8 @@ final class OnboardingHotkeyPreviewControllerTests: XCTestCase {
         XCTAssertEqual(box.lastOverlay?.showCount, 1)
         XCTAssertEqual(box.lastOverlay?.isShown, true)
         XCTAssertEqual(box.lastOverlay?.viewModel.recordingMode, .holdToTalk)
-        if case .recording = box.lastOverlay?.viewModel.state {} else {
+        if case .recording = box.lastOverlay?.viewModel.state {
+        } else {
             XCTFail("Overlay should be in .recording state")
         }
         XCTAssertEqual(leveling.startCount, 1)

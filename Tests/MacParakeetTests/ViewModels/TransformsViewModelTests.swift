@@ -587,7 +587,8 @@ final class MockTransformsClipboardService: ClipboardServiceProtocol, @unchecked
         false
     }
 
-    func pasteTextWithAction(_ text: String, postPasteAction: KeyAction?, restoresClipboard: Bool) async throws -> Bool {
+    func pasteTextWithAction(_ text: String, postPasteAction: KeyAction?, restoresClipboard: Bool) async throws -> Bool
+    {
         false
     }
 
@@ -682,7 +683,8 @@ private final class BlockingPromptRepository: PromptRepositoryProtocol, @uncheck
         lock.lock()
         defer { lock.unlock() }
         guard let index = prompts.firstIndex(where: { $0.id == id }),
-              !prompts[index].isBuiltIn else {
+            !prompts[index].isBuiltIn
+        else {
             return false
         }
         prompts.remove(at: index)

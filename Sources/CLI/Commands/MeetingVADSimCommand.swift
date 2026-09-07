@@ -11,7 +11,8 @@ import MacParakeetCore
 struct MeetingVADSimCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "meeting-vad-sim",
-        abstract: "Replay meeting live-chunking (fixed vs VAD) on an audio file and report boundaries + realtime factor.",
+        abstract:
+            "Replay meeting live-chunking (fixed vs VAD) on an audio file and report boundaries + realtime factor.",
         // Internal Phase-0 diagnostic, not part of the public agent surface
         // (deliberately absent from `spec --json`). Hidden from `--help` so the
         // human listing and the machine catalog agree; still invokable by name.
@@ -42,14 +43,17 @@ struct MeetingVADSimCommand: AsyncParsableCommand {
             let samples = try MeetingVADChunkingSimulator.loadSamples16k(url: url)
             let level = amplitude(samples)
             if !json {
-                print(String(format: "audio level     : peak=%@ dBFS  rms=%@ dBFS  (%@)",
-                             dbfsString(level.peakDbfs), dbfsString(level.rmsDbfs), loudnessVerdict(level.rmsDbfs)))
+                print(
+                    String(
+                        format: "audio level     : peak=%@ dBFS  rms=%@ dBFS  (%@)",
+                        dbfsString(level.peakDbfs), dbfsString(level.rmsDbfs), loudnessVerdict(level.rmsDbfs)))
             }
 
             var reports: [MeetingVADChunkingSimulator.Report] = []
             for m in modes {
-                reports.append(await MeetingVADChunkingSimulator.simulate(
-                    samples16k: samples, mode: m, batchSamples: batchSamples))
+                reports.append(
+                    await MeetingVADChunkingSimulator.simulate(
+                        samples16k: samples, mode: m, batchSamples: batchSamples))
             }
 
             if json {
@@ -109,19 +113,26 @@ struct MeetingVADSimCommand: AsyncParsableCommand {
             return
         }
         let durS = Double(r.audioDurationMs) / 1000.0
-        print(String(format: "  audio duration   : %.1fs (%d ingest batches @ %dms)",
-                     durS, r.ingestBatchCount, batchMs))
-        print(String(format: "  processing time  : %.3fs  →  %.0f× realtime",
-                     r.processingSeconds, r.realtimeFactor))
-        print(String(format: "  per-ingest (ms)  : p50=%.3f  p99=%.3f  max=%.3f",
-                     r.perIngestMsP50, r.perIngestMsP99, r.perIngestMsMax))
+        print(
+            String(
+                format: "  audio duration   : %.1fs (%d ingest batches @ %dms)",
+                durS, r.ingestBatchCount, batchMs))
+        print(
+            String(
+                format: "  processing time  : %.3fs  →  %.0f× realtime",
+                r.processingSeconds, r.realtimeFactor))
+        print(
+            String(
+                format: "  per-ingest (ms)  : p50=%.3f  p99=%.3f  max=%.3f",
+                r.perIngestMsP50, r.perIngestMsP99, r.perIngestMsMax))
         let durations = r.chunks.map(\.durationMs)
         let avgDur = durations.isEmpty ? 0 : durations.reduce(0, +) / durations.count
         print("  chunks emitted   : \(r.chunks.count)  (avg \(avgDur)ms)")
         if r.mode == "vad" {
-            print("  vad diagnostics  : speechEnds=\(r.speechEndEvents) forceEmits=\(r.forceEmits) "
-                  + "droppedSilence=\(r.droppedSilenceWindows) vadErrors=\(r.vadErrors) "
-                  + "fellBackToFixed=\(r.fellBackToFixed)")
+            print(
+                "  vad diagnostics  : speechEnds=\(r.speechEndEvents) forceEmits=\(r.forceEmits) "
+                    + "droppedSilence=\(r.droppedSilenceWindows) vadErrors=\(r.vadErrors) "
+                    + "fellBackToFixed=\(r.fellBackToFixed)")
         }
         printBoundaries(r.chunks)
     }
@@ -141,20 +152,27 @@ struct MeetingVADSimCommand: AsyncParsableCommand {
 
     private func printComparison(_ reports: [MeetingVADChunkingSimulator.Report]) {
         guard let fixed = reports.first(where: { $0.mode == "fixed" }),
-              let vad = reports.first(where: { $0.mode == "vad" }), vad.vadAvailable else { return }
+            let vad = reports.first(where: { $0.mode == "vad" }), vad.vadAvailable
+        else { return }
         print("")
         print("── comparison ───────────────────────────")
         print("  chunks      : fixed=\(fixed.chunks.count)  vad=\(vad.chunks.count)")
         print(String(format: "  realtime    : fixed=%.0f×  vad=%.0f×", fixed.realtimeFactor, vad.realtimeFactor))
-        print(String(format: "  vad overhead: %.3fs extra processing vs fixed",
-                     max(0, vad.processingSeconds - fixed.processingSeconds)))
+        print(
+            String(
+                format: "  vad overhead: %.3fs extra processing vs fixed",
+                max(0, vad.processingSeconds - fixed.processingSeconds)))
         // Decision hint for #2 (inline vs decouple).
         if vad.realtimeFactor >= 5 {
-            print(String(format: "  → VAD runs at %.0f× realtime; inline-in-capture is safe (queue can't back up).",
-                         vad.realtimeFactor))
+            print(
+                String(
+                    format: "  → VAD runs at %.0f× realtime; inline-in-capture is safe (queue can't back up).",
+                    vad.realtimeFactor))
         } else if vad.realtimeFactor > 0 {
-            print(String(format: "  → VAD only %.1f× realtime; consider decoupling VAD onto its own task.",
-                         vad.realtimeFactor))
+            print(
+                String(
+                    format: "  → VAD only %.1f× realtime; consider decoupling VAD onto its own task.",
+                    vad.realtimeFactor))
         }
     }
 
@@ -205,8 +223,9 @@ struct MeetingVADSimCommand: AsyncParsableCommand {
             vadErrors = r.vadErrors
             fellBackToFixed = r.fellBackToFixed
             chunks = r.chunks.map {
-                Chunk(index: $0.index, startMs: $0.startMs, endMs: $0.endMs,
-                      durationMs: $0.durationMs, sampleCount: $0.sampleCount)
+                Chunk(
+                    index: $0.index, startMs: $0.startMs, endMs: $0.endMs,
+                    durationMs: $0.durationMs, sampleCount: $0.sampleCount)
             }
         }
     }

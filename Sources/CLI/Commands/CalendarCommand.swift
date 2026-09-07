@@ -111,9 +111,11 @@ private enum CalendarCLIError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .calendarPermissionDenied:
-            return "Calendar access denied. Open System Settings → Privacy & Security → Calendars to grant MacParakeet access."
+            return
+                "Calendar access denied. Open System Settings → Privacy & Security → Calendars to grant MacParakeet access."
         case .calendarPermissionNotDetermined:
-            return "Calendar access not yet requested. Launch MacParakeet, run onboarding (or visit Settings → Calendar), then retry."
+            return
+                "Calendar access not yet requested. Launch MacParakeet, run onboarding (or visit Settings → Calendar), then retry."
         }
     }
 }

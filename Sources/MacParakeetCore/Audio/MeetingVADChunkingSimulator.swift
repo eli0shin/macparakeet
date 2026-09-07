@@ -145,10 +145,11 @@ public enum MeetingVADChunkingSimulator {
 
         func record(_ produced: [AudioChunker.AudioChunk]) {
             for c in produced {
-                chunks.append(ChunkSummary(
-                    index: index, startMs: c.startMs, endMs: c.endMs,
-                    durationMs: c.endMs - c.startMs, sampleCount: c.samples.count
-                ))
+                chunks.append(
+                    ChunkSummary(
+                        index: index, startMs: c.startMs, endMs: c.endMs,
+                        durationMs: c.endMs - c.startMs, sampleCount: c.samples.count
+                    ))
                 index += 1
             }
         }

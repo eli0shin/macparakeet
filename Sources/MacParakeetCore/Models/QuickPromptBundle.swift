@@ -86,7 +86,8 @@ public enum QuickPromptBundleError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .wrongSchema(let found):
-            return "Not a MacParakeet quick-prompts file (schema='\(found)', expected '\(QuickPromptBundle.schemaIdentifier)')."
+            return
+                "Not a MacParakeet quick-prompts file (schema='\(found)', expected '\(QuickPromptBundle.schemaIdentifier)')."
         case .unsupportedVersion(let found, let supported):
             return "Unsupported quick-prompts schema version \(found); this build supports version \(supported)."
         }

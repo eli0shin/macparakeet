@@ -57,14 +57,16 @@ final class MeetingTranscriptSourceReconcilerTests: XCTestCase {
         XCTAssertEqual(result.microphoneWords.map(\.word), ["yeah"])
         XCTAssertEqual(result.removedMicrophoneWordCount, 6)
         XCTAssertEqual(result.removals.map(\.reason), [.simultaneousSystemEcho])
-        XCTAssertEqual(result.removals.first?.words.map(\.word), [
-            "Let's",
-            "finalize",
-            "the",
-            "budget",
-            "numbers",
-            "tomorrow",
-        ])
+        XCTAssertEqual(
+            result.removals.first?.words.map(\.word),
+            [
+                "Let's",
+                "finalize",
+                "the",
+                "budget",
+                "numbers",
+                "tomorrow",
+            ])
     }
 
     func testReconcilerPreservesMiddleInterjectionInsideEchoRun() {
@@ -95,14 +97,16 @@ final class MeetingTranscriptSourceReconcilerTests: XCTestCase {
         XCTAssertEqual(result.microphoneWords.map(\.word), ["yeah"])
         XCTAssertEqual(result.removedMicrophoneWordCount, 6)
         XCTAssertEqual(result.removals.map(\.reason), [.simultaneousSystemEcho])
-        XCTAssertEqual(result.removals.first?.words.map(\.word), [
-            "Let's",
-            "finalize",
-            "the",
-            "budget",
-            "numbers",
-            "tomorrow",
-        ])
+        XCTAssertEqual(
+            result.removals.first?.words.map(\.word),
+            [
+                "Let's",
+                "finalize",
+                "the",
+                "budget",
+                "numbers",
+                "tomorrow",
+            ])
     }
 
     func testReconcilerUsesOnlyTemporallyOverlappingWordsForEchoThreshold() {
@@ -135,14 +139,16 @@ final class MeetingTranscriptSourceReconcilerTests: XCTestCase {
         XCTAssertEqual(result.microphoneWords.map(\.word), ["okay", "quick", "note", "first"])
         XCTAssertEqual(result.removedMicrophoneWordCount, 6)
         XCTAssertEqual(result.removals.map(\.reason), [.simultaneousSystemEcho])
-        XCTAssertEqual(result.removals.first?.words.map(\.word), [
-            "Let's",
-            "finalize",
-            "the",
-            "budget",
-            "numbers",
-            "tomorrow",
-        ])
+        XCTAssertEqual(
+            result.removals.first?.words.map(\.word),
+            [
+                "Let's",
+                "finalize",
+                "the",
+                "budget",
+                "numbers",
+                "tomorrow",
+            ])
     }
 
     func testFinalizeDropsLowConfidenceMicDuplicateOfSystemRun() {

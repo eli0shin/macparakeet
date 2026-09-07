@@ -6,7 +6,8 @@ final class LLMExecutionContextResolverTests: XCTestCase {
         let configStore = MockLLMConfigStore()
         let resolver = StoredLLMExecutionContextResolver(
             configStore: configStore,
-            cliConfigStore: LocalCLIConfigStore(defaults: UserDefaults(suiteName: "test.llm.context.\(UUID().uuidString)")!)
+            cliConfigStore: LocalCLIConfigStore(
+                defaults: UserDefaults(suiteName: "test.llm.context.\(UUID().uuidString)")!)
         )
 
         XCTAssertNil(try resolver.resolveContext())
@@ -18,7 +19,8 @@ final class LLMExecutionContextResolverTests: XCTestCase {
 
         let resolver = StoredLLMExecutionContextResolver(
             configStore: configStore,
-            cliConfigStore: LocalCLIConfigStore(defaults: UserDefaults(suiteName: "test.llm.context.\(UUID().uuidString)")!)
+            cliConfigStore: LocalCLIConfigStore(
+                defaults: UserDefaults(suiteName: "test.llm.context.\(UUID().uuidString)")!)
         )
 
         let context = try resolver.resolveContext()

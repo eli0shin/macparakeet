@@ -170,12 +170,14 @@ enum MeetingAecScenarioFactory {
         nearAmplitude: Float = 0.3,
         farAmplitude: Float = 0.3
     ) -> MeetingAecScenario {
-        let near = nearEndActive
+        let near =
+            nearEndActive
             ? MeetingAecSignal.voiceLike(
                 sampleCount: sampleCount, sampleRate: sampleRate,
                 formants: nearFormants, seed: nearSeed, amplitude: nearAmplitude)
             : MeetingAecSignal.silence(sampleCount: sampleCount)
-        let far = farEndActive
+        let far =
+            farEndActive
             ? MeetingAecSignal.voiceLike(
                 sampleCount: sampleCount, sampleRate: sampleRate,
                 formants: farFormants, seed: farSeed, amplitude: farAmplitude)

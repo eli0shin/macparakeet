@@ -413,7 +413,7 @@ final class AppEnvironmentConfigurer {
         let hotkeyCoordinator = AppHotkeyCoordinator(
             settingsViewModel: settingsViewModel,
             onStartDictation: { mode in
-                coordinatorRefs.dictation?.startDictation(mode: mode, trigger: .hotkey)
+                coordinatorRefs.dictation?.startDictation(mode: mode)
             },
             onStopDictation: {
                 coordinatorRefs.dictation?.stopDictation()
@@ -488,7 +488,7 @@ final class AppEnvironmentConfigurer {
                     return MeetingAudioLevels(microphone: micLevel, system: systemLevel)
                 },
                 onAutoStopConfirmed: { [weak meetingCoordinator] _ in
-                    meetingCoordinator?.stopRecording(operationTrigger: .autoStop) ?? false
+                    meetingCoordinator?.stopRecording() ?? false
                 }
             )
             coordinator.start()

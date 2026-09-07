@@ -89,7 +89,8 @@ public final class TransformsViewModel {
         do {
             let loaded = try await Task.detached(priority: .utility) { [repo] in
                 let all = try repo.fetchAll()
-                let transforms = all
+                let transforms =
+                    all
                     .filter { $0.isVisible && $0.category == .transform }
                     .sorted(by: { lhs, rhs in
                         if lhs.sortOrder != rhs.sortOrder { return lhs.sortOrder < rhs.sortOrder }
@@ -97,17 +98,21 @@ public final class TransformsViewModel {
                     })
                 return (all: all, transforms: transforms)
             }.value
-            guard shouldApplyTransformsLoad(
-                mutationGenerationAtStart: mutationGenerationAtStart
-            ) else { return false }
+            guard
+                shouldApplyTransformsLoad(
+                    mutationGenerationAtStart: mutationGenerationAtStart
+                )
+            else { return false }
             allPrompts = loaded.all
             transforms = loaded.transforms
             errorMessage = nil
             return true
         } catch {
-            guard shouldApplyTransformsLoad(
-                mutationGenerationAtStart: mutationGenerationAtStart
-            ) else { return false }
+            guard
+                shouldApplyTransformsLoad(
+                    mutationGenerationAtStart: mutationGenerationAtStart
+                )
+            else { return false }
             errorMessage = error.localizedDescription
             return false
         }
@@ -191,20 +196,24 @@ public final class TransformsViewModel {
                 repo: historyRepo,
                 limit: Self.historyFetchLimit
             )
-            guard shouldApplyHistoryLoad(
-                loadGeneration: myLoadGeneration,
-                mutationGenerationAtStart: mutationGenerationAtStart,
-                startedDuringMutation: startedDuringMutation
-            ) else { return }
+            guard
+                shouldApplyHistoryLoad(
+                    loadGeneration: myLoadGeneration,
+                    mutationGenerationAtStart: mutationGenerationAtStart,
+                    startedDuringMutation: startedDuringMutation
+                )
+            else { return }
             history = snapshot.entries
             totalHistoryCount = snapshot.totalCount
             historyErrorMessage = nil
         } catch {
-            guard shouldApplyHistoryLoad(
-                loadGeneration: myLoadGeneration,
-                mutationGenerationAtStart: mutationGenerationAtStart,
-                startedDuringMutation: startedDuringMutation
-            ) else { return }
+            guard
+                shouldApplyHistoryLoad(
+                    loadGeneration: myLoadGeneration,
+                    mutationGenerationAtStart: mutationGenerationAtStart,
+                    startedDuringMutation: startedDuringMutation
+                )
+            else { return }
             history = []
             totalHistoryCount = 0
             historyErrorMessage = error.localizedDescription
@@ -272,12 +281,13 @@ public final class TransformsViewModel {
             historyErrorMessage = "Clipboard service is unavailable."
             return
         }
-        let text = switch target {
-        case .input:
-            entry.inputText
-        case .output:
-            entry.outputText
-        }
+        let text =
+            switch target {
+            case .input:
+                entry.inputText
+            case .output:
+                entry.outputText
+            }
         guard await clipboardService.copyToClipboard(text) else {
             historyErrorMessage = "Could not copy text to the clipboard."
             return
@@ -400,17 +410,20 @@ public final class TransformsViewModel {
                         var existing = persisted[index]
                         existing.isVisible = true
                         if let shortcut = existing.shortcut,
-                           let conflict = transformShortcutConflict(
-                               for: shortcut,
-                               excluding: existing.id,
-                               in: persisted
-                           ) {
+                            let conflict = transformShortcutConflict(
+                                for: shortcut,
+                                excluding: existing.id,
+                                in: persisted
+                            )
+                        {
                             existing.keyboardShortcut = nil
                             cleared.append("\(existing.name) (\(shortcut.displayString), used by \(conflict.name))")
                         } else if let shortcut = existing.shortcut,
-                                  let conflict = reservedHotkeyConflict(for: shortcut, in: reservedHotkeys) {
+                            let conflict = reservedHotkeyConflict(for: shortcut, in: reservedHotkeys)
+                        {
                             existing.keyboardShortcut = nil
-                            cleared.append("\(existing.name) (\(shortcut.displayString), conflicts with \(conflict.name))")
+                            cleared.append(
+                                "\(existing.name) (\(shortcut.displayString), conflicts with \(conflict.name))")
                         }
                         existing.updatedAt = Date()
                         try repo.save(existing)
@@ -419,11 +432,13 @@ public final class TransformsViewModel {
                     }
 
                     if let shortcut = prompt.shortcut,
-                       let conflict = transformShortcutConflict(for: shortcut, excluding: prompt.id, in: persisted) {
+                        let conflict = transformShortcutConflict(for: shortcut, excluding: prompt.id, in: persisted)
+                    {
                         prompt.keyboardShortcut = nil
                         cleared.append("\(prompt.name) (\(shortcut.displayString), used by \(conflict.name))")
                     } else if let shortcut = prompt.shortcut,
-                              let conflict = reservedHotkeyConflict(for: shortcut, in: reservedHotkeys) {
+                        let conflict = reservedHotkeyConflict(for: shortcut, in: reservedHotkeys)
+                    {
                         prompt.keyboardShortcut = nil
                         cleared.append("\(prompt.name) (\(shortcut.displayString), conflicts with \(conflict.name))")
                     }
@@ -434,7 +449,8 @@ public final class TransformsViewModel {
             }.value
             await load()
             if !clearedShortcuts.isEmpty {
-                errorMessage = "Restored missing defaults without conflicting shortcuts: \(clearedShortcuts.joined(separator: ", "))."
+                errorMessage =
+                    "Restored missing defaults without conflicting shortcuts: \(clearedShortcuts.joined(separator: ", "))."
             }
             return true
         } catch {
@@ -505,9 +521,9 @@ private func transformShortcutConflict(
 ) -> Prompt? {
     prompts.first { prompt in
         guard prompt.id != promptID,
-              prompt.category == .transform,
-              prompt.isVisible,
-              let shortcut = prompt.shortcut
+            prompt.category == .transform,
+            prompt.isVisible,
+            let shortcut = prompt.shortcut
         else { return false }
         return transformShortcutsMatch(shortcut, candidate)
     }
@@ -545,8 +561,10 @@ private func defaultShortcutConflictMessage(
 ) -> String {
     switch conflict {
     case .transform(let name):
-        return "Default shortcut \(shortcut.displayString) is already used by Transform “\(name)”. Change that shortcut before resetting \(canonicalName)."
+        return
+            "Default shortcut \(shortcut.displayString) is already used by Transform “\(name)”. Change that shortcut before resetting \(canonicalName)."
     case .reservedHotkey(let name):
-        return "Default shortcut \(shortcut.displayString) conflicts with \(name). Change that hotkey before resetting \(canonicalName)."
+        return
+            "Default shortcut \(shortcut.displayString) conflicts with \(name). Change that hotkey before resetting \(canonicalName)."
     }
 }

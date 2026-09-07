@@ -128,8 +128,6 @@ final class MeetingRecordingFlowCoordinator {
     /// How long the "saved" checkmark holds before the pill self-dismisses.
     private let savedCheckmarkHold: Duration = .milliseconds(1700)
     private var activeFlowSettlementWaiters: [CheckedContinuation<Void, Never>] = []
-    private var currentMeetingOperationContext: ObservabilityOperationContext?
-    private var currentMeetingTrigger: TelemetryMeetingOperationTrigger?
     private var pendingAudioSourceMode: MeetingAudioSourceMode?
     private var pendingLivePanelPresentation = false
 
@@ -218,11 +216,11 @@ final class MeetingRecordingFlowCoordinator {
         panelViewModel?.chatViewModel.updateLLMService(service)
     }
 
-    /// Trigger source for the *next* `.startRequested` event. Reset to nil
-    /// after the start telemetry fires so subsequent toggles don't carry a
-    /// stale trigger. Calendar-driven starts call `startFromCalendar`,
+    /// Trigger source for the next start request. Reset to nil after the
+    /// recording starts so subsequent toggles do not carry a stale trigger.
+    /// Calendar-driven starts call `startFromCalendar`,
     /// which sets this and re-enters `toggleRecording`.
-    private var pendingTrigger: TelemetryMeetingRecordingTrigger?
+    private var pendingTrigger: MeetingRecordingTrigger?
 
     /// Pre-set title for the *next* `.startRecording` effect. Calendar-driven
     /// starts also set `pendingCalendarEventSnapshot`. Manual / hotkey starts
@@ -280,7 +278,7 @@ final class MeetingRecordingFlowCoordinator {
     @discardableResult
     func startRecording(
         title: String? = nil,
-        trigger: TelemetryMeetingRecordingTrigger = .manual,
+        trigger: MeetingRecordingTrigger = .manual,
         presentLivePanelWhenReady: Bool = false
     ) -> Int? {
         guard stateMachine.state == .idle else { return nil }
@@ -295,32 +293,25 @@ final class MeetingRecordingFlowCoordinator {
             (resolvedTrigger != .calendarAutoStart && title == nil)
             ? probableCalendarSnapshotProvider()
             : nil
-        currentMeetingOperationContext = ObservabilityOperationContext()
         sendEvent(.startRequested)
         return stateMachine.generation
     }
 
-    func toggleRecording(trigger: TelemetryMeetingRecordingTrigger = .manual) {
+    func toggleRecording(trigger: MeetingRecordingTrigger = .manual) {
         switch stateMachine.state {
         case .idle:
             startRecording(trigger: trigger)
         case .recording, .starting, .stopping:
-            stopRecording(trigger: trigger)
+            stopRecording()
         case .checkingPermissions, .finishing:
             break
         }
     }
 
     @discardableResult
-    func stopRecording(trigger: TelemetryMeetingRecordingTrigger = .manual) -> Bool {
-        stopRecording(operationTrigger: TelemetryMeetingOperationTrigger(trigger))
-    }
-
-    @discardableResult
-    func stopRecording(operationTrigger trigger: TelemetryMeetingOperationTrigger) -> Bool {
+    func stopRecording() -> Bool {
         switch stateMachine.state {
         case .recording, .starting:
-            currentMeetingTrigger = trigger
             sendEvent(.stopRequested)
             return true
         case .idle, .checkingPermissions, .stopping, .finishing:
@@ -333,7 +324,7 @@ final class MeetingRecordingFlowCoordinator {
         case .checkingPermissions, .starting:
             sendEvent(.cancelRequested)
         default:
-            _ = stopRecording(trigger: .manual)
+            _ = stopRecording()
         }
         await waitForActiveFlowToSettle()
         if let actionTask {
@@ -387,18 +378,14 @@ final class MeetingRecordingFlowCoordinator {
         }
     }
 
-    /// Calendar-driven entry point. Marks the next start as auto-start so
-    /// telemetry distinguishes it and pre-names the recording with the
-    /// event title, then enters the normal start flow. No-op if a recording
-    /// is already in progress (manual recording wins by arriving first —
-    /// see ADR-017 §10), in which case it emits
-    /// `calendar_auto_start_failed{reason=state_busy}` so we can see how
-    /// often back-to-back meetings actually collide in the wild. Returns the
-    /// recording generation on success (or `nil` when the state was busy).
+    /// Calendar-driven entry point. Pre-names the recording with the event
+    /// title, then enters the normal start flow. No-op if a recording is
+    /// already in progress (manual recording wins by arriving first; see
+    /// ADR-017 §10). Returns the recording generation on success, or `nil`
+    /// when the state was busy.
     @discardableResult
     func startFromCalendar(calendarEventSnapshot: MeetingCalendarSnapshot) -> Int? {
         guard stateMachine.state == .idle else {
-            Telemetry.send(.calendarAutoStartFailed(reason: "state_busy"))
             return nil
         }
         pendingTrigger = .calendarAutoStart
@@ -408,7 +395,6 @@ final class MeetingRecordingFlowCoordinator {
         pendingAudioSourceMode = sourceMode
         pendingLivePanelPresentation = false
         pendingStartContext = makeStartContext(trigger: .calendarAutoStart, sourceMode: sourceMode)
-        currentMeetingOperationContext = ObservabilityOperationContext()
         sendEvent(.startRequested)
         return stateMachine.generation
     }
@@ -416,7 +402,6 @@ final class MeetingRecordingFlowCoordinator {
     @discardableResult
     func startFromCalendar(title: String? = nil) -> Int? {
         guard stateMachine.state == .idle else {
-            Telemetry.send(.calendarAutoStartFailed(reason: "state_busy"))
             return nil
         }
         pendingTrigger = .calendarAutoStart
@@ -426,37 +411,19 @@ final class MeetingRecordingFlowCoordinator {
         pendingLivePanelPresentation = false
         pendingStartContext = makeStartContext(trigger: .calendarAutoStart, sourceMode: sourceMode)
         pendingCalendarEventSnapshot = nil
-        currentMeetingOperationContext = ObservabilityOperationContext()
         sendEvent(.startRequested)
         return stateMachine.generation
     }
 
-    /// Discard the pending start context (trigger + title) when the start
-    /// sequence exits without ever reaching the `.startRecording` effect —
-    /// today, only the permissions-denied path. The `.startRecording`
-    /// effect handler clears these inline because it needs to snapshot
-    /// them first to fire telemetry; this helper is for the paths that
-    /// bail out earlier. If the bailing-out start was calendar-driven,
-    /// emits `calendar_auto_start_failed{reason}` for observability.
-    private func clearPendingStartContext(failureReason: String) {
-        let wasCalendarTriggered = pendingTrigger == .calendarAutoStart
-        sendMeetingOperation(
-            outcome: .unavailable,
-            trigger: pendingTrigger.map(TelemetryMeetingOperationTrigger.init),
-            stage: .permissions,
-            errorType: failureReason
-        )
+    /// Discard the pending start context when the start sequence exits before
+    /// it reaches the `.startRecording` effect.
+    private func clearPendingStartContext() {
         pendingTrigger = nil
         pendingTitle = nil
         pendingCalendarEventSnapshot = nil
         pendingAudioSourceMode = nil
         pendingLivePanelPresentation = false
         pendingStartContext = nil
-        currentMeetingOperationContext = nil
-        currentMeetingTrigger = nil
-        if wasCalendarTriggered {
-            Telemetry.send(.calendarAutoStartFailed(reason: failureReason))
-        }
     }
 
     private func waitForActiveFlowToSettle() async {
@@ -499,7 +466,7 @@ final class MeetingRecordingFlowCoordinator {
     }
 
     private func makeStartContext(
-        trigger: TelemetryMeetingRecordingTrigger,
+        trigger: MeetingRecordingTrigger,
         sourceMode: MeetingAudioSourceMode
     ) -> MeetingStartContext {
         MeetingStartContext(
@@ -517,52 +484,33 @@ final class MeetingRecordingFlowCoordinator {
                 let sourceMode = self.pendingAudioSourceMode ?? meetingAudioSourceModeProvider()
                 self.pendingAudioSourceMode = sourceMode
                 let microphoneGranted: Bool
-                let microphonePrompted: Bool
                 if sourceMode.capturesMicrophone {
                     let microphoneStatus = await permissionService.checkMicrophonePermission()
                     switch microphoneStatus {
                     case .granted:
                         microphoneGranted = true
-                        microphonePrompted = false
                     case .denied:
                         microphoneGranted = false
-                        microphonePrompted = false
                     case .notDetermined:
-                        Telemetry.send(.permissionPrompted(permission: .microphone))
-                        microphonePrompted = true
                         microphoneGranted = await permissionService.requestMicrophonePermission()
                     }
                 } else {
                     microphoneGranted = true
-                    microphonePrompted = false
                 }
 
                 if !microphoneGranted {
-                    if microphonePrompted {
-                        Telemetry.send(.permissionDenied(permission: .microphone))
-                    }
-                    self.clearPendingStartContext(failureReason: "permission_denied")
+                    self.clearPendingStartContext()
                     self.sendEvent(.permissionsDenied(generation: gen, reason: .microphone))
                     return
-                }
-                if microphonePrompted {
-                    Telemetry.send(.permissionGranted(permission: .microphone))
                 }
 
                 if sourceMode.capturesSystemAudio {
                     let existingScreenGrant = permissionService.checkScreenRecordingPermission()
-                    if !existingScreenGrant {
-                        Telemetry.send(.permissionPrompted(permission: .screenRecording))
-                    }
                     let screenGranted = existingScreenGrant || permissionService.requestScreenRecordingPermission()
                     if !screenGranted {
-                        Telemetry.send(.permissionDenied(permission: .screenRecording))
-                        self.clearPendingStartContext(failureReason: "permission_denied")
+                        self.clearPendingStartContext()
                         self.sendEvent(.permissionsDenied(generation: gen, reason: .screenRecording))
                         return
-                    }
-                    if !existingScreenGrant {
-                        Telemetry.send(.permissionGranted(permission: .screenRecording))
                     }
                 }
                 self.sendEvent(.permissionsGranted(generation: gen))
@@ -628,7 +576,7 @@ final class MeetingRecordingFlowCoordinator {
                 self?.showMeetingPanel()
             }
             pillController?.onStopRecording = { [weak self] in
-                self?.stopRecording(trigger: .manual)
+                self?.stopRecording()
             }
             pillController?.onOpenApp = { [weak self] in
                 NSApp.activate(ignoringOtherApps: true)
@@ -673,9 +621,6 @@ final class MeetingRecordingFlowCoordinator {
             pendingAudioSourceMode = nil
             pendingLivePanelPresentation = false
             pendingStartContext = nil
-            let operationContext = currentMeetingOperationContext ?? ObservabilityOperationContext()
-            currentMeetingOperationContext = operationContext
-            currentMeetingTrigger = trigger.map(TelemetryMeetingOperationTrigger.init)
             actionTask = Task { @MainActor in
                 do {
                     try await meetingRecordingService.startRecording(
@@ -752,33 +697,12 @@ final class MeetingRecordingFlowCoordinator {
                     }
                     self.sendEvent(.recordingStarted(generation: gen))
                     self.startCaptureFailureObservation(generation: gen)
-                    Telemetry.send(.meetingRecordingStarted(trigger: trigger))
                     self.onRecordingBegan()
                 } catch {
                     guard self.ownsPendingStart(generation: gen) else {
                         self.recordIgnoredStartResult(generation: gen, outcome: "failure")
                         return
                     }
-                    Telemetry.send(
-                        .meetingRecordingFailed(
-                            errorType: TelemetryErrorClassifier.classify(error),
-                            errorDetail: TelemetryErrorClassifier.errorDetail(error)
-                        ))
-                    // If this start was driven by calendar auto-start, emit
-                    // the dedicated failure event so analysts can see *why*
-                    // (vs just inferring "silent failure" by subtraction
-                    // from `.calendarAutoStartTriggered`).
-                    if trigger == .calendarAutoStart {
-                        Telemetry.send(.calendarAutoStartFailed(reason: "service_threw"))
-                    }
-                    self.sendMeetingOperation(
-                        outcome: .failure,
-                        trigger: trigger.map(TelemetryMeetingOperationTrigger.init),
-                        stage: .startRecording,
-                        errorType: TelemetryErrorClassifier.classify(error)
-                    )
-                    self.currentMeetingOperationContext = nil
-                    self.currentMeetingTrigger = nil
                     self.sendEvent(.startFailed(generation: gen, message: error.localizedDescription))
                 }
             }
@@ -811,12 +735,7 @@ final class MeetingRecordingFlowCoordinator {
 
         case .stopRecordingAndTranscribe:
             let gen = stateMachine.generation
-            let liveWordCount = panelViewModel?.wordCount ?? 0
-            let liveTranscriptLagged = panelViewModel?.isTranscriptionLagging ?? false
             let notesVM = panelViewModel?.notesViewModel
-            let operationContext = currentMeetingOperationContext ?? ObservabilityOperationContext()
-            let operationTrigger = currentMeetingTrigger
-            currentMeetingOperationContext = operationContext
             actionTask = Task { @MainActor in
                 var stoppedOutput: MeetingRecordingOutput?
                 let queueingStartedAt = Date()
@@ -857,7 +776,7 @@ final class MeetingRecordingFlowCoordinator {
 
                 do {
                     activeSessionID = await meetingRecordingService.activeSessionID
-                    let prepared = try await Observability.withOperationContext(operationContext) {
+                    let prepared = try await {
                         // Flush any keystrokes typed in the last < 250 ms so
                         // they make it onto the lock file and into the saved
                         // Transcription.userNotes (ADR-020 §8).
@@ -878,7 +797,7 @@ final class MeetingRecordingFlowCoordinator {
                                 sessionID: activeSessionID,
                                 startedAt: serviceStopStartedAt,
                                 outcome: error is CancellationError ? "cancelled" : "failure",
-                                detail: "error_type=\(TelemetryErrorClassifier.classify(error))"
+                                detail: "error_type=\(DiagnosticErrorClassifier.classify(error))"
                             )
                             throw error
                         }
@@ -888,12 +807,6 @@ final class MeetingRecordingFlowCoordinator {
                             sessionID: output.sessionID,
                             startedAt: serviceStopStartedAt
                         )
-                        Telemetry.send(
-                            .meetingRecordingCompleted(
-                                durationSeconds: output.durationSeconds,
-                                liveWordCount: liveWordCount,
-                                liveTranscriptLagged: liveTranscriptLagged
-                            ))
                         let prepareRowStartedAt = Date()
                         let prepared: Transcription
                         do {
@@ -906,7 +819,7 @@ final class MeetingRecordingFlowCoordinator {
                                 sessionID: output.sessionID,
                                 startedAt: prepareRowStartedAt,
                                 outcome: error is CancellationError ? "cancelled" : "failure",
-                                detail: "error_type=\(TelemetryErrorClassifier.classify(error))"
+                                detail: "error_type=\(DiagnosticErrorClassifier.classify(error))"
                             )
                             throw error
                         }
@@ -920,11 +833,7 @@ final class MeetingRecordingFlowCoordinator {
                         await meetingTranscriptionQueue.enqueue(
                             MeetingTranscriptionQueue.Item(
                                 recording: output,
-                                transcriptionID: prepared.id,
-                                operationContext: operationContext,
-                                trigger: operationTrigger,
-                                liveWordCount: liveWordCount,
-                                liveTranscriptLagged: liveTranscriptLagged
+                                transcriptionID: prepared.id
                             ))
                         appendStopStage(
                             "queue_enqueue",
@@ -932,52 +841,24 @@ final class MeetingRecordingFlowCoordinator {
                             startedAt: enqueueStartedAt
                         )
                         return prepared
-                    }
-                    self.currentMeetingOperationContext = nil
-                    self.currentMeetingTrigger = nil
+                    }()
                     self.sendEvent(.recordingQueued(generation: gen, transcriptionID: prepared.id))
                 } catch {
                     // If stop already succeeded, the lock is already
                     // awaitingTranscription. Leave it for recovery to retry.
                     if error is CancellationError {
                         queueingOutcome = "cancelled"
-                        queueingFailureDetail = "error_type=\(TelemetryErrorClassifier.classify(error))"
-                        self.sendMeetingOperation(
-                            outcome: .cancelled,
-                            output: stoppedOutput,
-                            stage: stoppedOutput == nil ? .stopRecording : .completeTranscription,
-                            liveWordCount: liveWordCount,
-                            liveTranscriptLagged: liveTranscriptLagged
-                        )
-                        self.currentMeetingOperationContext = nil
-                        self.currentMeetingTrigger = nil
+                        queueingFailureDetail = "error_type=\(DiagnosticErrorClassifier.classify(error))"
                     } else {
                         queueingOutcome = "failure"
-                        queueingFailureDetail = "error_type=\(TelemetryErrorClassifier.classify(error))"
-                        Telemetry.send(
-                            .meetingRecordingFailed(
-                                errorType: TelemetryErrorClassifier.classify(error),
-                                errorDetail: TelemetryErrorClassifier.errorDetail(error)
-                            ))
-                        self.sendMeetingOperation(
-                            outcome: .failure,
-                            output: stoppedOutput,
-                            stage: stoppedOutput == nil ? .stopRecording : .completeTranscription,
-                            liveWordCount: liveWordCount,
-                            liveTranscriptLagged: liveTranscriptLagged,
-                            errorType: TelemetryErrorClassifier.classify(error)
-                        )
-                        self.currentMeetingOperationContext = nil
-                        self.currentMeetingTrigger = nil
+                        queueingFailureDetail = "error_type=\(DiagnosticErrorClassifier.classify(error))"
                         self.sendEvent(.transcriptionFailed(generation: gen, message: error.localizedDescription))
                     }
                 }
             }
 
         case .cancelRecording:
-            let durationSeconds = Double(panelViewModel?.elapsedSeconds ?? 0)
             let notesVM = panelViewModel?.notesViewModel
-            let cancelledTrigger = currentMeetingTrigger ?? pendingTrigger.map(TelemetryMeetingOperationTrigger.init)
             pendingTrigger = nil
             pendingTitle = nil
             pendingCalendarEventSnapshot = nil
@@ -993,15 +874,6 @@ final class MeetingRecordingFlowCoordinator {
                 // .stopRecordingAndTranscribe's commit() call.
                 await notesVM?.commit()
                 await meetingRecordingService.cancelRecording()
-                Telemetry.send(.meetingRecordingCancelled(durationSeconds: durationSeconds))
-                self.sendMeetingOperation(
-                    outcome: .cancelled,
-                    trigger: cancelledTrigger,
-                    stage: .cancel,
-                    durationSeconds: durationSeconds
-                )
-                self.currentMeetingOperationContext = nil
-                self.currentMeetingTrigger = nil
             }
 
         case .showError(let message):
@@ -1554,34 +1426,10 @@ final class MeetingRecordingFlowCoordinator {
 
     private func handleQueuedMeetingTranscriptionCompletion(_ completion: MeetingTranscriptionQueue.Completion) {
         switch completion {
-        case .success(let item, let transcription):
-            sendMeetingOperation(
-                operationContext: item.operationContext,
-                outcome: .success,
-                trigger: item.trigger,
-                output: item.recording,
-                stage: .completeTranscription,
-                liveWordCount: item.liveWordCount,
-                liveTranscriptLagged: item.liveTranscriptLagged
-            )
+        case .success(_, let transcription):
             onQueuedTranscriptionReady(transcription, stateMachine.state == .idle)
 
-        case .failure(let item, let error):
-            Telemetry.send(
-                .meetingRecordingFailed(
-                    errorType: TelemetryErrorClassifier.classify(error),
-                    errorDetail: TelemetryErrorClassifier.errorDetail(error)
-                ))
-            sendMeetingOperation(
-                operationContext: item.operationContext,
-                outcome: .failure,
-                trigger: item.trigger,
-                output: item.recording,
-                stage: .transcription,
-                liveWordCount: item.liveWordCount,
-                liveTranscriptLagged: item.liveTranscriptLagged,
-                errorType: TelemetryErrorClassifier.classify(error)
-            )
+        case .failure(let item, _):
             onQueuedTranscriptionFailed(
                 item.transcriptionID,
                 TranscriptionCompletionNotifier.meetingNeedsRetryContent()
@@ -1620,10 +1468,6 @@ final class MeetingRecordingFlowCoordinator {
             return MeetingTranscriptionQueue.Item(
                 recording: recording,
                 transcriptionID: latest.id,
-                operationContext: ObservabilityOperationContext(),
-                trigger: nil,
-                liveWordCount: 0,
-                liveTranscriptLagged: false
             )
         }.value
     }
@@ -1638,59 +1482,6 @@ final class MeetingRecordingFlowCoordinator {
         )
     }
 
-    private func sendMeetingOperation(
-        outcome: ObservabilityOutcome,
-        trigger: TelemetryMeetingOperationTrigger? = nil,
-        output: MeetingRecordingOutput? = nil,
-        stage: TelemetryMeetingOperationStage? = nil,
-        durationSeconds: Double? = nil,
-        liveWordCount: Int? = nil,
-        liveTranscriptLagged: Bool? = nil,
-        errorType: String? = nil
-    ) {
-        sendMeetingOperation(
-            operationContext: currentMeetingOperationContext,
-            outcome: outcome,
-            trigger: trigger ?? currentMeetingTrigger,
-            output: output,
-            stage: stage,
-            durationSeconds: durationSeconds,
-            liveWordCount: liveWordCount,
-            liveTranscriptLagged: liveTranscriptLagged,
-            errorType: errorType
-        )
-    }
-
-    private func sendMeetingOperation(
-        operationContext: ObservabilityOperationContext?,
-        outcome: ObservabilityOutcome,
-        trigger: TelemetryMeetingOperationTrigger? = nil,
-        output: MeetingRecordingOutput? = nil,
-        stage: TelemetryMeetingOperationStage? = nil,
-        durationSeconds: Double? = nil,
-        liveWordCount: Int? = nil,
-        liveTranscriptLagged: Bool? = nil,
-        errorType: String? = nil
-    ) {
-        guard let operationContext else { return }
-        let notes = output?.userNotes?.trimmingCharacters(in: .whitespacesAndNewlines)
-        Telemetry.send(
-            .meetingOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                outcome: outcome,
-                trigger: trigger,
-                stage: stage,
-                durationSeconds: output?.durationSeconds ?? durationSeconds,
-                liveWordCount: liveWordCount,
-                liveTranscriptLagged: liveTranscriptLagged,
-                microphoneTrackPresent: output.map { $0.sourceAlignment.microphone != nil },
-                systemTrackPresent: output.map { $0.sourceAlignment.system != nil },
-                notesUsed: notes.map { !$0.isEmpty },
-                notesLengthBucket: output.map { Observability.textLengthBucket($0.userNotes) },
-                errorType: errorType
-            ))
-    }
 }
 
 /// Hooks for unit tests. These stay internal and are not `#if DEBUG`-gated so
@@ -1702,15 +1493,8 @@ extension MeetingRecordingFlowCoordinator {
         makePreviewLines(from: update)
     }
 
-    func testHook_enterRecording(
-        operationContext: ObservabilityOperationContext = ObservabilityOperationContext(
-            operationID: "test-meeting-operation",
-            startedAt: Date(timeIntervalSince1970: 0)
-        )
-    ) {
+    func testHook_enterRecording() {
         stateMachine = MeetingRecordingFlowStateMachine()
-        currentMeetingOperationContext = operationContext
-        currentMeetingTrigger = nil
         pendingTrigger = nil
         pendingTitle = nil
         pendingCalendarEventSnapshot = nil

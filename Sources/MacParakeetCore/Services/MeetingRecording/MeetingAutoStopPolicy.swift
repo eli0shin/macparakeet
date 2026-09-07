@@ -66,15 +66,6 @@ public enum MeetingAutoStopPolicy {
     public enum StopReason: Sendable, Equatable, Hashable {
         case meetingAppClosed(bundleID: String)
         case prolongedSilence
-
-        public var telemetryReason: TelemetryMeetingAutoStopReason {
-            switch self {
-            case .meetingAppClosed:
-                return .meetingAppClosed
-            case .prolongedSilence:
-                return .prolongedSilence
-            }
-        }
     }
 
     public enum Decision: Sendable, Equatable {
@@ -92,15 +83,17 @@ public enum MeetingAutoStopPolicy {
         }
 
         if config.appQuitEnabled,
-           let closedBundleID = closedObservedMeetingApp(
-               observed: context.observedMeetingAppBundleIDs,
-               running: observation.runningMeetingAppBundleIDs
-           ) {
+            let closedBundleID = closedObservedMeetingApp(
+                observed: context.observedMeetingAppBundleIDs,
+                running: observation.runningMeetingAppBundleIDs
+            )
+        {
             return .proposeStop(reason: .meetingAppClosed(bundleID: closedBundleID))
         }
 
         if config.silenceEnabled,
-           observation.continuousSilenceSeconds >= config.silenceGraceSeconds {
+            observation.continuousSilenceSeconds >= config.silenceGraceSeconds
+        {
             return .proposeStop(reason: .prolongedSilence)
         }
 

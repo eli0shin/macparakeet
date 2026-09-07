@@ -10,7 +10,7 @@ final class DictationFlowCoordinatorTests: XCTestCase {
         let fnManager = HotkeyManager(trigger: .fn)
         harness.coordinator.hotkeyManagers = [fnManager]
 
-        harness.coordinator.startDictation(mode: .persistent, trigger: .pillClick)
+        harness.coordinator.startDictation(mode: .persistent)
 
         let started = await waitUntil { self.isFlowRecording(harness.coordinator.flowStateForTesting) }
         XCTAssertTrue(started)
@@ -32,7 +32,7 @@ final class DictationFlowCoordinatorTests: XCTestCase {
             STTResult(text: "second dictated message"),
         ])
 
-        harness.coordinator.startDictation(mode: .persistent, trigger: .hotkey)
+        harness.coordinator.startDictation(mode: .persistent)
         let firstStarted = await waitUntil { self.isFlowRecording(harness.coordinator.flowStateForTesting) }
         XCTAssertTrue(firstStarted)
 
@@ -44,7 +44,7 @@ final class DictationFlowCoordinatorTests: XCTestCase {
         XCTAssertTrue(firstPasted)
         XCTAssertEqual(harness.coordinator.flowStateForTesting, .idle)
 
-        harness.coordinator.startDictation(mode: .persistent, trigger: .hotkey)
+        harness.coordinator.startDictation(mode: .persistent)
         let secondStarted = await waitUntil { self.isFlowRecording(harness.coordinator.flowStateForTesting) }
         XCTAssertTrue(secondStarted)
 
@@ -76,7 +76,7 @@ final class DictationFlowCoordinatorTests: XCTestCase {
         ])
         await harness.clipboard.setPasteDelayMs(100)
 
-        harness.coordinator.startDictation(mode: .persistent, trigger: .hotkey)
+        harness.coordinator.startDictation(mode: .persistent)
         let firstStarted = await waitUntil { self.isFlowRecording(harness.coordinator.flowStateForTesting) }
         XCTAssertTrue(firstStarted)
 
@@ -87,7 +87,7 @@ final class DictationFlowCoordinatorTests: XCTestCase {
         }
         XCTAssertTrue(firstSuccessVisible)
 
-        harness.coordinator.startDictation(mode: .persistent, trigger: .hotkey)
+        harness.coordinator.startDictation(mode: .persistent)
         let secondStarted = await waitUntil { self.isFlowRecording(harness.coordinator.flowStateForTesting) }
         XCTAssertTrue(secondStarted)
 
@@ -111,7 +111,7 @@ final class DictationFlowCoordinatorTests: XCTestCase {
             requestMicResult: true
         )
 
-        harness.coordinator.startDictation(mode: .persistent, trigger: .hotkey)
+        harness.coordinator.startDictation(mode: .persistent)
 
         let requestedPermission = await waitUntil {
             harness.permissionService.requestMicrophonePermissionCallCount == 1

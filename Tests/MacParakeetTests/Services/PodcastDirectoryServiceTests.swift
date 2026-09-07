@@ -5,11 +5,11 @@ final class PodcastDirectoryServiceTests: XCTestCase {
 
     func testSearchDecodesShows() async throws {
         let json = """
-        {"resultCount":2,"results":[
-         {"collectionName":"Lex Fridman Podcast","feedUrl":"https://lexfridman.com/feed/podcast/","collectionId":1434243584,"artworkUrl600":"https://art/600.jpg"},
-         {"collectionName":"Other","feedUrl":"https://other/feed.rss","collectionId":99,"artworkUrl100":"https://art/100.jpg"}
-        ]}
-        """
+            {"resultCount":2,"results":[
+             {"collectionName":"Lex Fridman Podcast","feedUrl":"https://lexfridman.com/feed/podcast/","collectionId":1434243584,"artworkUrl600":"https://art/600.jpg"},
+             {"collectionName":"Other","feedUrl":"https://other/feed.rss","collectionId":99,"artworkUrl100":"https://art/100.jpg"}
+            ]}
+            """
         let directory = PodcastDirectoryService(dataFetcher: Self.fetcher(json))
         let shows = try await directory.searchShows(query: "Lex Fridman")
 
@@ -32,7 +32,8 @@ final class PodcastDirectoryServiceTests: XCTestCase {
     }
 
     func testFeedURLLookup() async throws {
-        let json = #"{"resultCount":1,"results":[{"collectionName":"X","feedUrl":"https://feeds/x.rss","collectionId":1}]}"#
+        let json =
+            #"{"resultCount":1,"results":[{"collectionName":"X","feedUrl":"https://feeds/x.rss","collectionId":1}]}"#
         let directory = PodcastDirectoryService(dataFetcher: Self.fetcher(json))
         let feed = try await directory.feedURL(forShowID: 1)
         XCTAssertEqual(feed, "https://feeds/x.rss")

@@ -67,7 +67,7 @@ final class ExportServiceTests: XCTestCase {
     func testExportToTxtLongDuration() throws {
         let transcription = Transcription(
             fileName: "lecture.mp3",
-            durationMs: 3661000, // 1h 1m 1s
+            durationMs: 3661000,  // 1h 1m 1s
             rawTranscript: "Long lecture content",
             status: .completed
         )
@@ -332,12 +332,13 @@ final class ExportServiceTests: XCTestCase {
         // 14 words with no punctuation — should break at 12
         var words: [WordTimestamp] = []
         for i in 0..<14 {
-            words.append(WordTimestamp(
-                word: "word\(i)",
-                startMs: i * 300,
-                endMs: i * 300 + 250,
-                confidence: 0.95
-            ))
+            words.append(
+                WordTimestamp(
+                    word: "word\(i)",
+                    startMs: i * 300,
+                    endMs: i * 300 + 250,
+                    confidence: 0.95
+                ))
         }
 
         let cues = exportService.buildSubtitleCues(from: words)
@@ -598,7 +599,8 @@ final class ExportServiceTests: XCTestCase {
         )
 
         let md = exportService.formatMarkdown(transcription: transcription)
-        XCTAssertTrue(md.contains("**Source:** [https://youtube.com/watch?v=abc123](https://youtube.com/watch?v=abc123)"))
+        XCTAssertTrue(
+            md.contains("**Source:** [https://youtube.com/watch?v=abc123](https://youtube.com/watch?v=abc123)"))
     }
 
     func testExportToMarkdown() throws {
@@ -639,7 +641,7 @@ final class ExportServiceTests: XCTestCase {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let decoded = try decoder.decode(Transcription.self, from: data)
-        
+
         XCTAssertEqual(decoded.fileName, "data.mp3")
         XCTAssertEqual(decoded.rawTranscript, "JSON export test")
 
@@ -864,14 +866,16 @@ final class ExportServiceTests: XCTestCase {
 
     private func firstPageContentStream(from url: URL) throws -> String {
         guard let document = CGPDFDocument(url as CFURL),
-              let page = document.page(at: 1),
-              let dictionary = page.dictionary else {
+            let page = document.page(at: 1),
+            let dictionary = page.dictionary
+        else {
             throw XCTSkip("Unable to open exported PDF for content-stream inspection")
         }
 
         var stream: CGPDFStreamRef?
         guard CGPDFDictionaryGetStream(dictionary, "Contents", &stream),
-              let stream else {
+            let stream
+        else {
             throw XCTSkip("Exported PDF did not contain a single page content stream")
         }
 

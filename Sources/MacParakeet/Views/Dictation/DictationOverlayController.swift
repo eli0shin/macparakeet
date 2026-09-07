@@ -15,11 +15,12 @@ private final class MouseTrackingView: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach { removeTrackingArea($0) }
-        addTrackingArea(NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
-            owner: self
-        ))
+        addTrackingArea(
+            NSTrackingArea(
+                rect: bounds,
+                options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                owner: self
+            ))
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -93,7 +94,7 @@ final class DictationOverlayController: DictationOverlayControlling {
         )
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = false // SwiftUI handles shadows; system shadow creates visible outline
+        panel.hasShadow = false  // SwiftUI handles shadows; system shadow creates visible outline
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = hosting
@@ -142,14 +143,15 @@ final class DictationOverlayController: DictationOverlayControlling {
     /// The pill is centered in the panel. Left zone = cancel, right zone = stop.
     private func updateHoverTooltip(at point: NSPoint, in bounds: NSRect) {
         guard case .recording = overlayViewModel.state,
-              overlayViewModel.recordingMode == .persistent else {
+            overlayViewModel.recordingMode == .persistent
+        else {
             // No hover tooltips in hold-to-talk (no buttons), ready, cancelled, processing, success, noSpeech, or error states
             overlayViewModel.hoverTooltip = nil
             return
         }
 
         let panelWidth = bounds.width
-        let pillWidth: CGFloat = 210 // approximate pill content width
+        let pillWidth: CGFloat = 210  // approximate pill content width
         let pillLeft = (panelWidth - pillWidth) / 2
         let pillRight = pillLeft + pillWidth
 
@@ -161,7 +163,8 @@ final class DictationOverlayController: DictationOverlayControlling {
                 overlayViewModel.hoverTooltip = "Stop & apply (Fn+Control)"
             } else {
                 let trigger = HotkeyTrigger.current
-                overlayViewModel.hoverTooltip = trigger.isDisabled
+                overlayViewModel.hoverTooltip =
+                    trigger.isDisabled
                     ? "Stop & paste"
                     : "Stop & paste (\(trigger.displayName))"
             }

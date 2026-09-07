@@ -214,13 +214,13 @@ public protocol LLMServiceProtocol: Sendable {
     func formatTranscript(
         transcript: String,
         promptTemplate: String,
-        source: TelemetryFormatterSource,
+        source: FormatterSource,
         defaultPromptUsed: Bool
     ) async throws -> String
     func formatTranscriptDetailed(
         transcript: String,
         promptTemplate: String,
-        source: TelemetryFormatterSource,
+        source: FormatterSource,
         defaultPromptUsed: Bool
     ) async throws -> LLMFormatterResult
 
@@ -410,12 +410,8 @@ labeled chip, answering "why did this dictation come out formatted that way?"
 locally without telemetry.
 
 `AppPromptContext` contains the local bundle identifier, display name, and
-`TelemetryAppCategory`. The exact app fields are used only for local profile
-matching and local dictation history/debug provenance. Telemetry continues to
-emit only the existing coarse `app_category`; it does not include formatter
-profile ids, profile names, exact bundle identifiers, app display names, prompt
-bodies, transcripts, browser hostnames, clipboard text, selected text, or screen
-text.
+`AppCategory`. These fields are used only for local profile matching and local
+dictation history/debug provenance. They are not uploaded.
 
 The production context adapter is `FocusedAppContextService`, an AppKit-shaped
 service that reads `NSWorkspace.shared.frontmostApplication` without giving Core

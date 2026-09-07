@@ -39,7 +39,7 @@ final class CLIVersionTests: XCTestCase {
     /// `Sources/CLI/CHANGELOG.md`, located relative to this test file so the
     /// check is independent of the working directory or checkout location.
     private static var changelogURL: URL {
-        URL(fileURLWithPath: #filePath)   // Tests/CLITests/CLIVersionTests.swift
+        URL(fileURLWithPath: #filePath)  // Tests/CLITests/CLIVersionTests.swift
             .deletingLastPathComponent()  // Tests/CLITests
             .deletingLastPathComponent()  // Tests
             .deletingLastPathComponent()  // repo root
@@ -52,9 +52,10 @@ final class CLIVersionTests: XCTestCase {
         for rawLine in changelog.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard line.hasPrefix("## ["),
-                  let open = line.firstIndex(of: "["),
-                  let close = line.firstIndex(of: "]"),
-                  open < close else { continue }
+                let open = line.firstIndex(of: "["),
+                let close = line.firstIndex(of: "]"),
+                open < close
+            else { continue }
             let token = String(line[line.index(after: open)..<close])
             if token.first?.isNumber == true { return token }
         }

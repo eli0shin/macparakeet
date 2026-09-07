@@ -47,7 +47,8 @@ enum BreathWaveIcon {
     private static func loadBaseMenuBarIcon(pointSize: CGFloat) -> NSImage {
         // Try loading from SwiftPM resource bundle first, then fall back to main bundle.
         if let url = Bundle.module.url(forResource: "menubar-icon@2x", withExtension: "png"),
-           let image = NSImage(contentsOf: url) {
+            let image = NSImage(contentsOf: url)
+        {
             image.size = NSSize(width: pointSize, height: pointSize)
             image.isTemplate = true
             return image
@@ -55,14 +56,16 @@ enum BreathWaveIcon {
 
         // Fallback: 1x version
         if let url = Bundle.module.url(forResource: "menubar-icon", withExtension: "png"),
-           let image = NSImage(contentsOf: url) {
+            let image = NSImage(contentsOf: url)
+        {
             image.size = NSSize(width: pointSize, height: pointSize)
             image.isTemplate = true
             return image
         }
 
         // Last resort: return a system symbol
-        let fallback = NSImage(systemSymbolName: "waveform", accessibilityDescription: "MacParakeet")
+        let fallback =
+            NSImage(systemSymbolName: "waveform", accessibilityDescription: "MacParakeet")
             ?? NSImage()
         fallback.size = NSSize(width: pointSize, height: pointSize)
         fallback.isTemplate = true
@@ -82,7 +85,8 @@ enum BreathWaveIcon {
             // NSStatusBar items use controlTextColor which is white on dark menu bars
             // and black on light ones (pre-Sonoma or accessibility settings).
             if let cgBase = base.cgImage(forProposedRect: nil, context: nil, hints: nil),
-               let ctx = NSGraphicsContext.current?.cgContext {
+                let ctx = NSGraphicsContext.current?.cgContext
+            {
                 ctx.saveGState()
                 ctx.clip(to: rect, mask: cgBase)
                 NSColor.controlTextColor.setFill()
@@ -140,8 +144,9 @@ enum BreathWaveIcon {
     /// then reused for every subsequent inline render.
     private static let templateMark: CGImage? = {
         guard let url = Bundle.module.url(forResource: "parakeet-mark", withExtension: "png"),
-              let nsImage = NSImage(contentsOf: url),
-              let source = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            let nsImage = NSImage(contentsOf: url),
+            let source = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else {
             return nil
         }
         return makeLuminanceTemplate(from: source)
@@ -165,18 +170,21 @@ enum BreathWaveIcon {
         let bytesPerPixel = 4
         let bytesPerRow = width * bytesPerPixel
         let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
+        let bitmapInfo =
+            CGImageAlphaInfo.premultipliedLast.rawValue
             | CGBitmapInfo.byteOrder32Big.rawValue
 
-        guard let context = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: bytesPerRow,
-            space: colorSpace,
-            bitmapInfo: bitmapInfo
-        ) else { return nil }
+        guard
+            let context = CGContext(
+                data: nil,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo
+            )
+        else { return nil }
 
         context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
 
@@ -313,10 +321,12 @@ enum BreathWaveIcon {
 
             // Dot
             let dotRadius = 6 * ls
-            NSBezierPath(ovalIn: NSRect(
-                x: padding + 68 * ls - dotRadius, y: padding + 34 * ls - dotRadius,
-                width: dotRadius * 2, height: dotRadius * 2
-            )).fill()
+            NSBezierPath(
+                ovalIn: NSRect(
+                    x: padding + 68 * ls - dotRadius, y: padding + 34 * ls - dotRadius,
+                    width: dotRadius * 2, height: dotRadius * 2
+                )
+            ).fill()
 
             return true
         }

@@ -173,8 +173,9 @@ final class MeetingAutoStartCoordinatorTests: XCTestCase {
         coordinator.start()
         await waitForPoll()
 
-        XCTAssertEqual(calendarService.fetchUpcomingEventsCallCount, 0,
-                       "Off mode must not touch the calendar service")
+        XCTAssertEqual(
+            calendarService.fetchUpcomingEventsCallCount, 0,
+            "Off mode must not touch the calendar service")
 
         coordinator.stop()
     }
@@ -187,8 +188,9 @@ final class MeetingAutoStartCoordinatorTests: XCTestCase {
         coordinator.start()
         await waitForPoll()
 
-        XCTAssertEqual(calendarService.fetchUpcomingEventsCallCount, 0,
-                       "Denied permission must not attempt a fetch")
+        XCTAssertEqual(
+            calendarService.fetchUpcomingEventsCallCount, 0,
+            "Denied permission must not attempt a fetch")
 
         coordinator.stop()
     }
@@ -219,12 +221,14 @@ final class MeetingAutoStartCoordinatorTests: XCTestCase {
             endTime: Date().addingTimeInterval(1800)
         )
         coordinator.handleAutoStartOutcome(.completed, for: event)
-        XCTAssertEqual(autoStartConfirmedCount, 1,
-                       "Recording start callback must fire on .completed outcome")
+        XCTAssertEqual(
+            autoStartConfirmedCount, 1,
+            "Recording start callback must fire on .completed outcome")
         // Title forwarding: the calendar event name is what the saved
         // recording will be titled, not the date-based default.
-        XCTAssertEqual(autoStartConfirmedSnapshots.map(\.title), [uniqueTitle],
-                       "Auto-start must forward the event title so the saved recording is named after the meeting")
+        XCTAssertEqual(
+            autoStartConfirmedSnapshots.map(\.title), [uniqueTitle],
+            "Auto-start must forward the event title so the saved recording is named after the meeting")
         XCTAssertEqual(autoStartConfirmedSnapshots.first?.confidence, .confirmed)
         XCTAssertEqual(autoStartConfirmedSnapshots.first?.eventIdentifier, "evt-1")
 
@@ -265,7 +269,7 @@ final class MeetingAutoStartCoordinatorTests: XCTestCase {
                 startsIn: -60,
                 durationMinutes: 30,
                 meetUrl: "https://meet.google.com/abc-defg-hij"
-            ),
+            )
         ]
         seedSettings(mode: .notify)
 
@@ -289,7 +293,7 @@ final class MeetingAutoStartCoordinatorTests: XCTestCase {
                 startsIn: -60,
                 durationMinutes: 30,
                 meetUrl: nil
-            ),
+            )
         ]
         seedSettings(mode: .notify, triggerFilter: .allEvents)
 
@@ -377,7 +381,7 @@ final class MeetingAutoStartCoordinatorTests: XCTestCase {
                 startsIn: -60,
                 durationMinutes: 30,
                 meetUrl: "https://meet.google.com/abc-defg-hij"
-            ),
+            )
         ]
         seedSettings(mode: .notify)
 
@@ -420,10 +424,12 @@ final class MeetingAutoStartCoordinatorTests: XCTestCase {
         settingsViewModel.calendarAutoStartMode = .off
         coordinator.handleAutoStartOutcome(.completed, for: event)
 
-        XCTAssertEqual(autoStartConfirmedCount, 0,
-                       "A countdown that completes after calendar auto-start is disabled must not start recording")
-        XCTAssertFalse(coordinator.testHook_isCountdownShown(event),
-                       "Disabled-mode completion should not permanently suppress a later re-enable")
+        XCTAssertEqual(
+            autoStartConfirmedCount, 0,
+            "A countdown that completes after calendar auto-start is disabled must not start recording")
+        XCTAssertFalse(
+            coordinator.testHook_isCountdownShown(event),
+            "Disabled-mode completion should not permanently suppress a later re-enable")
 
         coordinator.stop()
     }
@@ -465,8 +471,10 @@ final class MeetingAutoStartCoordinatorTests: XCTestCase {
         // Completion attempts the start; the stub rejects it (state_busy) and
         // clears the binding synchronously → suppression must be dropped.
         coordinator.handleAutoStartOutcome(.completed, for: event)
-        XCTAssertFalse(coordinator.testHook_isCountdownShown(event),
-                       "A state_busy auto-start must clear suppression so a true back-to-back meeting can retry once the first recording ends")
+        XCTAssertFalse(
+            coordinator.testHook_isCountdownShown(event),
+            "A state_busy auto-start must clear suppression so a true back-to-back meeting can retry once the first recording ends"
+        )
 
         coordinator.stop()
     }
@@ -488,8 +496,9 @@ final class MeetingAutoStartCoordinatorTests: XCTestCase {
         )
         coordinator.testHook_markCountdownShown(event)
         coordinator.handleAutoStartOutcome(.completed, for: event)
-        XCTAssertTrue(coordinator.testHook_isCountdownShown(event),
-                      "A successful auto-start must keep its suppression — no duplicate countdown")
+        XCTAssertTrue(
+            coordinator.testHook_isCountdownShown(event),
+            "A successful auto-start must keep its suppression — no duplicate countdown")
 
         coordinator.stop()
     }
@@ -506,25 +515,31 @@ final class MeetingAutoStartCoordinatorTests: XCTestCase {
         let coordinator = makeCoordinator()
         calendarService.holdNextFetch = true
 
-        coordinator.testHook_forcePoll()   // poll A enters and parks in fetch
+        coordinator.testHook_forcePoll()  // poll A enters and parks in fetch
         await waitForPoll()
-        XCTAssertEqual(calendarService.fetchUpcomingEventsCallCount, 1,
-                       "First poll should be mid-fetch")
+        XCTAssertEqual(
+            calendarService.fetchUpcomingEventsCallCount, 1,
+            "First poll should be mid-fetch")
 
-        coordinator.testHook_forcePoll()   // poll B — should be coalesced
+        coordinator.testHook_forcePoll()  // poll B — should be coalesced
         await waitForPoll()
-        XCTAssertTrue(coordinator.testHook_pollAgainRequested,
-                      "The reentrant poll must register a coalesced re-run (proves it entered and hit the guard, not merely queued)")
-        XCTAssertEqual(calendarService.fetchUpcomingEventsCallCount, 1,
-                       "A reentrant poll must not run a second concurrent fetch")
+        XCTAssertTrue(
+            coordinator.testHook_pollAgainRequested,
+            "The reentrant poll must register a coalesced re-run (proves it entered and hit the guard, not merely queued)"
+        )
+        XCTAssertEqual(
+            calendarService.fetchUpcomingEventsCallCount, 1,
+            "A reentrant poll must not run a second concurrent fetch")
 
         // Releasing A lets it finish and run exactly one coalesced re-poll.
         calendarService.releaseHeldFetch()
         await waitForPoll()
-        XCTAssertFalse(coordinator.testHook_pollAgainRequested,
-                       "Coalesced flag should be consumed by the re-run")
-        XCTAssertEqual(calendarService.fetchUpcomingEventsCallCount, 2,
-                       "The dropped poll must be honored once after the in-flight poll completes")
+        XCTAssertFalse(
+            coordinator.testHook_pollAgainRequested,
+            "Coalesced flag should be consumed by the re-run")
+        XCTAssertEqual(
+            calendarService.fetchUpcomingEventsCallCount, 2,
+            "The dropped poll must be honored once after the in-flight poll completes")
 
         coordinator.stop()
     }

@@ -2,37 +2,6 @@ import XCTest
 @testable import MacParakeetCore
 @testable import MacParakeetViewModels
 
-private final class DictationHistoryTelemetrySpy: TelemetryServiceProtocol, @unchecked Sendable {
-    private let lock = NSLock()
-    private var events: [TelemetryEventSpec] = []
-
-    func send(_ event: TelemetryEventSpec) {
-        lock.lock()
-        events.append(event)
-        lock.unlock()
-    }
-
-    func sendAndFlush(_ event: TelemetryEventSpec) async -> Bool {
-        send(event)
-        return true
-    }
-
-    func clearQueue() {
-        lock.lock()
-        events.removeAll()
-        lock.unlock()
-    }
-
-    func flush() async {}
-    func flushForTermination() {}
-
-    func snapshot() -> [TelemetryEventSpec] {
-        lock.lock()
-        defer { lock.unlock() }
-        return events
-    }
-}
-
 @MainActor
 final class DictationHistoryViewModelTests: XCTestCase {
     var viewModel: DictationHistoryViewModel!
@@ -44,7 +13,6 @@ final class DictationHistoryViewModelTests: XCTestCase {
     }
 
     override func tearDown() {
-        Telemetry.configure(NoOpTelemetryService())
         viewModel = nil
         mockRepo = nil
         super.tearDown()
@@ -116,7 +84,7 @@ final class DictationHistoryViewModelTests: XCTestCase {
         // Use noon today to avoid midnight boundary issues
         let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date())!
         let now = noon
-        let earlier = noon.addingTimeInterval(-3600) // 11 AM same day
+        let earlier = noon.addingTimeInterval(-3600)  // 11 AM same day
 
         mockRepo.dictations = [
             Dictation(createdAt: now, durationMs: 1000, rawTranscript: "First"),
@@ -167,7 +135,7 @@ final class DictationHistoryViewModelTests: XCTestCase {
 
     func testSearchNoResults() {
         mockRepo.dictations = [
-            Dictation(durationMs: 1000, rawTranscript: "Hello world"),
+            Dictation(durationMs: 1000, rawTranscript: "Hello world")
         ]
 
         viewModel.configure(dictationRepo: mockRepo)
@@ -175,32 +143,6 @@ final class DictationHistoryViewModelTests: XCTestCase {
         viewModel.loadDictations()
 
         XCTAssertTrue(viewModel.groupedDictations.isEmpty, "No results for unmatched search")
-    }
-
-    func testSearchTelemetryEmitsOnceAfterDebouncedSearchWithoutQueryText() async {
-        let telemetry = DictationHistoryTelemetrySpy()
-        Telemetry.configure(telemetry)
-        mockRepo.dictations = [
-            Dictation(durationMs: 1000, rawTranscript: "project plan"),
-            Dictation(durationMs: 1000, rawTranscript: "project status"),
-            Dictation(durationMs: 1000, rawTranscript: "grocery list"),
-        ]
-        viewModel.configure(dictationRepo: mockRepo)
-
-        viewModel.searchText = "pro"
-        viewModel.searchText = "proj"
-        viewModel.searchText = "project"
-
-        XCTAssertTrue(historySearchEvents(in: telemetry.snapshot()).isEmpty)
-
-        await waitForCondition("debounced history search telemetry") {
-            self.historySearchEvents(in: telemetry.snapshot()).count == 1
-        }
-
-        let event = historySearchEvents(in: telemetry.snapshot()).first
-        XCTAssertEqual(event?.props?["result_count"], "2_5")
-        XCTAssertNil(event?.props?["query"])
-        XCTAssertFalse(event?.props?.values.contains("project") ?? false)
     }
 
     // MARK: - Delete
@@ -553,7 +495,7 @@ final class DictationHistoryViewModelTests: XCTestCase {
 
         XCTAssertFalse(viewModel.stats.isEmpty)
         XCTAssertEqual(viewModel.stats.totalCount, 1)
-        XCTAssertEqual(viewModel.stats.totalWords, 3) // "Hello world test"
+        XCTAssertEqual(viewModel.stats.totalWords, 3)  // "Hello world test"
     }
 
     func testConfigureRefreshesStatsOnce() {
@@ -672,17 +614,14 @@ final class DictationHistoryViewModelTests: XCTestCase {
 
         viewModel.toggleDisplayRawTranscript(for: dictation)
 
-        XCTAssertTrue(mockRepo.setDisplayRawTranscriptCalls.isEmpty, "Should not call repo when there's no AI edit to undo")
+        XCTAssertTrue(
+            mockRepo.setDisplayRawTranscriptCalls.isEmpty, "Should not call repo when there's no AI edit to undo")
     }
 
     // MARK: - Helpers
 
     private func totalDictationCount() -> Int {
         viewModel.groupedDictations.reduce(0) { $0 + $1.1.count }
-    }
-
-    private func historySearchEvents(in events: [TelemetryEventSpec]) -> [TelemetryEventSpec] {
-        events.filter { $0.name == .historySearched }
     }
 
     private func waitForCondition(

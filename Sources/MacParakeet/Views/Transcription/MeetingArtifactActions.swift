@@ -13,7 +13,8 @@ enum MeetingArtifactActions {
         }
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
-              isDirectory.boolValue else {
+            isDirectory.boolValue
+        else {
             return nil
         }
         return url

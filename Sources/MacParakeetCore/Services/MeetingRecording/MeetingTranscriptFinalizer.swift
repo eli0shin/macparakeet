@@ -31,16 +31,17 @@ struct MeetingTranscriptFinalizer {
             return lhs.startOffsetMs < rhs.startOffsetMs
         }
 
-        let shiftedWordsBySource = Dictionary(uniqueKeysWithValues: normalized.map { sourceTranscript in
-            (
-                sourceTranscript.source,
-                shiftedWords(
-                    for: sourceTranscript.result,
-                    source: sourceTranscript.source,
-                    offsetMs: sourceTranscript.startOffsetMs
+        let shiftedWordsBySource = Dictionary(
+            uniqueKeysWithValues: normalized.map { sourceTranscript in
+                (
+                    sourceTranscript.source,
+                    shiftedWords(
+                        for: sourceTranscript.result,
+                        source: sourceTranscript.source,
+                        offsetMs: sourceTranscript.startOffsetMs
+                    )
                 )
-            )
-        })
+            })
 
         let systemWords = shiftedWordsBySource[.system] ?? []
         let sourceReconciliation = MeetingTranscriptSourceReconciler.reconcile(
@@ -154,7 +155,8 @@ struct MeetingTranscriptFinalizer {
         var speakers: [SpeakerInfo] = []
 
         if activeIDs.contains(AudioSource.microphone.rawValue) {
-            speakers.append(SpeakerInfo(id: AudioSource.microphone.rawValue, label: AudioSource.microphone.displayLabel))
+            speakers.append(
+                SpeakerInfo(id: AudioSource.microphone.rawValue, label: AudioSource.microphone.displayLabel))
         }
 
         if activeIDs.contains(AudioSource.system.rawValue) {
@@ -209,22 +211,24 @@ struct MeetingTranscriptFinalizer {
             if speakerId == currentSpeaker, word.startMs - currentEnd <= 1500 {
                 currentEnd = max(currentEnd, word.endMs)
             } else {
-                segments.append(DiarizationSegmentRecord(
-                    speakerId: currentSpeaker,
-                    startMs: currentStart,
-                    endMs: currentEnd
-                ))
+                segments.append(
+                    DiarizationSegmentRecord(
+                        speakerId: currentSpeaker,
+                        startMs: currentStart,
+                        endMs: currentEnd
+                    ))
                 currentSpeaker = speakerId
                 currentStart = word.startMs
                 currentEnd = word.endMs
             }
         }
 
-        segments.append(DiarizationSegmentRecord(
-            speakerId: currentSpeaker,
-            startMs: currentStart,
-            endMs: currentEnd
-        ))
+        segments.append(
+            DiarizationSegmentRecord(
+                speakerId: currentSpeaker,
+                startMs: currentStart,
+                endMs: currentEnd
+            ))
         return segments
     }
 
@@ -237,7 +241,8 @@ struct MeetingTranscriptFinalizer {
             return transcriptText(from: mergedWords)
         }
 
-        let textualSourceTranscripts = sourceTranscripts.compactMap { sourceTranscript -> (source: AudioSource, text: String, hasWords: Bool)? in
+        let textualSourceTranscripts = sourceTranscripts.compactMap {
+            sourceTranscript -> (source: AudioSource, text: String, hasWords: Bool)? in
             let text = sourceTranscript.result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return nil }
             return (sourceTranscript.source, text, !sourceTranscript.result.words.isEmpty)

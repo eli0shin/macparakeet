@@ -86,11 +86,12 @@ public enum TranscriptSegmenter {
         for segment in segments {
             let segSpeaker = segment.speakerId ?? currentSpeaker
             if segSpeaker != currentSpeaker && !currentSegments.isEmpty {
-                turns.append(SpeakerTurn(
-                    speakerId: currentSpeaker,
-                    speakerLabel: speakerLabelProvider(currentSpeaker),
-                    segments: currentSegments
-                ))
+                turns.append(
+                    SpeakerTurn(
+                        speakerId: currentSpeaker,
+                        speakerLabel: speakerLabelProvider(currentSpeaker),
+                        segments: currentSegments
+                    ))
                 currentSegments = []
                 currentSpeaker = segSpeaker
             }
@@ -99,11 +100,12 @@ public enum TranscriptSegmenter {
         }
 
         if !currentSegments.isEmpty {
-            turns.append(SpeakerTurn(
-                speakerId: currentSpeaker,
-                speakerLabel: speakerLabelProvider(currentSpeaker),
-                segments: currentSegments
-            ))
+            turns.append(
+                SpeakerTurn(
+                    speakerId: currentSpeaker,
+                    speakerLabel: speakerLabelProvider(currentSpeaker),
+                    segments: currentSegments
+                ))
         }
 
         return turns
@@ -119,7 +121,8 @@ public enum TranscriptSegmenter {
         // Speaking time from diarization segments
         if let segments = diarizationSegments {
             for segment in segments {
-                stats[segment.speakerId, default: SpeakerStatistics()].speakingTimeMs += (segment.endMs - segment.startMs)
+                stats[segment.speakerId, default: SpeakerStatistics()].speakingTimeMs +=
+                    (segment.endMs - segment.startMs)
             }
         }
 
@@ -156,16 +159,17 @@ public enum TranscriptSegmenter {
         func appendBoundary(endIndexExclusive: Int, speakerId: String?) {
             guard !currentWords.isEmpty else { return }
             let lastWord = words[endIndexExclusive - 1]
-            boundaries.append(SegmentBoundary(
-                startMs: segmentStart,
-                endMs: lastWord.endMs,
-                text: currentWords.joined(separator: " "),
-                speakerId: speakerId,
-                wordRange: TranscriptSegmentWordRange(
-                    startIndex: segmentStartIndex,
-                    endIndexExclusive: endIndexExclusive
-                )
-            ))
+            boundaries.append(
+                SegmentBoundary(
+                    startMs: segmentStart,
+                    endMs: lastWord.endMs,
+                    text: currentWords.joined(separator: " "),
+                    speakerId: speakerId,
+                    wordRange: TranscriptSegmentWordRange(
+                        startIndex: segmentStartIndex,
+                        endIndexExclusive: endIndexExclusive
+                    )
+                ))
         }
 
         for (i, word) in words.enumerated() {
@@ -211,7 +215,8 @@ public enum TranscriptSegmenter {
     ) -> String {
         guard let speakerId else { return "Unknown Speaker" }
         if let label = speakersByID[speakerId]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !label.isEmpty {
+            !label.isEmpty
+        {
             return label
         }
         if let source = AudioSource(rawValue: speakerId) {

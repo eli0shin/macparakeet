@@ -68,18 +68,20 @@ public actor WhisperEngine: STTTranscribing {
         let normalized = normalizeModelVariant(model)
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: downloadBase.path),
-              let enumerator = fileManager.enumerator(
+            let enumerator = fileManager.enumerator(
                 at: downloadBase,
                 includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsHiddenFiles]
-              ) else {
+            )
+        else {
             return nil
         }
 
         var candidates: [URL] = []
         for case let url as URL in enumerator {
             guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey]),
-                  values.isDirectory == true else {
+                values.isDirectory == true
+            else {
                 continue
             }
             let folderName = url.lastPathComponent
@@ -263,19 +265,21 @@ public actor WhisperEngine: STTTranscribing {
             )
             defer { watchdog.cancel() }
 
-            logger.notice("whisper_model_prepare_start model=\(variant, privacy: .public) folder=\(folderName, privacy: .public)")
+            logger.notice(
+                "whisper_model_prepare_start model=\(variant, privacy: .public) folder=\(folderName, privacy: .public)")
             AudioCaptureDiagnostics.append(
                 "whisper_model_prepare_start model=\(variant) folder=\(folderName)"
             )
             onProgress?("Optimizing Whisper for this Mac...")
-            whisperKit = try await WhisperKit(WhisperKitConfig(
-                model: modelVariant,
-                downloadBase: downloadBase,
-                modelFolder: modelFolder.path,
-                verbose: false,
-                load: true,
-                download: false
-            ))
+            whisperKit = try await WhisperKit(
+                WhisperKitConfig(
+                    model: modelVariant,
+                    downloadBase: downloadBase,
+                    modelFolder: modelFolder.path,
+                    verbose: false,
+                    load: true,
+                    download: false
+                ))
             isLoaded = true
             // Single chokepoint for "this variant compiled successfully on this
             // Mac" — fires for every caller (Settings switch, onboarding,
@@ -284,7 +288,9 @@ public actor WhisperEngine: STTTranscribing {
             // unit tests (which lack a downloaded model + WhisperKit).
             SpeechEnginePreference.markWhisperOptimized(variant: variant, defaults: defaults)
             let duration = Observability.durationSeconds(since: startedAt)
-            logger.notice("whisper_model_prepare_complete model=\(variant, privacy: .public) duration_s=\(duration, privacy: .public)")
+            logger.notice(
+                "whisper_model_prepare_complete model=\(variant, privacy: .public) duration_s=\(duration, privacy: .public)"
+            )
             AudioCaptureDiagnostics.append(
                 "whisper_model_prepare_complete model=\(variant) duration_s=\(Self.formatSeconds(duration))"
             )
@@ -293,7 +299,9 @@ public actor WhisperEngine: STTTranscribing {
             isLoaded = false
             whisperKit = nil
             let variant = modelVariant
-            logger.error("whisper_model_prepare_failed model=\(variant, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
+            logger.error(
+                "whisper_model_prepare_failed model=\(variant, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+            )
             AudioCaptureDiagnostics.append(
                 "whisper_model_prepare_failed model=\(variant) \(AudioCaptureDiagnostics.errorFields(error))"
             )
@@ -497,10 +505,12 @@ public actor WhisperEngine: STTTranscribing {
 
         var searchRange: Range<String.Index>? = folder.startIndex..<folder.endIndex
         while let range = folder.range(of: model, range: searchRange) {
-            let before = range.lowerBound == folder.startIndex
+            let before =
+                range.lowerBound == folder.startIndex
                 ? nil
                 : folder[folder.index(before: range.lowerBound)]
-            let after = range.upperBound == folder.endIndex
+            let after =
+                range.upperBound == folder.endIndex
                 ? nil
                 : folder[range.upperBound]
 
@@ -528,7 +538,7 @@ public actor WhisperEngine: STTTranscribing {
                 (15, "Optimizing Whisper for this Mac..."),
                 (60, "Still optimizing Whisper with Core ML. First-time setup can take 3-5 minutes on some Macs..."),
                 (180, "Still preparing Whisper. This one-time optimization is usually much faster next time..."),
-                (300, "Whisper is still optimizing. Leave MacParakeet open while Core ML finishes...")
+                (300, "Whisper is still optimizing. Leave MacParakeet open while Core ML finishes..."),
             ]
 
             var previousElapsedSeconds = 0
@@ -558,7 +568,7 @@ public actor WhisperEngine: STTTranscribing {
         if let urlError = error as? URLError {
             switch urlError.code {
             case .notConnectedToInternet, .networkConnectionLost, .timedOut,
-                 .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
                 return .modelDownloadFailed
             default:
                 return .engineStartFailed(urlError.localizedDescription)

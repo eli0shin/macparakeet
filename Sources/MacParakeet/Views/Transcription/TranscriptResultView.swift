@@ -109,11 +109,13 @@ struct MeetingTimedTranscriptRecoveryBannerPresentation: Equatable {
             return nil
         }
 
-        let baseMessage = "This meeting has transcript text but no word timestamps, so timed playback, segments, and speaker labels are unavailable."
+        let baseMessage =
+            "This meeting has transcript text but no word timestamps, so timed playback, segments, and speaker labels are unavailable."
         if let timestampCapableRerun {
             return MeetingTimedTranscriptRecoveryBannerPresentation(
                 title: "No timed transcript",
-                message: "\(baseMessage) Rerun with \(timestampCapableRerun.engine.displayName) to try adding timestamps. Speaker labels depend on the captured audio and may be approximate.",
+                message:
+                    "\(baseMessage) Rerun with \(timestampCapableRerun.engine.displayName) to try adding timestamps. Speaker labels depend on the captured audio and may be approximate.",
                 action: Action(
                     title: "Try timed retranscription",
                     selection: timestampCapableRerun
@@ -124,14 +126,16 @@ struct MeetingTimedTranscriptRecoveryBannerPresentation: Equatable {
         if hasRetainedAudio {
             return MeetingTimedTranscriptRecoveryBannerPresentation(
                 title: "No timed transcript",
-                message: "\(baseMessage) A timestamp-capable engine would be needed to try adding timestamps, but none is available right now.",
+                message:
+                    "\(baseMessage) A timestamp-capable engine would be needed to try adding timestamps, but none is available right now.",
                 action: nil
             )
         }
 
         return MeetingTimedTranscriptRecoveryBannerPresentation(
             title: "No timed transcript",
-            message: "\(baseMessage) Saved audio is no longer available, so MacParakeet cannot rerun the meeting to try adding timestamps.",
+            message:
+                "\(baseMessage) Saved audio is no longer available, so MacParakeet cannot rerun the meeting to try adding timestamps.",
             action: nil
         )
     }
@@ -282,166 +286,169 @@ struct TranscriptResultView: View {
 
     var body: some View {
         adaptiveLayout
-        .onAppear {
-            // Lazy migration for existing webm/opus YouTube audio files
-            // saved before issue #237's playback fix shipped. The VM
-            // transcodes in the background; this callback persists the new
-            // .m4a path so the next open hits it directly.
-            playerViewModel.onPlaybackFilePathConverted = { [viewModel] id, newPath, sourcePath in
-                try viewModel.applyConvertedPlaybackPath(
-                    transcriptionID: id,
-                    newFilePath: newPath,
-                    sourceFileToCleanup: sourcePath
-                )
-            }
-            Task {
-                if showVideoPanel {
-                    await playerViewModel.load(for: transcription)
-                } else {
-                    await playerViewModel.prepare(for: transcription)
+            .onAppear {
+                // Lazy migration for existing webm/opus YouTube audio files
+                // saved before issue #237's playback fix shipped. The VM
+                // transcodes in the background; this callback persists the new
+                // .m4a path so the next open hits it directly.
+                playerViewModel.onPlaybackFilePathConverted = { [viewModel] id, newPath, sourcePath in
+                    try viewModel.applyConvertedPlaybackPath(
+                        transcriptionID: id,
+                        newFilePath: newPath,
+                        sourceFileToCleanup: sourcePath
+                    )
                 }
-                if let words = transcription.wordTimestamps, !words.isEmpty {
-                    playerViewModel.loadSubtitleCues(from: words)
+                Task {
+                    if showVideoPanel {
+                        await playerViewModel.load(for: transcription)
+                    } else {
+                        await playerViewModel.prepare(for: transcription)
+                    }
+                    if let words = transcription.wordTimestamps, !words.isEmpty {
+                        playerViewModel.loadSubtitleCues(from: words)
+                    }
                 }
-            }
-            rebuildSegmentCache()
-            viewModel.loadPersistedContent()
-            syncTranscriptDisplayMode()
-            promptResultsViewModel.loadVisiblePrompts()
-            promptResultsViewModel.loadPromptResults(transcriptionId: transcription.id)
-            let text = currentAIContextText
-            chatViewModel.loadTranscript(text, transcriptionId: viewModel.currentTranscription?.id)
-            // Feed the user's typed meeting notes (if any) into chat alongside
-            // the transcript. The closure is re-evaluated on every chat-send so
-            // a CLI edit to userNotes in another process is visible to the next
-            // chat turn without having to reload the page.
-            chatViewModel.bindUserNotesProvider { [viewModel] in
-                viewModel.currentTranscription?.userNotes
-            }
-        }
-        .onChange(of: transcription.id) {
-            Task {
-                playerViewModel.cleanup()
-                if showVideoPanel {
-                    await playerViewModel.load(for: transcription)
-                } else {
-                    await playerViewModel.prepare(for: transcription)
-                }
-                if let words = transcription.wordTimestamps, !words.isEmpty {
-                    playerViewModel.loadSubtitleCues(from: words)
+                rebuildSegmentCache()
+                viewModel.loadPersistedContent()
+                syncTranscriptDisplayMode()
+                promptResultsViewModel.loadVisiblePrompts()
+                promptResultsViewModel.loadPromptResults(transcriptionId: transcription.id)
+                let text = currentAIContextText
+                chatViewModel.loadTranscript(text, transcriptionId: viewModel.currentTranscription?.id)
+                // Feed the user's typed meeting notes (if any) into chat alongside
+                // the transcript. The closure is re-evaluated on every chat-send so
+                // a CLI edit to userNotes in another process is visible to the next
+                // chat turn without having to reload the page.
+                chatViewModel.bindUserNotesProvider { [viewModel] in
+                    viewModel.currentTranscription?.userNotes
                 }
             }
-            rebuildSegmentCache()
-            headerExpanded = false
-            speakerOverviewExpanded = true
-            editingTitle = false
-            titleDraft = ""
-            editingTranscript = false
-            transcriptDraft = ""
-            transcriptEditError = nil
-            transcriptDisplayModeBeforeEdit = nil
-            editingSpeakerId = nil
-            editingSpeakerLabel = ""
-            showConversationPopover = false
-            hoveredConversationId = nil
-            showingSpeakerCountCorrection = false
-            speakerCountEditorMode = .auto
-            exactTotalPeople = ""
-            minimumTotalPeople = ""
-            maximumTotalPeople = ""
-            speakerCountEditorError = nil
-            speakerCorrectionSubmitted = false
-            lastScrolledSegmentMs = -1
-            autoScrollPaused = false
-            scrollPauseTask?.cancel()
-            // Reset find for the new transcript (no animation during the swap).
-            findBarVisible = false
-            findFieldFocused = false
-            findModel.clear()
-            findBlocks = []
-            findPausedAutoScroll = false
-            viewModel.hasConversations = false
-            viewModel.selectedTab = .transcript
-            viewModel.loadPersistedContent()
-            syncTranscriptDisplayMode()
-            promptResultsViewModel.loadPromptResults(transcriptionId: transcription.id)
-            let text = currentAIContextText
-            chatViewModel.loadTranscript(text, transcriptionId: viewModel.currentTranscription?.id)
-        }
-        .onChange(of: activeTranscription.speakers) {
-            rebuildSegmentCache()
-            reloadAIContext()
-            if findBarVisible { rebuildFindBlocks() }
-        }
-        .onChange(of: activeTranscription.wordTimestamps) {
-            rebuildSegmentCache()
-            reloadAIContext()
-            if findBarVisible { rebuildFindBlocks() }
-        }
-        .onChange(of: activeTranscription.diarizationSegments) {
-            rebuildSegmentCache()
-            reloadAIContext()
-            if findBarVisible { rebuildFindBlocks() }
-        }
-        .onChange(of: activeTranscription.status) {
-            rebuildSegmentCache()
-            syncTranscriptDisplayMode()
-            if findBarVisible { rebuildFindBlocks() }
-        }
-        .onChange(of: viewModel.speakerAttributionCorrectionState) { _, state in
-            if case .idle = state, speakerCorrectionSubmitted {
+            .onChange(of: transcription.id) {
+                Task {
+                    playerViewModel.cleanup()
+                    if showVideoPanel {
+                        await playerViewModel.load(for: transcription)
+                    } else {
+                        await playerViewModel.prepare(for: transcription)
+                    }
+                    if let words = transcription.wordTimestamps, !words.isEmpty {
+                        playerViewModel.loadSubtitleCues(from: words)
+                    }
+                }
+                rebuildSegmentCache()
+                headerExpanded = false
+                speakerOverviewExpanded = true
+                editingTitle = false
+                titleDraft = ""
+                editingTranscript = false
+                transcriptDraft = ""
+                transcriptEditError = nil
+                transcriptDisplayModeBeforeEdit = nil
+                editingSpeakerId = nil
+                editingSpeakerLabel = ""
+                showConversationPopover = false
+                hoveredConversationId = nil
                 showingSpeakerCountCorrection = false
+                speakerCountEditorMode = .auto
+                exactTotalPeople = ""
+                minimumTotalPeople = ""
+                maximumTotalPeople = ""
+                speakerCountEditorError = nil
                 speakerCorrectionSubmitted = false
+                lastScrolledSegmentMs = -1
+                autoScrollPaused = false
+                scrollPauseTask?.cancel()
+                // Reset find for the new transcript (no animation during the swap).
+                findBarVisible = false
+                findFieldFocused = false
+                findModel.clear()
+                findBlocks = []
+                findPausedAutoScroll = false
+                viewModel.hasConversations = false
+                viewModel.selectedTab = .transcript
+                viewModel.loadPersistedContent()
+                syncTranscriptDisplayMode()
+                promptResultsViewModel.loadPromptResults(transcriptionId: transcription.id)
+                let text = currentAIContextText
+                chatViewModel.loadTranscript(text, transcriptionId: viewModel.currentTranscription?.id)
             }
-        }
-        .onChange(of: transcriptText) {
-            rebuildSegmentCache()
-            reloadAIContext()
-            if findBarVisible { rebuildFindBlocks() }
-        }
-        .onChange(of: customWordsRevision) {
-            rebuildSegmentCache()
-            reloadAIContext()
-            if findBarVisible { rebuildFindBlocks() }
-        }
-        .onChange(of: transcriptAIContextModeRaw) {
-            chatViewModel.loadTranscript(currentAIContextText, transcriptionId: viewModel.currentTranscription?.id)
-        }
-        .onChange(of: viewModel.selectedTab) {
-            if case .result(let id) = viewModel.selectedTab {
-                promptResultsViewModel.markPromptResultViewed(id)
+            .onChange(of: activeTranscription.speakers) {
+                rebuildSegmentCache()
+                reloadAIContext()
+                if findBarVisible { rebuildFindBlocks() }
             }
-        }
-        .onDisappear {
-            playerViewModel.cleanup()
-            if let monitor = scrollMonitor {
-                NSEvent.removeMonitor(monitor)
-                scrollMonitor = nil
+            .onChange(of: activeTranscription.wordTimestamps) {
+                rebuildSegmentCache()
+                reloadAIContext()
+                if findBarVisible { rebuildFindBlocks() }
             }
-            scrollPauseTask?.cancel()
-        }
-        .sheet(isPresented: $showPromptLibrary, onDismiss: {
-            promptsViewModel.loadPrompts()
-            promptResultsViewModel.loadVisiblePrompts()
-        }) {
-            PromptLibraryView(viewModel: promptsViewModel)
-        }
-        .alert(
-            "Delete Result?",
-            isPresented: Binding(
-                get: { promptResultsViewModel.pendingDeletePromptResult != nil },
-                set: { if !$0 { promptResultsViewModel.pendingDeletePromptResult = nil } }
-            )
-        ) {
-            Button("Delete", role: .destructive) {
-                promptResultsViewModel.confirmDelete()
+            .onChange(of: activeTranscription.diarizationSegments) {
+                rebuildSegmentCache()
+                reloadAIContext()
+                if findBarVisible { rebuildFindBlocks() }
             }
-            Button("Cancel", role: .cancel) {
-                promptResultsViewModel.pendingDeletePromptResult = nil
+            .onChange(of: activeTranscription.status) {
+                rebuildSegmentCache()
+                syncTranscriptDisplayMode()
+                if findBarVisible { rebuildFindBlocks() }
             }
-        } message: {
-            Text("This action cannot be undone.")
-        }
+            .onChange(of: viewModel.speakerAttributionCorrectionState) { _, state in
+                if case .idle = state, speakerCorrectionSubmitted {
+                    showingSpeakerCountCorrection = false
+                    speakerCorrectionSubmitted = false
+                }
+            }
+            .onChange(of: transcriptText) {
+                rebuildSegmentCache()
+                reloadAIContext()
+                if findBarVisible { rebuildFindBlocks() }
+            }
+            .onChange(of: customWordsRevision) {
+                rebuildSegmentCache()
+                reloadAIContext()
+                if findBarVisible { rebuildFindBlocks() }
+            }
+            .onChange(of: transcriptAIContextModeRaw) {
+                chatViewModel.loadTranscript(currentAIContextText, transcriptionId: viewModel.currentTranscription?.id)
+            }
+            .onChange(of: viewModel.selectedTab) {
+                if case .result(let id) = viewModel.selectedTab {
+                    promptResultsViewModel.markPromptResultViewed(id)
+                }
+            }
+            .onDisappear {
+                playerViewModel.cleanup()
+                if let monitor = scrollMonitor {
+                    NSEvent.removeMonitor(monitor)
+                    scrollMonitor = nil
+                }
+                scrollPauseTask?.cancel()
+            }
+            .sheet(
+                isPresented: $showPromptLibrary,
+                onDismiss: {
+                    promptsViewModel.loadPrompts()
+                    promptResultsViewModel.loadVisiblePrompts()
+                }
+            ) {
+                PromptLibraryView(viewModel: promptsViewModel)
+            }
+            .alert(
+                "Delete Result?",
+                isPresented: Binding(
+                    get: { promptResultsViewModel.pendingDeletePromptResult != nil },
+                    set: { if !$0 { promptResultsViewModel.pendingDeletePromptResult = nil } }
+                )
+            ) {
+                Button("Delete", role: .destructive) {
+                    promptResultsViewModel.confirmDelete()
+                }
+                Button("Cancel", role: .cancel) {
+                    promptResultsViewModel.pendingDeletePromptResult = nil
+                }
+            } message: {
+                Text("This action cannot be undone.")
+            }
     }
 
     @ViewBuilder
@@ -659,20 +666,22 @@ struct TranscriptResultView: View {
                         Label(MeetingDeletionCopy.audioOnlyMenuTitle, systemImage: "waveform.slash")
                     }
                     .disabled(!audioRemovable)
-                    .help(audioRemovable
-                          ? "Remove the saved meeting audio while keeping the meeting"
-                          : MeetingDeletionCopy.audioRemovalUnavailableHelp(
-                              for: activeTranscription,
-                              state: audioState
-                          ))
+                    .help(
+                        audioRemovable
+                            ? "Remove the saved meeting audio while keeping the meeting"
+                            : MeetingDeletionCopy.audioRemovalUnavailableHelp(
+                                for: activeTranscription,
+                                state: audioState
+                            ))
                 } label: {
                     Label("Audio", systemImage: "waveform")
                 }
                 .parakeetAction(.secondary)
                 .disabled(!audioAvailable)
-                .help(audioAvailable
-                      ? "Reveal or save the meeting audio file"
-                      : MeetingDeletionCopy.audioUnavailableHelp(for: audioState))
+                .help(
+                    audioAvailable
+                        ? "Reveal or save the meeting audio file"
+                        : MeetingDeletionCopy.audioUnavailableHelp(for: audioState))
 
                 let artifactAvailable = MeetingArtifactActions.folderURL(for: activeTranscription) != nil
                 Menu {
@@ -692,16 +701,18 @@ struct TranscriptResultView: View {
                 }
                 .parakeetAction(.secondary)
                 .disabled(!artifactAvailable)
-                .help(artifactAvailable
-                      ? "Open or copy the meeting artifact folder path"
-                      : "Meeting artifact folder is not available")
+                .help(
+                    artifactAvailable
+                        ? "Open or copy the meeting artifact folder path"
+                        : "Meeting artifact folder is not available")
             }
 
             if onRetranscribe != nil, let filePath = activeTranscription.filePath,
-               TranscriptDetailActionAvailability.canRetranscribe(
-                   hasRetainedAudio: FileManager.default.fileExists(atPath: filePath),
-                   status: activeTranscription.status
-               ) {
+                TranscriptDetailActionAvailability.canRetranscribe(
+                    hasRetainedAudio: FileManager.default.fileExists(atPath: filePath),
+                    status: activeTranscription.status
+                )
+            {
                 let engineOption = viewModel.retranscriptionEngineOption(for: activeTranscription)
                 Button {
                     if engineOption != nil {
@@ -734,7 +745,8 @@ struct TranscriptResultView: View {
             }
 
             if activeTranscription.sourceType == .meeting,
-               activeTranscription.status == .completed {
+                activeTranscription.status == .completed
+            {
                 Button {
                     speakerCountEditorError = nil
                     viewModel.clearMeetingSpeakerAttributionCorrectionError()
@@ -790,7 +802,7 @@ struct TranscriptResultView: View {
                 guard confirmation.transcriptionID == transcription.id else { return }
                 onRetranscribe?(activeTranscription, confirmation.speechEngineOverride)
             }
-            Button("Cancel", role: .cancel) { }
+            Button("Cancel", role: .cancel) {}
         } message: { confirmation in
             Text(confirmation.message)
         }
@@ -922,14 +934,20 @@ struct TranscriptResultView: View {
                     }
                 }
                 Spacer()
-                Button { showingSpeakerCountCorrection = false } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Close speaker count options")
+                Button {
+                    showingSpeakerCountCorrection = false
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close speaker count options")
             }
-            Text("Counts are total people in the meeting, including Me. MacParakeet applies the remaining count to remote speakers in system audio.")
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Counts are total people in the meeting, including Me. MacParakeet applies the remaining count to remote speakers in system audio."
+            )
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
             Picker("Speaker count", selection: $speakerCountEditorMode) {
                 ForEach(SpeakerCountEditorMode.allCases) { Text($0.rawValue).tag($0) }
             }
@@ -962,7 +980,8 @@ struct TranscriptResultView: View {
             HStack {
                 if case .running(let message) = viewModel.speakerAttributionCorrectionState {
                     ProgressView().controlSize(.small)
-                    Text(message).font(DesignSystem.Typography.caption).foregroundStyle(DesignSystem.Colors.textSecondary)
+                    Text(message).font(DesignSystem.Typography.caption).foregroundStyle(
+                        DesignSystem.Colors.textSecondary)
                     Spacer()
                     Button("Cancel") { viewModel.cancelMeetingSpeakerAttributionCorrection() }
                         .parakeetAction(.secondary)
@@ -1000,7 +1019,8 @@ struct TranscriptResultView: View {
             selection = .exact(totalPeople: total)
         case .bounded:
             guard let minimum = Int(minimumTotalPeople.trimmingCharacters(in: .whitespaces)),
-                  let maximum = Int(maximumTotalPeople.trimmingCharacters(in: .whitespaces)) else {
+                let maximum = Int(maximumTotalPeople.trimmingCharacters(in: .whitespaces))
+            else {
                 speakerCountEditorError = "Enter whole-number minimum and maximum speaker counts."
                 return
             }
@@ -1099,7 +1119,8 @@ struct TranscriptResultView: View {
 
     private var transcriptWordCount: Int {
         if transcriptDisplayMode == .timed,
-           let wordTimestamps = activeTranscription.wordTimestamps, !wordTimestamps.isEmpty {
+            let wordTimestamps = activeTranscription.wordTimestamps, !wordTimestamps.isEmpty
+        {
             return wordTimestamps.count
         }
         return transcriptText.split(whereSeparator: \.isWhitespace).count
@@ -1117,7 +1138,8 @@ struct TranscriptResultView: View {
     /// in that case we omit the chip rather than mislabel.
     private var engineAttributionLabel: String? {
         guard let engineRaw = activeTranscription.engine,
-              let preference = SpeechEnginePreference(rawValue: engineRaw) else {
+            let preference = SpeechEnginePreference(rawValue: engineRaw)
+        else {
             return nil
         }
         switch preference {
@@ -1152,7 +1174,10 @@ struct TranscriptResultView: View {
                             .frame(width: 36, height: 36)
                             .background(
                                 Circle()
-                                    .fill(backHovered ? DesignSystem.Colors.accent.opacity(0.12) : DesignSystem.Colors.surfaceElevated)
+                                    .fill(
+                                        backHovered
+                                            ? DesignSystem.Colors.accent.opacity(0.12)
+                                            : DesignSystem.Colors.surfaceElevated)
                             )
                     }
                     .buttonStyle(.plain)
@@ -1178,15 +1203,22 @@ struct TranscriptResultView: View {
                             )
 
                             if let durationMs = transcription.durationMs {
-                                metadataChip(icon: "clock", text: durationMs.formattedDuration, tint: DesignSystem.Colors.textSecondary)
+                                metadataChip(
+                                    icon: "clock", text: durationMs.formattedDuration,
+                                    tint: DesignSystem.Colors.textSecondary)
                             }
 
                             if transcriptWordCount > 0 {
-                                metadataChip(icon: "text.word.spacing", text: "\(transcriptWordCount.formatted()) words", tint: DesignSystem.Colors.textSecondary)
+                                metadataChip(
+                                    icon: "text.word.spacing", text: "\(transcriptWordCount.formatted()) words",
+                                    tint: DesignSystem.Colors.textSecondary)
                             }
 
                             if speakerCountValue > 0 {
-                                metadataChip(icon: "person.2.fill", text: "\(speakerCountValue) speaker\(speakerCountValue == 1 ? "" : "s")", tint: DesignSystem.Colors.textSecondary)
+                                metadataChip(
+                                    icon: "person.2.fill",
+                                    text: "\(speakerCountValue) speaker\(speakerCountValue == 1 ? "" : "s")",
+                                    tint: DesignSystem.Colors.textSecondary)
                             }
                         }
                     }
@@ -1221,24 +1253,33 @@ struct TranscriptResultView: View {
                         )
 
                         if let durationMs = transcription.durationMs {
-                            metadataChip(icon: "clock", text: durationMs.formattedDuration, tint: DesignSystem.Colors.textSecondary)
+                            metadataChip(
+                                icon: "clock", text: durationMs.formattedDuration,
+                                tint: DesignSystem.Colors.textSecondary)
                         }
 
                         if transcriptWordCount > 0 {
-                            metadataChip(icon: "text.word.spacing", text: "\(transcriptWordCount.formatted()) words", tint: DesignSystem.Colors.textSecondary)
+                            metadataChip(
+                                icon: "text.word.spacing", text: "\(transcriptWordCount.formatted()) words",
+                                tint: DesignSystem.Colors.textSecondary)
                         }
 
                         if speakerCountValue > 0 {
-                            metadataChip(icon: "person.2.fill", text: "\(speakerCountValue) speaker\(speakerCountValue == 1 ? "" : "s")", tint: DesignSystem.Colors.textSecondary)
+                            metadataChip(
+                                icon: "person.2.fill",
+                                text: "\(speakerCountValue) speaker\(speakerCountValue == 1 ? "" : "s")",
+                                tint: DesignSystem.Colors.textSecondary)
                         }
 
                         if let engineAttributionLabel {
-                            metadataChip(icon: "cpu", text: engineAttributionLabel, tint: DesignSystem.Colors.textSecondary)
+                            metadataChip(
+                                icon: "cpu", text: engineAttributionLabel, tint: DesignSystem.Colors.textSecondary)
                         }
                     }
 
                     if let sourceURL = transcription.sourceURL,
-                       let url = URL(string: sourceURL) {
+                        let url = URL(string: sourceURL)
+                    {
                         Button {
                             NSWorkspace.shared.open(url)
                         } label: {
@@ -1471,9 +1512,10 @@ struct TranscriptResultView: View {
 
     private var transcriptBodySpacing: CGFloat {
         if !editingTranscript,
-           transcriptDisplayMode == .timed,
-           usesMeetingReadingSurface,
-           !cachedReadingTurns.isEmpty {
+            transcriptDisplayMode == .timed,
+            usesMeetingReadingSurface,
+            !cachedReadingTurns.isEmpty
+        {
             return MeetingReadingTurnLayout.interTurnSpacing
         }
         return DesignSystem.Spacing.md
@@ -1485,97 +1527,102 @@ struct TranscriptResultView: View {
                 transcriptFindToolbar
             }
             ScrollViewReader { proxy in
-            ScrollView {
-                TranscriptBodyStack(
-                    rowCount: transcriptBodyRowCount,
-                    spacing: transcriptBodySpacing
-                ) {
-                    transcriptPaneHeader
+                ScrollView {
+                    TranscriptBodyStack(
+                        rowCount: transcriptBodyRowCount,
+                        spacing: transcriptBodySpacing
+                    ) {
+                        transcriptPaneHeader
 
-                    if let partialCapture = MeetingPartialCapturePresentation.make(for: activeTranscription) {
-                        meetingPartialCaptureBanner(partialCapture)
-                    }
-
-                    if activeTranscription.sourceType == .meeting,
-                       activeTranscription.status != .processing,
-                       !activeTranscription.hasWordTimestamps,
-                       let banner = meetingNoWordTimestampsBannerPresentation {
-                        meetingNoWordTimestampsBanner(banner)
-                    }
-
-                    if shouldShowTranscriptAISetupBanner {
-                        chatConfigurationBanner
-                    }
-
-                    if let userNotes = activeTranscription.userNotes,
-                       !userNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        meetingNotesSection(userNotes)
-                    }
-
-                    if let error = transcriptEditError {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.errorRed)
-                    }
-
-                    if let presentation = meetingTranscriptProcessingPresentation {
-                        meetingTranscriptProcessingState(presentation)
-                    }
-
-                    if editingTranscript {
-                        transcriptEditor
-                    } else if transcriptDisplayMode == .timed,
-                              usesMeetingReadingSurface,
-                              !cachedReadingTurns.isEmpty {
-                        if let speakers = activeTranscription.speakers, !speakers.isEmpty {
-                            compactMeetingSpeakerSummaryPanel(speakers: speakers)
+                        if let partialCapture = MeetingPartialCapturePresentation.make(for: activeTranscription) {
+                            meetingPartialCaptureBanner(partialCapture)
                         }
-                        meetingReadingTurnView
-                    } else if transcriptDisplayMode == .timed,
-                              let timestamps = activeTranscription.wordTimestamps,
-                              !timestamps.isEmpty {
-                        if let speakers = activeTranscription.speakers, !speakers.isEmpty {
-                            speakerSummaryPanel(speakers: speakers)
+
+                        if activeTranscription.sourceType == .meeting,
+                            activeTranscription.status != .processing,
+                            !activeTranscription.hasWordTimestamps,
+                            let banner = meetingNoWordTimestampsBannerPresentation
+                        {
+                            meetingNoWordTimestampsBanner(banner)
                         }
-                        timestampedView(words: timestamps)
-                    } else if !transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        transcriptTextBlock
-                    } else if meetingTranscriptProcessingPresentation == nil {
-                        Text("No transcript available")
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                        if shouldShowTranscriptAISetupBanner {
+                            chatConfigurationBanner
+                        }
+
+                        if let userNotes = activeTranscription.userNotes,
+                            !userNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        {
+                            meetingNotesSection(userNotes)
+                        }
+
+                        if let error = transcriptEditError {
+                            Label(error, systemImage: "exclamationmark.triangle.fill")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(DesignSystem.Colors.errorRed)
+                        }
+
+                        if let presentation = meetingTranscriptProcessingPresentation {
+                            meetingTranscriptProcessingState(presentation)
+                        }
+
+                        if editingTranscript {
+                            transcriptEditor
+                        } else if transcriptDisplayMode == .timed,
+                            usesMeetingReadingSurface,
+                            !cachedReadingTurns.isEmpty
+                        {
+                            if let speakers = activeTranscription.speakers, !speakers.isEmpty {
+                                compactMeetingSpeakerSummaryPanel(speakers: speakers)
+                            }
+                            meetingReadingTurnView
+                        } else if transcriptDisplayMode == .timed,
+                            let timestamps = activeTranscription.wordTimestamps,
+                            !timestamps.isEmpty
+                        {
+                            if let speakers = activeTranscription.speakers, !speakers.isEmpty {
+                                speakerSummaryPanel(speakers: speakers)
+                            }
+                            timestampedView(words: timestamps)
+                        } else if !transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            transcriptTextBlock
+                        } else if meetingTranscriptProcessingPresentation == nil {
+                            Text("No transcript available")
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        }
+                    }
+                    .padding(DesignSystem.Spacing.lg)
+                }
+                .onChange(of: playerViewModel.currentTimeMs) { oldValue, newValue in
+                    guard playerViewModel.isPlaying else { return }
+                    // Detect seek (large time jump) — re-sync transcript regardless of pause state
+                    if autoScrollPaused && abs(newValue - oldValue) > 2000 {
+                        autoScrollPaused = false
+                        scrollPauseTask?.cancel()
+                        lastScrolledSegmentMs = -1
+                    }
+                    guard !autoScrollPaused else { return }
+                    guard !cachedSegments.isEmpty else { return }
+                    if let targetId = autoScrollTarget(for: newValue),
+                        targetId != lastScrolledSegmentMs
+                    {
+                        lastScrolledSegmentMs = targetId
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo(targetId, anchor: .center)
+                        }
                     }
                 }
-                .padding(DesignSystem.Spacing.lg)
-            }
-            .onChange(of: playerViewModel.currentTimeMs) { oldValue, newValue in
-                guard playerViewModel.isPlaying else { return }
-                // Detect seek (large time jump) — re-sync transcript regardless of pause state
-                if autoScrollPaused && abs(newValue - oldValue) > 2000 {
-                    autoScrollPaused = false
+                // Find navigation: scroll the current match into view. Pausing
+                // auto-scroll keeps playback-follow from yanking the view back.
+                .onChange(of: findScrollToken) {
+                    guard findBarVisible, let target = findCurrentScrollTargetID else { return }
+                    autoScrollPaused = true
+                    findPausedAutoScroll = true
                     scrollPauseTask?.cancel()
-                    lastScrolledSegmentMs = -1
-                }
-                guard !autoScrollPaused else { return }
-                guard !cachedSegments.isEmpty else { return }
-                if let targetId = autoScrollTarget(for: newValue),
-                   targetId != lastScrolledSegmentMs {
-                    lastScrolledSegmentMs = targetId
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        proxy.scrollTo(targetId, anchor: .center)
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        proxy.scrollTo(target, anchor: .center)
                     }
                 }
-            }
-            // Find navigation: scroll the current match into view. Pausing
-            // auto-scroll keeps playback-follow from yanking the view back.
-            .onChange(of: findScrollToken) {
-                guard findBarVisible, let target = findCurrentScrollTargetID else { return }
-                autoScrollPaused = true
-                findPausedAutoScroll = true
-                scrollPauseTask?.cancel()
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    proxy.scrollTo(target, anchor: .center)
-                }
-            }
             }
         }
         .background(
@@ -1656,8 +1703,12 @@ struct TranscriptResultView: View {
             isFocused: $findFieldFocused,
             position: findModel.displayPosition,
             hasQueryButNoMatches: findHasQueryNoMatches,
-            onNext: { findModel.next(); findScrollToken &+= 1 },
-            onPrev: { findModel.prev(); findScrollToken &+= 1 },
+            onNext: {
+                findModel.next(); findScrollToken &+= 1
+            },
+            onPrev: {
+                findModel.prev(); findScrollToken &+= 1
+            },
             onClose: closeFindBar
         )
     }
@@ -1669,10 +1720,14 @@ struct TranscriptResultView: View {
             Button("") { openFindBar() }
                 .keyboardShortcut("f", modifiers: .command)
             if findBarVisible, findModel.hasMatches {
-                Button("") { findModel.next(); findScrollToken &+= 1 }
-                    .keyboardShortcut("g", modifiers: .command)
-                Button("") { findModel.prev(); findScrollToken &+= 1 }
-                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                Button("") {
+                    findModel.next(); findScrollToken &+= 1
+                }
+                .keyboardShortcut("g", modifiers: .command)
+                Button("") {
+                    findModel.prev(); findScrollToken &+= 1
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
             }
         }
         .opacity(0)
@@ -1694,7 +1749,8 @@ struct TranscriptResultView: View {
     /// The single emphasized match, resolved to its block's scroll `id`.
     private var findCurrentHighlight: (id: Int, range: NSRange)? {
         guard findBarVisible, let current = findModel.current,
-              findBlocks.indices.contains(current.blockIndex) else { return nil }
+            findBlocks.indices.contains(current.blockIndex)
+        else { return nil }
         return (id: findBlocks[current.blockIndex].id, range: current.range)
     }
 
@@ -1703,7 +1759,8 @@ struct TranscriptResultView: View {
     /// scrolls to the hidden prefix anchor for the current match range.
     private var findCurrentScrollTargetID: Int? {
         guard findBarVisible, let current = findModel.current,
-              findBlocks.indices.contains(current.blockIndex) else { return nil }
+            findBlocks.indices.contains(current.blockIndex)
+        else { return nil }
         if transcriptDisplayMode == .text {
             return currentTextFindAnchor?.id
         }
@@ -1794,7 +1851,8 @@ struct TranscriptResultView: View {
 
     private var currentTextFindAnchor: TranscriptTextFindAnchor? {
         guard findBarVisible, transcriptDisplayMode == .text,
-              let current = findModel.current else { return nil }
+            let current = findModel.current
+        else { return nil }
         guard let prefixEnd = transcriptText.stringIndex(utf16Offset: current.range.location) else {
             return nil
         }
@@ -2038,12 +2096,14 @@ struct TranscriptResultView: View {
     }
 
     private func transcriptFullTextSearchableBlock() -> some View {
-        Text(TranscriptFindHighlight.attributed(
-            transcriptText,
-            ranges: findFullTextHighlightRanges,
-            current: findFullTextCurrentHighlightRange,
-            baseFont: scaledTranscriptFont
-        ))
+        Text(
+            TranscriptFindHighlight.attributed(
+                transcriptText,
+                ranges: findFullTextHighlightRanges,
+                current: findFullTextCurrentHighlightRange,
+                baseFont: scaledTranscriptFont
+            )
+        )
         .foregroundStyle(DesignSystem.Colors.textPrimary)
         .lineSpacing(6)
         .textSelection(.enabled)
@@ -2108,12 +2168,13 @@ struct TranscriptResultView: View {
             return Text(block.text).font(scaledTranscriptFont)
         }
         let currentRange = (current?.id == block.id) ? current?.range : nil
-        return Text(TranscriptFindHighlight.attributed(
-            block.text,
-            ranges: ranges,
-            current: currentRange,
-            baseFont: scaledTranscriptFont
-        ))
+        return Text(
+            TranscriptFindHighlight.attributed(
+                block.text,
+                ranges: ranges,
+                current: currentRange,
+                baseFont: scaledTranscriptFont
+            ))
     }
 
     private func meetingNotesSection(_ notes: String) -> some View {
@@ -2201,7 +2262,8 @@ struct TranscriptResultView: View {
 
         let isStreamingTab = {
             if case .generation(let id) = tab,
-               let generation = promptResultsViewModel.pendingGeneration(id: id) {
+                let generation = promptResultsViewModel.pendingGeneration(id: id)
+            {
                 return generation.state == .streaming
             }
             return false
@@ -2247,7 +2309,8 @@ struct TranscriptResultView: View {
         }
         .contextMenu {
             if case .result(let id) = tab,
-               let promptResult = promptResultsViewModel.promptResults.first(where: { $0.id == id }) {
+                let promptResult = promptResultsViewModel.promptResults.first(where: { $0.id == id })
+            {
                 Button("Copy Result") {
                     TranscriptResultActions.copyText(promptResult.content)
                     copiedResultID = id
@@ -2260,7 +2323,9 @@ struct TranscriptResultView: View {
 
                 Menu("Export Document") {
                     Button("Markdown (.md)") { exportGenerationToDownloads(promptResult: promptResult, format: .md) }
-                    Button("Plain Text (.txt)") { exportGenerationToDownloads(promptResult: promptResult, format: .txt) }
+                    Button("Plain Text (.txt)") {
+                        exportGenerationToDownloads(promptResult: promptResult, format: .txt)
+                    }
                 }
 
                 Button("Delete Result", role: .destructive) {
@@ -2333,7 +2398,9 @@ struct TranscriptResultView: View {
         case .transcript:
             return "Transcript"
         case .result(let id):
-            guard let promptResult = promptResultsViewModel.promptResults.first(where: { $0.id == id }) else { return "Result" }
+            guard let promptResult = promptResultsViewModel.promptResults.first(where: { $0.id == id }) else {
+                return "Result"
+            }
             return label(for: promptResult.promptName, extraInstructions: promptResult.extraInstructions)
         case .generation(let id):
             guard let gen = promptResultsViewModel.pendingGeneration(id: id) else { return "Result" }
@@ -2363,7 +2430,9 @@ struct TranscriptResultView: View {
                         Spacer()
 
                         Button {
-                            if let generationID = promptResultsViewModel.regeneratePromptResult(promptResult, transcript: currentAIContextText) {
+                            if let generationID = promptResultsViewModel.regeneratePromptResult(
+                                promptResult, transcript: currentAIContextText)
+                            {
                                 viewModel.selectedTab = .generation(id: generationID)
                             }
                         } label: {
@@ -2398,8 +2467,12 @@ struct TranscriptResultView: View {
                         .controlSize(.small)
 
                         Menu {
-                            Button("Markdown (.md)") { exportGenerationToDownloads(promptResult: promptResult, format: .md) }
-                            Button("Plain Text (.txt)") { exportGenerationToDownloads(promptResult: promptResult, format: .txt) }
+                            Button("Markdown (.md)") {
+                                exportGenerationToDownloads(promptResult: promptResult, format: .md)
+                            }
+                            Button("Plain Text (.txt)") {
+                                exportGenerationToDownloads(promptResult: promptResult, format: .txt)
+                            }
                         } label: {
                             HStack(spacing: DesignSystem.Spacing.xs) {
                                 Image(systemName: "arrow.down.doc")
@@ -2505,15 +2578,16 @@ struct TranscriptResultView: View {
                 set: { if !$0 { showingCancelGenerationAlert = nil } }
             )
         ) {
-            Button("Keep", role: .cancel) { }
+            Button("Keep", role: .cancel) {}
             Button(generation.state == .queued ? "Remove" : "Cancel", role: .destructive) {
                 promptResultsViewModel.cancelGeneration(id: generation.id)
                 viewModel.selectedTab = .transcript
             }
         } message: {
-            Text(generation.state == .queued
-                 ? "This will remove the prompt from the generation queue."
-                 : "This will stop the AI from generating the result.")
+            Text(
+                generation.state == .queued
+                    ? "This will remove the prompt from the generation queue."
+                    : "This will stop the AI from generating the result.")
         }
     }
 
@@ -2665,10 +2739,12 @@ struct TranscriptResultView: View {
                         .font(DesignSystem.Typography.body.weight(.semibold))
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                    Text("MacParakeet can generate summaries, action items, and custom prompt results from this transcript. Transcription still works without AI.")
-                        .font(DesignSystem.Typography.bodySmall)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(
+                        "MacParakeet can generate summaries, action items, and custom prompt results from this transcript. Transcription still works without AI."
+                    )
+                    .font(DesignSystem.Typography.bodySmall)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -2692,7 +2768,8 @@ struct TranscriptResultView: View {
         return FlowLayout(spacing: 8) {
             ForEach(prompts) { prompt in
                 let isSelected = promptResultsViewModel.selectedPrompt?.id == prompt.id
-                let hasExisting = promptResultsViewModel.promptResults.contains { $0.promptName == prompt.name }
+                let hasExisting =
+                    promptResultsViewModel.promptResults.contains { $0.promptName == prompt.name }
                     || promptResultsViewModel.hasPendingGeneration(
                         promptName: prompt.name,
                         transcriptionId: transcription.id
@@ -2712,11 +2789,15 @@ struct TranscriptResultView: View {
                 .padding(.vertical, 8)
                 .background(
                     Capsule()
-                        .fill(isSelected ? DesignSystem.Colors.accent.opacity(0.15) : DesignSystem.Colors.surfaceElevated)
+                        .fill(
+                            isSelected ? DesignSystem.Colors.accent.opacity(0.15) : DesignSystem.Colors.surfaceElevated)
                 )
                 .overlay(
                     Capsule()
-                        .strokeBorder(isSelected ? DesignSystem.Colors.accent.opacity(0.4) : DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.5)
+                        .strokeBorder(
+                            isSelected
+                                ? DesignSystem.Colors.accent.opacity(0.4) : DesignSystem.Colors.border.opacity(0.5),
+                            lineWidth: 0.5)
                 )
                 .foregroundStyle(isSelected ? DesignSystem.Colors.accent : DesignSystem.Colors.textPrimary)
                 .contentShape(Capsule())
@@ -2800,7 +2881,9 @@ struct TranscriptResultView: View {
                                 .padding(.vertical, 12)
                                 .focused($chatInputFocused)
                                 .onSubmit {
-                                    if !chatVM.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && chatVM.canSendMessage && !chatVM.isStreaming {
+                                    if !chatVM.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        && chatVM.canSendMessage && !chatVM.isStreaming
+                                    {
                                         chatVM.sendMessage()
                                     }
                                     chatInputFocused = true
@@ -2834,7 +2917,9 @@ struct TranscriptResultView: View {
                                 .foregroundStyle(DesignSystem.Colors.errorRed)
                                 .contentShape(Circle())
                             } else {
-                                let canSend = !chatVM.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && chatVM.canSendMessage
+                                let canSend =
+                                    !chatVM.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    && chatVM.canSendMessage
                                 Button {
                                     chatVM.sendMessage()
                                     chatInputFocused = true
@@ -2843,7 +2928,9 @@ struct TranscriptResultView: View {
                                         .font(.system(size: 26))
                                 }
                                 .buttonStyle(.plain)
-                                .foregroundStyle(canSend ? DesignSystem.Colors.accent : DesignSystem.Colors.accent.opacity(0.3))
+                                .foregroundStyle(
+                                    canSend ? DesignSystem.Colors.accent : DesignSystem.Colors.accent.opacity(0.3)
+                                )
                                 .disabled(!canSend)
                                 .contentShape(Circle())
                             }
@@ -3028,9 +3115,10 @@ struct TranscriptResultView: View {
                     .padding(.vertical, 10)
                     .frame(maxWidth: isUser ? nil : 620, alignment: .leading)
                     .background(
-                        bubbleShape.fill(isUser
-                            ? DesignSystem.Colors.accent
-                            : DesignSystem.Colors.surfaceElevated)
+                        bubbleShape.fill(
+                            isUser
+                                ? DesignSystem.Colors.accent
+                                : DesignSystem.Colors.surfaceElevated)
                     )
                     .overlay(
                         bubbleShape.strokeBorder(
@@ -3061,13 +3149,18 @@ struct TranscriptResultView: View {
                                                 .font(DesignSystem.Typography.micro)
                                         }
                                     }
-                                    .foregroundStyle(copiedMessageId == message.id ? DesignSystem.Colors.successGreen : DesignSystem.Colors.textTertiary)
+                                    .foregroundStyle(
+                                        copiedMessageId == message.id
+                                            ? DesignSystem.Colors.successGreen : DesignSystem.Colors.textTertiary
+                                    )
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 3)
                                     .background(
                                         Capsule()
                                             .fill(DesignSystem.Colors.surfaceElevated.opacity(0.85))
-                                            .overlay(Capsule().strokeBorder(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5))
+                                            .overlay(
+                                                Capsule().strokeBorder(
+                                                    DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5))
                                     )
                                 }
                                 .buttonStyle(.plain)
@@ -3098,9 +3191,11 @@ struct TranscriptResultView: View {
                 Text("Turn on AI for summaries and chat")
                     .font(DesignSystem.Typography.body.weight(.semibold))
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("MacParakeet can use a local AI app, your API key, or a command-line AI tool. Transcription still works without this.")
-                    .font(DesignSystem.Typography.bodySmall)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Text(
+                    "MacParakeet can use a local AI app, your API key, or a command-line AI tool. Transcription still works without this."
+                )
+                .font(DesignSystem.Typography.bodySmall)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
 
             Spacer()
@@ -3129,7 +3224,8 @@ struct TranscriptResultView: View {
             && (activeTranscription.filePath.map { FileManager.default.fileExists(atPath: $0) } ?? false)
         // Resolve the rerun choice from the live transcription so the banner
         // stays in sync with what's actually shown.
-        let timestampCapableRerun: SpeechEngineSelection? = hasRetainedAudio
+        let timestampCapableRerun: SpeechEngineSelection? =
+            hasRetainedAudio
             ? viewModel.retranscriptionEngineOption(for: activeTranscription)?
                 .firstTimestampCapableChoice?.selection
             : nil
@@ -3289,7 +3385,8 @@ struct TranscriptResultView: View {
             return .from(wordTimestamps: timestamps)
         }
         return .from(
-            text: activeTranscription.cleanTranscript ?? activeTranscription.rawTranscript ?? activeTranscription.fileName,
+            text: activeTranscription.cleanTranscript ?? activeTranscription.rawTranscript
+                ?? activeTranscription.fileName,
             durationMs: activeTranscription.durationMs ?? 1000
         )
     }
@@ -3308,7 +3405,8 @@ struct TranscriptResultView: View {
             segments: cachedSegments,
             speakerColorMap: cachedSpeakerColorMap,
             speakerLabelForID: { cachedSpeakerLabelMap[$0] ?? "Unknown" },
-            speakerLabelContent: { speakerID, speakerLabel, speakerColor, renameContextID, isRenameButtonVisuallyRevealed in
+            speakerLabelContent: {
+                speakerID, speakerLabel, speakerColor, renameContextID, isRenameButtonVisuallyRevealed in
                 speakerLabelView(
                     speaker: SpeakerInfo(id: speakerID, label: speakerLabel),
                     color: speakerColor,
@@ -3339,7 +3437,8 @@ struct TranscriptResultView: View {
     private var meetingReadingTurnView: some View {
         let highlights = findHighlightsByBlockId
         let current = findCurrentHighlight
-        let activeID = playerViewModel.playbackMode == .none
+        let activeID =
+            playerViewModel.playbackMode == .none
             ? nil
             : readingTurnScrollTarget(
                 for: playerViewModel.currentTimeMs,
@@ -3348,7 +3447,8 @@ struct TranscriptResultView: View {
         return MeetingReadingTurnContentView(
             turns: cachedReadingTurns,
             speakerColorMap: cachedSpeakerColorMap,
-            speakerLabelContent: { speakerID, speakerLabel, speakerColor, renameContextID, isRenameButtonVisuallyRevealed in
+            speakerLabelContent: {
+                speakerID, speakerLabel, speakerColor, renameContextID, isRenameButtonVisuallyRevealed in
                 speakerLabelView(
                     speaker: SpeakerInfo(id: speakerID, label: speakerLabel),
                     color: speakerColor,
@@ -3372,10 +3472,7 @@ struct TranscriptResultView: View {
             },
             onCopyTurn: { turn in
                 let passage = MeetingTranscriptPresentationDocument(turns: [turn])
-                TranscriptResultActions.copyText(
-                    MeetingTranscriptDocumentRenderer.markdown(passage),
-                    source: .meeting
-                )
+                TranscriptResultActions.copyText(MeetingTranscriptDocumentRenderer.markdown(passage))
                 showCopiedFeedback()
             },
             bodyFont: scaledTranscriptFont,
@@ -3546,8 +3643,12 @@ struct TranscriptResultView: View {
 
                             if let stats {
                                 HStack(spacing: DesignSystem.Spacing.sm) {
-                                    metadataChip(icon: "clock", text: formatSpeakingTime(ms: stats.speakingTimeMs), tint: DesignSystem.Colors.textSecondary)
-                                    metadataChip(icon: "text.word.spacing", text: "\(stats.wordCount.formatted()) words", tint: DesignSystem.Colors.textSecondary)
+                                    metadataChip(
+                                        icon: "clock", text: formatSpeakingTime(ms: stats.speakingTimeMs),
+                                        tint: DesignSystem.Colors.textSecondary)
+                                    metadataChip(
+                                        icon: "text.word.spacing", text: "\(stats.wordCount.formatted()) words",
+                                        tint: DesignSystem.Colors.textSecondary)
                                 }
                             }
                         }
@@ -3657,7 +3758,6 @@ struct TranscriptResultView: View {
         editingSpeakerLabel = ""
         speakerRenameFocused = false
     }
-
 
     private func formatSpeakingTime(ms: Int) -> String {
         let totalSeconds = ms / 1000
@@ -3874,14 +3974,15 @@ struct TranscriptResultView: View {
     // MARK: - Actions
 
     private func copyMeetingToClipboard() {
-        let document = cachedReadingTurns.isEmpty
+        let document =
+            cachedReadingTurns.isEmpty
             ? nil
             : MeetingTranscriptPresentationDocument(turns: cachedReadingTurns.map(\.turn))
         let markdown = MeetingMarkdownRenderer().renderForClipboard(
             transcription: activeTranscription,
             readingDocument: document
         )
-        TranscriptResultActions.copyText(markdown, source: .meeting)
+        TranscriptResultActions.copyText(markdown)
         showCopiedFeedback()
     }
 
@@ -3893,10 +3994,7 @@ struct TranscriptResultView: View {
             let document = MeetingTranscriptPresentationDocument(
                 turns: cachedReadingTurns.map(\.turn)
             )
-            TranscriptResultActions.copyText(
-                MeetingTranscriptDocumentRenderer.markdown(document),
-                source: .meeting
-            )
+            TranscriptResultActions.copyText(MeetingTranscriptDocumentRenderer.markdown(document))
         } else {
             TranscriptResultActions.copyText(transcriptText)
         }
@@ -3941,14 +4039,16 @@ struct TranscriptResultView: View {
     /// hidden in that case, so no caption is needed).
     private var timestampsUnavailableReason: String? {
         guard selectedExportFormat.supportsTranscriptOptions,
-              !hasAlignedTimestampsForExport else { return nil }
+            !hasAlignedTimestampsForExport
+        else { return nil }
         if !hasTimestamps { return "This transcript has no word timestamps." }
         return "Unavailable after editing the transcript text."
     }
 
     private var speakerLabelsUnavailableReason: String? {
         guard selectedExportFormat.supportsTranscriptOptions,
-              !hasSpeakerLabelsForExport else { return nil }
+            !hasSpeakerLabelsForExport
+        else { return nil }
         if activeTranscription.hasSpeakerLabeledWords {
             return "Unavailable after editing the transcript text."
         }
@@ -4013,16 +4113,17 @@ struct TranscriptResultView: View {
                             .frame(maxWidth: .infinity)
                             .background(
                                 RoundedRectangle(cornerRadius: 6)
-                                    .fill(selectedExportFormat == format
-                                          ? DesignSystem.Colors.accent.opacity(0.14)
-                                          : DesignSystem.Colors.surface)
+                                    .fill(
+                                        selectedExportFormat == format
+                                            ? DesignSystem.Colors.accent.opacity(0.14)
+                                            : DesignSystem.Colors.surface)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 6)
                                     .strokeBorder(
                                         selectedExportFormat == format
-                                        ? DesignSystem.Colors.accent.opacity(0.7)
-                                        : DesignSystem.Colors.border.opacity(0.7),
+                                            ? DesignSystem.Colors.accent.opacity(0.7)
+                                            : DesignSystem.Colors.border.opacity(0.7),
                                         lineWidth: 1
                                     )
                             )
@@ -4088,10 +4189,13 @@ struct TranscriptResultView: View {
         unavailableReason: String?
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Toggle(title, isOn: Binding(
-                get: { isEnabled && isOn.wrappedValue },
-                set: { isOn.wrappedValue = $0 }
-            ))
+            Toggle(
+                title,
+                isOn: Binding(
+                    get: { isEnabled && isOn.wrappedValue },
+                    set: { isOn.wrappedValue = $0 }
+                )
+            )
             .disabled(!isEnabled)
 
             if let unavailableReason {
@@ -4185,7 +4289,8 @@ struct TranscriptResultView: View {
         // Use the ViewModel's copy which reflects any in-flight renames
         let source = activeTranscription
         do {
-            let readingDocument = usesMeetingReadingSurface && !cachedReadingTurns.isEmpty
+            let readingDocument =
+                usesMeetingReadingSurface && !cachedReadingTurns.isEmpty
                 ? MeetingTranscriptPresentationDocument(turns: cachedReadingTurns.map(\.turn))
                 : nil
             let fileURL = try TranscriptResultActions.exportTranscriptToDownloads(
@@ -4476,7 +4581,8 @@ private struct EngineBadge: View {
 private extension String {
     func stringIndex(utf16Offset: Int) -> String.Index? {
         guard utf16Offset >= 0,
-              let utf16Index = utf16.index(utf16.startIndex, offsetBy: utf16Offset, limitedBy: utf16.endIndex) else {
+            let utf16Index = utf16.index(utf16.startIndex, offsetBy: utf16Offset, limitedBy: utf16.endIndex)
+        else {
             return nil
         }
         return String.Index(utf16Index, within: self)

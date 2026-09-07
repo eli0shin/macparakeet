@@ -9,8 +9,8 @@ struct SonicMandalaView: View {
     var style: MandalaStyle = .monochrome
 
     enum MandalaStyle {
-        case monochrome   // Lists: single stroke, accent at 0.3 opacity
-        case fullColor    // Detail: filled, gradient, optional glow
+        case monochrome  // Lists: single stroke, accent at 0.3 opacity
+        case fullColor  // Detail: filled, gradient, optional glow
     }
 
     var body: some View {
@@ -35,7 +35,7 @@ struct SonicMandalaView: View {
                 // Gradient fill
                 let gradient = Gradient(colors: [
                     DesignSystem.Colors.accent,
-                    Color(red: 0.95, green: 0.75, blue: 0.30) // gold
+                    Color(red: 0.95, green: 0.75, blue: 0.30),  // gold
                 ])
                 context.fill(
                     path,
@@ -56,8 +56,9 @@ struct SonicMandalaView: View {
 
             // Center dot
             let dotSize: CGFloat = size > 48 ? 4 : 2
-            let dotRect = CGRect(x: center.x - dotSize / 2, y: center.y - dotSize / 2,
-                                 width: dotSize, height: dotSize)
+            let dotRect = CGRect(
+                x: center.x - dotSize / 2, y: center.y - dotSize / 2,
+                width: dotSize, height: dotSize)
             context.fill(
                 Path(ellipseIn: dotRect),
                 with: .color(DesignSystem.Colors.accent.opacity(style == .fullColor ? 0.6 : 0.25))
@@ -86,8 +87,10 @@ struct SonicMandalaView: View {
         }
 
         var path = Path()
-        path.move(to: catmullRomPoint(p0: cartesian[(n - 1) % n], p1: cartesian[0],
-                                       p2: cartesian[1], p3: cartesian[2], t: 0))
+        path.move(
+            to: catmullRomPoint(
+                p0: cartesian[(n - 1) % n], p1: cartesian[0],
+                p2: cartesian[1], p3: cartesian[2], t: 0))
 
         for i in 0..<n {
             let p0 = cartesian[(i - 1 + n) % n]
@@ -113,15 +116,15 @@ struct SonicMandalaView: View {
         let t2 = t * t
         let t3 = t2 * t
 
-        let x = 0.5 * ((2 * p1.x) +
-                        (-p0.x + p2.x) * t +
-                        (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
-                        (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3)
+        let x =
+            0.5
+            * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2
+                + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3)
 
-        let y = 0.5 * ((2 * p1.y) +
-                        (-p0.y + p2.y) * t +
-                        (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
-                        (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
+        let y =
+            0.5
+            * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2
+                + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
 
         return CGPoint(x: x, y: y)
     }

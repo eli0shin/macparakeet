@@ -9,15 +9,15 @@ struct MeetingTitleGenerator: Sendable {
     private static let maximumTitleCharacters = 70
 
     private static let systemPrompt = """
-    Generate a concise title for this meeting transcript.
+        Generate a concise title for this meeting transcript.
 
-    Rules:
-    - Return only the title. Do not include quotes, markdown, JSON, or explanation.
-    - Use 2 to 8 words.
-    - Name the concrete topic of the meeting.
-    - Do not use generic titles like "Meeting", "Discussion", "Transcript", or a date/time.
-    - If the transcript does not have enough context for a useful topic title, return NO_TITLE.
-    """
+        Rules:
+        - Return only the title. Do not include quotes, markdown, JSON, or explanation.
+        - Use 2 to 8 words.
+        - Name the concrete topic of the meeting.
+        - Do not use generic titles like "Meeting", "Discussion", "Transcript", or a date/time.
+        - If the transcript does not have enough context for a useful topic title, return NO_TITLE.
+        """
 
     let llmService: LLMServiceProtocol?
     let shouldGenerate: @Sendable () -> Bool
@@ -43,7 +43,9 @@ struct MeetingTitleGenerator: Sendable {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            logger.warning("meeting_title_generation_failed error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+            logger.warning(
+                "meeting_title_generation_failed error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public)"
+            )
             return nil
         }
     }
@@ -60,12 +62,14 @@ struct MeetingTitleGenerator: Sendable {
         // deliberately omit a bare-year pattern: a real calendar/custom title like
         // "Meeting 2026 Budget Planning" must not be treated as a fallback and
         // silently overwritten.
-        let fallbackDatePattern = #"(?i)\b(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b"#
+        let fallbackDatePattern =
+            #"(?i)\b(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b"#
         return normalized.range(of: fallbackDatePattern, options: .regularExpression) != nil
     }
 
     static func validatedTitle(from rawTitle: String) -> String? {
-        let lines = rawTitle
+        let lines =
+            rawTitle
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -76,7 +80,8 @@ struct MeetingTitleGenerator: Sendable {
             .replacingOccurrences(of: #"^\d+[\.)]\s*"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         title = stripWrappingQuotes(from: title)
-        title = title.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".:;!?")))
+        title = title.trimmingCharacters(
+            in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".:;!?")))
         title = normalizedWhitespace(title)
 
         guard !title.isEmpty else { return nil }

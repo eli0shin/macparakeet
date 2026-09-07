@@ -146,8 +146,8 @@ public final class ExportService: ExportServiceProtocol, Sendable {
 
     private func editedTranscriptText(transcription: Transcription) -> String? {
         guard transcription.isTranscriptEdited,
-              let text = transcription.cleanTranscript?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !text.isEmpty
+            let text = transcription.cleanTranscript?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !text.isEmpty
         else {
             return nil
         }
@@ -212,13 +212,15 @@ public final class ExportService: ExportServiceProtocol, Sendable {
     public func formatVTT(transcription: Transcription) -> String {
         if let text = editedTranscriptText(transcription: transcription) {
             let duration = transcription.durationMs ?? 0
-            return "WEBVTT\n\n\(vttTimestamp(ms: 0)) --> \(vttTimestamp(ms: duration))\n\(singleCueSubtitleText(text))\n"
+            return
+                "WEBVTT\n\n\(vttTimestamp(ms: 0)) --> \(vttTimestamp(ms: duration))\n\(singleCueSubtitleText(text))\n"
         }
 
         guard let words = transcription.wordTimestamps, !words.isEmpty else {
             let text = untimedEvidenceText(transcription: transcription)
             let duration = transcription.durationMs ?? 0
-            return "WEBVTT\n\n\(vttTimestamp(ms: 0)) --> \(vttTimestamp(ms: duration))\n\(singleCueSubtitleText(text))\n"
+            return
+                "WEBVTT\n\n\(vttTimestamp(ms: 0)) --> \(vttTimestamp(ms: duration))\n\(singleCueSubtitleText(text))\n"
         }
         return formatVTT(words: words, speakers: transcription.speakers)
     }
@@ -267,8 +269,9 @@ public final class ExportService: ExportServiceProtocol, Sendable {
         // Create PDF context
         var mediaBox = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
         guard let context = CGContext(url as CFURL, mediaBox: &mediaBox, nil) else {
-            throw NSError(domain: "MacParakeetError", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to create PDF context"])
+            throw NSError(
+                domain: "MacParakeetError", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create PDF context"])
         }
 
         defer { context.closePDF() }
@@ -310,7 +313,7 @@ public final class ExportService: ExportServiceProtocol, Sendable {
     @MainActor public func exportToDocx(transcription: Transcription, url: URL) throws {
         let attrString = try buildRichTranscript(transcription: transcription)
         let range = NSRange(location: 0, length: attrString.length)
-        
+
         let data = try attrString.data(
             from: range,
             documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML]
@@ -419,8 +422,9 @@ public final class ExportService: ExportServiceProtocol, Sendable {
                 var lastSpeakerId: String? = nil
                 for paragraph in paragraphs {
                     if options.includeSpeakerLabels,
-                       let label = speakerLabel(for: paragraph.speakerId, in: transcription.speakers),
-                       paragraph.speakerId != lastSpeakerId {
+                        let label = speakerLabel(for: paragraph.speakerId, in: transcription.speakers),
+                        paragraph.speakerId != lastSpeakerId
+                    {
                         lines.append("**\(label)**")
                         lines.append("")
                     }
@@ -435,7 +439,8 @@ public final class ExportService: ExportServiceProtocol, Sendable {
                     lines.append("")
                 }
             } else if let cleanTranscript = transcription.cleanTranscript,
-                      !cleanTranscript.isEmpty {
+                !cleanTranscript.isEmpty
+            {
                 lines.append(cleanTranscript)
                 lines.append("")
             } else {
@@ -554,8 +559,9 @@ public final class ExportService: ExportServiceProtocol, Sendable {
                     }
 
                     if options.includeSpeakerLabels,
-                       let label = speakerLabel(for: paragraph.speakerId, in: transcription.speakers),
-                       paragraph.speakerId != lastSpeakerId {
+                        let label = speakerLabel(for: paragraph.speakerId, in: transcription.speakers),
+                        paragraph.speakerId != lastSpeakerId
+                    {
                         lines.append("\(label):")
                     }
                     lastSpeakerId = paragraph.speakerId
@@ -567,7 +573,8 @@ public final class ExportService: ExportServiceProtocol, Sendable {
                     }
                 }
             } else if let cleanTranscript = transcription.cleanTranscript,
-                      !cleanTranscript.isEmpty {
+                !cleanTranscript.isEmpty
+            {
                 lines.append(cleanTranscript)
             } else {
                 for paragraph in paragraphs {
@@ -677,7 +684,8 @@ public final class ExportService: ExportServiceProtocol, Sendable {
             var lastSpeakerId: String? = nil
             for cue in cues {
                 if let label = speakerLabel(for: cue.speakerId, in: transcription.speakers),
-                   cue.speakerId != lastSpeakerId {
+                    cue.speakerId != lastSpeakerId
+                {
                     let speakerAttr = NSAttributedString(
                         string: "\(label)\n",
                         attributes: [.font: headerFont, .foregroundColor: primaryColor])

@@ -96,7 +96,8 @@ public protocol QuickPromptRepositoryProtocol: Sendable {
     /// surfacing through the CLI `--dry-run` and post-write success paths.
     /// Caller has already validated the bundle envelope via
     /// `QuickPromptBundle.validate()`.
-    func applyImport(_ bundle: QuickPromptBundle, mode: QuickPromptImport.Mode, dryRun: Bool) throws -> QuickPromptImport.Summary
+    func applyImport(_ bundle: QuickPromptBundle, mode: QuickPromptImport.Mode, dryRun: Bool) throws
+        -> QuickPromptImport.Summary
 }
 
 public final class QuickPromptRepository: QuickPromptRepositoryProtocol {
@@ -239,11 +240,12 @@ public final class QuickPromptRepository: QuickPromptRepositoryProtocol {
 
         try dbQueue.write { db in
             for prompt in canonical {
-                let exists = try Bool.fetchOne(
-                    db,
-                    sql: "SELECT EXISTS(SELECT 1 FROM quick_prompts WHERE id = ?)",
-                    arguments: [prompt.id]
-                ) ?? false
+                let exists =
+                    try Bool.fetchOne(
+                        db,
+                        sql: "SELECT EXISTS(SELECT 1 FROM quick_prompts WHERE id = ?)",
+                        arguments: [prompt.id]
+                    ) ?? false
                 if !exists {
                     try prompt.insert(db)
                 }
@@ -460,7 +462,8 @@ public final class QuickPromptRepository: QuickPromptRepositoryProtocol {
         normalized.isBuiltIn = QuickPrompt.builtInPrompt(id: prompt.id) != nil
 
         if let raw = normalized.groupLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !raw.isEmpty {
+            !raw.isEmpty
+        {
             // Case-insensitive match against the rest of the table; if found,
             // adopt that casing so "capture" and "CAPTURE" don't fork into two
             // visually-distinct buckets. Excludes the row itself so a user

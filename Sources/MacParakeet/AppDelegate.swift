@@ -213,7 +213,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.appEnvironment
         },
         hotkeyMenuTitleProvider: { [weak self] in
-            self?.hotkeyMenuTitle ?? AppHotkeyCoordinator.menuTitle(handsFree: .defaultDictation, pushToTalk: .defaultPushToTalk)
+            self?.hotkeyMenuTitle
+                ?? AppHotkeyCoordinator.menuTitle(handsFree: .defaultDictation, pushToTalk: .defaultPushToTalk)
         },
         meetingHotkeyTriggerProvider: { [weak self] in
             self?.settingsViewModel.meetingHotkeyTrigger ?? .defaultMeetingRecording
@@ -247,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.mainWindowState.startNewTranscription()
         },
         onStartDictation: { [weak self] in
-            self?.dictationFlowCoordinator?.startDictation(mode: .persistent, trigger: .menuBar)
+            self?.dictationFlowCoordinator?.startDictation(mode: .persistent)
         },
         onToggleMeetingRecording: { [weak self] in
             self?.toggleMeetingRecording(originatesFromWindow: false)
@@ -557,26 +558,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // and the meeting path falls back to fixed chunking if it never
             // succeeds. No-op when the flag is off.
             guard !Task.isCancelled else { return }
-            let prepOutcome = await MeetingVADLaunchPrep.run(
+            _ = await MeetingVADLaunchPrep.run(
                 featureEnabled: AppFeatures.meetingVadLiveChunkingEnabled,
                 preparer: vadModelPreparer
             )
-            // Only surface the transitions worth seeing. `alreadyCached`
-            // (steady state) and `disabled` are silent to avoid per-launch
-            // telemetry spam; `cancelled` (app quit mid-download) is dropped
-            // because `run` already treats cancellation as non-failure. No
-            // post-call `Task.isCancelled` guard here: once `run` has returned
-            // a terminal outcome the work genuinely completed, so a late
-            // cancellation shouldn't drop the one event we care about
-            // (`prepared` — proof the installed base acquired the model).
-            switch prepOutcome {
-            case .prepared:
-                Telemetry.send(.vadModelPrep(outcome: .prepared))
-            case .failed:
-                Telemetry.send(.vadModelPrep(outcome: .failed))
-            case .alreadyCached, .disabled, .cancelled:
-                break
-            }
         }
     }
 
@@ -604,9 +589,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showMoveToApplicationsAlert() {
         let alert = NSAlert()
         alert.messageText = "Move to Applications"
-        alert.informativeText = "MacParakeet must be in your Applications folder to work correctly. " +
-            "Running from a disk image prevents macOS from granting microphone and accessibility permissions.\n\n" +
-            "Drag MacParakeet to the Applications folder in the DMG window, then launch it from there."
+        alert.informativeText =
+            "MacParakeet must be in your Applications folder to work correctly. "
+            + "Running from a disk image prevents macOS from granting microphone and accessibility permissions.\n\n"
+            + "Drag MacParakeet to the Applications folder in the DMG window, then launch it from there."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Quit")
         alert.runModal()
@@ -663,11 +649,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 trigger: settingsViewModel.pushToTalkHotkeyTrigger,
                 conflictMode: .bareModifierDictation
             ),
-            TransformShortcutReservedHotkey(name: "file transcription", trigger: settingsViewModel.fileTranscriptionHotkeyTrigger),
-            TransformShortcutReservedHotkey(name: "video URL transcription", trigger: settingsViewModel.youtubeTranscriptionHotkeyTrigger),
+            TransformShortcutReservedHotkey(
+                name: "file transcription", trigger: settingsViewModel.fileTranscriptionHotkeyTrigger),
+            TransformShortcutReservedHotkey(
+                name: "video URL transcription", trigger: settingsViewModel.youtubeTranscriptionHotkeyTrigger),
         ]
         if AppFeatures.meetingRecordingEnabled {
-            reserved.append(TransformShortcutReservedHotkey(name: "meeting recording", trigger: settingsViewModel.meetingHotkeyTrigger))
+            reserved.append(
+                TransformShortcutReservedHotkey(
+                    name: "meeting recording", trigger: settingsViewModel.meetingHotkeyTrigger))
         }
         return reserved.filter { !$0.trigger.isDisabled }
     }
@@ -766,7 +756,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func toggleMeetingRecording(
         originatesFromWindow: Bool,
-        trigger: TelemetryMeetingRecordingTrigger = .manual
+        trigger: MeetingRecordingTrigger = .manual
     ) {
         guard appEnvironment != nil else { return }
 
@@ -834,7 +824,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         case .recording:
             alert.messageText = "Meeting Recording in Progress"
-            alert.informativeText = "End and transcribe the meeting before quitting, discard the recording, or keep MacParakeet open."
+            alert.informativeText =
+                "End and transcribe the meeting before quitting, discard the recording, or keep MacParakeet open."
             alert.addButton(withTitle: "End & Transcribe")
             alert.addButton(withTitle: "Discard Recording")
             alert.addButton(withTitle: "Cancel Quit")
@@ -854,7 +845,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         case .finishing:
             alert.messageText = "Meeting Transcription in Progress"
-            alert.informativeText = "MacParakeet is saving the meeting. Finish transcription before quitting, or keep the app open."
+            alert.informativeText =
+                "MacParakeet is saving the meeting. Finish transcription before quitting, or keep the app open."
             alert.addButton(withTitle: "Finish & Quit")
             alert.addButton(withTitle: "Cancel Quit")
             if alert.runModal() == .alertFirstButtonReturn {
@@ -921,8 +913,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .warning
         alert.messageText = "Global Hotkey Unavailable"
         alert.informativeText =
-            "MacParakeet couldn’t enable the system-wide hotkey because Accessibility access is missing. " +
-            "You can still open the app manually, but dictation shortcuts won’t work until this is enabled."
+            "MacParakeet couldn’t enable the system-wide hotkey because Accessibility access is missing. "
+            + "You can still open the app manually, but dictation shortcuts won’t work until this is enabled."
         alert.addButton(withTitle: "Open Settings")
         alert.addButton(withTitle: "Not Now")
 
@@ -944,8 +936,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .warning
         alert.messageText = "Hotkey Conflict"
         alert.informativeText =
-            "\(trigger.displayName) overlaps with \(conflictNames), so one of these shortcuts was not enabled. " +
-            "Open Settings to choose distinct shortcuts."
+            "\(trigger.displayName) overlaps with \(conflictNames), so one of these shortcuts was not enabled. "
+            + "Open Settings to choose distinct shortcuts."
         alert.addButton(withTitle: "Open Settings")
         alert.addButton(withTitle: "Not Now")
 

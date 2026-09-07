@@ -157,18 +157,22 @@ actor LiveChunkTranscriber {
     }
 
     private func writeChunkAudio(samples: [Float], to url: URL) throws {
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 16000,
-            channels: 1,
-            interleaved: false
-        ) else {
+        guard
+            let format = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 16000,
+                channels: 1,
+                interleaved: false
+            )
+        else {
             throw MeetingAudioError.storageFailed("invalid chunk format")
         }
-        guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: AVAudioFrameCount(samples.count)
-        ) else {
+        guard
+            let buffer = AVAudioPCMBuffer(
+                pcmFormat: format,
+                frameCapacity: AVAudioFrameCount(samples.count)
+            )
+        else {
             throw MeetingAudioError.storageFailed("failed to allocate chunk buffer")
         }
         buffer.frameLength = AVAudioFrameCount(samples.count)
@@ -195,7 +199,8 @@ actor LiveChunkTranscriber {
         sessionID: UUID
     ) async {
         guard sessionContext?.id == sessionID else { return }
-        let transcriptWordCount = result.words.isEmpty
+        let transcriptWordCount =
+            result.words.isEmpty
             ? Observability.wordCount(result.text)
             : result.words.count
         logger.info(

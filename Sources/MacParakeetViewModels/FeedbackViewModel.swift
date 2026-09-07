@@ -47,7 +47,8 @@ public final class FeedbackViewModel {
     public var includeFullDiagnosticHistory: Bool = false
     public var showSystemInfo: Bool = false
     public private(set) var diagnosticLogIsAvailable: Bool = false
-    public private(set) var diagnosticLogAvailabilityDescription: String = "Run dictation or meeting recording once to create this log."
+    public private(set) var diagnosticLogAvailabilityDescription: String =
+        "Run dictation or meeting recording once to create this log."
     private var pendingScreenshotFilename: String?
 
     public var screenshotData: Data? {
@@ -181,7 +182,8 @@ public final class FeedbackViewModel {
     private func readScreenshotAttachment(from url: URL) throws -> FeedbackScreenshotAttachment {
         do {
             if let fileSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-               fileSize > Self.maxScreenshotSizeBytes {
+                fileSize > Self.maxScreenshotSizeBytes
+            {
                 throw ScreenshotAttachmentError.tooLarge
             }
 
@@ -241,7 +243,8 @@ public final class FeedbackViewModel {
                 )
             }
 
-            let fileSize = try? diagnosticLogURL
+            let fileSize =
+                try? diagnosticLogURL
                 .resourceValues(forKeys: [.fileSizeKey])
                 .fileSize
             if let fileSize, fileSize >= 0 {
@@ -345,7 +348,6 @@ public final class FeedbackViewModel {
             guard let self else { return }
             defer { submitTask = nil }
 
-            let operationContext = Observability.childOperationContext()
             do {
                 let diagnosticLog = try await Self.readDiagnosticLogAttachmentIfNeeded(
                     includeDiagnosticLog: shouldIncludeDiagnosticLog,
@@ -364,25 +366,11 @@ public final class FeedbackViewModel {
                     diagnosticLog: diagnosticLog,
                     systemInfo: systemInfo
                 )
-                let hasScreenshots = !payload.screenshots.isEmpty
-                let hasDiagnosticLog = payload.diagnosticLog != nil
 
                 do {
                     try await service.submitFeedback(payload)
                     guard !Task.isCancelled else { return }
 
-                    Telemetry.send(.feedbackSubmitted(category: payload.category.rawValue))
-                    Telemetry.send(.feedbackOperation(
-                        operationID: operationContext.operationID,
-                        operationContext: operationContext,
-                        category: payload.category.rawValue,
-                        outcome: .success,
-                        durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                        screenshotAttached: hasScreenshots,
-                        diagnosticLogAttached: hasDiagnosticLog,
-                        systemInfoIncluded: true,
-                        errorType: nil
-                    ))
                     submissionState = .success
                     // Auto-reset after 3 seconds
                     try await Task.sleep(for: .seconds(3))
@@ -395,34 +383,12 @@ public final class FeedbackViewModel {
                     return
                 } catch {
                     guard !Task.isCancelled else { return }
-                    Telemetry.send(.feedbackOperation(
-                        operationID: operationContext.operationID,
-                        operationContext: operationContext,
-                        category: payload.category.rawValue,
-                        outcome: .failure,
-                        durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                        screenshotAttached: hasScreenshots,
-                        diagnosticLogAttached: hasDiagnosticLog,
-                        systemInfoIncluded: true,
-                        errorType: Observability.errorType(for: error)
-                    ))
                     submissionState = .error(error.localizedDescription)
                 }
             } catch is CancellationError {
                 return
             } catch {
                 guard !Task.isCancelled else { return }
-                Telemetry.send(.feedbackOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    category: category.rawValue,
-                    outcome: .failure,
-                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                    screenshotAttached: !screenshots.isEmpty,
-                    diagnosticLogAttached: shouldIncludeDiagnosticLog,
-                    systemInfoIncluded: true,
-                    errorType: Observability.errorType(for: error)
-                ))
                 submissionState = .error(error.localizedDescription)
             }
         }

@@ -67,7 +67,7 @@ final class VocabularyImportExportServiceTests: XCTestCase {
     }
 
     func testSuggestedFilenameUsesUTCDate() {
-        let date = Date(timeIntervalSince1970: 1_714_003_200) // 2024-04-25 00:00:00 UTC
+        let date = Date(timeIntervalSince1970: 1_714_003_200)  // 2024-04-25 00:00:00 UTC
         let name = service.suggestedFilename(now: date)
         XCTAssertEqual(name, "MacParakeet-Vocabulary-2024-04-25.json")
     }
@@ -111,7 +111,7 @@ final class VocabularyImportExportServiceTests: XCTestCase {
             appVersion: nil,
             customWords: [
                 .init(word: "kubernetes", replacement: nil, isEnabled: true, createdAt: nil),
-                .init(word: "fresh", replacement: nil, isEnabled: true, createdAt: nil)
+                .init(word: "fresh", replacement: nil, isEnabled: true, createdAt: nil),
             ],
             textSnippets: [
                 .init(trigger: "addr", expansion: "y", isEnabled: true, action: nil, createdAt: nil)
@@ -135,11 +135,11 @@ final class VocabularyImportExportServiceTests: XCTestCase {
             appVersion: nil,
             customWords: [
                 .init(word: "Kubernetes", replacement: "A", isEnabled: true, createdAt: nil),
-                .init(word: "kubernetes", replacement: "B", isEnabled: true, createdAt: nil)
+                .init(word: "kubernetes", replacement: "B", isEnabled: true, createdAt: nil),
             ],
             textSnippets: [
                 .init(trigger: "Addr", expansion: "A", isEnabled: true, action: nil, createdAt: nil),
-                .init(trigger: "addr", expansion: "B", isEnabled: true, action: nil, createdAt: nil)
+                .init(trigger: "addr", expansion: "B", isEnabled: true, action: nil, createdAt: nil),
             ]
         )
         let data = try JSONEncoder.iso8601().encode(bundle)
@@ -213,7 +213,7 @@ final class VocabularyImportExportServiceTests: XCTestCase {
             appVersion: nil,
             customWords: [
                 .init(word: "kubernetes", replacement: nil, isEnabled: true, createdAt: nil),
-                .init(word: "centre", replacement: "centre", isEnabled: true, createdAt: nil)
+                .init(word: "centre", replacement: "centre", isEnabled: true, createdAt: nil),
             ],
             textSnippets: []
         )
@@ -232,7 +232,7 @@ final class VocabularyImportExportServiceTests: XCTestCase {
             appVersion: nil,
             customWords: [
                 .init(word: "Kubernetes", replacement: "First", isEnabled: true, createdAt: nil),
-                .init(word: "kubernetes", replacement: "Second", isEnabled: true, createdAt: nil)
+                .init(word: "kubernetes", replacement: "Second", isEnabled: true, createdAt: nil),
             ],
             textSnippets: []
         )
@@ -255,11 +255,11 @@ final class VocabularyImportExportServiceTests: XCTestCase {
             appVersion: nil,
             customWords: [
                 .init(word: "Kubernetes", replacement: "First", isEnabled: true, createdAt: nil),
-                .init(word: "kubernetes", replacement: "Second", isEnabled: false, createdAt: nil)
+                .init(word: "kubernetes", replacement: "Second", isEnabled: false, createdAt: nil),
             ],
             textSnippets: [
                 .init(trigger: "Addr", expansion: "First", isEnabled: true, action: nil, createdAt: nil),
-                .init(trigger: "addr", expansion: "Second", isEnabled: false, action: .returnKey, createdAt: nil)
+                .init(trigger: "addr", expansion: "Second", isEnabled: false, action: .returnKey, createdAt: nil),
             ]
         )
         let data = try JSONEncoder.iso8601().encode(bundle)
@@ -286,14 +286,15 @@ final class VocabularyImportExportServiceTests: XCTestCase {
     func testApplyRollsBackWholeImportWhenLaterWriteFails() throws {
         try customWordRepo.save(CustomWord(word: "Kubernetes", replacement: "Existing"))
         try manager.dbQueue.write { db in
-            try db.execute(sql: """
-            CREATE TRIGGER fail_vocab_import_insert
-            BEFORE INSERT ON custom_words
-            WHEN NEW.word = 'explode'
-            BEGIN
-                SELECT RAISE(ABORT, 'forced import failure');
-            END
-            """)
+            try db.execute(
+                sql: """
+                    CREATE TRIGGER fail_vocab_import_insert
+                    BEFORE INSERT ON custom_words
+                    WHEN NEW.word = 'explode'
+                    BEGIN
+                        SELECT RAISE(ABORT, 'forced import failure');
+                    END
+                    """)
         }
 
         let bundle = VocabularyBundle(
@@ -323,9 +324,9 @@ final class VocabularyImportExportServiceTests: XCTestCase {
 
     func testDecodeRejectsInvalidSchema() throws {
         let bogus = """
-        { "schema": "not.us", "version": 1, "exportedAt": "2026-04-28T12:00:00Z",
-          "customWords": [], "textSnippets": [] }
-        """.data(using: .utf8)!
+            { "schema": "not.us", "version": 1, "exportedAt": "2026-04-28T12:00:00Z",
+              "customWords": [], "textSnippets": [] }
+            """.data(using: .utf8)!
 
         XCTAssertThrowsError(try service.decodePreview(from: bogus)) { error in
             XCTAssertEqual(error as? VocabularyImportExportService.ImportError, .invalidSchema)
@@ -334,10 +335,10 @@ final class VocabularyImportExportServiceTests: XCTestCase {
 
     func testDecodeRejectsFutureVersion() throws {
         let future = """
-        { "schema": "macparakeet.vocabulary", "version": 999,
-          "exportedAt": "2026-04-28T12:00:00Z",
-          "customWords": [], "textSnippets": [] }
-        """.data(using: .utf8)!
+            { "schema": "macparakeet.vocabulary", "version": 999,
+              "exportedAt": "2026-04-28T12:00:00Z",
+              "customWords": [], "textSnippets": [] }
+            """.data(using: .utf8)!
 
         XCTAssertThrowsError(try service.decodePreview(from: future)) { error in
             XCTAssertEqual(
@@ -366,10 +367,12 @@ final class VocabularyImportExportServiceTests: XCTestCase {
             appVersion: nil,
             customWords: [
                 .init(word: "  kubernetes\n", replacement: " Kubernetes  ", isEnabled: true, createdAt: nil),
-                .init(word: "\tMacParakeet ", replacement: " \n ", isEnabled: true, createdAt: nil)
+                .init(word: "\tMacParakeet ", replacement: " \n ", isEnabled: true, createdAt: nil),
             ],
             textSnippets: [
-                .init(trigger: " my address ", expansion: "  123 Main\\nSF  ", isEnabled: true, action: nil, createdAt: nil)
+                .init(
+                    trigger: " my address ", expansion: "  123 Main\\nSF  ", isEnabled: true, action: nil,
+                    createdAt: nil)
             ]
         )
         let data = try JSONEncoder.iso8601().encode(bundle)

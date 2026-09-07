@@ -44,10 +44,12 @@ public struct MeetingAudioCaptureStartReport: Sendable, Equatable {
         microphone: MeetingMicrophoneCaptureStartReport? = nil
     ) {
         self.sourceMode = sourceMode
-        self.microphone = microphone ?? MeetingMicrophoneCaptureStartReport(
-            requestedMode: .raw,
-            effectiveMode: .raw
-        )
+        self.microphone =
+            microphone
+            ?? MeetingMicrophoneCaptureStartReport(
+                requestedMode: .raw,
+                effectiveMode: .raw
+            )
         self.microphoneStarted = microphone != nil
     }
 }

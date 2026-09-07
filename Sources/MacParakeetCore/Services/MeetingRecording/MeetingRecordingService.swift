@@ -392,9 +392,10 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 eventName: eventName
             )
         },
-        writerFinalizationReportTransform: @escaping @Sendable (
-            MeetingAudioStorageWriter.FinalizationReport
-        ) -> MeetingAudioStorageWriter.FinalizationReport = { $0 }
+        writerFinalizationReportTransform:
+            @escaping @Sendable (
+                MeetingAudioStorageWriter.FinalizationReport
+            ) -> MeetingAudioStorageWriter.FinalizationReport = { $0 }
     ) {
         self.requestedMicProcessingMode = micProcessingMode
         self.audioCaptureService = audioCaptureService
@@ -1482,9 +1483,11 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
 
     private var allSelectedSourcesAreInterrupted: Bool {
         guard let sourceMode = captureHealthMetrics.sourceMode else { return false }
-        let microphoneInterrupted = !sourceMode.capturesMicrophone
+        let microphoneInterrupted =
+            !sourceMode.capturesMicrophone
             || interruptedSources.contains(.microphone)
-        let systemInterrupted = !sourceMode.capturesSystemAudio
+        let systemInterrupted =
+            !sourceMode.capturesSystemAudio
             || interruptedSources.contains(.system)
         return microphoneInterrupted && systemInterrupted
     }

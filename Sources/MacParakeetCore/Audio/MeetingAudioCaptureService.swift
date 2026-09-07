@@ -76,7 +76,7 @@ public actor MeetingAudioCaptureService {
     private let micProcessingMode: MeetingMicProcessingMode
     private let sourceModeProvider: @Sendable () -> MeetingAudioSourceMode
     private let systemAudioRecoveryDelays: [Duration]
-    private let micHealthObserver: MeetingMicHealthTelemetryObserver
+    private let micHealthObserver: MeetingMicHealthObserver
     private let systemAudioCallbackGate = SystemAudioCallbackGate()
 
     private enum LifecycleState: Equatable {
@@ -120,7 +120,7 @@ public actor MeetingAudioCaptureService {
         self.micProcessingMode = micProcessingMode
         self.sourceModeProvider = sourceModeProvider
         self.systemAudioRecoveryDelays = Self.productionSystemAudioRecoveryDelays
-        self.micHealthObserver = MeetingMicHealthTelemetryObserver()
+        self.micHealthObserver = MeetingMicHealthObserver()
         self.systemAudioCaptureFactory = {
             guard #available(macOS 14.2, *) else {
                 throw MeetingAudioError.unsupportedPlatform
@@ -146,7 +146,7 @@ public actor MeetingAudioCaptureService {
         self.systemAudioRecoveryDelays =
             systemAudioRecoveryDelays
             ?? Self.productionSystemAudioRecoveryDelays
-        self.micHealthObserver = MeetingMicHealthTelemetryObserver(
+        self.micHealthObserver = MeetingMicHealthObserver(
             config: micHealthConfig,
             nowProvider: micHealthNowProvider,
             featureEnabled: micHealthFeatureEnabled
@@ -170,7 +170,7 @@ public actor MeetingAudioCaptureService {
         self.systemAudioRecoveryDelays =
             systemAudioRecoveryDelays
             ?? Self.productionSystemAudioRecoveryDelays
-        self.micHealthObserver = MeetingMicHealthTelemetryObserver(
+        self.micHealthObserver = MeetingMicHealthObserver(
             config: micHealthConfig,
             nowProvider: micHealthNowProvider,
             featureEnabled: micHealthFeatureEnabled
@@ -1099,27 +1099,7 @@ private final class EventSink: @unchecked Sendable {
     }
 }
 
-private final class MeetingMicHealthTelemetryObserver: @unchecked Sendable {
-    private struct StallSummary: Sendable {
-        let stallCount: Int
-        let totalStalledMs: Int
-
-        var totalStalledSeconds: Double {
-            Double(totalStalledMs) / 1000.0
-        }
-    }
-
-    private enum StallTelemetryEmission: Sendable {
-        case full(
-            signature: MeetingMicHealthMonitor.StallSignature,
-            elapsedMs: Int,
-            summary: StallSummary
-        )
-        case summary(StallSummary)
-    }
-
-    private static let summaryInterval = 100
-
+private final class MeetingMicHealthObserver: @unchecked Sendable {
     private let lock = NSLock()
     private let config: MeetingMicHealthMonitor.Config
     private let nowProvider: @Sendable () -> Date
@@ -1127,10 +1107,6 @@ private final class MeetingMicHealthTelemetryObserver: @unchecked Sendable {
     private var monitor: MeetingMicHealthMonitor
     private var isObserving = false
     private var activeAttemptID: Int?
-    private var didReportFirstStall = false
-    private var stallCount = 0
-    private var totalStalledMs = 0
-    private var lastSummaryStallCount = 0
 
     init(
         config: MeetingMicHealthMonitor.Config = .default,
@@ -1146,24 +1122,17 @@ private final class MeetingMicHealthTelemetryObserver: @unchecked Sendable {
     func start(observing sourceIncludesMicrophone: Bool, attemptID: Int) {
         lock.withLock {
             monitor = MeetingMicHealthMonitor(config: config)
-            resetTelemetryCountersLocked()
             activeAttemptID = attemptID
             isObserving = featureEnabled && sourceIncludesMicrophone
         }
     }
 
     func stop(attemptID: Int) {
-        let summary = lock.withLock { () -> StallSummary? in
-            guard activeAttemptID == attemptID else { return nil }
-            let summary = pendingSummaryLocked()
+        lock.withLock {
+            guard activeAttemptID == attemptID else { return }
             monitor.reset()
-            resetTelemetryCountersLocked()
             isObserving = false
             activeAttemptID = nil
-            return summary
-        }
-        if let summary {
-            sendSummary(summary)
         }
     }
 
@@ -1201,76 +1170,10 @@ private final class MeetingMicHealthTelemetryObserver: @unchecked Sendable {
         attemptID: Int
     ) -> [MeetingMicHealthMonitor.HealthEvent] {
         let now = nowProvider()
-        // Resolve emissions inside the lock (the monitor state and counters are both
-        // mutated from the audio callback thread), then emit telemetry outside it so
-        // `Telemetry.send` never runs under the lock.
-        let observed = lock.withLock {
-            guard isObserving, activeAttemptID == attemptID else {
-                return (
-                    events: [MeetingMicHealthMonitor.HealthEvent](),
-                    emissions: [StallTelemetryEmission]()
-                )
-            }
-            let events = monitor.ingest(micSignal: micSignal, systemSignal: systemSignal, now: now)
-            var emissions: [StallTelemetryEmission] = []
-            for event in events {
-                // ADR-025 Phase A emits only detection telemetry; warning and recovery
-                // surfaces consume `.recovered` in later phases.
-                guard case let .stallSuspected(signature, rawElapsedMs) = event else { continue }
-                let elapsedMs = max(0, rawElapsedMs)
-                stallCount += 1
-                totalStalledMs += elapsedMs
-                let summary = StallSummary(stallCount: stallCount, totalStalledMs: totalStalledMs)
-                if !didReportFirstStall {
-                    didReportFirstStall = true
-                    emissions.append(.full(signature: signature, elapsedMs: elapsedMs, summary: summary))
-                } else if stallCount.isMultiple(of: Self.summaryInterval) {
-                    lastSummaryStallCount = stallCount
-                    emissions.append(.summary(summary))
-                }
-            }
-            return (events, emissions)
+        return lock.withLock {
+            guard isObserving, activeAttemptID == attemptID else { return [] }
+            return monitor.ingest(micSignal: micSignal, systemSignal: systemSignal, now: now)
         }
-
-        for emission in observed.emissions {
-            send(emission)
-        }
-        return observed.events
-    }
-
-    private func pendingSummaryLocked() -> StallSummary? {
-        guard stallCount > 1, lastSummaryStallCount != stallCount else { return nil }
-        lastSummaryStallCount = stallCount
-        return StallSummary(stallCount: stallCount, totalStalledMs: totalStalledMs)
-    }
-
-    private func resetTelemetryCountersLocked() {
-        didReportFirstStall = false
-        stallCount = 0
-        totalStalledMs = 0
-        lastSummaryStallCount = 0
-    }
-
-    private func send(_ emission: StallTelemetryEmission) {
-        switch emission {
-        case .full(let signature, let elapsedMs, let summary):
-            Telemetry.send(
-                .micStallDetected(
-                    signature: .init(signature),
-                    elapsedMs: elapsedMs,
-                    stallCount: summary.stallCount
-                ))
-        case .summary(let summary):
-            sendSummary(summary)
-        }
-    }
-
-    private func sendSummary(_ summary: StallSummary) {
-        Telemetry.send(
-            .micStallDetected(
-                stallCount: summary.stallCount,
-                totalStalledSeconds: summary.totalStalledSeconds
-            ))
     }
 }
 

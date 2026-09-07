@@ -83,15 +83,17 @@ public struct AudioCaptureHealth: Sendable, Equatable {
     }
 
     public var terminalProblem: AudioCaptureProblem? {
-        if noBufferTimeoutFired ||
-            (inputBufferCount == 0 && wallDurationSeconds >= Self.noBufferMinimumWallDurationSeconds) {
+        if noBufferTimeoutFired
+            || (inputBufferCount == 0 && wallDurationSeconds >= Self.noBufferMinimumWallDurationSeconds)
+        {
             return .noInputBuffers
         }
 
         if inputBufferCount > 0,
-           audioDurationSeconds >= Self.silentInputMinimumAudioDurationSeconds,
-           nonSilentBufferCount == 0,
-           maxAudioLevel < Self.silentInputMaximumLevel {
+            audioDurationSeconds >= Self.silentInputMinimumAudioDurationSeconds,
+            nonSilentBufferCount == 0,
+            maxAudioLevel < Self.silentInputMaximumLevel
+        {
             return .silentInput
         }
 
@@ -123,7 +125,6 @@ public protocol AudioProcessorProtocol: Sendable {
     var isRecording: Bool { get async }
 
     /// Device info from the most recent recording (name, transport, format, fallback status).
-    var recordingDeviceInfo: RecordingDeviceInfo? { get async }
 
     /// Health metrics from the most recently stopped capture, if available.
     var lastCaptureHealth: AudioCaptureHealth? { get async }

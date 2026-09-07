@@ -77,12 +77,6 @@ public final class MeetingRecordingPanelViewModel {
         }
     ) {
         self.transcriptAIContextModeProvider = transcriptAIContextModeProvider
-        // Mark the chat VM as the live in-meeting Ask surface so
-        // `llm_chat_used` telemetry distinguishes Ask chat from
-        // post-transcription transcript chat. Without this the two sources
-        // collapse into one bucket and Ask adoption is invisible.
-        chatViewModel.markAsMeetingAskSurface()
-
         // Thread the live notepad into the live Ask chat: the closure is
         // called by `TranscriptChatViewModel` at chat-send time, so the
         // freshest keystroke up to the moment the user hits Send is what the
@@ -115,10 +109,12 @@ public final class MeetingRecordingPanelViewModel {
             oldLines: previewLines,
             newLines: lines
         ) {
-            let removedWordCount = firstChangedIndex < previewLineWordCounts.count
+            let removedWordCount =
+                firstChangedIndex < previewLineWordCounts.count
                 ? previewLineWordCounts[firstChangedIndex...].reduce(0, +)
                 : 0
-            let addedWordCounts = firstChangedIndex < lines.count
+            let addedWordCounts =
+                firstChangedIndex < lines.count
                 ? lines[firstChangedIndex...].map { Self.wordCount(for: $0.text) }
                 : []
             wordCount += addedWordCounts.reduce(0, +) - removedWordCount
@@ -215,7 +211,8 @@ public final class MeetingRecordingPanelViewModel {
         switch state {
         case .hidden, .recording:
             if isTranscriptionLagging {
-                return "Live transcript preview is catching up. The final transcript will still include the full meeting."
+                return
+                    "Live transcript preview is catching up. The final transcript will still include the full meeting."
             }
             if let livePreviewStatusMessage {
                 return livePreviewStatusMessage
@@ -235,7 +232,8 @@ public final class MeetingRecordingPanelViewModel {
             // single recoverable surface for either failure mode.
             let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
             let detail = trimmed.isEmpty ? "An unexpected error occurred." : trimmed
-            return "\(detail)\n\nIf any audio was captured it's in your Library, where you can retry transcription or export the audio."
+            return
+                "\(detail)\n\nIf any audio was captured it's in your Library, where you can retry transcription or export the audio."
         }
     }
 
@@ -354,7 +352,8 @@ public final class MeetingRecordingPanelViewModel {
         case .previewUnsupported:
             return "Audio will be transcribed after you stop recording."
         case .previewUnavailable:
-            return "Audio is still recording. If preview does not recover, retry transcription from Library after the meeting."
+            return
+                "Audio is still recording. If preview does not recover, retry transcription from Library after the meeting."
         }
     }
 

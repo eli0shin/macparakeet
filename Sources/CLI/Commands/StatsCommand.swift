@@ -26,7 +26,8 @@ struct StatsCommand: ParsableCommand {
             let favoriteCount = try transcriptionRepo.fetchFavorites().count
 
             if json {
-                try printJSON(StatsPayload(stats: stats, transcriptionCount: transcriptionCount, favoriteCount: favoriteCount))
+                try printJSON(
+                    StatsPayload(stats: stats, transcriptionCount: transcriptionCount, favoriteCount: favoriteCount))
                 return
             }
 

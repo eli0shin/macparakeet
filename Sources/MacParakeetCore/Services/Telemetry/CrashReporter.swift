@@ -178,11 +178,11 @@ public final class CrashReporter {
         switch sig {
         case SIGSEGV: append("SIGSEGV")
         case SIGABRT: append("SIGABRT")
-        case SIGBUS:  append("SIGBUS")
-        case SIGILL:  append("SIGILL")
+        case SIGBUS: append("SIGBUS")
+        case SIGILL: append("SIGILL")
         case SIGTRAP: append("SIGTRAP")
-        case SIGFPE:  append("SIGFPE")
-        default:      append("UNKNOWN")
+        case SIGFPE: append("SIGFPE")
+        default: append("UNKNOWN")
         }
         append("\n")
 
@@ -224,7 +224,7 @@ public final class CrashReporter {
 
     private static let objcExceptionHandler: @convention(c) (NSException) -> Void = { exception in
         let name = exception.name.rawValue
-        let reason = TelemetryErrorClassifier.errorDetail(
+        let reason = DiagnosticErrorClassifier.errorDetail(
             NSError(domain: name, code: 0, userInfo: [NSLocalizedDescriptionKey: exception.reason ?? ""])
         )
 
@@ -239,7 +239,7 @@ public final class CrashReporter {
         lines.append("uuid: \(String(cString: &machOUUID))")
         lines.append("slide: \(String(cString: &aslrSlide))")
         let safeReason = reason.replacingOccurrences(of: "\n", with: "\\n")
-                               .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\r", with: "\\r")
         lines.append("reason: \(safeReason)")
         lines.append("--- stack ---")
 
@@ -297,8 +297,9 @@ public final class CrashReporter {
                 // uuid_command: load_command (8 bytes) + uuid (16 bytes)
                 let uuidPtr = cursor.advanced(by: 8).assumingMemoryBound(to: UInt8.self)
                 let bytes = (0..<16).map { uuidPtr[$0] }
-                let formatted = String(format:
-                    "%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+                let formatted = String(
+                    format:
+                        "%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
                     bytes[0], bytes[1], bytes[2], bytes[3],
                     bytes[4], bytes[5], bytes[6], bytes[7],
                     bytes[8], bytes[9], bytes[10], bytes[11],
@@ -317,16 +318,16 @@ public final class CrashReporter {
 
     /// Parsed crash report from a previous session.
     public struct CrashReport {
-        public let crashType: String    // "signal" or "exception"
-        public let signal: String       // e.g. "11" or "exception"
-        public let name: String         // e.g. "SIGSEGV" or "NSInvalidArgumentException"
-        public let timestamp: String    // Unix timestamp
+        public let crashType: String  // "signal" or "exception"
+        public let signal: String  // e.g. "11" or "exception"
+        public let name: String  // e.g. "SIGSEGV" or "NSInvalidArgumentException"
+        public let timestamp: String  // Unix timestamp
         public let appVersion: String
         public let osVersion: String
         public let uuid: String
         public let slide: String
-        public let reason: String?      // Only for exceptions
-        public let stackTrace: [String] // Hex addresses
+        public let reason: String?  // Only for exceptions
+        public let stackTrace: [String]  // Hex addresses
     }
 
     /// Path to the crash report file.
@@ -340,7 +341,8 @@ public final class CrashReporter {
         // Use tolerant UTF-8 decoding: a crash mid-write could truncate a
         // multi-byte character, and strict .utf8 would discard the entire report.
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: filePath)),
-              !data.isEmpty else {
+            !data.isEmpty
+        else {
             return nil
         }
         let content = String(decoding: data, as: UTF8.self)
@@ -362,16 +364,18 @@ public final class CrashReporter {
                 }
             } else if let colonIndex = line.firstIndex(of: ":") {
                 let key = String(line[line.startIndex..<colonIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
-                let value = String(line[line.index(after: colonIndex)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let value = String(line[line.index(after: colonIndex)...]).trimmingCharacters(
+                    in: .whitespacesAndNewlines)
                 fields[key] = value
             }
         }
 
         guard let crashType = fields["crash_type"],
-              let signal = fields["signal"],
-              let name = fields["name"],
-              let timestamp = fields["timestamp"],
-              let appVer = fields["app_ver"] else {
+            let signal = fields["signal"],
+            let name = fields["name"],
+            let timestamp = fields["timestamp"],
+            let appVer = fields["app_ver"]
+        else {
             return nil
         }
 

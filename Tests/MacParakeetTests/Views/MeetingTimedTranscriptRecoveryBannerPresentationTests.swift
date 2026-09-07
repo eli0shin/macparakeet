@@ -15,11 +15,12 @@ final class MeetingTimedTranscriptRecoveryBannerPresentationTests: XCTestCase {
 
     func testTimestampCapableRerunFramesActionAsTimedRetry() throws {
         let rerun = SpeechEngineSelection(engine: .nemotron)
-        let presentation = try XCTUnwrap(MeetingTimedTranscriptRecoveryBannerPresentation.make(
-            transcriptText: "Already transcribed text.",
-            hasRetainedAudio: true,
-            timestampCapableRerun: rerun
-        ))
+        let presentation = try XCTUnwrap(
+            MeetingTimedTranscriptRecoveryBannerPresentation.make(
+                transcriptText: "Already transcribed text.",
+                hasRetainedAudio: true,
+                timestampCapableRerun: rerun
+            ))
 
         XCTAssertEqual(presentation.title, "No timed transcript")
         XCTAssertEqual(presentation.action?.title, "Try timed retranscription")
@@ -30,11 +31,12 @@ final class MeetingTimedTranscriptRecoveryBannerPresentationTests: XCTestCase {
     }
 
     func testRetainedAudioWithoutTimestampEngineExplainsUnavailableEngine() throws {
-        let presentation = try XCTUnwrap(MeetingTimedTranscriptRecoveryBannerPresentation.make(
-            transcriptText: "Already transcribed text.",
-            hasRetainedAudio: true,
-            timestampCapableRerun: nil
-        ))
+        let presentation = try XCTUnwrap(
+            MeetingTimedTranscriptRecoveryBannerPresentation.make(
+                transcriptText: "Already transcribed text.",
+                hasRetainedAudio: true,
+                timestampCapableRerun: nil
+            ))
 
         XCTAssertEqual(presentation.title, "No timed transcript")
         XCTAssertNil(presentation.action)
@@ -42,11 +44,12 @@ final class MeetingTimedTranscriptRecoveryBannerPresentationTests: XCTestCase {
     }
 
     func testMissingAudioExplainsRerunIsUnavailable() throws {
-        let presentation = try XCTUnwrap(MeetingTimedTranscriptRecoveryBannerPresentation.make(
-            transcriptText: "Already transcribed text.",
-            hasRetainedAudio: false,
-            timestampCapableRerun: nil
-        ))
+        let presentation = try XCTUnwrap(
+            MeetingTimedTranscriptRecoveryBannerPresentation.make(
+                transcriptText: "Already transcribed text.",
+                hasRetainedAudio: false,
+                timestampCapableRerun: nil
+            ))
 
         XCTAssertEqual(presentation.title, "No timed transcript")
         XCTAssertNil(presentation.action)

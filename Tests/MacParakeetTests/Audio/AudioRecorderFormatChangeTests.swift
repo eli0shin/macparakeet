@@ -351,7 +351,8 @@ final class AudioRecorderFormatChangeTests: XCTestCase {
         XCTAssertEqual(samples[7_199], 0.6, accuracy: 0.0001)
         XCTAssertEqual(samples[7_200], 0.2, accuracy: 0.0001)
         XCTAssertEqual(samples[11_999], 0.2, accuracy: 0.0001)
-        XCTAssertEqual(stream.diagnostics.subscriberCount, 1, "warm passive subscriber should remain after dictation stop")
+        XCTAssertEqual(
+            stream.diagnostics.subscriberCount, 1, "warm passive subscriber should remain after dictation stop")
 
         await recorder.setInstantDictationEnabled(false)
     }

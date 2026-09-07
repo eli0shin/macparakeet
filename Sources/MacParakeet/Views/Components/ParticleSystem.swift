@@ -25,8 +25,9 @@ struct ParticleField: View {
                 let x = particle.position.x * size.width
                 let y = particle.position.y * size.height
                 let dotSize = particle.size
-                let rect = CGRect(x: x - dotSize / 2, y: y - dotSize / 2,
-                                  width: dotSize, height: dotSize)
+                let rect = CGRect(
+                    x: x - dotSize / 2, y: y - dotSize / 2,
+                    width: dotSize, height: dotSize)
                 context.fill(
                     Path(ellipseIn: rect),
                     with: .color(tintColor.opacity(particle.opacity * opacity))
@@ -63,7 +64,7 @@ struct ParticleField: View {
         case .orbital:
             return CGPoint(x: .random(in: -0.002...0.002), y: .random(in: -0.002...0.002))
         case .converge:
-            return .zero // Handled in animation
+            return .zero  // Handled in animation
         }
     }
 

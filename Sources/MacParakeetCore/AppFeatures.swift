@@ -32,9 +32,9 @@ public enum AppFeatures {
     public static let meetingAutoStopEnabled: Bool = true
 
     /// Meeting capture reliability watchdog (ADR-025 Phase A). When `true`,
-    /// meeting capture observes metadata-only microphone/system buffer liveness
-    /// and emits `mic_stall_detected` telemetry for confirmed mic-health
-    /// stalls. This does not stop, truncate, repair, or discard recordings.
+    /// meeting capture observes microphone/system buffer liveness and records
+    /// confirmed mic-health stalls in local diagnostics. This does not stop,
+    /// truncate, repair, or discard recordings.
     /// Keep this default-on reliability path behind a kill switch while repair
     /// phases are still being validated.
     public static let meetingCaptureReliabilityEnabled: Bool = true
@@ -64,9 +64,6 @@ public enum AppFeatures {
     /// Data model + repository are migrated either way — built-in
     /// Transforms exist in the DB so flipping this flag is a no-data
     /// operation.
-    ///
-    /// Enabled once the website telemetry allowlist accepts
-    /// `transform_executed` / `transform_failed` (ADR-022 §9).
     public static let transformsEnabled: Bool = true
 
     /// Cohere Transcribe dictation engine. When `true`, Settings offers Cohere

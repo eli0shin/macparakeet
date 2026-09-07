@@ -16,7 +16,8 @@ final class MeetingAutoStopCoordinator {
     private let runningMeetingAppsProvider: @MainActor () -> Set<String>
     private let audioLevelsProvider: @MainActor () async -> MeetingAudioLevels
     private let onAutoStopConfirmed: @MainActor (StopReason) -> Bool
-    private let showCountdown: @MainActor (_ reason: StopReason, _ onOutcome: @escaping (MeetingCountdownToastOutcome) -> Void) -> Void
+    private let showCountdown:
+        @MainActor (_ reason: StopReason, _ onOutcome: @escaping (MeetingCountdownToastOutcome) -> Void) -> Void
     private let closeCountdown: @MainActor () -> Void
     private let featureEnabled: Bool
     private let config: MeetingAutoStopPolicy.Config
@@ -41,18 +42,22 @@ final class MeetingAutoStopCoordinator {
         isRecordingActive: @escaping @MainActor () -> Bool,
         isPaused: @escaping @MainActor () async -> Bool,
         runningMeetingAppsProvider: @escaping @MainActor () -> Set<String> = {
-            Set(NSWorkspace.shared.runningApplications.compactMap { app in
-                guard let bundleID = app.bundleIdentifier,
-                      MeetingAppRegistry.isRecognizedNativeApp(bundleID: bundleID) else {
-                    return nil
-                }
-                return bundleID
-            })
+            Set(
+                NSWorkspace.shared.runningApplications.compactMap { app in
+                    guard let bundleID = app.bundleIdentifier,
+                        MeetingAppRegistry.isRecognizedNativeApp(bundleID: bundleID)
+                    else {
+                        return nil
+                    }
+                    return bundleID
+                })
         },
         audioLevelsProvider: @escaping @MainActor () async -> MeetingAudioLevels,
         onAutoStopConfirmed: @escaping @MainActor (StopReason) -> Bool,
         toastController: MeetingCountdownToastController? = nil,
-        showCountdown: (@MainActor (_ reason: StopReason, _ onOutcome: @escaping (MeetingCountdownToastOutcome) -> Void) -> Void)? = nil,
+        showCountdown: (
+            @MainActor (_ reason: StopReason, _ onOutcome: @escaping (MeetingCountdownToastOutcome) -> Void) -> Void
+        )? = nil,
         closeCountdown: (@MainActor () -> Void)? = nil,
         featureEnabled: Bool = AppFeatures.meetingAutoStopEnabled,
         config: MeetingAutoStopPolicy.Config = .default,
@@ -67,16 +72,18 @@ final class MeetingAutoStopCoordinator {
         self.audioLevelsProvider = audioLevelsProvider
         self.onAutoStopConfirmed = onAutoStopConfirmed
         let toastController = toastController ?? MeetingCountdownToastController()
-        self.showCountdown = showCountdown ?? { reason, onOutcome in
-            toastController.showAutoStop(
-                title: Self.countdownTitle(for: reason),
-                duration: countdownDuration,
-                onOutcome: onOutcome
-            )
-        }
-        self.closeCountdown = closeCountdown ?? {
-            toastController.close()
-        }
+        self.showCountdown =
+            showCountdown ?? { reason, onOutcome in
+                toastController.showAutoStop(
+                    title: Self.countdownTitle(for: reason),
+                    duration: countdownDuration,
+                    onOutcome: onOutcome
+                )
+            }
+        self.closeCountdown =
+            closeCountdown ?? {
+                toastController.close()
+            }
         self.featureEnabled = featureEnabled
         self.config = config
         self.pollInterval = pollInterval
@@ -140,8 +147,9 @@ final class MeetingAutoStopCoordinator {
             queue: .main
         ) { [weak self] notification in
             guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  let bundleID = app.bundleIdentifier,
-                  MeetingAppRegistry.isRecognizedNativeApp(bundleID: bundleID) else {
+                let bundleID = app.bundleIdentifier,
+                MeetingAppRegistry.isRecognizedNativeApp(bundleID: bundleID)
+            else {
                 return
             }
             Task { @MainActor [weak self] in
@@ -275,8 +283,9 @@ final class MeetingAutoStopCoordinator {
         isPaused: Bool
     ) -> TimeInterval {
         guard !isPaused,
-              levels.microphone <= silenceLevelThreshold,
-              levels.system <= silenceLevelThreshold else {
+            levels.microphone <= silenceLevelThreshold,
+            levels.system <= silenceLevelThreshold
+        else {
             silenceStartedAt = nil
             return 0
         }
@@ -309,7 +318,6 @@ final class MeetingAutoStopCoordinator {
                 closeCountdown()
             }
             countdownReason = reason
-            Telemetry.send(.meetingAutoStopProposed(reason: reason.telemetryReason))
             showCountdown(reason) { [weak self] outcome in
                 self?.handleCountdownOutcome(outcome, reason: reason)
             }
@@ -317,12 +325,13 @@ final class MeetingAutoStopCoordinator {
     }
 
     private func graceElapsed(for reason: StopReason, now: Date) -> Bool {
-        let grace: TimeInterval = switch reason {
-        case .meetingAppClosed:
-            config.appQuitGraceSeconds
-        case .prolongedSilence:
-            0
-        }
+        let grace: TimeInterval =
+            switch reason {
+            case .meetingAppClosed:
+                config.appQuitGraceSeconds
+            case .prolongedSilence:
+                0
+            }
         guard grace > 0 else { return true }
         guard let firstSeenAt = signalFirstSeenAt[reason] else {
             signalFirstSeenAt[reason] = now
@@ -344,14 +353,14 @@ final class MeetingAutoStopCoordinator {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 guard let decision = await self.currentDecision(now: Date()),
-                      self.isCurrentObservation(generation),
-                      case .proposeStop(let currentReason) = decision,
-                      currentReason == reason else {
+                    self.isCurrentObservation(generation),
+                    case .proposeStop(let currentReason) = decision,
+                    currentReason == reason
+                else {
                     self.signalFirstSeenAt = [:]
                     return
                 }
                 if self.onAutoStopConfirmed(reason) {
-                    Telemetry.send(.meetingAutoStopConfirmed(reason: reason.telemetryReason))
                     self.stopSignalObservation(clearSession: true)
                 } else if !self.isRecordingActive() {
                     self.stopSignalObservation(clearSession: true)
@@ -360,7 +369,6 @@ final class MeetingAutoStopCoordinator {
         case .userDismissed:
             vetoedReasons.insert(reason)
             suppressSignal(for: reason)
-            Telemetry.send(.meetingAutoStopVetoed(reason: reason.telemetryReason))
         case .programmaticClose:
             return
         }

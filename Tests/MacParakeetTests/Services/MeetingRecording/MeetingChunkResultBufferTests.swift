@@ -7,12 +7,16 @@ final class MeetingChunkResultBufferTests: XCTestCase {
 
         let lateChunk = AudioChunker.AudioChunk(samples: [1], startMs: 4_000, endMs: 9_000)
         let earlyChunk = AudioChunker.AudioChunk(samples: [0], startMs: 0, endMs: 5_000)
-        let lateResult = STTResult(text: "again", words: [
-            TimestampedWord(word: "again", startMs: 0, endMs: 100, confidence: 0.9),
-        ])
-        let earlyResult = STTResult(text: "hello", words: [
-            TimestampedWord(word: "hello", startMs: 0, endMs: 100, confidence: 0.9),
-        ])
+        let lateResult = STTResult(
+            text: "again",
+            words: [
+                TimestampedWord(word: "again", startMs: 0, endMs: 100, confidence: 0.9)
+            ])
+        let earlyResult = STTResult(
+            text: "hello",
+            words: [
+                TimestampedWord(word: "hello", startMs: 0, endMs: 100, confidence: 0.9)
+            ])
 
         let firstDrain = buffer.receiveSuccess(
             sequence: 1,
@@ -36,9 +40,11 @@ final class MeetingChunkResultBufferTests: XCTestCase {
         var buffer = MeetingChunkResultBuffer()
 
         let laterChunk = AudioChunker.AudioChunk(samples: [1], startMs: 4_000, endMs: 9_000)
-        let laterResult = STTResult(text: "again", words: [
-            TimestampedWord(word: "again", startMs: 0, endMs: 100, confidence: 0.9),
-        ])
+        let laterResult = STTResult(
+            text: "again",
+            words: [
+                TimestampedWord(word: "again", startMs: 0, endMs: 100, confidence: 0.9)
+            ])
 
         let firstDrain = buffer.receiveSuccess(
             sequence: 1,

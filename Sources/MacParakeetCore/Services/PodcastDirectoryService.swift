@@ -56,13 +56,14 @@ public actor PodcastDirectoryService: PodcastDirectorySearching {
     private let dataFetcher: DataFetcher
 
     public init(dataFetcher: DataFetcher? = nil) {
-        self.dataFetcher = dataFetcher ?? { url in
-            let (data, response) = try await URLSession.shared.data(from: url)
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                throw PodcastSearchError.requestFailed("HTTP \(http.statusCode)")
+        self.dataFetcher =
+            dataFetcher ?? { url in
+                let (data, response) = try await URLSession.shared.data(from: url)
+                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                    throw PodcastSearchError.requestFailed("HTTP \(http.statusCode)")
+                }
+                return data
             }
-            return data
-        }
     }
 
     public func searchShows(query: String, limit: Int = 10) async throws -> [PodcastShow] {

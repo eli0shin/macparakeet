@@ -29,11 +29,12 @@ struct CustomWordReplacer: Sendable {
             guard word.isEnabled else { return nil }
             let replacement = word.replacement?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            let template = if let replacement, !replacement.isEmpty {
-                replacement
-            } else {
-                word.word
-            }
+            let template =
+                if let replacement, !replacement.isEmpty {
+                    replacement
+                } else {
+                    word.word
+                }
             let pattern = "\\b\(NSRegularExpression.escapedPattern(for: word.word))\\b"
             guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
                 return nil

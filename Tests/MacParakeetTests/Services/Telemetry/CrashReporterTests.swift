@@ -22,19 +22,19 @@ final class CrashReporterTests: XCTestCase {
 
     func testLoadPendingReportParsesValidSignalCrash() {
         let content = """
-        crash_type: signal
-        signal: 11
-        name: SIGSEGV
-        timestamp: 1711900000
-        app_ver: 0.5.1
-        os_ver: 15.3.1
-        uuid: A1B2C3D4-E5F6-7890-ABCD-EF1234567890
-        slide: 0x100000
-        --- stack ---
-        0x00000001a2f3b4c0
-        0x00000001a2f3b4d8
-        0x00000001a2f3b500
-        """
+            crash_type: signal
+            signal: 11
+            name: SIGSEGV
+            timestamp: 1711900000
+            app_ver: 0.5.1
+            os_ver: 15.3.1
+            uuid: A1B2C3D4-E5F6-7890-ABCD-EF1234567890
+            slide: 0x100000
+            --- stack ---
+            0x00000001a2f3b4c0
+            0x00000001a2f3b4d8
+            0x00000001a2f3b500
+            """
         try! content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
 
         let report = CrashReporter.loadPendingReport(from: testCrashPath)
@@ -56,19 +56,19 @@ final class CrashReporterTests: XCTestCase {
 
     func testLoadPendingReportParsesExceptionCrash() {
         let content = """
-        crash_type: exception
-        signal: exception
-        name: NSInvalidArgumentException
-        timestamp: 1711900000
-        app_ver: 0.5.1
-        os_ver: 15.3.1
-        uuid: A1B2C3D4-E5F6-7890-ABCD-EF1234567890
-        slide: 0x0
-        reason: unrecognized selector sent to instance
-        --- stack ---
-        0x00000001a2f3b4c0
-        0x00000001a2f3b4d8
-        """
+            crash_type: exception
+            signal: exception
+            name: NSInvalidArgumentException
+            timestamp: 1711900000
+            app_ver: 0.5.1
+            os_ver: 15.3.1
+            uuid: A1B2C3D4-E5F6-7890-ABCD-EF1234567890
+            slide: 0x0
+            reason: unrecognized selector sent to instance
+            --- stack ---
+            0x00000001a2f3b4c0
+            0x00000001a2f3b4d8
+            """
         try! content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
 
         let report = CrashReporter.loadPendingReport(from: testCrashPath)
@@ -95,22 +95,22 @@ final class CrashReporterTests: XCTestCase {
     func testLoadPendingReportHandlesMalformedFile() {
         try! "garbage data\nno structure here".write(toFile: testCrashPath, atomically: true, encoding: .utf8)
         let report = CrashReporter.loadPendingReport(from: testCrashPath)
-        XCTAssertNil(report) // Missing required fields
+        XCTAssertNil(report)  // Missing required fields
     }
 
     func testLoadPendingReportHandlesPartialFile() {
         // Only some fields — simulates interrupted write
         let content = """
-        crash_type: signal
-        signal: 6
-        name: SIGABRT
-        timestamp: 1711900000
-        app_ver: 0.5.1
-        """
+            crash_type: signal
+            signal: 6
+            name: SIGABRT
+            timestamp: 1711900000
+            app_ver: 0.5.1
+            """
         try! content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
 
         let report = CrashReporter.loadPendingReport(from: testCrashPath)
-        XCTAssertNotNil(report) // Has required fields
+        XCTAssertNotNil(report)  // Has required fields
         XCTAssertEqual(report?.signal, "6")
         XCTAssertEqual(report?.name, "SIGABRT")
         XCTAssertTrue(report?.stackTrace.isEmpty ?? false)
@@ -120,15 +120,15 @@ final class CrashReporterTests: XCTestCase {
 
     func testReasonFieldWithColonsPreservesFullValue() {
         let content = """
-        crash_type: exception
-        signal: exception
-        name: NSInvalidArgumentException
-        timestamp: 1711900000
-        app_ver: 0.5.1
-        reason: Cannot decode: key "url": no such key
-        --- stack ---
-        0x1234
-        """
+            crash_type: exception
+            signal: exception
+            name: NSInvalidArgumentException
+            timestamp: 1711900000
+            app_ver: 0.5.1
+            reason: Cannot decode: key "url": no such key
+            --- stack ---
+            0x1234
+            """
         try! content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
 
         let report = CrashReporter.loadPendingReport(from: testCrashPath)
@@ -137,12 +137,12 @@ final class CrashReporterTests: XCTestCase {
 
     func testNoStackSectionReturnsEmptyStackTrace() {
         let content = """
-        crash_type: signal
-        signal: 11
-        name: SIGSEGV
-        timestamp: 1711900000
-        app_ver: 0.5.1
-        """
+            crash_type: signal
+            signal: 11
+            name: SIGSEGV
+            timestamp: 1711900000
+            app_ver: 0.5.1
+            """
         try! content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
 
         let report = CrashReporter.loadPendingReport(from: testCrashPath)
@@ -152,17 +152,17 @@ final class CrashReporterTests: XCTestCase {
 
     func testNonHexLinesInStackSectionAreSkipped() {
         let content = """
-        crash_type: signal
-        signal: 11
-        name: SIGSEGV
-        timestamp: 1711900000
-        app_ver: 0.5.1
-        --- stack ---
-        0x1234
-        garbage line
-        not a hex address
-        0x5678
-        """
+            crash_type: signal
+            signal: 11
+            name: SIGSEGV
+            timestamp: 1711900000
+            app_ver: 0.5.1
+            --- stack ---
+            0x1234
+            garbage line
+            not a hex address
+            0x5678
+            """
         try! content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
 
         let report = CrashReporter.loadPendingReport(from: testCrashPath)
@@ -172,7 +172,7 @@ final class CrashReporterTests: XCTestCase {
     func testStackTraceCappedAt256Frames() {
         var lines = [
             "crash_type: signal", "signal: 11", "name: SIGSEGV",
-            "timestamp: 1711900000", "app_ver: 0.5.1", "--- stack ---"
+            "timestamp: 1711900000", "app_ver: 0.5.1", "--- stack ---",
         ]
         for i in 0..<300 {
             lines.append("0x\(String(i, radix: 16))")
@@ -197,7 +197,8 @@ final class CrashReporterTests: XCTestCase {
     }
 
     func testStackTraceMarkerWithTrailingWhitespace() {
-        let content = "crash_type: signal\nsignal: 11\nname: SIGSEGV\ntimestamp: 0\napp_ver: 0.1\n--- stack ---  \n0xABCD\n"
+        let content =
+            "crash_type: signal\nsignal: 11\nname: SIGSEGV\ntimestamp: 0\napp_ver: 0.1\n--- stack ---  \n0xABCD\n"
         try! content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
 
         let report = CrashReporter.loadPendingReport(from: testCrashPath)

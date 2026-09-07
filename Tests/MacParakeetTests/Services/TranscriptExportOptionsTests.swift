@@ -12,10 +12,12 @@ final class TranscriptExportOptionsTests: XCTestCase {
 
     private func words(withSpeaker: Bool) -> [WordTimestamp] {
         [
-            WordTimestamp(word: "Hello", startMs: 0, endMs: 500, confidence: 0.9,
-                          speakerId: withSpeaker ? "S1" : nil),
-            WordTimestamp(word: "world", startMs: 500, endMs: 1000, confidence: 0.9,
-                          speakerId: withSpeaker ? "S1" : nil),
+            WordTimestamp(
+                word: "Hello", startMs: 0, endMs: 500, confidence: 0.9,
+                speakerId: withSpeaker ? "S1" : nil),
+            WordTimestamp(
+                word: "world", startMs: 500, endMs: 1000, confidence: 0.9,
+                speakerId: withSpeaker ? "S1" : nil),
         ]
     }
 

@@ -309,7 +309,9 @@ final class TranscriptionViewModelBatchTests: XCTestCase {
         let vm = makeViewModel()
         var signalCount = 0
         var captured: TranscriptionCompletionNotifier.Content?
-        vm.onTranscriptionCompleted = { signalCount += 1; captured = $0 }
+        vm.onTranscriptionCompleted = {
+            signalCount += 1; captured = $0
+        }
 
         // Provide out of order; enumerator sorts to a, b, c.
         let urls = [try touch("c.mp3"), try touch("a.mp3"), try touch("b.mp3")]
@@ -439,14 +441,16 @@ private actor MockAudioTrackSelectionService: AudioTrackSelectingTranscriptionSe
 
     func transcribe(
         fileURL: URL,
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         audioTrackOrdinal: Int,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)?
     ) async throws -> Transcription {
         ordinals.append(audioTrackOrdinal)
-        guard tracksByFileName[fileURL.lastPathComponent]?.contains(where: {
-            $0.ordinal == audioTrackOrdinal
-        }) == true else {
+        guard
+            tracksByFileName[fileURL.lastPathComponent]?.contains(where: {
+                $0.ordinal == audioTrackOrdinal
+            }) == true
+        else {
             throw AudioProcessorError.conversionFailed(
                 "Audio track \(audioTrackOrdinal + 1) is unavailable."
             )
@@ -456,7 +460,7 @@ private actor MockAudioTrackSelectionService: AudioTrackSelectingTranscriptionSe
 
     func transcribeTransient(
         fileURL: URL,
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         audioTrackOrdinal: Int,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)?
     ) async throws -> Transcription {

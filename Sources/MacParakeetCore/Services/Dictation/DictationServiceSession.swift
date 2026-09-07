@@ -47,23 +47,13 @@ public final class DictationServiceSession {
         return activeSessionID
     }
 
-    public func startRecording(
-        sessionID: Int,
-        context: DictationTelemetryContext
-    ) async throws {
+    public func startRecording(sessionID: Int) async throws {
         try Task.checkCancellation()
-        try await service.startRecording(context: context, sessionID: sessionID)
+        try await service.startRecording(sessionID: sessionID)
     }
 
     public func stopRecording(sessionID: Int) async throws -> DictationResult {
         try await service.stopRecording(sessionID: sessionID)
-    }
-
-    public func updateTelemetryAppCategory(
-        _ appCategory: TelemetryAppCategory?,
-        sessionID: Int
-    ) async {
-        await service.updateTelemetryAppCategory(appCategory, sessionID: sessionID)
     }
 
     public func updateAIFormatterAppContext(
@@ -74,11 +64,8 @@ public final class DictationServiceSession {
         await service.updateAIFormatterAppContext(context, phase: phase, sessionID: sessionID)
     }
 
-    public func cancelRecording(
-        reason: TelemetryDictationCancelReason?,
-        sessionID: Int
-    ) async {
-        await service.cancelRecording(reason: reason, sessionID: sessionID)
+    public func cancelRecording(sessionID: Int) async {
+        await service.cancelRecording(sessionID: sessionID)
     }
 
     /// Discard the instant-dictation pre-roll from the named session's capture

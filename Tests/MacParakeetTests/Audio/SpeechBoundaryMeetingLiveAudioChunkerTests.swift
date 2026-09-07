@@ -5,9 +5,9 @@ import XCTest
 /// driven by a scripted fake VAD so no FluidAudio models are loaded.
 final class SpeechBoundaryMeetingLiveAudioChunkerTests: XCTestCase {
     private let window = 4_096
-    private let minChunkSamples = 32_000   // 2.0s
+    private let minChunkSamples = 32_000  // 2.0s
     private let maxChunkSamples = 160_000  // 10.0s
-    private let flushMinSamples = 8_000    // 0.5s
+    private let flushMinSamples = 8_000  // 0.5s
 
     // MARK: - speech-end emits
 
@@ -258,7 +258,8 @@ final class SpeechBoundaryMeetingLiveAudioChunkerTests: XCTestCase {
 
         XCTAssertEqual(chunks.count, 1, "only the single force-emit should be emitted")
         let diag = await chunker.diagnostics
-        XCTAssertEqual(diag.forceEmits, 1, "a stale end must not leave the speech flag set (which would force-emit silence)")
+        XCTAssertEqual(
+            diag.forceEmits, 1, "a stale end must not leave the speech flag set (which would force-emit silence)")
         XCTAssertGreaterThanOrEqual(diag.droppedSilenceWindows, 1, "post-speech silence should be dropped")
     }
 

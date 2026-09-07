@@ -20,7 +20,8 @@ enum TranscriptFindHighlight {
         for nsRange in ranges {
             guard let range = attributedRange(nsRange, in: text, attr: attr) else { continue }
             let isCurrent = (nsRange == current)
-            attr[range].backgroundColor = isCurrent
+            attr[range].backgroundColor =
+                isCurrent
                 ? DesignSystem.Colors.accent.opacity(0.55)
                 : DesignSystem.Colors.accent.opacity(0.22)
             if isCurrent {
@@ -39,8 +40,9 @@ enum TranscriptFindHighlight {
         attr: AttributedString
     ) -> Range<AttributedString.Index>? {
         guard let strRange = Range(nsRange, in: string),
-              let lower = AttributedString.Index(strRange.lowerBound, within: attr),
-              let upper = AttributedString.Index(strRange.upperBound, within: attr) else {
+            let lower = AttributedString.Index(strRange.lowerBound, within: attr),
+            let upper = AttributedString.Index(strRange.upperBound, within: attr)
+        else {
             return nil
         }
         return lower..<upper

@@ -51,19 +51,21 @@ public final class MeetingAudioRetentionSweeper: @unchecked Sendable {
         var skippedLockedCount = 0
 
         for transcription in transcriptions {
-            let hasLock = transcription.filePath
+            let hasLock =
+                transcription.filePath
                 .map { hasAnyRecordingLock(forAudioPath: $0) }
                 ?? false
             if hasLock {
                 skippedLockedCount += 1
             }
-            candidates.append(MeetingAudioRetentionPolicy.Candidate(
-                id: transcription.id,
-                hasAudioOnDisk: !(transcription.filePath?.isEmpty ?? true),
-                isCompleted: transcription.status == .completed,
-                ageReferenceDate: transcription.createdAt,
-                hasRecoveryLock: hasLock
-            ))
+            candidates.append(
+                MeetingAudioRetentionPolicy.Candidate(
+                    id: transcription.id,
+                    hasAudioOnDisk: !(transcription.filePath?.isEmpty ?? true),
+                    isCompleted: transcription.status == .completed,
+                    ageReferenceDate: transcription.createdAt,
+                    hasRecoveryLock: hasLock
+                ))
         }
 
         let eligibleIDs = Set(MeetingAudioRetentionPolicy.sweep(candidates, config: retention, now: now))

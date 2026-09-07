@@ -124,7 +124,7 @@ final class DailyDictationStatsTests: XCTestCase {
         let active: Set<String> = [
             DictationRepository.dayKey(for: today, calendar: cal),
             DictationRepository.dayKey(for: yesterday, calendar: cal),
-            DictationRepository.dayKey(for: twoDaysAgo, calendar: cal)
+            DictationRepository.dayKey(for: twoDaysAgo, calendar: cal),
         ]
         XCTAssertEqual(DictationRepository.computeCurrentDailyStreak(activeDays: active, calendar: cal), 3)
     }
@@ -137,7 +137,7 @@ final class DailyDictationStatsTests: XCTestCase {
 
         let active: Set<String> = [
             DictationRepository.dayKey(for: yesterday, calendar: cal),
-            DictationRepository.dayKey(for: twoDaysAgo, calendar: cal)
+            DictationRepository.dayKey(for: twoDaysAgo, calendar: cal),
         ]
         // Today missing → grace window starts at yesterday; streak counts back from there.
         XCTAssertEqual(DictationRepository.computeCurrentDailyStreak(activeDays: active, calendar: cal), 2)
@@ -168,9 +168,10 @@ final class DailyDictationStatsTests: XCTestCase {
         // Gap: Jan 10, 11.
         // Run C: 1 day (Jan 12).
         let activeOffsets = [0, 1, 2, 4, 5, 6, 7, 8, 11]
-        let active = Set(activeOffsets.map { offset in
-            DictationRepository.dayKey(for: cal.date(byAdding: .day, value: offset, to: base)!, calendar: cal)
-        })
+        let active = Set(
+            activeOffsets.map { offset in
+                DictationRepository.dayKey(for: cal.date(byAdding: .day, value: offset, to: base)!, calendar: cal)
+            })
         XCTAssertEqual(DictationRepository.computeLongestDailyStreak(activeDays: active, calendar: cal), 5)
     }
 

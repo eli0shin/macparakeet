@@ -30,7 +30,8 @@ public enum PromptSystemPromptAssembler {
         let truncationIndex = indexAfterNthWord(in: notes, n: userNotesPromptWordCap)
         guard let truncationIndex else { return notes }
         let kept = notes[..<truncationIndex]
-        return String(kept) + "\n\n[Notes truncated to \(userNotesPromptWordCap) words for summary generation; full notes preserved on the recording.]"
+        return String(kept)
+            + "\n\n[Notes truncated to \(userNotesPromptWordCap) words for summary generation; full notes preserved on the recording.]"
     }
 
     private static func indexAfterNthWord(in text: String, n: Int) -> String.Index? {

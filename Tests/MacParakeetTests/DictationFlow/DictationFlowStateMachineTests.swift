@@ -105,7 +105,7 @@ final class DictationFlowStateMachineTests: XCTestCase {
 
         let effects = m.handle(.readyPillRequested)
         XCTAssertEqual(m.state, .ready)
-        XCTAssertEqual(m.generation, gen) // generation unchanged
+        XCTAssertEqual(m.generation, gen)  // generation unchanged
         XCTAssertEqual(effects, [.rescheduleReadyDismissTimer])
     }
 
@@ -124,9 +124,9 @@ final class DictationFlowStateMachineTests: XCTestCase {
         var m = makeMachine()
         _ = m.handle(.readyPillRequested)
 
-        let effects = m.handle(.readyPillTimedOut(generation: 0)) // stale
+        let effects = m.handle(.readyPillTimedOut(generation: 0))  // stale
         XCTAssertTrue(effects.isEmpty)
-        XCTAssertEqual(m.state, .ready) // unchanged
+        XCTAssertEqual(m.state, .ready)  // unchanged
     }
 
     func testReadyStartRequested() {
@@ -136,7 +136,7 @@ final class DictationFlowStateMachineTests: XCTestCase {
 
         let effects = m.handle(.startRequested(mode: .holdToTalk))
         XCTAssertEqual(m.state, .checkingEntitlements(mode: .holdToTalk))
-        XCTAssertEqual(m.generation, gen) // same generation (seamless)
+        XCTAssertEqual(m.generation, gen)  // same generation (seamless)
         XCTAssertTrue(effects.contains(.cancelReadyDismissTimer))
         XCTAssertTrue(effects.contains(.checkEntitlements))
     }
@@ -196,7 +196,7 @@ final class DictationFlowStateMachineTests: XCTestCase {
         var m = makeMachine()
         _ = m.handle(.startRequested(mode: .persistent))
 
-        let effects = m.handle(.entitlementsGranted(generation: 0)) // stale
+        let effects = m.handle(.entitlementsGranted(generation: 0))  // stale
         XCTAssertTrue(effects.isEmpty)
         XCTAssertEqual(m.state, .checkingEntitlements(mode: .persistent))
     }
@@ -294,7 +294,7 @@ final class DictationFlowStateMachineTests: XCTestCase {
 
         let effects = m.handle(.stopRequested)
         XCTAssertEqual(m.state, .pendingStop(mode: .persistent))
-        XCTAssertTrue(effects.isEmpty) // deferred
+        XCTAssertTrue(effects.isEmpty)  // deferred
     }
 
     func testStartingServiceCancelRequested() {
@@ -467,7 +467,7 @@ final class DictationFlowStateMachineTests: XCTestCase {
 
         let effects = m.handle(.startRequested(mode: .holdToTalk))
         XCTAssertEqual(m.state, .checkingEntitlements(mode: .holdToTalk))
-        XCTAssertEqual(m.generation, oldGen + 1) // new generation
+        XCTAssertEqual(m.generation, oldGen + 1)  // new generation
         XCTAssertTrue(effects.contains(.cancelAllTimers))
         XCTAssertTrue(effects.contains(.cancelRecordingTask))
         XCTAssertTrue(effects.contains(.cancelRecording(reason: .ui)))
@@ -495,7 +495,7 @@ final class DictationFlowStateMachineTests: XCTestCase {
         _ = m.handle(.startRequested(mode: .persistent))
         let gen = m.generation
         _ = m.handle(.entitlementsGranted(generation: gen))
-        _ = m.handle(.stopRequested) // → pendingStop
+        _ = m.handle(.stopRequested)  // → pendingStop
         XCTAssertEqual(m.state, .pendingStop(mode: .persistent))
 
         let effects = m.handle(.recordingStarted(generation: gen))
@@ -1024,8 +1024,9 @@ final class DictationFlowStateMachineTests: XCTestCase {
         // Entitlements denied → must reset menu bar to idle
         let effects = m.handle(.entitlementsDenied(generation: gen))
         XCTAssertEqual(m.state, .idle)
-        XCTAssertTrue(effects.contains(.updateMenuBar(.idle)),
-                       "Menu bar must reset to idle after rapid restart + entitlement failure")
+        XCTAssertTrue(
+            effects.contains(.updateMenuBar(.idle)),
+            "Menu bar must reset to idle after rapid restart + entitlement failure")
         XCTAssertTrue(effects.contains(.hideOverlay))
         XCTAssertTrue(effects.contains(.showIdlePill))
     }
@@ -1160,7 +1161,7 @@ final class DictationFlowStateMachineTests: XCTestCase {
         let readyGen = m.generation
 
         _ = m.handle(.startRequested(mode: .persistent))
-        XCTAssertEqual(m.generation, readyGen) // seamless — same generation
+        XCTAssertEqual(m.generation, readyGen)  // seamless — same generation
     }
 
     func testIdleToStartBumpsGeneration() {

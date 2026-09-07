@@ -50,7 +50,8 @@ public final class TransformHistoryRepository: TransformHistoryRepositoryProtoco
         limit: Int = 200
     ) throws -> (entries: [TransformHistoryEntry], totalCount: Int) {
         try dbQueue.read { db in
-            let entries = try TransformHistoryEntry
+            let entries =
+                try TransformHistoryEntry
                 .order(TransformHistoryEntry.Columns.createdAt.desc)
                 .limit(max(0, limit))
                 .fetchAll(db)

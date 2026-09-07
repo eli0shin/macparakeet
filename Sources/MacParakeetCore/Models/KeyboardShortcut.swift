@@ -31,35 +31,35 @@ public struct KeyboardShortcut: Codable, Equatable, Hashable, Sendable {
     /// values for the Cocoa-side checks, intentionally compatible with the
     /// existing hotkey infrastructure.
     public enum ModifierFlag: UInt, CaseIterable, Sendable {
-        case command  = 0x100000   // NSEvent.ModifierFlags.command
-        case option   = 0x080000   // NSEvent.ModifierFlags.option
-        case control  = 0x040000   // NSEvent.ModifierFlags.control
-        case shift    = 0x020000   // NSEvent.ModifierFlags.shift
+        case command = 0x100000  // NSEvent.ModifierFlags.command
+        case option = 0x080000  // NSEvent.ModifierFlags.option
+        case control = 0x040000  // NSEvent.ModifierFlags.control
+        case shift = 0x020000  // NSEvent.ModifierFlags.shift
 
         public var displayGlyph: String {
             switch self {
             case .command: return "⌘"
-            case .option:  return "⌥"
+            case .option: return "⌥"
             case .control: return "⌃"
-            case .shift:   return "⇧"
+            case .shift: return "⇧"
             }
         }
 
         public var displayName: String {
             switch self {
             case .command: return "Command"
-            case .option:  return "Option"
+            case .option: return "Option"
             case .control: return "Control"
-            case .shift:   return "Shift"
+            case .shift: return "Shift"
             }
         }
 
         fileprivate var hotkeyTriggerModifierName: String {
             switch self {
             case .command: return "command"
-            case .option:  return "option"
+            case .option: return "option"
             case .control: return "control"
-            case .shift:   return "shift"
+            case .shift: return "shift"
             }
         }
     }
@@ -75,7 +75,8 @@ public struct KeyboardShortcut: Codable, Equatable, Hashable, Sendable {
     /// Render modifiers in the canonical macOS order: ⌃ ⌥ ⇧ ⌘.
     public var displayString: String {
         let ordered: [ModifierFlag] = [.control, .option, .shift, .command]
-        let glyphs = ordered
+        let glyphs =
+            ordered
             .filter { (modifiers & $0.rawValue) != 0 }
             .map(\.displayGlyph)
             .joined()
@@ -108,7 +109,8 @@ public struct KeyboardShortcut: Codable, Equatable, Hashable, Sendable {
     /// `ctrl`, `control`, `⌃` → control
     /// `shift`, `⇧` → shift
     public static func parse(_ raw: String) -> KeyboardShortcut? {
-        let tokens = raw
+        let tokens =
+            raw
             .split(whereSeparator: { "+- ".contains($0) })
             .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
             .filter { !$0.isEmpty }
@@ -120,7 +122,7 @@ public struct KeyboardShortcut: Codable, Equatable, Hashable, Sendable {
             if let flag = parseModifier(token) {
                 mods |= flag.rawValue
             } else {
-                guard keyToken == nil else { return nil } // two non-modifier tokens
+                guard keyToken == nil else { return nil }  // two non-modifier tokens
                 keyToken = token
             }
         }
@@ -133,9 +135,9 @@ public struct KeyboardShortcut: Codable, Equatable, Hashable, Sendable {
     private static func parseModifier(_ token: String) -> ModifierFlag? {
         switch token {
         case "cmd", "command", "meta", "⌘": return .command
-        case "opt", "option", "alt", "⌥":   return .option
-        case "ctrl", "control", "⌃":         return .control
-        case "shift", "⇧":                   return .shift
+        case "opt", "option", "alt", "⌥": return .option
+        case "ctrl", "control", "⌃": return .control
+        case "shift", "⇧": return .shift
         default: return nil
         }
     }
@@ -179,12 +181,12 @@ public struct KeyboardShortcut: Codable, Equatable, Hashable, Sendable {
     ]
 
     private static let namedKeyCodes: [String: (UInt16, String)] = [
-        "space":  (0x31, "Space"),
+        "space": (0x31, "Space"),
         "return": (0x24, "Return"),
-        "enter":  (0x24, "Return"),
-        "tab":    (0x30, "Tab"),
+        "enter": (0x24, "Return"),
+        "tab": (0x30, "Tab"),
         "escape": (0x35, "Escape"),
-        "esc":    (0x35, "Escape"),
+        "esc": (0x35, "Escape"),
     ]
 
     private static let namedKeyLabelsByKeyCode: [UInt16: String] = [

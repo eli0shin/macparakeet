@@ -14,9 +14,10 @@ final class MeetingAecRenderThroughputTests: XCTestCase {
     func testLocalVQECleanedMicRenderThroughput() async throws {
         let env = ProcessInfo.processInfo.environment
         guard let libraryPath = env[Self.libraryKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !libraryPath.isEmpty,
-              let modelPath = env[Self.modelKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !modelPath.isEmpty else {
+            !libraryPath.isEmpty,
+            let modelPath = env[Self.modelKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !modelPath.isEmpty
+        else {
             throw XCTSkip("Set \(Self.libraryKey) and \(Self.modelKey) to measure real LocalVQE render throughput.")
         }
 
@@ -59,17 +60,20 @@ final class MeetingAecRenderThroughputTests: XCTestCase {
             conditioner: conditioner
         )
         let elapsed = started.duration(to: .now)
-        let elapsedSeconds = Double(elapsed.components.seconds)
+        let elapsedSeconds =
+            Double(elapsed.components.seconds)
             + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000_000
         let audioSeconds = Double(result.output.count) / Double(sampleRate)
         let realtimeFactor = audioSeconds / elapsedSeconds
-        print(String(
-            format: "[AEC-THROUGHPUT] LocalVQE cleaned-mic conditioning: audio %.1fs elapsed %.3fs throughput %.2fx failures %ld",
-            audioSeconds,
-            elapsedSeconds,
-            realtimeFactor,
-            result.processingFailures
-        ))
+        print(
+            String(
+                format:
+                    "[AEC-THROUGHPUT] LocalVQE cleaned-mic conditioning: audio %.1fs elapsed %.3fs throughput %.2fx failures %ld",
+                audioSeconds,
+                elapsedSeconds,
+                realtimeFactor,
+                result.processingFailures
+            ))
         XCTAssertEqual(result.output.count, scenario.sampleCount)
         XCTAssertEqual(result.processingFailures, 0)
     }

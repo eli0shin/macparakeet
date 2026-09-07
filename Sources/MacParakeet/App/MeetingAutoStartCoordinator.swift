@@ -327,7 +327,8 @@ final class MeetingAutoStartCoordinator {
         // Soonest *future* start — drives auto-start window accuracy. With
         // auto-stop removed, the next start is the only thing the cadence
         // needs to track.
-        let nextStart = events
+        let nextStart =
+            events
             .filter { $0.startTime > now }
             .map { $0.startTime.timeIntervalSince(now) }
             .min()
@@ -389,7 +390,6 @@ final class MeetingAutoStartCoordinator {
         // Actual lead time — how far before T-0 the toast went up. The
         // auto-start window allows up to +30s past T-0, so clamp to 0
         // when we surface it after the event has already started.
-        let leadSeconds = max(0, Int(event.startTime.timeIntervalSinceNow.rounded()))
         let serviceName = event.meetUrl.flatMap(MeetingLinkParser.shared.identifyService)
 
         // Rich variant per ADR-020 §10: only the calendar-driven start
@@ -408,14 +408,6 @@ final class MeetingAutoStartCoordinator {
         ) { [weak self] outcome in
             self?.handleAutoStartOutcome(outcome, for: event)
         }
-
-        // Fire telemetry *after* `showAutoStart` returns so the event name
-        // matches what the user actually saw — its docstring says "fires
-        // when the toast is presented."
-        Telemetry.send(.calendarAutoStartTriggered(
-            leadSeconds: leadSeconds,
-            hasMeetUrl: event.meetUrl != nil
-        ))
     }
 
     /// Internal entry point for the auto-start outcome routing. Public to
@@ -426,7 +418,8 @@ final class MeetingAutoStartCoordinator {
         switch outcome {
         case .completed, .primedEarly:
             guard settingsViewModel.calendarAutoStartMode == .autoStart,
-                  calendarService.permissionStatus == .granted else {
+                calendarService.permissionStatus == .granted
+            else {
                 countdownShownEventIds.remove(event.dedupeKey)
                 logger.info("Auto-start completion ignored — calendar auto-start is no longer enabled")
                 return
@@ -441,23 +434,26 @@ final class MeetingAutoStartCoordinator {
                 // auto-start window [start-5s, start+30s]; later than that is
                 // Phase-3 late-join territory.
                 countdownShownEventIds.remove(event.dedupeKey)
-                logger.info("Auto-start rejected (state busy) for event id=\(event.id, privacy: .public) — will retry after current recording ends")
+                logger.info(
+                    "Auto-start rejected (state busy) for event id=\(event.id, privacy: .public) — will retry after current recording ends"
+                )
                 return
             }
-            logger.info("Auto-start confirmed for event id=\(event.id, privacy: .public) outcome=\(String(describing: outcome), privacy: .public)")
+            logger.info(
+                "Auto-start confirmed for event id=\(event.id, privacy: .public) outcome=\(String(describing: outcome), privacy: .public)"
+            )
         case .userDismissed:
             dismissedEventIds.insert(event.dedupeKey)
-            Telemetry.send(.calendarAutoStartCancelled(reason: "user_cancel"))
             logger.info("Auto-start cancelled by user for event id=\(event.id, privacy: .public)")
         case .programmaticClose:
-            // Another toast preempted us — no telemetry, no recording.
+            // Another toast preempted us, so no recording starts.
             return
         }
     }
 
     func probableSnapshotForManualStart(now: Date = Date()) -> MeetingCalendarSnapshot? {
         guard settingsViewModel.calendarAutoStartMode != .off,
-              calendarService.permissionStatus == .granted
+            calendarService.permissionStatus == .granted
         else {
             return nil
         }
@@ -547,7 +543,9 @@ private extension MeetingAutoStartCoordinator {
         // this check macOS silently drops `add()` and the user sees no
         // reminder despite Calendar being granted.
         guard await CalendarNotificationAuthorization.isAuthorized() else {
-            logger.warning("Notification authorization missing — reminder for event id=\(event.id, privacy: .public) not delivered")
+            logger.warning(
+                "Notification authorization missing — reminder for event id=\(event.id, privacy: .public) not delivered"
+            )
             return
         }
 
@@ -577,19 +575,12 @@ private extension MeetingAutoStartCoordinator {
             trigger: nil  // Deliver immediately
         )
 
-        // Only report `calendarReminderShown` after delivery actually succeeds —
-        // otherwise telemetry over-reports and we lose signal on real failure
-        // rates. The `remindedEventIds` mark above stays before the auth check,
+        // The `remindedEventIds` mark above stays before the authorization check,
         // because the alternative (mark on success only) would re-attempt every
         // poll tick when delivery transiently fails — better to miss a single
         // reminder than spam the user.
         do {
             try await UNUserNotificationCenter.current().add(request)
-            Telemetry.send(.calendarReminderShown(
-                mode: mode.rawValue,
-                leadMinutes: leadMinutes,
-                hasMeetUrl: event.meetUrl != nil
-            ))
             logger.info("Reminder posted for event id=\(event.id, privacy: .public)")
         } catch {
             logger.error("Reminder notification failed: \(error.localizedDescription, privacy: .public)")

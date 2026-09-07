@@ -122,9 +122,9 @@ private struct NoSpeechContentView: View {
         // behind `NoSpeechAnimationTiming.isDismissWindowSufficient`.
         assert(
             NoSpeechAnimationTiming.isDismissWindowSufficient,
-            "No-speech dismiss window (\(NoSpeechAnimationTiming.dismissSeconds)s) is too short for " +
-            "estimated animation completion (\(NoSpeechAnimationTiming.estimatedAnimationCompletionSeconds)s) " +
-            "+ buffer (\(NoSpeechAnimationTiming.completionBufferSeconds)s)."
+            "No-speech dismiss window (\(NoSpeechAnimationTiming.dismissSeconds)s) is too short for "
+                + "estimated animation completion (\(NoSpeechAnimationTiming.estimatedAnimationCompletionSeconds)s) "
+                + "+ buffer (\(NoSpeechAnimationTiming.completionBufferSeconds)s)."
         )
         #endif
 
@@ -148,7 +148,10 @@ private struct NoSpeechContentView: View {
             textOpacity = 0.95
         }
         // Leaf softly recedes so text reads clean
-        withAnimation(.easeOut(duration: NoSpeechAnimationTiming.leafRecedeDuration).delay(NoSpeechAnimationTiming.leafRecedeDelay - NoSpeechAnimationTiming.leafFadeInDelay)) {
+        withAnimation(
+            .easeOut(duration: NoSpeechAnimationTiming.leafRecedeDuration).delay(
+                NoSpeechAnimationTiming.leafRecedeDelay - NoSpeechAnimationTiming.leafFadeInDelay)
+        ) {
             leafVisible = 0.3
         }
     }
@@ -180,9 +183,9 @@ private struct NoSpeechLightDrift: View {
             let w = geo.size.width
             LinearGradient(
                 stops: [
-                    .init(color: .white.opacity(0),    location: 0.20),
+                    .init(color: .white.opacity(0), location: 0.20),
                     .init(color: .white.opacity(0.16), location: 0.50),
-                    .init(color: .white.opacity(0),    location: 0.80),
+                    .init(color: .white.opacity(0), location: 0.80),
                 ],
                 startPoint: .leading,
                 endPoint: .trailing
@@ -368,7 +371,7 @@ struct DictationOverlayView: View {
                         recordingContent
                     }
                 }
-                    .transition(.opacity.animation(.easeInOut(duration: 0.2)))
+                .transition(.opacity.animation(.easeInOut(duration: 0.2)))
 
             case .cancelled:
                 cancelledContent
@@ -384,7 +387,9 @@ struct DictationOverlayView: View {
 
             case .success:
                 successContent
-                    .transition(.scale(scale: 0.8).combined(with: .opacity).animation(.spring(response: 0.35, dampingFraction: 0.7)))
+                    .transition(
+                        .scale(scale: 0.8).combined(with: .opacity).animation(
+                            .spring(response: 0.35, dampingFraction: 0.7)))
 
             case .noSpeech:
                 noSpeechContent
@@ -463,7 +468,8 @@ struct DictationOverlayView: View {
     /// not clip); the type scale, line spacing, vertical breathing room, and the
     /// readout viewport height grow with size. `visibleHeight` is sized for
     /// roughly three lines so older lines have room to rise and fade at the top.
-    private var previewMetrics: (font: CGFloat, lineSpacing: CGFloat, verticalPadding: CGFloat, visibleHeight: CGFloat) {
+    private var previewMetrics: (font: CGFloat, lineSpacing: CGFloat, verticalPadding: CGFloat, visibleHeight: CGFloat)
+    {
         switch viewModel.previewTextSize {
         case .small:
             return (13, 1, 8, 50)
@@ -537,36 +543,36 @@ struct DictationOverlayView: View {
                             // its own first line.
                             .init(color: isOverflowing ? .clear : .black, location: 0),
                             .init(color: .black, location: 0.22),
-                            .init(color: .black, location: 1)
+                            .init(color: .black, location: 1),
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
-            .padding(.horizontal, 12)
-            .padding(.vertical, metrics.verticalPadding)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(DesignSystem.Colors.pillBackground.opacity(0.86))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(DesignSystem.Colors.pillBorder.opacity(0.42), lineWidth: 0.5)
-                    )
-                    .shadow(color: .black.opacity(0.24), radius: 8, y: 3)
-            )
-            .allowsHitTesting(false)
-            .accessibilityLabel(liveTranscriptPreview)
-            // Drop the measured height when the readout leaves the screen so the
-            // next dictation starts snug from one line rather than inheriting the
-            // previous session's tall viewport (which would strand the first
-            // words at the bottom for a frame).
-            .onDisappear { liveTranscriptContentHeight = 0 }
-            .padding(.bottom, 2)
-            // Grow/shrink the card smoothly as lines arrive (or the size
-            // changes live in Settings) instead of snapping between heights.
-            .animation(.easeInOut(duration: 0.18), value: viewportHeight)
-            .animation(.easeInOut(duration: 0.2), value: viewModel.previewTextSize)
-            .transition(.move(edge: .bottom).combined(with: .opacity).animation(.easeInOut(duration: 0.16)))
+                .padding(.horizontal, 12)
+                .padding(.vertical, metrics.verticalPadding)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(DesignSystem.Colors.pillBackground.opacity(0.86))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(DesignSystem.Colors.pillBorder.opacity(0.42), lineWidth: 0.5)
+                        )
+                        .shadow(color: .black.opacity(0.24), radius: 8, y: 3)
+                )
+                .allowsHitTesting(false)
+                .accessibilityLabel(liveTranscriptPreview)
+                // Drop the measured height when the readout leaves the screen so the
+                // next dictation starts snug from one line rather than inheriting the
+                // previous session's tall viewport (which would strand the first
+                // words at the bottom for a frame).
+                .onDisappear { liveTranscriptContentHeight = 0 }
+                .padding(.bottom, 2)
+                // Grow/shrink the card smoothly as lines arrive (or the size
+                // changes live in Settings) instead of snapping between heights.
+                .animation(.easeInOut(duration: 0.18), value: viewportHeight)
+                .animation(.easeInOut(duration: 0.2), value: viewModel.previewTextSize)
+                .transition(.move(edge: .bottom).combined(with: .opacity).animation(.easeInOut(duration: 0.16)))
         }
     }
 
@@ -854,11 +860,13 @@ struct DictationOverlayView: View {
         }
         if lower.contains("stt") || lower.contains("speech engine") || lower.contains("engine")
             || lower.contains("model not loaded")
-            || lower.contains("failed to start") {
+            || lower.contains("failed to start")
+        {
             return ("Speech Engine Not Ready", "Run onboarding or go to Settings > Speech Model > Repair.")
         }
         if lower.contains("couldn't hear") || lower.contains("empty")
-            || lower.contains("too short") || lower.contains("insufficient") {
+            || lower.contains("too short") || lower.contains("insufficient")
+        {
             return ("No Speech Detected", "Try speaking louder or holding a bit longer.")
         }
         if lower.contains("copied to clipboard") || lower.contains("cmd+v") {
@@ -900,7 +908,8 @@ struct DictationOverlayView: View {
             // Split into action text and key shortcut: "Cancel (Esc)" → "Cancel " + "Esc"
             Group {
                 if let parenStart = tooltip.firstIndex(of: "("),
-                   let parenEnd = tooltip.firstIndex(of: ")") {
+                    let parenEnd = tooltip.firstIndex(of: ")")
+                {
                     let action = String(tooltip[tooltip.startIndex..<parenStart])
                     let key = String(tooltip[tooltip.index(after: parenStart)..<parenEnd])
                     HStack(spacing: 4) {
@@ -935,54 +944,62 @@ struct DictationOverlayView: View {
 
 #Preview {
     VStack(spacing: 20) {
-        DictationOverlayView(viewModel: {
-            let vm = DictationOverlayViewModel()
-            vm.state = .ready
-            return vm
-        }())
+        DictationOverlayView(
+            viewModel: {
+                let vm = DictationOverlayViewModel()
+                vm.state = .ready
+                return vm
+            }())
 
-        DictationOverlayView(viewModel: {
-            let vm = DictationOverlayViewModel()
-            vm.state = .recording
-            vm.audioLevel = 0.5
-            return vm
-        }())
+        DictationOverlayView(
+            viewModel: {
+                let vm = DictationOverlayViewModel()
+                vm.state = .recording
+                vm.audioLevel = 0.5
+                return vm
+            }())
 
-        DictationOverlayView(viewModel: {
-            let vm = DictationOverlayViewModel()
-            vm.state = .cancelled(timeRemaining: 3.0)
-            return vm
-        }())
+        DictationOverlayView(
+            viewModel: {
+                let vm = DictationOverlayViewModel()
+                vm.state = .cancelled(timeRemaining: 3.0)
+                return vm
+            }())
 
-        DictationOverlayView(viewModel: {
-            let vm = DictationOverlayViewModel()
-            vm.state = .processing
-            return vm
-        }())
+        DictationOverlayView(
+            viewModel: {
+                let vm = DictationOverlayViewModel()
+                vm.state = .processing
+                return vm
+            }())
 
-        DictationOverlayView(viewModel: {
-            let vm = DictationOverlayViewModel()
-            vm.state = .success
-            return vm
-        }())
+        DictationOverlayView(
+            viewModel: {
+                let vm = DictationOverlayViewModel()
+                vm.state = .success
+                return vm
+            }())
 
-        DictationOverlayView(viewModel: {
-            let vm = DictationOverlayViewModel()
-            vm.state = .noSpeech
-            return vm
-        }())
+        DictationOverlayView(
+            viewModel: {
+                let vm = DictationOverlayViewModel()
+                vm.state = .noSpeech
+                return vm
+            }())
 
-        DictationOverlayView(viewModel: {
-            let vm = DictationOverlayViewModel()
-            vm.state = .error("Failed to start speech engine: model not loaded")
-            return vm
-        }())
+        DictationOverlayView(
+            viewModel: {
+                let vm = DictationOverlayViewModel()
+                vm.state = .error("Failed to start speech engine: model not loaded")
+                return vm
+            }())
 
-        DictationOverlayView(viewModel: {
-            let vm = DictationOverlayViewModel()
-            vm.state = .error("Microphone access denied")
-            return vm
-        }())
+        DictationOverlayView(
+            viewModel: {
+                let vm = DictationOverlayViewModel()
+                vm.state = .error("Microphone access denied")
+                return vm
+            }())
     }
     .padding(30)
     .background(Color.gray.opacity(0.3))

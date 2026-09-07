@@ -74,7 +74,8 @@ final class PromptsCommandTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError, got \(error)")
             }
-            if case .notFound = lookupError {} else {
+            if case .notFound = lookupError {
+            } else {
                 XCTFail("Expected .notFound, got \(lookupError)")
             }
         }
@@ -82,7 +83,8 @@ final class PromptsCommandTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError, got \(error)")
             }
-            if case .notFound = lookupError {} else {
+            if case .notFound = lookupError {
+            } else {
                 XCTFail("Expected .notFound, got \(lookupError)")
             }
         }
@@ -96,7 +98,8 @@ final class PromptsCommandTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError, got \(error)")
             }
-            if case .notFound = lookupError {} else {
+            if case .notFound = lookupError {
+            } else {
                 XCTFail("Expected .notFound, got \(lookupError)")
             }
         }
@@ -110,7 +113,8 @@ final class PromptsCommandTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError")
             }
-            if case .emptyID = lookupError {} else {
+            if case .emptyID = lookupError {
+            } else {
                 XCTFail("Expected .emptyID, got \(lookupError)")
             }
         }
@@ -129,7 +133,8 @@ final class PromptsCommandTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError")
             }
-            if case .ambiguous = lookupError {} else {
+            if case .ambiguous = lookupError {
+            } else {
                 XCTFail("Expected .ambiguous, got \(lookupError)")
             }
         }
@@ -183,8 +188,9 @@ final class PromptsCommandTests: XCTestCase {
         XCTAssertThrowsError(
             try PromptsCommand.SetSubcommand.parse(["anything", "--hidden", "--auto-run"])
         ) { error in
-            XCTAssertTrue(String(describing: error).contains("auto-run requires visible"),
-                          "Expected message about auto-run requiring visible, got: \(error)")
+            XCTAssertTrue(
+                String(describing: error).contains("auto-run requires visible"),
+                "Expected message about auto-run requiring visible, got: \(error)")
         }
     }
 
@@ -433,7 +439,7 @@ final class PromptsCommandTests: XCTestCase {
     func testAddRejectsContentAndFromFileTogether() {
         XCTAssertThrowsError(
             try PromptsCommand.AddSubcommand.parse([
-                "--name", "X", "--content", "body", "--from-file", "/tmp/file.txt"
+                "--name", "X", "--content", "body", "--from-file", "/tmp/file.txt",
             ])
         )
     }

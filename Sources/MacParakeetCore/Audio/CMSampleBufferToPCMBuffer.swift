@@ -32,11 +32,12 @@ struct CMSampleBufferToPCMBuffer {
             throw CMSampleBufferToPCMBufferError.missingFormatDescription
         }
         guard let streamDescription = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription),
-              let format = AVAudioFormat(streamDescription: streamDescription),
-              let buffer = AVAudioPCMBuffer(
+            let format = AVAudioFormat(streamDescription: streamDescription),
+            let buffer = AVAudioPCMBuffer(
                 pcmFormat: format,
                 frameCapacity: AVAudioFrameCount(sampleCount)
-              ) else {
+            )
+        else {
             throw CMSampleBufferToPCMBufferError.invalidAudioFormat
         }
 

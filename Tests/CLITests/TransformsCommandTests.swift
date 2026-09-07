@@ -11,8 +11,9 @@ final class TransformsCommandTests: XCTestCase {
     func testParsesListAsDefaultSubcommand() throws {
         // `macparakeet-cli transforms` (no subcommand) → ListSubcommand.
         let cmd = try TransformsCommand.parseAsRoot([])
-        XCTAssertTrue(cmd is TransformsCommand.ListSubcommand,
-                      "Bare `transforms` should default to ListSubcommand.")
+        XCTAssertTrue(
+            cmd is TransformsCommand.ListSubcommand,
+            "Bare `transforms` should default to ListSubcommand.")
     }
 
     func testParsesListWithJSON() throws {
@@ -310,7 +311,8 @@ final class TransformsCommandTests: XCTestCase {
 
         XCTAssertThrowsError(try show.run()) { error in
             let message = String(describing: error)
-            XCTAssertTrue(message.contains("No Transform found"), "Expected short-prefix lookup to fail, got: \(message)")
+            XCTAssertTrue(
+                message.contains("No Transform found"), "Expected short-prefix lookup to fail, got: \(message)")
         }
     }
 
@@ -355,7 +357,9 @@ final class TransformsCommandTests: XCTestCase {
         ])
         XCTAssertThrowsError(try del.run()) { error in
             let message = String(describing: error)
-            XCTAssertTrue(message.contains("Cannot delete the built-in Transform"), "Expected UUID prefix to resolve before exact name, got: \(message)")
+            XCTAssertTrue(
+                message.contains("Cannot delete the built-in Transform"),
+                "Expected UUID prefix to resolve before exact name, got: \(message)")
         }
 
         let after = try repo.fetchVisible(category: .transform)
@@ -372,22 +376,24 @@ final class TransformsCommandTests: XCTestCase {
 
         let db = try DatabaseManager(path: dbPath)
         let repo = PromptRepository(dbQueue: db.dbQueue)
-        try repo.save(Prompt(
-            id: UUID(),
-            name: "straße",
-            content: "First body.",
-            category: .transform,
-            isBuiltIn: false,
-            sortOrder: 200
-        ))
-        try repo.save(Prompt(
-            id: UUID(),
-            name: "STRASSE",
-            content: "Second body.",
-            category: .transform,
-            isBuiltIn: false,
-            sortOrder: 201
-        ))
+        try repo.save(
+            Prompt(
+                id: UUID(),
+                name: "straße",
+                content: "First body.",
+                category: .transform,
+                isBuiltIn: false,
+                sortOrder: 200
+            ))
+        try repo.save(
+            Prompt(
+                id: UUID(),
+                name: "STRASSE",
+                content: "Second body.",
+                category: .transform,
+                isBuiltIn: false,
+                sortOrder: 201
+            ))
 
         let show = try TransformsCommand.ShowSubcommand.parse([
             "strasse",
@@ -396,7 +402,9 @@ final class TransformsCommandTests: XCTestCase {
 
         XCTAssertThrowsError(try show.run()) { error in
             let message = String(describing: error)
-            XCTAssertTrue(message.contains("matches multiple Transforms"), "Expected ambiguous Unicode name lookup, got: \(message)")
+            XCTAssertTrue(
+                message.contains("matches multiple Transforms"),
+                "Expected ambiguous Unicode name lookup, got: \(message)")
         }
     }
 
@@ -667,14 +675,15 @@ final class TransformsCommandTests: XCTestCase {
         polish.keyboardShortcut = KeyboardShortcut.parse("cmd+d")?.encodedString()
         try repo.save(polish)
 
-        try repo.save(Prompt(
-            name: "Hidden duplicate",
-            content: "Body",
-            category: .transform,
-            isBuiltIn: false,
-            isVisible: false,
-            keyboardShortcut: KeyboardShortcut.parse("ctrl+opt+1")?.encodedString()
-        ))
+        try repo.save(
+            Prompt(
+                name: "Hidden duplicate",
+                content: "Body",
+                category: .transform,
+                isBuiltIn: false,
+                isVisible: false,
+                keyboardShortcut: KeyboardShortcut.parse("ctrl+opt+1")?.encodedString()
+            ))
 
         let command = try TransformsCommand.RestoreDefaultsSubcommand.parse([
             "--transform", "Polish",
@@ -810,7 +819,8 @@ final class TransformsCommandTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(show as? TransformsCommand.HistorySubcommand.ShowSubcommand).idPrefix, "abc123")
 
         let delete = try TransformsCommand.parseAsRoot(["history", "delete", "abc123"])
-        XCTAssertEqual(try XCTUnwrap(delete as? TransformsCommand.HistorySubcommand.DeleteSubcommand).idPrefix, "abc123")
+        XCTAssertEqual(
+            try XCTUnwrap(delete as? TransformsCommand.HistorySubcommand.DeleteSubcommand).idPrefix, "abc123")
 
         let clear = try TransformsCommand.parseAsRoot(["history", "clear", "--json"])
         XCTAssertTrue(try XCTUnwrap(clear as? TransformsCommand.HistorySubcommand.ClearSubcommand).json)
@@ -926,28 +936,30 @@ final class TransformsCommandTests: XCTestCase {
 
         let db = try DatabaseManager(path: dbPath)
         let repo = TransformHistoryRepository(dbQueue: db.dbQueue)
-        try repo.save(TransformHistoryEntry(
-            id: UUID(uuidString: "44444444-4444-4444-4444-444444444444")!,
-            transformName: "Older",
-            inputText: "old",
-            outputText: "older out",
-            capturePath: "ax",
-            replacementPath: "ax",
-            llmElapsedMs: 1,
-            totalElapsedMs: 2,
-            createdAt: Date(timeIntervalSince1970: 1)
-        ))
-        try repo.save(TransformHistoryEntry(
-            id: UUID(uuidString: "55555555-5555-5555-5555-555555555555")!,
-            transformName: "Newer",
-            inputText: "new",
-            outputText: "newer out",
-            capturePath: "stdin",
-            replacementPath: "stdout",
-            llmElapsedMs: 3,
-            totalElapsedMs: 4,
-            createdAt: Date(timeIntervalSince1970: 2)
-        ))
+        try repo.save(
+            TransformHistoryEntry(
+                id: UUID(uuidString: "44444444-4444-4444-4444-444444444444")!,
+                transformName: "Older",
+                inputText: "old",
+                outputText: "older out",
+                capturePath: "ax",
+                replacementPath: "ax",
+                llmElapsedMs: 1,
+                totalElapsedMs: 2,
+                createdAt: Date(timeIntervalSince1970: 1)
+            ))
+        try repo.save(
+            TransformHistoryEntry(
+                id: UUID(uuidString: "55555555-5555-5555-5555-555555555555")!,
+                transformName: "Newer",
+                inputText: "new",
+                outputText: "newer out",
+                capturePath: "stdin",
+                replacementPath: "stdout",
+                llmElapsedMs: 3,
+                totalElapsedMs: 4,
+                createdAt: Date(timeIntervalSince1970: 2)
+            ))
 
         let list = try TransformsCommand.HistorySubcommand.ListSubcommand.parse([
             "--limit", "1",
@@ -987,26 +999,28 @@ final class TransformsCommandTests: XCTestCase {
 
         let db = try DatabaseManager(path: dbPath)
         let repo = TransformHistoryRepository(dbQueue: db.dbQueue)
-        try repo.save(TransformHistoryEntry(
-            id: UUID(uuidString: "ABCD1111-1111-1111-1111-111111111111")!,
-            transformName: "First",
-            inputText: "one",
-            outputText: "One.",
-            capturePath: "ax",
-            replacementPath: "ax",
-            llmElapsedMs: 1,
-            totalElapsedMs: 2
-        ))
-        try repo.save(TransformHistoryEntry(
-            id: UUID(uuidString: "ABCD2222-2222-2222-2222-222222222222")!,
-            transformName: "Second",
-            inputText: "two",
-            outputText: "Two.",
-            capturePath: "ax",
-            replacementPath: "ax",
-            llmElapsedMs: 3,
-            totalElapsedMs: 4
-        ))
+        try repo.save(
+            TransformHistoryEntry(
+                id: UUID(uuidString: "ABCD1111-1111-1111-1111-111111111111")!,
+                transformName: "First",
+                inputText: "one",
+                outputText: "One.",
+                capturePath: "ax",
+                replacementPath: "ax",
+                llmElapsedMs: 1,
+                totalElapsedMs: 2
+            ))
+        try repo.save(
+            TransformHistoryEntry(
+                id: UUID(uuidString: "ABCD2222-2222-2222-2222-222222222222")!,
+                transformName: "Second",
+                inputText: "two",
+                outputText: "Two.",
+                capturePath: "ax",
+                replacementPath: "ax",
+                llmElapsedMs: 3,
+                totalElapsedMs: 4
+            ))
 
         let show = try TransformsCommand.HistorySubcommand.ShowSubcommand.parse([
             "abcd",

@@ -8,24 +8,27 @@ final class AppEnvironmentTests: XCTestCase {
             .implicitSystemDefault(resolvedDeviceID: 20),
             MeetingInputDeviceAttempt(source: .builtIn, deviceID: 30),
         ]
-        XCTAssertTrue(AppEnvironment.shouldSuppressWarmCapture(
-            deviceAttempts: systemDefaultAttempts,
-            isBluetoothInput: { $0 == 20 }
-        ))
+        XCTAssertTrue(
+            AppEnvironment.shouldSuppressWarmCapture(
+                deviceAttempts: systemDefaultAttempts,
+                isBluetoothInput: { $0 == 20 }
+            ))
 
         let namedMicAttempts: [MeetingInputDeviceAttempt] = [
             MeetingInputDeviceAttempt(source: .selected(uid: "usb-mic"), deviceID: 10),
             .implicitSystemDefault(resolvedDeviceID: 20),
         ]
-        XCTAssertFalse(AppEnvironment.shouldSuppressWarmCapture(
-            deviceAttempts: namedMicAttempts,
-            isBluetoothInput: { $0 == 20 }
-        ))
+        XCTAssertFalse(
+            AppEnvironment.shouldSuppressWarmCapture(
+                deviceAttempts: namedMicAttempts,
+                isBluetoothInput: { $0 == 20 }
+            ))
 
-        XCTAssertTrue(AppEnvironment.shouldSuppressWarmCapture(
-            deviceAttempts: [.implicitSystemDefault(resolvedDeviceID: nil)],
-            isBluetoothInput: { _ in false }
-        ))
+        XCTAssertTrue(
+            AppEnvironment.shouldSuppressWarmCapture(
+                deviceAttempts: [.implicitSystemDefault(resolvedDeviceID: nil)],
+                isBluetoothInput: { _ in false }
+            ))
 
         XCTAssertTrue(
             AppEnvironment.shouldSuppressWarmCapture(
@@ -37,22 +40,25 @@ final class AppEnvironmentTests: XCTestCase {
     }
 
     func testCohereDictationRoutingDisablesLiveAndDisplayPreview() {
-        XCTAssertFalse(AppEnvironment.shouldAttemptLiveDictationTranscription(
-            speechEngine: .cohere,
-            liveDictationStreamingEnabled: true
-        ))
-        XCTAssertNil(AppEnvironment.dictationPreviewSpeechEngine(
-            speechEngine: .cohere,
-            liveDictationStreamingEnabled: true
-        ))
+        XCTAssertFalse(
+            AppEnvironment.shouldAttemptLiveDictationTranscription(
+                speechEngine: .cohere,
+                liveDictationStreamingEnabled: true
+            ))
+        XCTAssertNil(
+            AppEnvironment.dictationPreviewSpeechEngine(
+                speechEngine: .cohere,
+                liveDictationStreamingEnabled: true
+            ))
     }
 
     func testParakeetDictationRoutingUsesVariantCapabilities() {
-        XCTAssertFalse(AppEnvironment.shouldAttemptLiveDictationTranscription(
-            speechEngine: .parakeet,
-            parakeetModelVariant: .v3,
-            liveDictationStreamingEnabled: true
-        ))
+        XCTAssertFalse(
+            AppEnvironment.shouldAttemptLiveDictationTranscription(
+                speechEngine: .parakeet,
+                parakeetModelVariant: .v3,
+                liveDictationStreamingEnabled: true
+            ))
         let tdtPreview = AppEnvironment.dictationPreviewSpeechEngine(
             speechEngine: .parakeet,
             parakeetModelVariant: .v3,
@@ -61,16 +67,18 @@ final class AppEnvironmentTests: XCTestCase {
         XCTAssertEqual(tdtPreview?.selection, SpeechEngineSelection(engine: .parakeet))
         XCTAssertEqual(tdtPreview?.capabilities.key, .parakeet(.v3))
 
-        XCTAssertTrue(AppEnvironment.shouldAttemptLiveDictationTranscription(
-            speechEngine: .parakeet,
-            parakeetModelVariant: .unified,
-            liveDictationStreamingEnabled: true
-        ))
-        XCTAssertNil(AppEnvironment.dictationPreviewSpeechEngine(
-            speechEngine: .parakeet,
-            parakeetModelVariant: .unified,
-            liveDictationStreamingEnabled: true
-        ))
+        XCTAssertTrue(
+            AppEnvironment.shouldAttemptLiveDictationTranscription(
+                speechEngine: .parakeet,
+                parakeetModelVariant: .unified,
+                liveDictationStreamingEnabled: true
+            ))
+        XCTAssertNil(
+            AppEnvironment.dictationPreviewSpeechEngine(
+                speechEngine: .parakeet,
+                parakeetModelVariant: .unified,
+                liveDictationStreamingEnabled: true
+            ))
     }
 
     func testSyncAIFormatterAvailabilityWritesTrueWhenProviderExists() {

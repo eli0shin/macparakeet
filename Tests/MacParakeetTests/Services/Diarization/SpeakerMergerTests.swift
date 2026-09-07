@@ -6,9 +6,11 @@ final class SpeakerMergerTests: XCTestCase {
     // MARK: - Empty inputs
 
     func testEmptyWords() {
-        let result = SpeakerMerger.mergeWordTimestampsWithSpeakers(words: [], segments: [
-            SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 5000)
-        ])
+        let result = SpeakerMerger.mergeWordTimestampsWithSpeakers(
+            words: [],
+            segments: [
+                SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 5000)
+            ])
         XCTAssertTrue(result.isEmpty)
     }
 
@@ -66,7 +68,7 @@ final class SpeakerMergerTests: XCTestCase {
         // Overlap with S1: 200ms (400-600), overlap with S2: 300ms (600-900)
         // S2 wins.
         let words = [
-            WordTimestamp(word: "split", startMs: 400, endMs: 900, confidence: 0.9),
+            WordTimestamp(word: "split", startMs: 400, endMs: 900, confidence: 0.9)
         ]
         let segments = [
             SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 600),
@@ -81,10 +83,10 @@ final class SpeakerMergerTests: XCTestCase {
 
     func testNoOverlap() {
         let words = [
-            WordTimestamp(word: "gap", startMs: 5000, endMs: 5500, confidence: 0.9),
+            WordTimestamp(word: "gap", startMs: 5000, endMs: 5500, confidence: 0.9)
         ]
         let segments = [
-            SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 1000),
+            SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 1000)
         ]
 
         let result = SpeakerMerger.mergeWordTimestampsWithSpeakers(words: words, segments: segments)
@@ -155,7 +157,7 @@ final class SpeakerMergerTests: XCTestCase {
         // Word spans 500-1000ms. S1: 0-750 (250ms overlap), S2: 750-1500 (250ms overlap)
         // Equal overlap → earlier segment (S1) wins
         let words = [
-            WordTimestamp(word: "tie", startMs: 500, endMs: 1000, confidence: 0.9),
+            WordTimestamp(word: "tie", startMs: 500, endMs: 1000, confidence: 0.9)
         ]
         let segments = [
             SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 750),
@@ -170,7 +172,7 @@ final class SpeakerMergerTests: XCTestCase {
 
     func testPreservesWordContent() {
         let words = [
-            WordTimestamp(word: "Hello", startMs: 0, endMs: 500, confidence: 0.95),
+            WordTimestamp(word: "Hello", startMs: 0, endMs: 500, confidence: 0.95)
         ]
         let segments = [
             SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 1000)

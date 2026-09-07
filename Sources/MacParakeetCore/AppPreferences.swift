@@ -42,7 +42,8 @@ public enum AppAppearanceMode: String, CaseIterable, Hashable, Sendable {
 
     public static func current(defaults: UserDefaults = .standard) -> AppAppearanceMode {
         guard let raw = defaults.string(forKey: AppPreferences.appearanceModeKey),
-              let mode = AppAppearanceMode(rawValue: raw) else {
+            let mode = AppAppearanceMode(rawValue: raw)
+        else {
             return .system
         }
         return mode

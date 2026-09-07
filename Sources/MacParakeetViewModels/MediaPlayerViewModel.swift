@@ -6,9 +6,9 @@ import os
 // MARK: - Playback Mode
 
 public enum PlaybackMode: Equatable, Sendable {
-    case video    // YouTube or local video file — split-pane layout
-    case audio    // Local audio file — scrubber bar + full-width content
-    case none     // No playable media (file deleted or unavailable)
+    case video  // YouTube or local video file — split-pane layout
+    case audio  // Local audio file — scrubber bar + full-width content
+    case none  // No playable media (file deleted or unavailable)
 }
 
 public enum PlayerState: Equatable, Sendable {
@@ -136,7 +136,8 @@ public final class MediaPlayerViewModel {
         }
 
         if let filePath = transcription.filePath,
-           FileManager.default.fileExists(atPath: filePath) {
+            FileManager.default.fileExists(atPath: filePath)
+        {
             if YouTubeAudioPlaybackConverter.needsConversion(forPath: filePath) {
                 clearLoadedPlayer()
                 if let knownDurationMs {
@@ -164,7 +165,9 @@ public final class MediaPlayerViewModel {
                     logger.info("Prepared YouTube media: queued lazy m4a conversion for unplayable saved audio")
                 } else {
                     playerState = .idle
-                    logger.info("Prepared YouTube media: saved audio needs conversion but no persistence callback is wired; using Show Video fallback")
+                    logger.info(
+                        "Prepared YouTube media: saved audio needs conversion but no persistence callback is wired; using Show Video fallback"
+                    )
                 }
             } else {
                 loadLocalFile(filePath)
@@ -223,7 +226,9 @@ public final class MediaPlayerViewModel {
                     self.loadLocalFile(newPath)
                 }
             } catch {
-                logger.error("playback_conversion_failed id=\(transcriptionId, privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
+                logger.error(
+                    "playback_conversion_failed id=\(transcriptionId, privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+                )
                 // Leave the player empty; Show Video remains a viable
                 // fallback. A future open will retry the conversion.
                 if !Task.isCancelled, let self, self.playerState == .loading {
@@ -259,7 +264,9 @@ public final class MediaPlayerViewModel {
         playerState = .loading
         loadingElapsed = 0
         startLoadingTimer()
-        logger.info("Loading media: mode=\(String(describing: mode), privacy: .public), sourceType=\(transcription.sourceType.rawValue, privacy: .public)")
+        logger.info(
+            "Loading media: mode=\(String(describing: mode), privacy: .public), sourceType=\(transcription.sourceType.rawValue, privacy: .public)"
+        )
 
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -354,7 +361,8 @@ public final class MediaPlayerViewModel {
             return .video
         }
         guard let filePath = transcription.filePath,
-              FileManager.default.fileExists(atPath: filePath) else {
+            FileManager.default.fileExists(atPath: filePath)
+        else {
             return .none
         }
         let ext = URL(fileURLWithPath: filePath).pathExtension.lowercased()
@@ -391,8 +399,10 @@ public final class MediaPlayerViewModel {
             logger.info("YouTube video player ready")
         } catch {
             guard !Task.isCancelled else { return }
-            let detail = TelemetryErrorClassifier.errorDetail(error)
-            logger.error("YouTube stream load failed after \(String(describing: ContinuousClock.now - start), privacy: .public): \(detail, privacy: .private)")
+            let detail = DiagnosticErrorClassifier.errorDetail(error)
+            logger.error(
+                "YouTube stream load failed after \(String(describing: ContinuousClock.now - start), privacy: .public): \(detail, privacy: .private)"
+            )
             playerState = .error(detail)
         }
     }
@@ -469,7 +479,8 @@ public final class MediaPlayerViewModel {
         Task { @MainActor [weak self] in
             guard let self, self.player === avPlayer else { return }
             if let duration = try? await item.asset.load(.duration),
-               duration.isNumeric {
+                duration.isNumeric
+            {
                 self.durationMs = Int(duration.seconds * 1000)
             }
         }
@@ -505,7 +516,7 @@ public final class MediaPlayerViewModel {
         if lastCueIndex >= 0, lastCueIndex < subtitleCues.count {
             let cue = subtitleCues[lastCueIndex]
             if ms >= cue.startMs && ms <= cue.endMs {
-                return // Still on the same cue
+                return  // Still on the same cue
             }
         }
 

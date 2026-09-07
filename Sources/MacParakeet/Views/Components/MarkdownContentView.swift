@@ -107,13 +107,15 @@ struct MarkdownContentView: NSViewRepresentable {
                 if index > 0 { style.paragraphSpacingBefore = level <= 2 ? 12 : 8 }
 
                 let headingStr = inlineAttributedString(text, baseFont: font, color: textColor)
-                headingStr.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: headingStr.length))
+                headingStr.addAttribute(
+                    .paragraphStyle, value: style, range: NSRange(location: 0, length: headingStr.length))
                 result.append(headingStr)
                 result.append(NSAttributedString(string: "\n"))
 
             case let .paragraph(text):
                 let paraStr = inlineAttributedString(text, baseFont: bodyFont, color: textColor)
-                paraStr.addAttribute(.paragraphStyle, value: bodyParagraphStyle, range: NSRange(location: 0, length: paraStr.length))
+                paraStr.addAttribute(
+                    .paragraphStyle, value: bodyParagraphStyle, range: NSRange(location: 0, length: paraStr.length))
                 result.append(paraStr)
                 result.append(NSAttributedString(string: "\n"))
 
@@ -126,13 +128,16 @@ struct MarkdownContentView: NSViewRepresentable {
                 listStyle.tabStops = [NSTextTab(textAlignment: .natural, location: 20)]
 
                 for (i, item) in items.enumerated() {
-                    let bullet = NSMutableAttributedString(string: "\u{2022}\t", attributes: [
-                        .font: bodyFont,
-                        .foregroundColor: tertiaryColor,
-                        .paragraphStyle: listStyle
-                    ])
+                    let bullet = NSMutableAttributedString(
+                        string: "\u{2022}\t",
+                        attributes: [
+                            .font: bodyFont,
+                            .foregroundColor: tertiaryColor,
+                            .paragraphStyle: listStyle,
+                        ])
                     let itemStr = inlineAttributedString(item, baseFont: bodyFont, color: textColor)
-                    itemStr.addAttribute(.paragraphStyle, value: listStyle, range: NSRange(location: 0, length: itemStr.length))
+                    itemStr.addAttribute(
+                        .paragraphStyle, value: listStyle, range: NSRange(location: 0, length: itemStr.length))
                     bullet.append(itemStr)
                     result.append(bullet)
                     if i < items.count - 1 || index < blocks.count - 1 {
@@ -156,13 +161,16 @@ struct MarkdownContentView: NSViewRepresentable {
                 listStyle.tabStops = [NSTextTab(textAlignment: .natural, location: 28)]
 
                 for (i, item) in items.enumerated() {
-                    let marker = NSMutableAttributedString(string: "\(i + 1).\t", attributes: [
-                        .font: bodyFont,
-                        .foregroundColor: tertiaryColor,
-                        .paragraphStyle: listStyle
-                    ])
+                    let marker = NSMutableAttributedString(
+                        string: "\(i + 1).\t",
+                        attributes: [
+                            .font: bodyFont,
+                            .foregroundColor: tertiaryColor,
+                            .paragraphStyle: listStyle,
+                        ])
                     let itemStr = inlineAttributedString(item, baseFont: bodyFont, color: textColor)
-                    itemStr.addAttribute(.paragraphStyle, value: listStyle, range: NSRange(location: 0, length: itemStr.length))
+                    itemStr.addAttribute(
+                        .paragraphStyle, value: listStyle, range: NSRange(location: 0, length: itemStr.length))
                     marker.append(itemStr)
                     result.append(marker)
                     if i < items.count - 1 || index < blocks.count - 1 {
@@ -195,12 +203,14 @@ struct MarkdownContentView: NSViewRepresentable {
                     }
                     return resolved.withAlphaComponent(0.7)
                 }
-                let codeStr = NSMutableAttributedString(string: code, attributes: [
-                    .font: codeFont,
-                    .foregroundColor: textColor,
-                    .paragraphStyle: codeStyle,
-                    .backgroundColor: codeBackground
-                ])
+                let codeStr = NSMutableAttributedString(
+                    string: code,
+                    attributes: [
+                        .font: codeFont,
+                        .foregroundColor: textColor,
+                        .paragraphStyle: codeStyle,
+                        .backgroundColor: codeBackground,
+                    ])
                 result.append(codeStr)
                 result.append(NSAttributedString(string: "\n"))
 
@@ -211,13 +221,16 @@ struct MarkdownContentView: NSViewRepresentable {
                 quoteStyle.headIndent = 16
                 quoteStyle.firstLineHeadIndent = 16
 
-                let bar = NSMutableAttributedString(string: "\u{2503} ", attributes: [
-                    .font: bodyFont,
-                    .foregroundColor: accentColor.withAlphaComponent(0.4),
-                    .paragraphStyle: quoteStyle
-                ])
+                let bar = NSMutableAttributedString(
+                    string: "\u{2503} ",
+                    attributes: [
+                        .font: bodyFont,
+                        .foregroundColor: accentColor.withAlphaComponent(0.4),
+                        .paragraphStyle: quoteStyle,
+                    ])
                 let quoteStr = inlineAttributedString(text, baseFont: bodyFont, color: secondaryColor)
-                quoteStr.addAttribute(.paragraphStyle, value: quoteStyle, range: NSRange(location: 0, length: quoteStr.length))
+                quoteStr.addAttribute(
+                    .paragraphStyle, value: quoteStyle, range: NSRange(location: 0, length: quoteStr.length))
                 bar.append(quoteStr)
                 result.append(bar)
                 result.append(NSAttributedString(string: "\n"))
@@ -226,11 +239,14 @@ struct MarkdownContentView: NSViewRepresentable {
                 let hrStyle = NSMutableParagraphStyle()
                 hrStyle.paragraphSpacing = 10
                 hrStyle.paragraphSpacingBefore = 10
-                let hr = NSMutableAttributedString(string: "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\n", attributes: [
-                    .font: NSFont.systemFont(ofSize: 8),
-                    .foregroundColor: tertiaryColor.withAlphaComponent(0.4),
-                    .paragraphStyle: hrStyle
-                ])
+                let hr = NSMutableAttributedString(
+                    string:
+                        "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\n",
+                    attributes: [
+                        .font: NSFont.systemFont(ofSize: 8),
+                        .foregroundColor: tertiaryColor.withAlphaComponent(0.4),
+                        .paragraphStyle: hrStyle,
+                    ])
                 result.append(hr)
             }
         }
@@ -243,7 +259,8 @@ struct MarkdownContentView: NSViewRepresentable {
         return result
     }
 
-    private func inlineAttributedString(_ source: String, baseFont: NSFont, color: NSColor) -> NSMutableAttributedString {
+    private func inlineAttributedString(_ source: String, baseFont: NSFont, color: NSColor) -> NSMutableAttributedString
+    {
         if let swiftAttr = try? AttributedString(
             markdown: source,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
@@ -274,10 +291,12 @@ struct MarkdownContentView: NSViewRepresentable {
             return nsAttr
         }
 
-        return NSMutableAttributedString(string: source, attributes: [
-            .font: baseFont,
-            .foregroundColor: color
-        ])
+        return NSMutableAttributedString(
+            string: source,
+            attributes: [
+                .font: baseFont,
+                .foregroundColor: color,
+            ])
     }
 
     // MARK: - Block Parser
@@ -309,10 +328,11 @@ struct MarkdownContentView: NSViewRepresentable {
                     codeLines.append(lines[index])
                     index += 1
                 }
-                blocks.append(.codeBlock(
-                    language: lang.isEmpty ? nil : lang,
-                    code: codeLines.joined(separator: "\n")
-                ))
+                blocks.append(
+                    .codeBlock(
+                        language: lang.isEmpty ? nil : lang,
+                        code: codeLines.joined(separator: "\n")
+                    ))
                 continue
             }
 
@@ -384,9 +404,9 @@ struct MarkdownContentView: NSViewRepresentable {
             var paraLines: [String] = []
             while index < lines.count {
                 let t = lines[index].trimmingCharacters(in: .whitespaces)
-                if t.isEmpty || t.hasPrefix("```") || isThematicBreak(t) ||
-                   parseHeading(t) != nil || isUnorderedListItem(t) ||
-                   isOrderedListItem(t) || t.hasPrefix(">") {
+                if t.isEmpty || t.hasPrefix("```") || isThematicBreak(t) || parseHeading(t) != nil
+                    || isUnorderedListItem(t) || isOrderedListItem(t) || t.hasPrefix(">")
+                {
                     break
                 }
                 paraLines.append(t)
@@ -403,12 +423,12 @@ struct MarkdownContentView: NSViewRepresentable {
     private static func parseHeading(_ line: String) -> MarkdownBlock? {
         var level = 0
         for char in line {
-            if char == "#" { level += 1 }
-            else { break }
+            if char == "#" { level += 1 } else { break }
         }
         guard level >= 1, level <= 6,
-              line.count > level,
-              line[line.index(line.startIndex, offsetBy: level)] == " " else {
+            line.count > level,
+            line[line.index(line.startIndex, offsetBy: level)] == " "
+        else {
             return nil
         }
         return .heading(level: level, content: String(line.dropFirst(level + 1)))
@@ -416,11 +436,9 @@ struct MarkdownContentView: NSViewRepresentable {
 
     private static func isThematicBreak(_ line: String) -> Bool {
         let stripped = line.replacingOccurrences(of: " ", with: "")
-        return stripped.count >= 3 && (
-            stripped.allSatisfy { $0 == "-" } ||
-            stripped.allSatisfy { $0 == "*" } ||
-            stripped.allSatisfy { $0 == "_" }
-        )
+        return stripped.count >= 3
+            && (stripped.allSatisfy { $0 == "-" } || stripped.allSatisfy { $0 == "*" }
+                || stripped.allSatisfy { $0 == "_" })
     }
 
     private static func isUnorderedListItem(_ line: String) -> Bool {
@@ -437,7 +455,8 @@ struct MarkdownContentView: NSViewRepresentable {
 
     private static func stripOrderedMarker(_ line: String) -> String {
         guard let dotIndex = line.firstIndex(of: "."),
-              line.index(after: dotIndex) < line.endIndex else { return line }
+            line.index(after: dotIndex) < line.endIndex
+        else { return line }
         return String(line[line.index(dotIndex, offsetBy: 2)...])
     }
 }
@@ -471,7 +490,8 @@ final class SelfSizingTextView: NSView {
 
     override var intrinsicContentSize: NSSize {
         guard let layoutManager = textView.layoutManager,
-              let textContainer = textView.textContainer else {
+            let textContainer = textView.textContainer
+        else {
             return super.intrinsicContentSize
         }
         layoutManager.ensureLayout(for: textContainer)

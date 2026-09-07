@@ -53,7 +53,8 @@ public final class PermissionService: PermissionServiceProtocol, Sendable {
     }
 
     public func openScreenRecordingSettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") else {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+        else {
             return
         }
         NSWorkspace.shared.open(url)

@@ -14,20 +14,22 @@ import MacParakeetObjCShims
 func catchingObjCException<T>(_ block: () throws -> T) throws -> T {
     var result: Result<T, Error>?
     var objcError: NSError?
-    let ok = MPKTryBlock({
-        do {
-            result = .success(try block())
-        } catch {
-            result = .failure(error)
-        }
-    }, &objcError)
+    let ok = MPKTryBlock(
+        {
+            do {
+                result = .success(try block())
+            } catch {
+                result = .failure(error)
+            }
+        }, &objcError)
 
     if !ok {
-        throw objcError ?? NSError(
-            domain: MPKObjCExceptionErrorDomain,
-            code: 0,
-            userInfo: [NSLocalizedDescriptionKey: "Unknown Objective-C exception"]
-        )
+        throw objcError
+            ?? NSError(
+                domain: MPKObjCExceptionErrorDomain,
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Unknown Objective-C exception"]
+            )
     }
 
     switch result {

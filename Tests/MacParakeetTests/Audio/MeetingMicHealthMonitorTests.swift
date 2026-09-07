@@ -5,10 +5,11 @@ final class MeetingMicHealthMonitorTests: XCTestCase {
     private let start = Date(timeIntervalSince1970: 1_800_000_000)
 
     func testMicMissingRequiresContinuousSystemConfirmation() {
-        var monitor = MeetingMicHealthMonitor(config: .init(
-            systemActiveConfirmationSeconds: 3.0,
-            systemGapSeconds: 4.0
-        ))
+        var monitor = MeetingMicHealthMonitor(
+            config: .init(
+                systemActiveConfirmationSeconds: 3.0,
+                systemGapSeconds: 4.0
+            ))
 
         XCTAssertEqual(
             monitor.ingest(systemSignal: .init(isNonSilent: true), now: start),
@@ -26,10 +27,11 @@ final class MeetingMicHealthMonitorTests: XCTestCase {
     }
 
     func testSystemSilenceResetsConfirmationWindow() {
-        var monitor = MeetingMicHealthMonitor(config: .init(
-            systemActiveConfirmationSeconds: 3.0,
-            systemGapSeconds: 4.0
-        ))
+        var monitor = MeetingMicHealthMonitor(
+            config: .init(
+                systemActiveConfirmationSeconds: 3.0,
+                systemGapSeconds: 4.0
+            ))
 
         XCTAssertEqual(monitor.ingest(systemSignal: .init(isNonSilent: true), now: start), [])
         XCTAssertEqual(
@@ -51,10 +53,11 @@ final class MeetingMicHealthMonitorTests: XCTestCase {
     }
 
     func testSystemAudioGapResetsConfirmationWindow() {
-        var monitor = MeetingMicHealthMonitor(config: .init(
-            systemActiveConfirmationSeconds: 3.0,
-            systemGapSeconds: 2.0
-        ))
+        var monitor = MeetingMicHealthMonitor(
+            config: .init(
+                systemActiveConfirmationSeconds: 3.0,
+                systemGapSeconds: 2.0
+            ))
 
         XCTAssertEqual(monitor.ingest(systemSignal: .init(isNonSilent: true), now: start), [])
         XCTAssertEqual(
@@ -76,10 +79,11 @@ final class MeetingMicHealthMonitorTests: XCTestCase {
     }
 
     func testSystemAudioGapPreventsSilentMicFalsePositive() {
-        var monitor = MeetingMicHealthMonitor(config: .init(
-            systemActiveConfirmationSeconds: 3.0,
-            systemGapSeconds: 2.0
-        ))
+        var monitor = MeetingMicHealthMonitor(
+            config: .init(
+                systemActiveConfirmationSeconds: 3.0,
+                systemGapSeconds: 2.0
+            ))
 
         XCTAssertEqual(monitor.ingest(systemSignal: .init(isNonSilent: true), now: start), [])
         XCTAssertEqual(
@@ -113,10 +117,11 @@ final class MeetingMicHealthMonitorTests: XCTestCase {
     }
 
     func testMicSilentElapsedStartsAtSystemConfirmationWindow() {
-        var monitor = MeetingMicHealthMonitor(config: .init(
-            systemActiveConfirmationSeconds: 3.0,
-            micGapSeconds: 10.0
-        ))
+        var monitor = MeetingMicHealthMonitor(
+            config: .init(
+                systemActiveConfirmationSeconds: 3.0,
+                micGapSeconds: 10.0
+            ))
 
         XCTAssertEqual(monitor.ingest(micSignal: .init(isNonSilent: false), now: start), [])
 
@@ -142,10 +147,11 @@ final class MeetingMicHealthMonitorTests: XCTestCase {
     }
 
     func testMicGapElapsedStartsAtSystemConfirmationWindow() {
-        var monitor = MeetingMicHealthMonitor(config: .init(
-            systemActiveConfirmationSeconds: 3.0,
-            micGapSeconds: 1.0
-        ))
+        var monitor = MeetingMicHealthMonitor(
+            config: .init(
+                systemActiveConfirmationSeconds: 3.0,
+                micGapSeconds: 1.0
+            ))
 
         XCTAssertEqual(monitor.ingest(micSignal: .init(isNonSilent: true), now: start), [])
 
@@ -163,10 +169,11 @@ final class MeetingMicHealthMonitorTests: XCTestCase {
     }
 
     func testMicGapFiresAtBoundaryAfterLastMicBuffer() {
-        var monitor = MeetingMicHealthMonitor(config: .init(
-            systemActiveConfirmationSeconds: 0,
-            micGapSeconds: 1.0
-        ))
+        var monitor = MeetingMicHealthMonitor(
+            config: .init(
+                systemActiveConfirmationSeconds: 0,
+                micGapSeconds: 1.0
+            ))
 
         XCTAssertEqual(
             monitor.ingest(

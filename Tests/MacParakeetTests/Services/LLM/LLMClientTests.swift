@@ -103,8 +103,9 @@ final class LLMClientTests: XCTestCase {
         )
 
         // Should use /v1/messages, NOT /v1/chat/completions
-        XCTAssertTrue(capturedRequest?.url?.path.hasSuffix("/messages") == true,
-                       "Anthropic should use /messages endpoint, got: \(capturedRequest?.url?.path ?? "nil")")
+        XCTAssertTrue(
+            capturedRequest?.url?.path.hasSuffix("/messages") == true,
+            "Anthropic should use /messages endpoint, got: \(capturedRequest?.url?.path ?? "nil")")
         // Should use x-api-key, NOT Bearer
         XCTAssertEqual(capturedRequest?.value(forHTTPHeaderField: "x-api-key"), "sk-ant-test-key")
         XCTAssertNil(capturedRequest?.value(forHTTPHeaderField: "Authorization"))
@@ -336,12 +337,12 @@ final class LLMClientTests: XCTestCase {
     func testValidResponseParsedCorrectly() async throws {
         MockURLProtocol.handler = { request in
             let json = """
-            {
-                "model": "gpt-4o",
-                "choices": [{"message": {"content": "Hello there!"}}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 5}
-            }
-            """
+                {
+                    "model": "gpt-4o",
+                    "choices": [{"message": {"content": "Hello there!"}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+                }
+                """
             return (self.okResponse(for: request), Data(json.utf8))
         }
 
@@ -382,8 +383,8 @@ final class LLMClientTests: XCTestCase {
         // real zero-token response.
         MockURLProtocol.handler = { request in
             let json = """
-            {"model":"qwen3.5:4b","message":{"role":"assistant","content":"OK"},"done":true}
-            """
+                {"model":"qwen3.5:4b","message":{"role":"assistant","content":"OK"},"done":true}
+                """
             return (self.okResponse(for: request), Data(json.utf8))
         }
 
@@ -412,7 +413,8 @@ final class LLMClientTests: XCTestCase {
             )
             XCTFail("Expected LLMError.invalidResponse")
         } catch let error as LLMError {
-            if case .invalidResponse = error {} else {
+            if case .invalidResponse = error {
+            } else {
                 XCTFail("Expected invalidResponse, got \(error)")
             }
         } catch {
@@ -439,7 +441,8 @@ final class LLMClientTests: XCTestCase {
             )
             XCTFail("Expected LLMError.authenticationFailed")
         } catch let error as LLMError {
-            if case .authenticationFailed = error {} else {
+            if case .authenticationFailed = error {
+            } else {
                 XCTFail("Expected authenticationFailed, got \(error)")
             }
         } catch {
@@ -464,7 +467,8 @@ final class LLMClientTests: XCTestCase {
             )
             XCTFail("Expected LLMError.rateLimited")
         } catch let error as LLMError {
-            if case .rateLimited = error {} else {
+            if case .rateLimited = error {
+            } else {
                 XCTFail("Expected rateLimited, got \(error)")
             }
         } catch {
@@ -489,7 +493,8 @@ final class LLMClientTests: XCTestCase {
             )
             XCTFail("Expected LLMError.modelNotFound")
         } catch let error as LLMError {
-            if case .modelNotFound = error {} else {
+            if case .modelNotFound = error {
+            } else {
                 XCTFail("Expected modelNotFound, got \(error)")
             }
         } catch {
@@ -529,7 +534,9 @@ final class LLMClientTests: XCTestCase {
             let response = HTTPURLResponse(
                 url: request.url!, statusCode: 400, httpVersion: nil, headerFields: nil
             )!
-            return (response, Data("{\"error\":{\"message\":\"This model's maximum context length is exceeded\"}}".utf8))
+            return (
+                response, Data("{\"error\":{\"message\":\"This model's maximum context length is exceeded\"}}".utf8)
+            )
         }
 
         let config = LLMProviderConfig.openai(apiKey: "sk-test")
@@ -541,7 +548,8 @@ final class LLMClientTests: XCTestCase {
             )
             XCTFail("Expected LLMError.contextTooLong")
         } catch let error as LLMError {
-            if case .contextTooLong = error {} else {
+            if case .contextTooLong = error {
+            } else {
                 XCTFail("Expected contextTooLong, got \(error)")
             }
         } catch {
@@ -616,64 +624,73 @@ final class LLMClientTests: XCTestCase {
 
     func testParseSSELineDoneReturnsDone() {
         let result = llmClient.parseSSELine("data: [DONE]")
-        if case .done = result {} else {
+        if case .done = result {
+        } else {
             XCTFail("Expected .done, got \(result)")
         }
     }
 
     func testParseSSELineBlankLine() {
         let result = llmClient.parseSSELine("")
-        if case .skip = result {} else {
+        if case .skip = result {
+        } else {
             XCTFail("Expected .skip, got \(result)")
         }
     }
 
     func testParseSSELineRoleOnlyFrame() {
         let result = llmClient.parseSSELine("data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}")
-        if case .skip = result {} else {
+        if case .skip = result {
+        } else {
             XCTFail("Expected .skip, got \(result)")
         }
     }
 
     func testParseSSELineEmptyDelta() {
         let result = llmClient.parseSSELine("data: {\"choices\":[{\"delta\":{}}]}")
-        if case .skip = result {} else {
+        if case .skip = result {
+        } else {
             XCTFail("Expected .skip, got \(result)")
         }
     }
 
     func testParseSSELineEmptyContent() {
         let result = llmClient.parseSSELine("data: {\"choices\":[{\"delta\":{\"content\":\"\"}}]}")
-        if case .skip = result {} else {
+        if case .skip = result {
+        } else {
             XCTFail("Expected .skip, got \(result)")
         }
     }
 
     func testParseSSELineFinishReason() {
         let result = llmClient.parseSSELine("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}")
-        if case .skip = result {} else {
+        if case .skip = result {
+        } else {
             XCTFail("Expected .skip, got \(result)")
         }
     }
 
     func testParseSSELineNonDataPrefix() {
         let result = llmClient.parseSSELine("event: message")
-        if case .skip = result {} else {
+        if case .skip = result {
+        } else {
             XCTFail("Expected .skip, got \(result)")
         }
     }
 
     func testParseSSELineMalformedJSON() {
         let result = llmClient.parseSSELine("data: {\"invalid json}")
-        if case .skip = result {} else {
+        if case .skip = result {
+        } else {
             XCTFail("Expected .skip, got \(result)")
         }
     }
 
     func testParseSSELineLMStudioErrorObject() {
-        let result = llmClient.parseSSELine("""
-        data: {"error":{"message":"The number of tokens to keep from the initial prompt is greater than the context length."},"message":"The number of tokens to keep from the initial prompt is greater than the context length."}
-        """)
+        let result = llmClient.parseSSELine(
+            """
+            data: {"error":{"message":"The number of tokens to keep from the initial prompt is greater than the context length."},"message":"The number of tokens to keep from the initial prompt is greater than the context length."}
+            """)
         if case .error(let message) = result {
             XCTAssertTrue(message.contains("context length"))
         } else {
@@ -717,16 +734,18 @@ final class LLMClientTests: XCTestCase {
 
     func testParseSSEEventDoneReturnsDone() {
         let result = llmClient.parseSSEEvent([
-            "data: [DONE]",
+            "data: [DONE]"
         ])
-        if case .done = result {} else {
+        if case .done = result {
+        } else {
             XCTFail("Expected .done, got \(result)")
         }
     }
 
     func testParseSSEEventEmptyLinesReturnsSkip() {
         let result = llmClient.parseSSEEvent([])
-        if case .skip = result {} else {
+        if case .skip = result {
+        } else {
             XCTFail("Expected .skip, got \(result)")
         }
     }
@@ -734,14 +753,16 @@ final class LLMClientTests: XCTestCase {
     func testParseSSELineTruncatedJSONSkips() {
         // Provider sends incomplete JSON (e.g. network cut mid-frame)
         let result = llmClient.parseSSELine("data: {\"choices\":[{\"delta\":{\"content\":\"Hel")
-        if case .skip = result {} else {
+        if case .skip = result {
+        } else {
             XCTFail("Expected .skip for truncated JSON, got \(result)")
         }
     }
 
     func testParseSSELineEmptyChoicesSkips() {
         let result = llmClient.parseSSELine("data: {\"choices\":[]}")
-        if case .skip = result {} else {
+        if case .skip = result {
+        } else {
             XCTFail("Expected .skip for empty choices, got \(result)")
         }
     }
@@ -1024,15 +1045,19 @@ final class LLMClientTests: XCTestCase {
 
         MockURLProtocol.handler = { request in
             capturedRequest = request
-            return (self.okResponse(for: request), Data("""
-            {
-              "models": [
-                {"name":"qwen3.5:4b"},
-                {"name":"gemma3:4b"},
-                {"name":"nomic-embed-text"}
-              ]
-            }
-            """.utf8))
+            return (
+                self.okResponse(for: request),
+                Data(
+                    """
+                    {
+                      "models": [
+                        {"name":"qwen3.5:4b"},
+                        {"name":"gemma3:4b"},
+                        {"name":"nomic-embed-text"}
+                      ]
+                    }
+                    """.utf8)
+            )
         }
 
         let config = LLMProviderConfig.ollama(model: "qwen3.5:4b")
@@ -1048,9 +1073,13 @@ final class LLMClientTests: XCTestCase {
 
         MockURLProtocol.handler = { request in
             capturedRequest = request
-            return (self.okResponse(for: request), Data("""
-            {"models":[{"name":"local-model"}]}
-            """.utf8))
+            return (
+                self.okResponse(for: request),
+                Data(
+                    """
+                    {"models":[{"name":"local-model"}]}
+                    """.utf8)
+            )
         }
 
         let config = LLMProviderConfig.ollama(
@@ -1077,9 +1106,13 @@ final class LLMClientTests: XCTestCase {
                 )!
                 return (response, Data())
             }
-            return (self.okResponse(for: request), Data("""
-            {"data":[{"id":"qwen3.5:4b"}]}
-            """.utf8))
+            return (
+                self.okResponse(for: request),
+                Data(
+                    """
+                    {"data":[{"id":"qwen3.5:4b"}]}
+                    """.utf8)
+            )
         }
 
         let config = LLMProviderConfig.ollama(model: "qwen3.5:4b")
@@ -1098,23 +1131,27 @@ final class LLMClientTests: XCTestCase {
     func testOpenAIListModelsFiltersCatalogToStreamingChatModels() async throws {
         MockURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.absoluteString, "https://api.openai.com/v1/models")
-            return (self.okResponse(for: request), Data("""
-            {
-              "data": [
-                {"id":"gpt-5.5"},
-                {"id":"gpt-5.5-pro"},
-                {"id":"gpt-4.1-mini"},
-                {"id":"gpt-4o-transcribe"},
-                {"id":"gpt-image-1"},
-                {"id":"text-embedding-3-large"},
-                {"id":"omni-moderation-latest"},
-                {"id":"chatgpt-4o-latest"},
-                {"id":"o2-mini"},
-                {"id":"o10-mini"},
-                {"id":"o4-mini"}
-              ]
-            }
-            """.utf8))
+            return (
+                self.okResponse(for: request),
+                Data(
+                    """
+                    {
+                      "data": [
+                        {"id":"gpt-5.5"},
+                        {"id":"gpt-5.5-pro"},
+                        {"id":"gpt-4.1-mini"},
+                        {"id":"gpt-4o-transcribe"},
+                        {"id":"gpt-image-1"},
+                        {"id":"text-embedding-3-large"},
+                        {"id":"omni-moderation-latest"},
+                        {"id":"chatgpt-4o-latest"},
+                        {"id":"o2-mini"},
+                        {"id":"o10-mini"},
+                        {"id":"o4-mini"}
+                      ]
+                    }
+                    """.utf8)
+            )
         }
 
         let models = try await llmClient.listModels(config: .openai(apiKey: "sk-test"))
@@ -1125,17 +1162,21 @@ final class LLMClientTests: XCTestCase {
     func testOpenAICompatibleListModelsFiltersObviousNonTextModels() async throws {
         MockURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.absoluteString, "https://custom.example.test/v1/models")
-            return (self.okResponse(for: request), Data("""
-            {
-              "data": [
-                {"id":"llama-3.1-8b-instruct"},
-                {"id":"text-embedding-3-large"},
-                {"id":"stable-diffusion-xl"},
-                {"id":"whisper-large-v3"},
-                {"id":"bge-reranker-v2"}
-              ]
-            }
-            """.utf8))
+            return (
+                self.okResponse(for: request),
+                Data(
+                    """
+                    {
+                      "data": [
+                        {"id":"llama-3.1-8b-instruct"},
+                        {"id":"text-embedding-3-large"},
+                        {"id":"stable-diffusion-xl"},
+                        {"id":"whisper-large-v3"},
+                        {"id":"bge-reranker-v2"}
+                      ]
+                    }
+                    """.utf8)
+            )
         }
 
         let config = LLMProviderConfig.openaiCompatible(
@@ -1152,28 +1193,32 @@ final class LLMClientTests: XCTestCase {
 
         MockURLProtocol.handler = { request in
             capturedRequest = request
-            return (self.okResponse(for: request), Data("""
-            {
-              "models": [
-                {
-                  "name": "models/text-embedding-004",
-                  "supportedGenerationMethods": ["embedContent"]
-                },
-                {
-                  "name": "models/gemini-3-pro-image-preview",
-                  "supportedGenerationMethods": ["generateContent"]
-                },
-                {
-                  "name": "models/nano-banana-pro-preview",
-                  "supportedGenerationMethods": ["generateContent"]
-                },
-                {
-                  "name": "models/gemini-3.5-flash",
-                  "supportedGenerationMethods": ["generateContent", "countTokens"]
-                }
-              ]
-            }
-            """.utf8))
+            return (
+                self.okResponse(for: request),
+                Data(
+                    """
+                    {
+                      "models": [
+                        {
+                          "name": "models/text-embedding-004",
+                          "supportedGenerationMethods": ["embedContent"]
+                        },
+                        {
+                          "name": "models/gemini-3-pro-image-preview",
+                          "supportedGenerationMethods": ["generateContent"]
+                        },
+                        {
+                          "name": "models/nano-banana-pro-preview",
+                          "supportedGenerationMethods": ["generateContent"]
+                        },
+                        {
+                          "name": "models/gemini-3.5-flash",
+                          "supportedGenerationMethods": ["generateContent", "countTokens"]
+                        }
+                      ]
+                    }
+                    """.utf8)
+            )
         }
 
         let models = try await llmClient.listModels(config: .gemini(apiKey: "gem-key", model: "gemini-3.5-flash"))
@@ -1195,9 +1240,13 @@ final class LLMClientTests: XCTestCase {
 
         MockURLProtocol.handler = { request in
             capturedRequest = request
-            return (self.okResponse(for: request), Data("""
-            {"models":[{"name":"models/gemini-3.5-flash","supportedGenerationMethods":["generateContent"]}]}
-            """.utf8))
+            return (
+                self.okResponse(for: request),
+                Data(
+                    """
+                    {"models":[{"name":"models/gemini-3.5-flash","supportedGenerationMethods":["generateContent"]}]}
+                    """.utf8)
+            )
         }
 
         let config = LLMProviderConfig.gemini(
@@ -1224,36 +1273,40 @@ final class LLMClientTests: XCTestCase {
 
         MockURLProtocol.handler = { request in
             capturedRequest = request
-            return (self.okResponse(for: request), Data("""
-            {
-              "data": [
-                {
-                  "id":"openai/gpt-5.5",
-                  "architecture": {
-                    "input_modalities": ["text"],
-                    "output_modalities": ["text"]
-                  }
-                },
-                {
-                  "id":"google/gemini-3-pro-image-preview",
-                  "architecture": {
-                    "input_modalities": ["text"],
-                    "output_modalities": ["image"]
-                  }
-                },
-                {
-                  "id":"openai/text-embedding-3-large",
-                  "architecture": {
-                    "input_modalities": ["text"],
-                    "output_modalities": ["embeddings"]
-                  }
-                },
-                {
-                  "id":"anthropic/claude-sonnet-4.6"
-                }
-              ]
-            }
-            """.utf8))
+            return (
+                self.okResponse(for: request),
+                Data(
+                    """
+                    {
+                      "data": [
+                        {
+                          "id":"openai/gpt-5.5",
+                          "architecture": {
+                            "input_modalities": ["text"],
+                            "output_modalities": ["text"]
+                          }
+                        },
+                        {
+                          "id":"google/gemini-3-pro-image-preview",
+                          "architecture": {
+                            "input_modalities": ["text"],
+                            "output_modalities": ["image"]
+                          }
+                        },
+                        {
+                          "id":"openai/text-embedding-3-large",
+                          "architecture": {
+                            "input_modalities": ["text"],
+                            "output_modalities": ["embeddings"]
+                          }
+                        },
+                        {
+                          "id":"anthropic/claude-sonnet-4.6"
+                        }
+                      ]
+                    }
+                    """.utf8)
+            )
         }
 
         let models = try await llmClient.listModels(config: .openrouter(apiKey: "sk-or-test"))
@@ -1271,14 +1324,18 @@ final class LLMClientTests: XCTestCase {
 
         MockURLProtocol.handler = { request in
             capturedRequest = request
-            return (self.okResponse(for: request), Data("""
-            {
-              "data": [
-                {"id":"claude-sonnet-4-6","type":"model"},
-                {"id":"workspace-audit-log","type":"audit_log"}
-              ]
-            }
-            """.utf8))
+            return (
+                self.okResponse(for: request),
+                Data(
+                    """
+                    {
+                      "data": [
+                        {"id":"claude-sonnet-4-6","type":"model"},
+                        {"id":"workspace-audit-log","type":"audit_log"}
+                      ]
+                    }
+                    """.utf8)
+            )
         }
 
         let models = try await llmClient.listModels(config: .anthropic(apiKey: "sk-ant-test"))
@@ -1341,8 +1398,8 @@ final class LLMClientTests: XCTestCase {
                 url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil
             )!
             let json = """
-            [{"error":{"code":404,"message":"models/fake-model is not found","status":"NOT_FOUND"}}]
-            """
+                [{"error":{"code":404,"message":"models/fake-model is not found","status":"NOT_FOUND"}}]
+                """
             return (response, Data(json.utf8))
         }
 
@@ -1402,10 +1459,10 @@ final class LLMClientTests: XCTestCase {
     func testChatCompletionStreamMapsLMStudioContextStreamError() async throws {
         MockURLProtocol.handler = { request in
             let body = """
-            event: error
-            data: {"error":{"message":"The number of tokens to keep from the initial prompt is greater than the context length."},"message":"The number of tokens to keep from the initial prompt is greater than the context length."}
+                event: error
+                data: {"error":{"message":"The number of tokens to keep from the initial prompt is greater than the context length."},"message":"The number of tokens to keep from the initial prompt is greater than the context length."}
 
-            """
+                """
             return (self.okResponse(for: request), Data(body.utf8))
         }
 
@@ -1517,21 +1574,24 @@ final class LLMClientTests: XCTestCase {
     }
 
     private func validResponseData() -> Data {
-        Data("""
-        {"model":"gpt-4o","choices":[{"message":{"content":"OK"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}
-        """.utf8)
+        Data(
+            """
+            {"model":"gpt-4o","choices":[{"message":{"content":"OK"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}
+            """.utf8)
     }
 
     private func validAnthropicResponseData() -> Data {
-        Data("""
-        {"model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hello!"}],"usage":{"input_tokens":10,"output_tokens":5},"stop_reason":"end_turn"}
-        """.utf8)
+        Data(
+            """
+            {"model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hello!"}],"usage":{"input_tokens":10,"output_tokens":5},"stop_reason":"end_turn"}
+            """.utf8)
     }
 
     private func validOllamaResponseData() -> Data {
-        Data("""
-        {"model":"qwen3.5:4b","message":{"role":"assistant","content":"OK"},"done":true,"done_reason":"stop","prompt_eval_count":5,"eval_count":1}
-        """.utf8)
+        Data(
+            """
+            {"model":"qwen3.5:4b","message":{"role":"assistant","content":"OK"},"done":true,"done_reason":"stop","prompt_eval_count":5,"eval_count":1}
+            """.utf8)
     }
 
     // MARK: - scrubAPIKeyArtifacts
@@ -1643,8 +1703,7 @@ final class LLMClientTests: XCTestCase {
             var collected = Data()
             while stream.hasBytesAvailable {
                 let count = stream.read(&buffer, maxLength: buffer.count)
-                if count > 0 { collected.append(buffer, count: count) }
-                else { break }
+                if count > 0 { collected.append(buffer, count: count) } else { break }
             }
             stream.close()
             bodyData = collected

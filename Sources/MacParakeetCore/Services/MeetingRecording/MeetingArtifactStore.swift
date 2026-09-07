@@ -141,7 +141,8 @@ public final class MeetingArtifactStore: MeetingArtifactStoring, @unchecked Send
         let generatedAt = Date()
         let transcriptURL = folderURL.appendingPathComponent(Self.transcriptFileName)
         let promptResultsURL = folderURL.appendingPathComponent(Self.promptResultsFileName)
-        let promptResultsDirectoryURL = folderURL.appendingPathComponent(Self.promptResultsDirectoryName, isDirectory: true)
+        let promptResultsDirectoryURL = folderURL.appendingPathComponent(
+            Self.promptResultsDirectoryName, isDirectory: true)
         let notesURL = MeetingNotesFile.fileURL(for: folderURL)
 
         let notesPath: String?
@@ -229,7 +230,7 @@ public final class MeetingArtifactStore: MeetingArtifactStoring, @unchecked Send
             return URL(fileURLWithPath: folderPath, isDirectory: true)
         }
         guard let filePath = transcription.filePath?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !filePath.isEmpty
+            !filePath.isEmpty
         else {
             return nil
         }
@@ -238,7 +239,8 @@ public final class MeetingArtifactStore: MeetingArtifactStoring, @unchecked Send
 
     private static func normalizedPath(_ path: String?) -> String? {
         guard let trimmed = path?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty else {
+            !trimmed.isEmpty
+        else {
             return nil
         }
         return URL(fileURLWithPath: trimmed).standardizedFileURL.path
@@ -270,11 +272,12 @@ public final class MeetingArtifactStore: MeetingArtifactStoring, @unchecked Send
                 atomically: true,
                 encoding: .utf8
             )
-            files.append(MeetingArtifactPromptResultFile(
-                id: record.id,
-                name: record.name,
-                path: fileURL.path
-            ))
+            files.append(
+                MeetingArtifactPromptResultFile(
+                    id: record.id,
+                    name: record.name,
+                    path: fileURL.path
+                ))
         }
         return files
     }
@@ -288,7 +291,8 @@ public final class MeetingArtifactStore: MeetingArtifactStoring, @unchecked Send
         let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>")
             .union(.newlines)
             .union(.controlCharacters)
-        let cleaned = value
+        let cleaned =
+            value
             .components(separatedBy: invalid)
             .joined(separator: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -476,11 +480,12 @@ private struct MeetingArtifactPromptResult: Codable {
     func markdown(meetingTitle: String) -> String {
         var sections: [String] = []
         sections.append("# \(name)")
-        sections.append("""
-        - Meeting: \(meetingTitle)
-        - Result ID: \(id.uuidString)
-        - Created: \(Self.isoString(createdAt))
-        """)
+        sections.append(
+            """
+            - Meeting: \(meetingTitle)
+            - Result ID: \(id.uuidString)
+            - Created: \(Self.isoString(createdAt))
+            """)
         sections.append("## Output\n\n\(content.trimmingCharacters(in: .whitespacesAndNewlines))")
         if let extra = extraInstructions?.trimmingCharacters(in: .whitespacesAndNewlines), !extra.isEmpty {
             sections.append("## Extra Instructions\n\n\(extra)")

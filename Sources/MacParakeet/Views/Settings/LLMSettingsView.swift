@@ -22,7 +22,7 @@ struct LLMSettingsView: View {
     @State private var aiFormatterAppSearch = ""
     @State private var aiFormatterInstalledApps: [AIFormatterInstalledApp] = []
     @State private var isLoadingAIFormatterInstalledApps = false
-    @State private var selectedSmartDefaultCategory: TelemetryAppCategory?
+    @State private var selectedSmartDefaultCategory: AppCategory?
     @State private var aiFormatterAppIcons: [String: NSImage] = [:]
     @State private var aiFormatterAppIconLoadingIDs: Set<String> = []
     @State private var pendingLocalAIModelRemoval: LocalAIModelRemoval?
@@ -1390,7 +1390,7 @@ struct LLMSettingsView: View {
             Text("Category")
                 .font(DesignSystem.Typography.caption.weight(.medium))
             Picker("Category", selection: profileDraftCategoryBinding) {
-                ForEach(TelemetryAppCategory.allCases, id: \.self) { category in
+                ForEach(AppCategory.allCases, id: \.self) { category in
                     Text(categoryTitle(category)).tag(category)
                 }
             }
@@ -1521,7 +1521,7 @@ struct LLMSettingsView: View {
         )
     }
 
-    private var profileDraftCategoryBinding: Binding<TelemetryAppCategory> {
+    private var profileDraftCategoryBinding: Binding<AppCategory> {
         Binding(
             get: { viewModel.aiFormatterProfileDraft?.appCategory ?? .messaging },
             set: { viewModel.applyAIFormatterProfileDraftCategory($0) }
@@ -1765,11 +1765,11 @@ struct LLMSettingsView: View {
         }
     }
 
-    private func categoryTitle(_ category: TelemetryAppCategory) -> String {
+    private func categoryTitle(_ category: AppCategory) -> String {
         category.formatterDisplayName
     }
 
-    private func smartDefaultIcon(for category: TelemetryAppCategory) -> String {
+    private func smartDefaultIcon(for category: AppCategory) -> String {
         switch category {
         case .messaging: return "bubble.left.and.bubble.right"
         case .email: return "envelope"

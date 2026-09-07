@@ -1,36 +1,6 @@
 import XCTest
 @testable import MacParakeetCore
 
-private final class DictationTelemetrySpy: TelemetryServiceProtocol, @unchecked Sendable {
-    private let lock = NSLock()
-    private var events: [TelemetryEventSpec] = []
-
-    func send(_ event: TelemetryEventSpec) {
-        lock.lock()
-        events.append(event)
-        lock.unlock()
-    }
-
-    func sendAndFlush(_ event: TelemetryEventSpec) async -> Bool {
-        send(event)
-        return true
-    }
-
-    func flush() async {}
-    func clearQueue() {
-        lock.lock()
-        events.removeAll()
-        lock.unlock()
-    }
-    func flushForTermination() {}
-
-    func snapshot() -> [TelemetryEventSpec] {
-        lock.lock()
-        defer { lock.unlock() }
-        return events
-    }
-}
-
 final class DictationServiceTests: XCTestCase {
     var service: DictationService!
     var mockAudio: MockAudioProcessor!
@@ -53,7 +23,6 @@ final class DictationServiceTests: XCTestCase {
     }
 
     override func tearDown() {
-        Telemetry.configure(NoOpTelemetryService())
         service = nil
         mockAudio = nil
         mockSTT = nil
@@ -74,7 +43,8 @@ final class DictationServiceTests: XCTestCase {
 
     func testInitialStateIsIdle() async {
         let state = await service.state
-        if case .idle = state {} else {
+        if case .idle = state {
+        } else {
             XCTFail("Expected idle state, got \(state)")
         }
     }
@@ -82,7 +52,8 @@ final class DictationServiceTests: XCTestCase {
     func testStartRecordingChangesState() async throws {
         try await service.startRecording()
         let state = await service.state
-        if case .recording = state {} else {
+        if case .recording = state {
+        } else {
             XCTFail("Expected recording state, got \(state)")
         }
     }
@@ -97,7 +68,7 @@ final class DictationServiceTests: XCTestCase {
     }
 
     func testDiscardPreRollIgnoresStaleSession() async throws {
-        try await service.startRecording(context: DictationTelemetryContext(), sessionID: 7)
+        try await service.startRecording(sessionID: 7)
 
         await service.discardPreRollForActiveCapture(sessionID: 6)
 
@@ -110,277 +81,6 @@ final class DictationServiceTests: XCTestCase {
 
         let callCount = await mockAudio.discardPreRollCallCount
         XCTAssertEqual(callCount, 0)
-    }
-
-    func testStartFailureUsesRequestedTelemetryContextForOperation() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-        await mockSTT.configureTelemetryAttribution(.init(
-            speechEngine: .whisper,
-            engineVariant: SpeechEnginePreference.defaultWhisperModelVariant,
-            language: "en"
-        ))
-
-        try await service.startRecording(context: DictationTelemetryContext(trigger: .menuBar, mode: .persistent))
-        await service.confirmCancel()
-
-        await mockAudio.configureCaptureError(AudioProcessorError.microphoneNotAvailable)
-        do {
-            try await service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
-            XCTFail("Expected startRecording to throw")
-        } catch let error as AudioProcessorError {
-            if case .microphoneNotAvailable = error {} else {
-                XCTFail("Expected microphoneNotAvailable, got \(error)")
-            }
-        } catch {
-            XCTFail("Unexpected error: \(error)")
-        }
-
-        let operation = try XCTUnwrap(dictationOperationProps(in: telemetry.snapshot()).last)
-        XCTAssertEqual(operation["outcome"], "failure")
-        XCTAssertEqual(operation["trigger"], "hotkey")
-        XCTAssertEqual(operation["mode"], "hold")
-        XCTAssertEqual(operation["speech_engine"], "whisper")
-        XCTAssertEqual(operation["engine_variant"], SpeechEnginePreference.defaultWhisperModelVariant)
-        XCTAssertEqual(operation["language"], "en")
-    }
-
-    func testStartRecordingSnapshotsSpeechEngineAttributionAfterEntitlementAwait() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-        await mockSTT.configure(result: STTResult(text: "   ", words: []))
-        await mockSTT.configureTelemetryAttribution(.init(
-            speechEngine: .parakeet,
-            engineVariant: ParakeetModelVariant.v3.rawValue,
-            language: nil
-        ))
-        let entitlements = DelayedEntitlements()
-        service = DictationService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            dictationRepo: dictationRepo,
-            entitlements: entitlements
-        )
-
-        let startTask = Task {
-            try await self.service.startRecording(
-                context: DictationTelemetryContext(trigger: .hotkey, mode: .hold)
-            )
-        }
-        await entitlements.waitForAssert()
-        await mockSTT.configureTelemetryAttribution(.init(
-            speechEngine: .whisper,
-            engineVariant: SpeechEnginePreference.defaultWhisperModelVariant,
-            language: "en"
-        ))
-        await entitlements.release()
-        try await startTask.value
-
-        do {
-            _ = try await service.stopRecording()
-            XCTFail("Expected empty transcript to throw")
-        } catch DictationServiceError.emptyTranscript {
-        } catch {
-            XCTFail("Unexpected error: \(error)")
-        }
-
-        let operation = try XCTUnwrap(dictationOperationProps(in: telemetry.snapshot()).last)
-        XCTAssertEqual(operation["outcome"], "empty")
-        XCTAssertEqual(operation["trigger"], "hotkey")
-        XCTAssertEqual(operation["mode"], "hold")
-        XCTAssertEqual(operation["speech_engine"], "whisper")
-        XCTAssertEqual(operation["engine_variant"], SpeechEnginePreference.defaultWhisperModelVariant)
-        XCTAssertEqual(operation["language"], "en")
-    }
-
-    func testInterruptedSubscribeWithoutCancelEmitsFailureTelemetry() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        await mockAudio.configureCaptureError(AudioProcessorError.recordingFailed("interrupted during subscribe"))
-
-        do {
-            try await service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
-            XCTFail("Expected startRecording to throw")
-        } catch let error as AudioProcessorError {
-            if case .recordingFailed(let reason) = error {
-                XCTAssertEqual(reason, "interrupted during subscribe")
-            } else {
-                XCTFail("Expected interrupted recording failure, got \(error)")
-            }
-        } catch {
-            XCTFail("Unexpected error: \(error)")
-        }
-
-        let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains { event in
-            if case .dictationFailed = event { return true }
-            return false
-        })
-
-        let operation = try XCTUnwrap(dictationOperationProps(in: events).last)
-        XCTAssertEqual(operation["outcome"], "failure")
-        XCTAssertEqual(operation["trigger"], "hotkey")
-        XCTAssertEqual(operation["mode"], "hold")
-    }
-
-    func testCancelDuringStartCaptureStillEmitsCancelledOperation() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-        await mockAudio.configureStartCaptureDelay(milliseconds: 100)
-
-        let startTask = Task {
-            try await self.service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
-        }
-
-        try await Task.sleep(for: .milliseconds(20))
-        await service.cancelRecording(reason: .hotkey)
-        try await startTask.value
-        await service.confirmCancel()
-
-        let operations = dictationOperationProps(in: telemetry.snapshot())
-        XCTAssertTrue(operations.contains { operation in
-            operation["outcome"] == "cancelled"
-                && operation["trigger"] == "hotkey"
-                && operation["mode"] == "hold"
-                && operation["cancel_reason"] == "hotkey"
-            })
-    }
-
-    func testCancelThenConfirmEmitsCancelledTelemetryAndOperationReason() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-        await mockSTT.configureTelemetryAttribution(.init(
-            speechEngine: .whisper,
-            engineVariant: SpeechEnginePreference.defaultWhisperModelVariant,
-            language: "en"
-        ))
-
-        try await service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
-        await service.cancelRecording(reason: .escape)
-        await service.confirmCancel()
-
-        let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains { event in
-            guard case .dictationCancelled = event else { return false }
-            return event.props?["reason"] == "escape"
-        })
-
-        let operation = try XCTUnwrap(dictationOperationProps(in: events).last { operation in
-            operation["outcome"] == "cancelled"
-                && operation["trigger"] == "hotkey"
-                && operation["mode"] == "hold"
-                && operation["cancel_reason"] == "escape"
-        })
-        XCTAssertEqual(operation["speech_engine"], "whisper")
-        XCTAssertEqual(operation["engine_variant"], SpeechEnginePreference.defaultWhisperModelVariant)
-        XCTAssertEqual(operation["language"], "en")
-    }
-
-    func testInterruptedSubscribeAfterCancelDoesNotEmitFailureTelemetry() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        let audio = StartInterruptedAudioProcessor()
-        service = DictationService(
-            audioProcessor: audio,
-            sttTranscriber: mockSTT,
-            dictationRepo: dictationRepo
-        )
-
-        let startTask = Task {
-            try await self.service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
-        }
-
-        await audio.waitForStartCapture()
-        await service.confirmCancel()
-        try await startTask.value
-
-        let events = telemetry.snapshot()
-        XCTAssertFalse(events.contains { event in
-            if case .dictationFailed = event { return true }
-            return false
-        })
-
-        let operations = dictationOperationProps(in: events)
-        XCTAssertTrue(operations.contains { operation in
-            operation["outcome"] == "cancelled"
-                && operation["trigger"] == "hotkey"
-                && operation["mode"] == "hold"
-        })
-    }
-
-    func testInterruptedSubscribeAfterCancelLeavesServiceNonRecordingBeforeCancelCompletes() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        let audio = StartInterruptedDelayedStopAudioProcessor()
-        service = DictationService(
-            audioProcessor: audio,
-            sttTranscriber: mockSTT,
-            dictationRepo: dictationRepo
-        )
-
-        let startTask = Task {
-            try await self.service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
-            return await self.service.state
-        }
-
-        await audio.waitForStartCapture()
-        let cancelTask = Task { await service.confirmCancel() }
-        await audio.waitForStopCapture()
-
-        let stateAfterSuppressedStart = try await startTask.value
-        XCTAssertFalse(Self.isRecording(stateAfterSuppressedStart))
-
-        await audio.allowStopCaptureToReturn()
-        await cancelTask.value
-
-        let finalState = await service.state
-        if case .idle = finalState {} else {
-            XCTFail("Expected idle after confirmCancel, got \(finalState)")
-        }
-    }
-
-    func testStopRecordingTranscribesAndSaves() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        let expectedResult = STTResult(
-            text: "Hello world",
-            words: [
-                TimestampedWord(word: "Hello", startMs: 0, endMs: 500, confidence: 0.98),
-                TimestampedWord(word: "world", startMs: 520, endMs: 1000, confidence: 0.95)
-            ],
-            language: "KO_kr",
-            engine: .whisper,
-            engineVariant: SpeechEnginePreference.defaultWhisperModelVariant
-        )
-        await mockSTT.configure(result: expectedResult)
-
-        try await service.startRecording()
-        let result = try await service.stopRecording()
-
-        XCTAssertEqual(result.dictation.rawTranscript, "Hello world")
-        XCTAssertEqual(result.dictation.status, .completed)
-        XCTAssertEqual(result.dictation.processingMode, .raw)
-        XCTAssertEqual(result.dictation.durationMs, 1000)
-        XCTAssertNil(result.postPasteAction)
-
-        // Verify saved to DB
-        let fetched = try dictationRepo.fetch(id: result.dictation.id)
-        XCTAssertNotNil(fetched)
-        XCTAssertEqual(fetched?.rawTranscript, "Hello world")
-        XCTAssertEqual(fetched?.engine, "whisper")
-        XCTAssertEqual(fetched?.engineVariant, SpeechEnginePreference.defaultWhisperModelVariant)
-        XCTAssertEqual(fetched?.language, "ko")
-
-        let operation = try XCTUnwrap(
-            dictationOperationProps(in: telemetry.snapshot()).last { $0["outcome"] == "success" }
-        )
-        XCTAssertEqual(operation["speech_engine"], "whisper")
-        XCTAssertEqual(operation["engine_variant"], SpeechEnginePreference.defaultWhisperModelVariant)
-        XCTAssertEqual(operation["language"], "ko")
     }
 
     func testDurationUsesCapturedAudioDurationWhenWordsAreMissing() {
@@ -434,141 +134,6 @@ final class DictationServiceTests: XCTestCase {
         XCTAssertEqual(result.postPasteAction, .returnKey)
     }
 
-    func testSilentCaptureHealthFailsBeforeSTTAndEmitsFailureTelemetry() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-        await mockSTT.configureTelemetryAttribution(.init(
-            speechEngine: .whisper,
-            engineVariant: SpeechEnginePreference.defaultWhisperModelVariant,
-            language: "en"
-        ))
-
-        let audioURL = try makeTemporaryAudioURL()
-        await mockAudio.configure(captureResult: audioURL)
-        await mockAudio.configure(lastCaptureHealth: AudioCaptureHealth(
-            sampleCount: 32_000,
-            audioDurationSeconds: 2,
-            wallDurationSeconds: 2,
-            fileBytes: 128_000,
-            inputBufferCount: 20,
-            outputBufferCount: 20,
-            inputFrameCount: 96_000,
-            maxRMS: 0,
-            maxAudioLevel: 0,
-            nonSilentBufferCount: 0,
-            missingFloatChannelDataBufferCount: 0,
-            invalidFormatBufferCount: 0,
-            noBufferTimeoutFired: false
-        ))
-        await mockSTT.configure(result: STTResult(text: "should not transcribe"))
-
-        try await service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .persistent))
-        do {
-            _ = try await service.stopRecording()
-            XCTFail("Expected silent capture health to fail before STT")
-        } catch AudioProcessorError.inputUnavailable(let problem) {
-            XCTAssertEqual(problem, .silentInput)
-        } catch {
-            XCTFail("Unexpected error: \(error)")
-        }
-
-        let transcribeCallCount = await mockSTT.transcribeCallCount
-        XCTAssertEqual(transcribeCallCount, 0)
-        let events = telemetry.snapshot()
-        XCTAssertFalse(events.contains { event in
-            if case .dictationEmpty = event { return true }
-            return false
-        })
-        XCTAssertTrue(events.contains { event in
-            if case .dictationFailed = event { return true }
-            return false
-        })
-
-        let operation = try XCTUnwrap(dictationOperationProps(in: events).last)
-        XCTAssertEqual(operation["outcome"], "failure")
-        XCTAssertEqual(operation["error_type"], "AudioProcessorError.inputUnavailable")
-        XCTAssertEqual(operation["trigger"], "hotkey")
-        XCTAssertEqual(operation["mode"], "persistent")
-        XCTAssertEqual(operation["speech_engine"], "whisper")
-        XCTAssertEqual(operation["engine_variant"], SpeechEnginePreference.defaultWhisperModelVariant)
-        XCTAssertEqual(operation["language"], "en")
-    }
-
-    func testEmptyDictationOperationIncludesSpeechEngineAttribution() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-        await mockSTT.configure(result: STTResult(
-            text: "   ",
-            words: [],
-            language: "en",
-            engine: .whisper,
-            engineVariant: SpeechEnginePreference.defaultWhisperModelVariant
-        ))
-        await mockSTT.configureTelemetryAttribution(.init(
-            speechEngine: .whisper,
-            engineVariant: SpeechEnginePreference.defaultWhisperModelVariant,
-            language: "en"
-        ))
-
-        try await service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
-        do {
-            _ = try await service.stopRecording()
-            XCTFail("Expected empty transcript to throw")
-        } catch DictationServiceError.emptyTranscript {
-        } catch {
-            XCTFail("Unexpected error: \(error)")
-        }
-
-        let operation = try XCTUnwrap(dictationOperationProps(in: telemetry.snapshot()).last)
-        XCTAssertEqual(operation["outcome"], "empty")
-        XCTAssertEqual(operation["trigger"], "hotkey")
-        XCTAssertEqual(operation["mode"], "hold")
-        XCTAssertEqual(operation["speech_engine"], "whisper")
-        XCTAssertEqual(operation["engine_variant"], SpeechEnginePreference.defaultWhisperModelVariant)
-        XCTAssertEqual(operation["language"], "en")
-    }
-
-    func testNoBufferCaptureFailureEmitsFailureTelemetry() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-
-        await mockAudio.configure(lastCaptureHealth: AudioCaptureHealth(
-            sampleCount: 0,
-            audioDurationSeconds: 0,
-            wallDurationSeconds: 3,
-            fileBytes: 4_096,
-            inputBufferCount: 0,
-            outputBufferCount: 0,
-            inputFrameCount: 0,
-            maxRMS: 0,
-            maxAudioLevel: 0,
-            nonSilentBufferCount: 0,
-            missingFloatChannelDataBufferCount: 0,
-            invalidFormatBufferCount: 0,
-            noBufferTimeoutFired: true
-        ))
-
-        try await service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
-        await mockAudio.configureCaptureError(AudioProcessorError.inputUnavailable(.noInputBuffers))
-        do {
-            _ = try await service.stopRecording()
-            XCTFail("Expected no-buffer capture to fail")
-        } catch AudioProcessorError.inputUnavailable(let problem) {
-            XCTAssertEqual(problem, .noInputBuffers)
-        } catch {
-            XCTFail("Unexpected error: \(error)")
-        }
-
-        let events = telemetry.snapshot()
-        XCTAssertFalse(events.contains { event in
-            if case .dictationEmpty = event { return true }
-            return false
-        })
-        let operation = try XCTUnwrap(dictationOperationProps(in: events).last)
-        XCTAssertEqual(operation["outcome"], "failure")
-        XCTAssertEqual(operation["error_type"], "AudioProcessorError.inputUnavailable")
-    }
-
     func testStopRecordingUsesRecordedFileEvenWhenLiveFinalIsAvailable() async throws {
         service = DictationService(
             audioProcessor: mockAudio,
@@ -577,13 +142,14 @@ final class DictationServiceTests: XCTestCase {
             shouldAttemptLiveDictationTranscription: { true }
         )
         await mockSTT.configure(result: STTResult(text: "file final"))
-        await mockSTT.configureLive(result: STTResult(
-            text: "live final missing tail",
-            words: [],
-            language: "en",
-            engine: .nemotron,
-            engineVariant: NemotronModelVariant.multilingual1120.rawValue
-        ))
+        await mockSTT.configureLive(
+            result: STTResult(
+                text: "live final missing tail",
+                words: [],
+                language: "en",
+                engine: .nemotron,
+                engineVariant: NemotronModelVariant.multilingual1120.rawValue
+            ))
 
         try await service.startRecording()
         await mockSTT.emitLivePartial(" live partial ")
@@ -613,13 +179,14 @@ final class DictationServiceTests: XCTestCase {
             shouldShowDictationPreview: { false }
         )
         await mockSTT.configure(result: STTResult(text: "file final"))
-        await mockSTT.configureLive(result: STTResult(
-            text: "live final",
-            words: [],
-            language: "en",
-            engine: .nemotron,
-            engineVariant: NemotronModelVariant.multilingual1120.rawValue
-        ))
+        await mockSTT.configureLive(
+            result: STTResult(
+                text: "live final",
+                words: [],
+                language: "en",
+                engine: .nemotron,
+                engineVariant: NemotronModelVariant.multilingual1120.rawValue
+            ))
 
         try await service.startRecording()
         await mockSTT.emitLivePartial(" live partial ")
@@ -735,11 +302,12 @@ final class DictationServiceTests: XCTestCase {
             shouldAttemptLiveDictationTranscription: { true }
         )
         await mockSTT.configure(result: STTResult(text: "file fallback"))
-        await mockSTT.configureLive(result: STTResult(
-            text: "live final",
-            words: [],
-            engine: .nemotron
-        ))
+        await mockSTT.configureLive(
+            result: STTResult(
+                text: "live final",
+                words: [],
+                engine: .nemotron
+            ))
         await mockSTT.holdLiveAppends()
 
         try await service.startRecording()
@@ -769,11 +337,12 @@ final class DictationServiceTests: XCTestCase {
             shouldAttemptLiveDictationTranscription: { true }
         )
         await mockSTT.configure(result: STTResult(text: "file fallback"))
-        await mockSTT.configureLive(result: STTResult(
-            text: "live final",
-            words: [],
-            engine: .nemotron
-        ))
+        await mockSTT.configureLive(
+            result: STTResult(
+                text: "live final",
+                words: [],
+                engine: .nemotron
+            ))
 
         try await service.startRecording()
         await mockAudio.emitLiveSamples([0.1, 0.2])
@@ -1134,11 +703,12 @@ final class DictationServiceTests: XCTestCase {
             shouldAttemptLiveDictationTranscription: { true }
         )
         await mockSTT.configure(result: STTResult(text: "file fallback"))
-        await mockSTT.configureLive(result: STTResult(
-            text: "live final",
-            words: [],
-            engine: .nemotron
-        ))
+        await mockSTT.configureLive(
+            result: STTResult(
+                text: "live final",
+                words: [],
+                engine: .nemotron
+            ))
 
         try await service.startRecording()
         await shortCaptureAudio.emitLiveSamples([0.1, 0.2])
@@ -1147,7 +717,8 @@ final class DictationServiceTests: XCTestCase {
             _ = try await service.stopRecording()
             XCTFail("Expected stopRecording to throw insufficientSamples")
         } catch let error as AudioProcessorError {
-            if case .insufficientSamples = error {} else {
+            if case .insufficientSamples = error {
+            } else {
                 XCTFail("Expected insufficientSamples, got \(error)")
             }
         } catch {
@@ -1160,66 +731,6 @@ final class DictationServiceTests: XCTestCase {
         XCTAssertEqual(transcribeCallCount, 0)
         XCTAssertEqual(liveFinishCallCount, 0)
         XCTAssertEqual(liveCancelCallCount, 1)
-    }
-
-    func testStopRecordingUsesLatestAppCategoryForTelemetry() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-        await mockSTT.configure(result: STTResult(text: "finish target"))
-
-        try await service.startRecording(
-            context: DictationTelemetryContext(
-                trigger: .menuBar,
-                mode: .hold,
-                appCategory: .browser
-            )
-        )
-        await service.updateTelemetryAppCategory(.email)
-        _ = try await service.stopRecording()
-
-        let events = telemetry.snapshot()
-        let completed = try XCTUnwrap(events.last { event in
-            if case .dictationCompleted = event { return true }
-            return false
-        })
-        XCTAssertEqual(completed.props?["app_category"], "email")
-
-        let operation = try XCTUnwrap(successfulDictationOperation(
-            in: events,
-            trigger: .menuBar,
-            mode: .hold
-        ))
-        XCTAssertEqual(operation["app_category"], "email")
-    }
-
-    func testNilStopTimeAppCategoryRecordsOtherTelemetryBucket() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-        await mockSTT.configure(result: STTResult(text: "finish target"))
-
-        try await service.startRecording(
-            context: DictationTelemetryContext(
-                trigger: .menuBar,
-                mode: .hold,
-                appCategory: .browser
-            )
-        )
-        await service.updateTelemetryAppCategory(nil)
-        _ = try await service.stopRecording()
-
-        let events = telemetry.snapshot()
-        let completed = try XCTUnwrap(events.last { event in
-            if case .dictationCompleted = event { return true }
-            return false
-        })
-        XCTAssertEqual(completed.props?["app_category"], "other")
-
-        let operation = try XCTUnwrap(successfulDictationOperation(
-            in: events,
-            trigger: .menuBar,
-            mode: .hold
-        ))
-        XCTAssertEqual(operation["app_category"], "other")
     }
 
     func testFirstDictationFlagFlipsAfterSuccessfulSave() async throws {
@@ -1456,60 +967,6 @@ final class DictationServiceTests: XCTestCase {
         XCTAssertNil(fetched.aiFormatterProfileMatchKind)
     }
 
-    func testExactAppFormatterProfileDoesNotEmitExactTelemetryData() async throws {
-        let telemetry = DictationTelemetrySpy()
-        Telemetry.configure(telemetry)
-        await mockSTT.configure(result: STTResult(text: "send confidential roadmap"))
-        let mockLLMService = MockLLMService()
-        mockLLMService.formatTranscriptResult = "Send confidential roadmap."
-        let profileID = UUID()
-        let profileName = "Slack Casual"
-        let promptTemplate = "Slack-only private prompt: {{TRANSCRIPT}}"
-        let bundleIdentifier = "com.tinyspeck.slackmacgap"
-        let displayName = "Slack"
-        let resolver = RecordingAIFormatterPromptResolver(
-            resolution: AIFormatterPromptResolution(
-                promptTemplate: promptTemplate,
-                matchKind: .exactApp,
-                profileID: profileID,
-                profileName: profileName,
-                profileOrigin: .custom
-            )
-        )
-
-        service = DictationService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            dictationRepo: dictationRepo,
-            llmService: mockLLMService,
-            shouldUseAIFormatter: { true },
-            aiFormatterPromptResolver: resolver
-        )
-
-        try await service.startRecording()
-        let context = AppPromptContext(bundleIdentifier: bundleIdentifier, displayName: displayName)
-        await service.updateTelemetryAppCategory(context.category)
-        await service.updateAIFormatterAppContext(context, phase: .finish)
-        _ = try await service.stopRecording()
-
-        let telemetryProps = allTelemetryProps(in: telemetry.snapshot())
-        XCTAssertFalse(telemetryProps.isEmpty)
-        for props in telemetryProps {
-            let serialized = props
-                .flatMap { [$0.key, $0.value] }
-                .joined(separator: "\n")
-                .lowercased()
-            XCTAssertFalse(serialized.contains(bundleIdentifier))
-            XCTAssertFalse(serialized.contains(displayName.lowercased()))
-            XCTAssertFalse(serialized.contains(profileID.uuidString.lowercased()))
-            XCTAssertFalse(serialized.contains(profileName.lowercased()))
-            XCTAssertFalse(serialized.contains(promptTemplate.lowercased()))
-            XCTAssertFalse(serialized.contains("send confidential roadmap"))
-            XCTAssertFalse(serialized.contains(AIFormatterProfileMatchKind.exactApp.rawValue))
-        }
-        XCTAssertTrue(telemetryProps.contains { $0["app_category"] == TelemetryAppCategory.messaging.rawValue })
-    }
-
     func testStopRecordingUsesFinishAIFormatterContextOverStartContext() async throws {
         await mockSTT.configure(result: STTResult(text: "send update"))
         let mockLLMService = MockLLMService()
@@ -1704,25 +1161,6 @@ final class DictationServiceTests: XCTestCase {
     // Note: Cancel flow tests, stop-when-not-recording, and STT error propagation
     // are covered in CancelFlowTests.swift to avoid duplication.
 
-    private func dictationOperationProps(in events: [TelemetryEventSpec]) -> [[String: String]] {
-        events.compactMap { event in
-            guard case .dictationOperation = event else { return nil }
-            return event.props ?? [:]
-        }
-    }
-
-    private func successfulDictationOperation(
-        in events: [TelemetryEventSpec],
-        trigger: TelemetryDictationTrigger,
-        mode: TelemetryDictationMode
-    ) -> [String: String]? {
-        dictationOperationProps(in: events).last { props in
-            props["outcome"] == ObservabilityOutcome.success.rawValue
-                && props["trigger"] == trigger.rawValue
-                && props["mode"] == mode.rawValue
-        }
-    }
-
     private func waitForCondition(
         timeout: Duration = .seconds(2),
         _ condition: @escaping @Sendable () async -> Bool
@@ -1741,10 +1179,6 @@ final class DictationServiceTests: XCTestCase {
             .appendingPathComponent("\(UUID().uuidString).wav")
         try Data([0]).write(to: url)
         return url
-    }
-
-    private func allTelemetryProps(in events: [TelemetryEventSpec]) -> [[String: String]] {
-        events.compactMap(\.props)
     }
 
     private static func isRecording(_ state: DictationState) -> Bool {
@@ -1865,7 +1299,6 @@ private actor StartInterruptedAudioProcessor: AudioProcessorProtocol {
 
     var audioLevel: Float { 0 }
     var isRecording: Bool { false }
-    var recordingDeviceInfo: RecordingDeviceInfo? { nil }
 
     func convert(fileURL: URL) async throws -> URL {
         fileURL
@@ -1910,7 +1343,6 @@ private actor StopFailingLiveAudioProcessor: AudioProcessorProtocol {
 
     var audioLevel: Float { 0 }
     var isRecording: Bool { recording }
-    var recordingDeviceInfo: RecordingDeviceInfo? { nil }
 
     func convert(fileURL: URL) async throws -> URL {
         fileURL
@@ -1946,7 +1378,6 @@ private actor StartInterruptedDelayedStopAudioProcessor: AudioProcessorProtocol 
 
     var audioLevel: Float { 0 }
     var isRecording: Bool { false }
-    var recordingDeviceInfo: RecordingDeviceInfo? { nil }
 
     func convert(fileURL: URL) async throws -> URL {
         fileURL

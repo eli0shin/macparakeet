@@ -44,7 +44,7 @@ enum MenuPreviewFormatter {
             ("`", ""),
             ("**", ""),
             ("__", ""),
-            ("*", "")
+            ("*", ""),
         ] {
             value = value.replacingOccurrences(of: target, with: replacement)
         }
@@ -91,8 +91,9 @@ enum MenuPreviewFormatter {
         }
 
         guard sawDigit,
-              index < text.endIndex,
-              text[index] == "." || text[index] == ")" else {
+            index < text.endIndex,
+            text[index] == "." || text[index] == ")"
+        else {
             return nil
         }
 

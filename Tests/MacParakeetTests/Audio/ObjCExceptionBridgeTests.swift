@@ -22,13 +22,14 @@ final class ObjCExceptionBridgeTests: XCTestCase {
 
     func testMPKTryBlockCatchesNSExceptionAndPopulatesError() {
         var error: NSError?
-        let ok = MPKTryBlock({
-            NSException(
-                name: NSExceptionName("TestExceptionName"),
-                reason: "synthetic reason for unit test",
-                userInfo: ["key": "value"]
-            ).raise()
-        }, &error)
+        let ok = MPKTryBlock(
+            {
+                NSException(
+                    name: NSExceptionName("TestExceptionName"),
+                    reason: "synthetic reason for unit test",
+                    userInfo: ["key": "value"]
+                ).raise()
+            }, &error)
 
         XCTAssertFalse(ok)
         XCTAssertNotNil(error)
@@ -48,9 +49,10 @@ final class ObjCExceptionBridgeTests: XCTestCase {
     func testMPKTryBlockToleratesNilErrorOutParameter() {
         // The API contract allows `error == NULL`. The catcher must not crash
         // when the caller doesn't care about the error value.
-        let ok = MPKTryBlock({
-            NSException(name: .genericException, reason: "ignored", userInfo: nil).raise()
-        }, nil)
+        let ok = MPKTryBlock(
+            {
+                NSException(name: .genericException, reason: "ignored", userInfo: nil).raise()
+            }, nil)
 
         XCTAssertFalse(ok)
     }

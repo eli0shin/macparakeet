@@ -30,7 +30,9 @@ final class SoundManager {
     }
 
     private static var isSystemSoundEffectsEnabled: Bool {
-        if let value = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?[uiAudioEnabledKey] as? Bool {
+        if let value = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?[uiAudioEnabledKey]
+            as? Bool
+        {
             return value
         }
         if let value = UserDefaults.standard.object(forKey: uiAudioEnabledKey) as? Bool {
@@ -42,8 +44,10 @@ final class SoundManager {
 
     private func preloadSounds() {
         for sound in AppSound.allCases {
-            guard let url = Bundle.main.url(forResource: sound.rawValue, withExtension: "aif")
-                    ?? Bundle.main.url(forResource: sound.rawValue, withExtension: "wav") else {
+            guard
+                let url = Bundle.main.url(forResource: sound.rawValue, withExtension: "aif")
+                    ?? Bundle.main.url(forResource: sound.rawValue, withExtension: "wav")
+            else {
                 continue
             }
             do {

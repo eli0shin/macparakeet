@@ -255,7 +255,8 @@ public struct MeetingCaptureHealthSummary: Sendable, Equatable, Codable {
         systemBufferDeliveryTimedOut: Bool,
         captureFailed: Bool
     ) -> MeetingSourceHealth {
-        let selected = source == .microphone
+        let selected =
+            source == .microphone
             ? sourceMode.capturesMicrophone
             : sourceMode.capturesSystemAudio
         guard selected else {
@@ -268,7 +269,8 @@ public struct MeetingCaptureHealthSummary: Sendable, Equatable, Codable {
         }
 
         if captureFailed {
-            let status: MeetingSourceHealth.Status = interruptedSources.contains(source)
+            let status: MeetingSourceHealth.Status =
+                interruptedSources.contains(source)
                 ? .interrupted
                 : .unavailable
             return MeetingSourceHealth(
@@ -289,7 +291,6 @@ public struct MeetingCaptureHealthSummary: Sendable, Equatable, Codable {
                 recoveryAction: .restartRecording
             )
         }
-
 
         if recoveringSources.contains(source) {
             return MeetingSourceHealth(
@@ -360,7 +361,8 @@ public struct MeetingCaptureHealthSummary: Sendable, Equatable, Codable {
         }
 
         let clampedLevel = max(0, min(1, level))
-        let status: MeetingSourceHealth.Status = clampedLevel < AudioCaptureHealth.silentInputMaximumLevel
+        let status: MeetingSourceHealth.Status =
+            clampedLevel < AudioCaptureHealth.silentInputMaximumLevel
             ? .silent
             : .live
         return MeetingSourceHealth(

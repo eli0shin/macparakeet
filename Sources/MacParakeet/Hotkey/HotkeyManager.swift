@@ -99,28 +99,31 @@ public final class HotkeyManager {
         // Guard against double-start: stop existing tap to prevent leaking it
         if eventTap != nil { stop() }
 
-        var eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
+        var eventMask: CGEventMask =
+            (1 << CGEventType.flagsChanged.rawValue)
             | (1 << CGEventType.keyDown.rawValue)
         if trigger.kind == .keyCode || trigger.kind == .chord {
             eventMask |= (1 << CGEventType.keyUp.rawValue)
         }
 
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: eventMask,
-            callback: { _, type, event, refcon -> Unmanaged<CGEvent>? in
-                guard let refcon else { return Unmanaged.passUnretained(event) }
-                let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
-                return manager.handleEvent(type: type, event: event)
-            },
-            userInfo: {
-                let retained = Unmanaged.passRetained(self)
-                self.retainedSelf = retained
-                return retained.toOpaque()
-            }()
-        ) else {
+        guard
+            let tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: eventMask,
+                callback: { _, type, event, refcon -> Unmanaged<CGEvent>? in
+                    guard let refcon else { return Unmanaged.passUnretained(event) }
+                    let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
+                    return manager.handleEvent(type: type, event: event)
+                },
+                userInfo: {
+                    let retained = Unmanaged.passRetained(self)
+                    self.retainedSelf = retained
+                    return retained.toOpaque()
+                }()
+            )
+        else {
             // tapCreate failed — release the retained reference to avoid a permanent leak.
             // Without this, deinit can never fire (the +1 prevents deallocation).
             retainedSelf?.release()
@@ -248,11 +251,13 @@ public final class HotkeyManager {
 
             if isPressed != wasPressed {
                 if isPressed {
-                    guard !ModifierKeyMatcher.oppositeSideModifierIsPressed(
-                        flags: flags,
-                        keyCode: targetKeyCode,
-                        changedKeyCode: changedKeyCode
-                    ) else {
+                    guard
+                        !ModifierKeyMatcher.oppositeSideModifierIsPressed(
+                            flags: flags,
+                            keyCode: targetKeyCode,
+                            changedKeyCode: changedKeyCode
+                        )
+                    else {
                         return []
                     }
 
@@ -269,7 +274,8 @@ public final class HotkeyManager {
 
                 let outputs: [HotkeyGestureController.Output]
                 if bareTap {
-                    outputs = gestureMode == .singleTapToggle
+                    outputs =
+                        gestureMode == .singleTapToggle
                         ? gestureController.triggerPressed(timestampMs: timestampMs)
                         : gestureController.triggerReleased(timestampMs: timestampMs)
                 } else {
@@ -295,13 +301,14 @@ public final class HotkeyManager {
             // second tap. Opposite-side modifier taps still need to cancel
             // that pending tap.
             if let oppositeKeyCode = HotkeyTrigger.oppositeModifierKeyCode(for: targetKeyCode),
-               changedTrackedModifiers.contains(oppositeKeyCode),
-               ModifierKeyMatcher.sideSpecificModifierIsPressed(
-                   flags: flags,
-                   keyCode: oppositeKeyCode,
-                   changedKeyCode: changedKeyCode,
-                   previouslyPressed: false
-               ) {
+                changedTrackedModifiers.contains(oppositeKeyCode),
+                ModifierKeyMatcher.sideSpecificModifierIsPressed(
+                    flags: flags,
+                    keyCode: oppositeKeyCode,
+                    changedKeyCode: changedKeyCode,
+                    previouslyPressed: false
+                )
+            {
                 return gestureMode == .singleTapToggle ? [] : gestureController.interrupted()
             }
             return []
@@ -328,7 +335,8 @@ public final class HotkeyManager {
             targetModifierGestureIsActive = false
             let outputs: [HotkeyGestureController.Output]
             if bareTap {
-                outputs = gestureMode == .singleTapToggle
+                outputs =
+                    gestureMode == .singleTapToggle
                     ? gestureController.triggerPressed(timestampMs: timestampMs)
                     : gestureController.triggerReleased(timestampMs: timestampMs)
             } else {
@@ -353,7 +361,7 @@ public final class HotkeyManager {
         keyCode: Int64,
         timestampMs: UInt64
     ) -> [HotkeyGestureController.Output] {
-        if keyCode == 53 { // Escape
+        if keyCode == 53 {  // Escape
             return gestureController.escapePressed()
         } else if !HotkeyTrigger.isFnKeyCode(UInt16(keyCode)) {
             // Skip Fn/Globe key (63/179) — macOS generates a synthetic keyDown
@@ -525,7 +533,7 @@ public final class HotkeyManager {
                 triggerKeyIsPressed = true
 
                 return (gestureController.triggerPressed(timestampMs: timestampMs), true)
-            } else if keyCode == 53 { // Escape
+            } else if keyCode == 53 {  // Escape
                 return (gestureController.escapePressed(), false)
             } else {
                 // Gesture interruption: a regular key press means the user is typing,
@@ -581,13 +589,13 @@ public final class HotkeyManager {
 
                 // Edge detection: ignore key-repeat
                 guard !triggerKeyIsPressed else {
-                    return ([], true) // Swallow repeated keyDown
+                    return ([], true)  // Swallow repeated keyDown
                 }
                 triggerKeyIsPressed = true
                 chordModifierReleased = false
 
                 return (gestureController.triggerPressed(timestampMs: timestampMs), true)
-            } else if keyCode == 53 { // Escape
+            } else if keyCode == 53 {  // Escape
                 return (gestureController.escapePressed(), false)
             } else {
                 // Gesture interruption
@@ -662,7 +670,8 @@ public final class HotkeyManager {
 
             let outputs: [HotkeyGestureController.Output]
             if bareTap {
-                outputs = gestureMode == .singleTapToggle
+                outputs =
+                    gestureMode == .singleTapToggle
                     ? gestureController.triggerPressed(timestampMs: timestampMs)
                     : gestureController.triggerReleased(timestampMs: timestampMs)
             } else {
@@ -757,14 +766,14 @@ public final class HotkeyManager {
         guard let activeMode else { return nil }
         switch (activeMode, gestureMode) {
         case (.persistent, .singleTapToggle),
-             (.persistent, .doubleTapOnly),
-             (.persistent, .doubleTapAndHold),
-             (.holdToTalk, .holdOnly),
-             (.holdToTalk, .doubleTapAndHold):
+            (.persistent, .doubleTapOnly),
+            (.persistent, .doubleTapAndHold),
+            (.holdToTalk, .holdOnly),
+            (.holdToTalk, .doubleTapAndHold):
             return activeMode
         case (.persistent, .holdOnly),
-             (.holdToTalk, .singleTapToggle),
-             (.holdToTalk, .doubleTapOnly):
+            (.holdToTalk, .singleTapToggle),
+            (.holdToTalk, .doubleTapOnly):
             return nil
         }
     }
@@ -975,7 +984,8 @@ public final class HotkeyManager {
 
     private func currentPhysicalTriggerKeyIsPressed() -> Bool {
         guard trigger.kind == .keyCode || trigger.kind == .chord,
-              let keyCode = trigger.keyCode else {
+            let keyCode = trigger.keyCode
+        else {
             return false
         }
         return CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(keyCode))

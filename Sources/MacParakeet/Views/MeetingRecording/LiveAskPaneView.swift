@@ -52,16 +52,14 @@ struct LiveAskPaneView: View {
             // from an earlier bubble) it would sit there with non-firing prompts.
             if streaming { showingPromptMenu = false }
         }
-        .onChange(of: showingPromptMenu) { _, isOpen in
-            if isOpen {
-                Telemetry.send(.askMenuOpened)
+        .sheet(
+            isPresented: $showingPromptsSheet,
+            onDismiss: {
+                // Refresh after the user closes the sheet so any edits / new pills
+                // / restored defaults take effect immediately in the live pane.
+                quickPromptsViewModel.refresh()
             }
-        }
-        .sheet(isPresented: $showingPromptsSheet, onDismiss: {
-            // Refresh after the user closes the sheet so any edits / new pills
-            // / restored defaults take effect immediately in the live pane.
-            quickPromptsViewModel.refresh()
-        }) {
+        ) {
             AskPromptsSheet(viewModel: quickPromptsViewModel)
         }
     }
@@ -79,7 +77,7 @@ struct LiveAskPaneView: View {
             VStack(spacing: 0) {
                 StarterPromptList(groups: quickPromptsViewModel.visiblePromptGroups) { entry in
                     showingPromptMenu = false
-                    fire(entry, source: .menu)
+                    fire(entry)
                 }
 
                 Divider()
@@ -128,7 +126,8 @@ struct LiveAskPaneView: View {
         VStack(spacing: 0) {
             if !viewModel.messages.isEmpty
                 && viewModel.canSendMessage
-                && !quickPromptsViewModel.visiblePinned.isEmpty {
+                && !quickPromptsViewModel.visiblePinned.isEmpty
+            {
                 followUpRow
             }
             inputBar
@@ -144,7 +143,7 @@ struct LiveAskPaneView: View {
             HStack(spacing: 6) {
                 ForEach(quickPromptsViewModel.visiblePinned) { entry in
                     FollowUpPill(label: entry.label) {
-                        fire(entry, source: .followUp)
+                        fire(entry)
                     }
                 }
             }
@@ -177,24 +176,11 @@ struct LiveAskPaneView: View {
     }
 
     /// Pill tap → bubble shows the short label, LLM gets the comprehensive prompt.
-    private func fire(_ entry: QuickPrompt, source: TelemetryAskPromptSource) {
+    private func fire(_ entry: QuickPrompt) {
         guard viewModel.canSendMessage, !viewModel.isStreaming else { return }
-        Telemetry.send(.askPromptFired(
-            source: source,
-            group: telemetryGroup(for: entry),
-            label: telemetryLabel(for: entry)
-        ))
         viewModel.inputText = entry.label
         viewModel.sendMessage(richPrompt: entry.prompt)
         inputFocused = true
-    }
-
-    private func telemetryGroup(for entry: QuickPrompt) -> String {
-        entry.telemetryIdentity.group
-    }
-
-    private func telemetryLabel(for entry: QuickPrompt) -> String {
-        entry.telemetryIdentity.label
     }
 
     // MARK: - Messages
@@ -244,7 +230,7 @@ struct LiveAskPaneView: View {
     private var emptyStateWithPills: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             StarterPromptList(groups: quickPromptsViewModel.visiblePromptGroups) { entry in
-                fire(entry, source: .emptyState)
+                fire(entry)
             }
 
             Button {
@@ -277,11 +263,13 @@ struct LiveAskPaneView: View {
                 .font(DesignSystem.Typography.body.weight(.medium))
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
-            Text("MacParakeet can use a local AI app, your API key, or a command-line AI tool. Recording works without this.")
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textTertiary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "MacParakeet can use a local AI app, your API key, or a command-line AI tool. Recording works without this."
+            )
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(DesignSystem.Colors.textTertiary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
 
             Button {
                 NotificationCenter.default.post(
@@ -372,14 +360,19 @@ struct LiveAskPaneView: View {
             .help("Stop response")
             .accessibilityLabel("Stop response")
         } else {
-            let canSend = !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let canSend =
+                !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && viewModel.canSendMessage
-            Button { send() } label: {
+            Button {
+                send()
+            } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 24))
-                    .foregroundStyle(canSend
-                        ? DesignSystem.Colors.accent
-                        : DesignSystem.Colors.accent.opacity(0.3))
+                    .foregroundStyle(
+                        canSend
+                            ? DesignSystem.Colors.accent
+                            : DesignSystem.Colors.accent.opacity(0.3)
+                    )
                     .accessibilityHidden(true)
             }
             .buttonStyle(.plain)
@@ -445,21 +438,25 @@ private struct PromptMenuButton: View {
         } label: {
             Image(systemName: "sparkles")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(isOpen
-                    ? DesignSystem.Colors.accent
-                    : DesignSystem.Colors.accent.opacity(isHovered ? 0.85 : 0.7))
+                .foregroundStyle(
+                    isOpen
+                        ? DesignSystem.Colors.accent
+                        : DesignSystem.Colors.accent.opacity(isHovered ? 0.85 : 0.7)
+                )
                 .frame(width: 28, height: 28)
                 .background(
                     Circle()
-                        .fill(isOpen
-                            ? DesignSystem.Colors.surfaceElevated
-                            : DesignSystem.Colors.surfaceElevated.opacity(isHovered ? 0.55 : 0.32))
+                        .fill(
+                            isOpen
+                                ? DesignSystem.Colors.surfaceElevated
+                                : DesignSystem.Colors.surfaceElevated.opacity(isHovered ? 0.55 : 0.32))
                 )
                 .overlay(
                     Circle()
-                        .strokeBorder(isOpen
-                            ? DesignSystem.Colors.accent.opacity(0.4)
-                            : DesignSystem.Colors.border.opacity(0.35),
+                        .strokeBorder(
+                            isOpen
+                                ? DesignSystem.Colors.accent.opacity(0.4)
+                                : DesignSystem.Colors.border.opacity(0.35),
                             lineWidth: 1)
                 )
         }
@@ -500,9 +497,10 @@ private struct StarterPromptPill: View {
             .padding(.vertical, 7)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isHovered
-                        ? DesignSystem.Colors.surfaceElevated
-                        : DesignSystem.Colors.surfaceElevated.opacity(0.32))
+                    .fill(
+                        isHovered
+                            ? DesignSystem.Colors.surfaceElevated
+                            : DesignSystem.Colors.surfaceElevated.opacity(0.32))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
@@ -545,16 +543,19 @@ private struct FollowUpPill: View {
         Button(action: action) {
             Text(label)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(isHovered
-                    ? DesignSystem.Colors.textPrimary
-                    : DesignSystem.Colors.textSecondary)
+                .foregroundStyle(
+                    isHovered
+                        ? DesignSystem.Colors.textPrimary
+                        : DesignSystem.Colors.textSecondary
+                )
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(
                     Capsule()
-                        .fill(isHovered
-                            ? DesignSystem.Colors.surfaceElevated
-                            : DesignSystem.Colors.surfaceElevated.opacity(0.32))
+                        .fill(
+                            isHovered
+                                ? DesignSystem.Colors.surfaceElevated
+                                : DesignSystem.Colors.surfaceElevated.opacity(0.32))
                 )
                 .overlay(
                     Capsule()

@@ -56,7 +56,8 @@ public final class DerivedFieldsBackfillService: @unchecked Sendable {
 
     private func processBatch() throws -> Int {
         try dbQueue.write { db in
-            let rows = try Transcription
+            let rows =
+                try Transcription
                 .filter(Transcription.Columns.derivedTitle == nil)
                 .filter(Transcription.Columns.status == Transcription.TranscriptionStatus.completed.rawValue)
                 .limit(batchSize)

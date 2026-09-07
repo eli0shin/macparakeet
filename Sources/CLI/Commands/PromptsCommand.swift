@@ -69,7 +69,7 @@ extension PromptsCommand {
 
                 let prompts: [Prompt]
                 switch filter {
-                case .all:     prompts = try repo.fetchAll().filter { $0.category == .result }
+                case .all: prompts = try repo.fetchAll().filter { $0.category == .result }
                 case .visible: prompts = try repo.fetchVisible(category: .result)
                 case .autoRun: prompts = try repo.fetchAutoRunPrompts()
                 }
@@ -229,7 +229,11 @@ extension PromptsCommand {
         @Flag(name: .long, help: "Disable auto-run.")
         var noAutoRun: Bool = false
 
-        @Option(name: .long, help: "Scope --auto-run/--no-auto-run to one source: file, youtube, podcast, meeting. Omit for global all-source behavior.")
+        @Option(
+            name: .long,
+            help:
+                "Scope --auto-run/--no-auto-run to one source: file, youtube, podcast, meeting. Omit for global all-source behavior."
+        )
         var source: PromptAutoRunSource?
 
         @Flag(name: .long, help: "Emit JSON instead of human-readable output.")
@@ -280,7 +284,7 @@ extension PromptsCommand {
             noAutoRun: Bool
         ) {
             if visible { prompt.isVisible = true }
-            if hidden  { prompt.isVisible = false; prompt.isAutoRun = false; prompt.appliesToSources = nil }
+            if hidden { prompt.isVisible = false; prompt.isAutoRun = false; prompt.appliesToSources = nil }
             if autoRun { prompt.isAutoRun = true; prompt.isVisible = true; prompt.appliesToSources = nil }
             if noAutoRun { prompt.isAutoRun = false; prompt.appliesToSources = nil }
         }
@@ -397,7 +401,11 @@ extension PromptsCommand {
         @Flag(name: .long, help: "Stream the response token by token.")
         var stream: Bool = false
 
-        @Flag(name: .long, help: "Emit a structured JSON envelope (output, provider, model, usage, stopReason, latencyMs) instead of plain text.")
+        @Flag(
+            name: .long,
+            help:
+                "Emit a structured JSON envelope (output, provider, model, usage, stopReason, latencyMs) instead of plain text."
+        )
         var json: Bool = false
 
         @Option(name: .long, help: "Extra instructions appended to the prompt for this run.")
@@ -408,7 +416,9 @@ extension PromptsCommand {
 
         func validate() throws {
             if json && stream {
-                throw ValidationError("--json with --stream is not yet supported. Run without --stream for the envelope, or omit --json for token streaming.")
+                throw ValidationError(
+                    "--json with --stream is not yet supported. Run without --stream for the envelope, or omit --json for token streaming."
+                )
             }
         }
 
@@ -490,7 +500,8 @@ extension PromptsCommand {
                         customWordRepo: customWordRepo
                     )
                     // Status messages on stderr so stdout stays grep-able as the prompt output.
-                    FileHandle.standardError.write(Data("\nSaved PromptResult \(result.id.uuidString.prefix(8))\n".utf8))
+                    FileHandle.standardError.write(
+                        Data("\nSaved PromptResult \(result.id.uuidString.prefix(8))\n".utf8))
                 }
 
                 if let jsonResult {
@@ -507,7 +518,7 @@ func promptRunTranscriptContext(
     defaults: UserDefaults = macParakeetAppDefaults()
 ) throws -> String {
     guard transcription.sourceType == .meeting,
-          transcription.status == .completed
+        transcription.status == .completed
     else {
         return transcription.cleanTranscript ?? transcription.rawTranscript ?? ""
     }

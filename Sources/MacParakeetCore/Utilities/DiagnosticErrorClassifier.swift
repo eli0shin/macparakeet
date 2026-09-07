@@ -1,10 +1,10 @@
 import Foundation
 
-/// Classifies errors into concise, aggregatable telemetry strings.
+/// Classifies errors into concise strings for local diagnostic logs.
 ///
 /// Produces strings like "URLError.notConnectedToInternet", "DictationServiceError",
 /// "CancellationError" — more useful for grouping than raw `type(of:)` class names.
-public enum TelemetryErrorClassifier {
+public enum DiagnosticErrorClassifier {
     public static func classify(_ error: Error) -> String {
         // URLError: include the code name for network diagnosis
         if let urlError = error as? URLError {
@@ -39,11 +39,7 @@ public enum TelemetryErrorClassifier {
     }
 
     /// Strips file paths and URLs from an arbitrary string. Idempotent — running
-    /// twice produces the same result. Used both by `errorDetail(_:)` for Error
-    /// values and by `TelemetryEvent.errorOccurred` for raw description strings,
-    /// so any caller route into telemetry is automatically privacy-clean even
-    /// if the caller forgot to invoke `errorDetail` themselves. No truncation
-    /// here — callers truncate to whatever budget they're enforcing.
+    /// twice produces the same result. Callers apply their own length limit.
     public static func sanitize(_ string: String) -> String {
         var sanitized = string
         // Strip file:// URLs (must run before path stripping to catch file:///Users/...)

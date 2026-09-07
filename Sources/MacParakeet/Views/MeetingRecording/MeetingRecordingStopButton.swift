@@ -58,9 +58,10 @@ struct StopRecordingButton: View {
                         .padding(9)
                         .background(
                             Circle()
-                                .fill(isHovered
-                                    ? DesignSystem.Colors.errorRed.opacity(0.15)
-                                    : DesignSystem.Colors.surfaceElevated
+                                .fill(
+                                    isHovered
+                                        ? DesignSystem.Colors.errorRed.opacity(0.15)
+                                        : DesignSystem.Colors.surfaceElevated
                                 )
                                 .overlay(
                                     Circle()
@@ -139,9 +140,10 @@ struct MeetingMicrophoneMuteButton: View {
                 .padding(9)
                 .background(
                     Circle()
-                        .fill((isHovered || isMuted)
-                            ? activeColor.opacity(isMuted ? 0.18 : 0.12)
-                            : DesignSystem.Colors.surfaceElevated.opacity(0.6)
+                        .fill(
+                            (isHovered || isMuted)
+                                ? activeColor.opacity(isMuted ? 0.18 : 0.12)
+                                : DesignSystem.Colors.surfaceElevated.opacity(0.6)
                         )
                         .overlay(
                             Circle()
@@ -226,9 +228,10 @@ struct PauseResumeButton: View {
                 .padding(9)
                 .background(
                     Circle()
-                        .fill(isHovered
-                            ? DesignSystem.Colors.warningAmber.opacity(0.15)
-                            : DesignSystem.Colors.surfaceElevated.opacity(0.6)
+                        .fill(
+                            isHovered
+                                ? DesignSystem.Colors.warningAmber.opacity(0.15)
+                                : DesignSystem.Colors.surfaceElevated.opacity(0.6)
                         )
                         .overlay(
                             Circle()

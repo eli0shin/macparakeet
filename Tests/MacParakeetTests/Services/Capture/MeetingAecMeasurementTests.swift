@@ -139,17 +139,20 @@ final class MeetingAecMeasurementTests: XCTestCase {
             mic: cleanScenario.mic, output: cleanOut, over: cleanScenario.steadyStateWindow)
 
         let improvement = rawError - nlmsError  // positive = NLMS reduced the error
-        print("[AEC] double-talk near-end error: raw \(fmt(rawError)) dB -> NLMS \(fmt(nlmsError)) dB "
-            + "(improvement \(fmt(improvement)) dB); single-talk ERLE for reference \(fmt(singleTalkERLE)) dB")
+        print(
+            "[AEC] double-talk near-end error: raw \(fmt(rawError)) dB -> NLMS \(fmt(nlmsError)) dB "
+                + "(improvement \(fmt(improvement)) dB); single-talk ERLE for reference \(fmt(singleTalkERLE)) dB")
 
         // The honest, well-known result: a naive NLMS with NO double-talk
         // detector barely helps — and here slightly hurts — when the local voice
         // overlaps the echo, because the near-end perturbs adaptation. This is
         // the failure a shipping engine must beat, and the reason double-talk is
         // a release gate rather than an afterthought.
-        XCTAssertLessThan(improvement, 2.0,
+        XCTAssertLessThan(
+            improvement, 2.0,
             "naive NLMS (no double-talk detector) does not meaningfully reduce error under continuous double-talk")
-        XCTAssertGreaterThan(singleTalkERLE - improvement, 10.0,
+        XCTAssertGreaterThan(
+            singleTalkERLE - improvement, 10.0,
             "double-talk extracts a large penalty vs the no-near-end case (the local voice perturbs adaptation)")
     }
 
@@ -209,16 +212,17 @@ final class MeetingAecMeasurementTests: XCTestCase {
             )
             let improvement = rawError - processedError
 
-            print(String(
-                format: "      %+4.0f %8.1f %8.1f %7.1f %8.1f %8.1f %7.1f",
-                sir,
-                rawError,
-                processedError,
-                improvement,
-                echoRawResidual,
-                echoProcessedResidual,
-                echoERLE
-            ))
+            print(
+                String(
+                    format: "      %+4.0f %8.1f %8.1f %7.1f %8.1f %8.1f %7.1f",
+                    sir,
+                    rawError,
+                    processedError,
+                    improvement,
+                    echoRawResidual,
+                    echoProcessedResidual,
+                    echoERLE
+                ))
 
             XCTAssertTrue(processedError.isFinite)
             XCTAssertTrue(rawError.isFinite)

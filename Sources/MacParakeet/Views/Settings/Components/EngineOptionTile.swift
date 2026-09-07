@@ -110,9 +110,10 @@ struct EngineOptionTile: View {
                 .frame(width: 36, height: 36)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(isSelected
-                              ? DesignSystem.Colors.accent.opacity(0.16)
-                              : DesignSystem.Colors.surfaceElevated)
+                        .fill(
+                            isSelected
+                                ? DesignSystem.Colors.accent.opacity(0.16)
+                                : DesignSystem.Colors.surfaceElevated)
                 )
 
             Text(name)
@@ -197,24 +198,26 @@ struct EngineOptionTile: View {
     }
 
     private var border: some View {
-        let strokeColor: Color = if isSelected {
-            DesignSystem.Colors.accent.opacity(0.8)
-        } else if selectionRole == .recordings {
-            DesignSystem.Colors.accent.opacity(0.5)
-        } else if isUnavailable {
-            DesignSystem.Colors.border.opacity(0.45)
-        } else if isHovered {
-            DesignSystem.Colors.accent.opacity(0.3)
-        } else {
-            DesignSystem.Colors.border.opacity(0.7)
-        }
-        let lineWidth: CGFloat = if isSelected {
-            2.0
-        } else if selectionRole == .recordings {
-            1.0
-        } else {
-            0.5
-        }
+        let strokeColor: Color =
+            if isSelected {
+                DesignSystem.Colors.accent.opacity(0.8)
+            } else if selectionRole == .recordings {
+                DesignSystem.Colors.accent.opacity(0.5)
+            } else if isUnavailable {
+                DesignSystem.Colors.border.opacity(0.45)
+            } else if isHovered {
+                DesignSystem.Colors.accent.opacity(0.3)
+            } else {
+                DesignSystem.Colors.border.opacity(0.7)
+            }
+        let lineWidth: CGFloat =
+            if isSelected {
+                2.0
+            } else if selectionRole == .recordings {
+                1.0
+            } else {
+                0.5
+            }
         return RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
             .strokeBorder(strokeColor, lineWidth: lineWidth)
     }
@@ -311,9 +314,9 @@ struct EngineOptionTile: View {
 /// description on the left, mode-specific affordance on the right.
 struct EngineDownloadBanner: View {
     enum Mode: Equatable {
-        case download           // first-run / not downloaded
-        case downloading        // download in flight (progress)
-        case retry              // last attempt failed
+        case download  // first-run / not downloaded
+        case downloading  // download in flight (progress)
+        case retry  // last attempt failed
     }
 
     let title: String
@@ -403,9 +406,10 @@ struct EngineDownloadBanner: View {
                 strengths: [
                     "Fast dictation and meetings",
                     "Timestamps for exports",
-                    "English + supported European languages"
+                    "English + supported European languages",
                 ],
-                helpText: "Choose Parakeet for fast dictation, meetings, and exports in supported languages. Use Whisper when the audio is outside Parakeet's language coverage.",
+                helpText:
+                    "Choose Parakeet for fast dictation, meetings, and exports in supported languages. Use Whisper when the audio is outside Parakeet's language coverage.",
                 modelStatus: .ready,
                 isSelected: true,
                 isBusy: false,
@@ -420,9 +424,10 @@ struct EngineDownloadBanner: View {
                 strengths: [
                     "Files, media, retranscription",
                     "Word timestamps for subtitles",
-                    "Slower cold starts; no live preview"
+                    "Slower cold starts; no live preview",
                 ],
-                helpText: "Choose Whisper for files, media, and saved-audio retranscription outside Parakeet or Nemotron coverage. It runs locally and has word timestamps, but first use can be slow and live dictation preview stays off.",
+                helpText:
+                    "Choose Whisper for files, media, and saved-audio retranscription outside Parakeet or Nemotron coverage. It runs locally and has word timestamps, but first use can be slow and live dictation preview stays off.",
                 modelStatus: .notDownloaded,
                 isSelected: false,
                 isBusy: false,

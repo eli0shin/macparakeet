@@ -68,19 +68,22 @@ final class TranscriptionDateGroupingTests: XCTestCase {
         try repo.save(Transcription(createdAt: date(2026, 4, 28, 10), fileName: "today.m4a", status: .completed))
         try repo.save(Transcription(createdAt: date(2026, 4, 27, 10), fileName: "yesterday.m4a", status: .completed))
         try repo.save(Transcription(createdAt: date(2026, 4, 25, 10), fileName: "earlier_week.m4a", status: .completed))
-        try repo.save(Transcription(createdAt: date(2026, 4, 10, 10), fileName: "earlier_month.m4a", status: .completed))
+        try repo.save(
+            Transcription(createdAt: date(2026, 4, 10, 10), fileName: "earlier_month.m4a", status: .completed))
         try repo.save(Transcription(createdAt: date(2026, 1, 12, 10), fileName: "january.m4a", status: .completed))
 
         await vm.loadTranscriptions().value
 
         let groups = vm.groupedTranscriptions.map(\.group)
-        XCTAssertEqual(groups, [
-            .today,
-            .yesterday,
-            .previous7Days,
-            .previous30Days,
-            .month(year: 2026, month: 1),
-        ])
+        XCTAssertEqual(
+            groups,
+            [
+                .today,
+                .yesterday,
+                .previous7Days,
+                .previous30Days,
+                .month(year: 2026, month: 1),
+            ])
         XCTAssertEqual(vm.groupedTranscriptions.map { $0.items.count }, [1, 1, 1, 1, 1])
     }
 

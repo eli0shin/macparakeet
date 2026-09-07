@@ -12,15 +12,17 @@ private struct StubDirectory: PodcastDirectorySearching {
 final class PodcastQueryResolverTests: XCTestCase {
 
     private static let feed = """
-    <rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel>
-     <item><title>Episode 705: Train Your AI Team</title><enclosure url="https://cdn/705.mp3" type="audio/mpeg"/><itunes:duration>2700</itunes:duration><pubDate>Mon, 01 Jul 2024 07:00:00 GMT</pubDate></item>
-     <item><title>Episode 704: Data Strategy</title><enclosure url="https://cdn/704.mp3" type="audio/mpeg"/></item>
-    </channel></rss>
-    """
+        <rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel>
+         <item><title>Episode 705: Train Your AI Team</title><enclosure url="https://cdn/705.mp3" type="audio/mpeg"/><itunes:duration>2700</itunes:duration><pubDate>Mon, 01 Jul 2024 07:00:00 GMT</pubDate></item>
+         <item><title>Episode 704: Data Strategy</title><enclosure url="https://cdn/704.mp3" type="audio/mpeg"/></item>
+        </channel></rss>
+        """
 
     private func resolver(feed: String = feed) -> PodcastQueryResolver {
         let directory = StubDirectory(shows: [
-            PodcastShow(collectionName: "Everyday AI", feedURL: "https://feeds/eai.rss", collectionID: 1, artworkURL: "https://art/eai.jpg"),
+            PodcastShow(
+                collectionName: "Everyday AI", feedURL: "https://feeds/eai.rss", collectionID: 1,
+                artworkURL: "https://art/eai.jpg")
         ])
         let data = Data(feed.utf8)
         return PodcastQueryResolver(directory: directory, feedFetcher: { _ in data })
@@ -72,9 +74,13 @@ final class PodcastQueryResolverTests: XCTestCase {
 
     func testNormalizedReleaseDateAcceptsRFC822Variants() {
         XCTAssertEqual(PodcastQueryResolver.normalizedReleaseDate("Mon, 01 Jul 2024 07:00:00 GMT"), "2024-07-01")
-        XCTAssertEqual(PodcastQueryResolver.normalizedReleaseDate("Mon, 1 Jul 2024 07:00:00 +0000"), "2024-07-01", "single-digit day")
-        XCTAssertEqual(PodcastQueryResolver.normalizedReleaseDate("1 Jul 2024 07:00:00 +0000"), "2024-07-01", "no weekday")
-        XCTAssertEqual(PodcastQueryResolver.normalizedReleaseDate("Mon, 01 Jul 2024 07:00 GMT"), "2024-07-01", "no seconds")
+        XCTAssertEqual(
+            PodcastQueryResolver.normalizedReleaseDate("Mon, 1 Jul 2024 07:00:00 +0000"), "2024-07-01",
+            "single-digit day")
+        XCTAssertEqual(
+            PodcastQueryResolver.normalizedReleaseDate("1 Jul 2024 07:00:00 +0000"), "2024-07-01", "no weekday")
+        XCTAssertEqual(
+            PodcastQueryResolver.normalizedReleaseDate("Mon, 01 Jul 2024 07:00 GMT"), "2024-07-01", "no seconds")
         XCTAssertNil(PodcastQueryResolver.normalizedReleaseDate("not a date"))
         XCTAssertNil(PodcastQueryResolver.normalizedReleaseDate(nil))
     }

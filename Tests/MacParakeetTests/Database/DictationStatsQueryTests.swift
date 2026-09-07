@@ -24,7 +24,8 @@ final class DictationStatsQueryTests: XCTestCase {
 
     func testStatsOnlyCountsCompleted() throws {
         try repo.save(Dictation(durationMs: 1000, rawTranscript: "Hello world", status: .completed, wordCount: 2))
-        try repo.save(Dictation(durationMs: 2000, rawTranscript: "Recording in progress", status: .recording, wordCount: 3))
+        try repo.save(
+            Dictation(durationMs: 2000, rawTranscript: "Recording in progress", status: .recording, wordCount: 3))
         try repo.save(Dictation(durationMs: 3000, rawTranscript: "Had an error", status: .error, wordCount: 3))
 
         let stats = try repo.stats()
@@ -37,17 +38,18 @@ final class DictationStatsQueryTests: XCTestCase {
         try repo.save(Dictation(durationMs: 2000, rawTranscript: "One two three four", wordCount: 4))
 
         let stats = try repo.stats()
-        XCTAssertEqual(stats.totalWords, 6) // 2 + 4
+        XCTAssertEqual(stats.totalWords, 6)  // 2 + 4
     }
 
     func testStatsPrefersCleanTranscriptForWordCount() throws {
         // wordCount should reflect the clean transcript word count (set by caller)
-        try repo.save(Dictation(
-            durationMs: 1000,
-            rawTranscript: "uh um like hello world you know",
-            cleanTranscript: "hello world",
-            wordCount: 2
-        ))
+        try repo.save(
+            Dictation(
+                durationMs: 1000,
+                rawTranscript: "uh um like hello world you know",
+                cleanTranscript: "hello world",
+                wordCount: 2
+            ))
 
         let stats = try repo.stats()
         XCTAssertEqual(stats.totalWords, 2)
@@ -164,7 +166,7 @@ final class DictationStatsQueryTests: XCTestCase {
             calendar: calendar,
             now: now
         )
-        XCTAssertEqual(streak, 1) // Only current week counts, gap breaks streak
+        XCTAssertEqual(streak, 1)  // Only current week counts, gap breaks streak
     }
 
     func testDictationsThisWeekFromDatabase() throws {
@@ -177,7 +179,7 @@ final class DictationStatsQueryTests: XCTestCase {
 
     func testWeeklyStreakExcludesFutureDates() {
         let now = Date()
-        let futureDate = now.addingTimeInterval(86400 * 30) // 30 days from now
+        let futureDate = now.addingTimeInterval(86400 * 30)  // 30 days from now
 
         let (streak, thisWeek) = DictationRepository.computeWeeklyStreak(
             from: [now, futureDate],

@@ -29,7 +29,8 @@ final class CaptureOrchestratorTests: XCTestCase {
         )
 
         guard let micStart = chunks.first(where: { $0.source == .microphone })?.chunk.startMs,
-              let systemStart = chunks.first(where: { $0.source == .system })?.chunk.startMs else {
+            let systemStart = chunks.first(where: { $0.source == .system })?.chunk.startMs
+        else {
             XCTFail("expected one chunk per source, got \(chunks.map { ($0.source, $0.chunk.startMs) })")
             return
         }
@@ -58,7 +59,8 @@ final class CaptureOrchestratorTests: XCTestCase {
         )
 
         guard let micStart = chunks.first(where: { $0.source == .microphone })?.chunk.startMs,
-              let systemStart = chunks.first(where: { $0.source == .system })?.chunk.startMs else {
+            let systemStart = chunks.first(where: { $0.source == .system })?.chunk.startMs
+        else {
             XCTFail("expected one chunk per source")
             return
         }
@@ -122,7 +124,8 @@ final class CaptureOrchestratorTests: XCTestCase {
         )
         // First-chunk startMs values should match — both saw the same wallclock.
         if let firstMic = micChunks.first?.chunk.startMs,
-           let firstSystem = systemChunks.first?.chunk.startMs {
+            let firstSystem = systemChunks.first?.chunk.startMs
+        {
             XCTAssertEqual(
                 firstMic,
                 firstSystem,
@@ -148,7 +151,8 @@ final class CaptureOrchestratorTests: XCTestCase {
         )
 
         guard let micStart = chunks.first(where: { $0.source == .microphone })?.chunk.startMs,
-              let systemStart = chunks.first(where: { $0.source == .system })?.chunk.startMs else {
+            let systemStart = chunks.first(where: { $0.source == .system })?.chunk.startMs
+        else {
             XCTFail("expected one chunk per source even with no hostTimes")
             return
         }
@@ -183,7 +187,8 @@ final class CaptureOrchestratorTests: XCTestCase {
         )
 
         guard let micStart = chunks.first(where: { $0.source == .microphone })?.chunk.startMs,
-              let systemStart = chunks.first(where: { $0.source == .system })?.chunk.startMs else {
+            let systemStart = chunks.first(where: { $0.source == .system })?.chunk.startMs
+        else {
             XCTFail("expected one chunk per source after reset")
             return
         }

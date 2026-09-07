@@ -30,7 +30,8 @@ final class YouTubeInputPanelController {
         var initialURL = ""
         if let clip = NSPasteboard.general.string(forType: .string)?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           MediaPlatform.isTranscribable(clip) {
+            MediaPlatform.isTranscribable(clip)
+        {
             initialURL = clip
         }
 
@@ -63,7 +64,7 @@ final class YouTubeInputPanelController {
         )
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = false // SwiftUI handles shadow
+        panel.hasShadow = false  // SwiftUI handles shadow
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = hosting

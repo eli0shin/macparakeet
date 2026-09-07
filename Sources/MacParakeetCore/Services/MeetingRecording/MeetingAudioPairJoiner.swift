@@ -126,7 +126,8 @@ struct MeetingAudioPairJoiner {
             if dropped > 0 {
                 diagnostics.append(
                     MeetingAudioJoinerDiagnostic(
-                        kind: .queueOverflow(source: .microphone, droppedFrames: dropped, queueDepth: microphoneQueue.count)
+                        kind: .queueOverflow(
+                            source: .microphone, droppedFrames: dropped, queueDepth: microphoneQueue.count)
                     )
                 )
             }
@@ -168,8 +169,9 @@ struct MeetingAudioPairJoiner {
 
     private mutating func popPair() -> MeetingAudioPair? {
         if microphoneQueue.first != nil, systemQueue.first != nil,
-           let microphone = microphoneQueue.popFirst(),
-           let system = systemQueue.popFirst() {
+            let microphone = microphoneQueue.popFirst(),
+            let system = systemQueue.popFirst()
+        {
             let frameCount = min(microphone.samples.count, system.samples.count)
             guard frameCount > 0 else { return nil }
 
@@ -202,10 +204,11 @@ struct MeetingAudioPairJoiner {
         }
 
         if let microphone = microphoneQueue.first,
-           systemQueue.isEmpty,
-           (activeSoloSource == .microphone
-            || microphoneQueue.count > Self.maxLag
-            || queuedSampleCount(in: microphoneQueue) > maxLagSamples) {
+            systemQueue.isEmpty,
+            (activeSoloSource == .microphone
+                || microphoneQueue.count > Self.maxLag
+                || queuedSampleCount(in: microphoneQueue) > maxLagSamples)
+        {
             _ = microphoneQueue.popFirst()
             activeSoloSource = .microphone
             return MeetingAudioPair(
@@ -219,10 +222,11 @@ struct MeetingAudioPairJoiner {
         }
 
         if let system = systemQueue.first,
-           microphoneQueue.isEmpty,
-           (activeSoloSource == .system
-            || systemQueue.count > Self.maxLag
-            || queuedSampleCount(in: systemQueue) > maxLagSamples) {
+            microphoneQueue.isEmpty,
+            (activeSoloSource == .system
+                || systemQueue.count > Self.maxLag
+                || queuedSampleCount(in: systemQueue) > maxLagSamples)
+        {
             _ = systemQueue.popFirst()
             activeSoloSource = .system
             return MeetingAudioPair(

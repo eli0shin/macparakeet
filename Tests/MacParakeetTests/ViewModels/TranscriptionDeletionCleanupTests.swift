@@ -96,10 +96,11 @@ final class TranscriptionDeletionCleanupTests: XCTestCase {
         repo.transcriptions = [transcription]
         repo.updateFilePathError = NSError(domain: "test", code: 1)
 
-        XCTAssertThrowsError(try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
-            for: transcription,
-            repository: repo
-        ))
+        XCTAssertThrowsError(
+            try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
+                for: transcription,
+                repository: repo
+            ))
         XCTAssertFalse(FileManager.default.fileExists(atPath: mixedURL.path))
         XCTAssertEqual(repo.transcriptions.first?.filePath, mixedURL.path)
         XCTAssertEqual(repo.transcriptions.first?.meetingArtifactFolderPath, folderURL.standardizedFileURL.path)
@@ -154,10 +155,12 @@ final class TranscriptionDeletionCleanupTests: XCTestCase {
         let repo = MockTranscriptionRepository()
         repo.transcriptions = [transcription]
 
-        XCTAssertThrowsError(try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
-            for: transcription,
-            repository: repo
-        )) { error in
+        XCTAssertThrowsError(
+            try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
+                for: transcription,
+                repository: repo
+            )
+        ) { error in
             guard case TranscriptionAssetCleanupError.meetingAudioFinalizationInProgress = error else {
                 return XCTFail("Expected finalization-in-progress error, got \(error)")
             }
@@ -196,10 +199,12 @@ final class TranscriptionDeletionCleanupTests: XCTestCase {
         let repo = MockTranscriptionRepository()
         repo.transcriptions = [transcription]
 
-        XCTAssertThrowsError(try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
-            for: transcription,
-            repository: repo
-        )) { error in
+        XCTAssertThrowsError(
+            try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
+                for: transcription,
+                repository: repo
+            )
+        ) { error in
             guard case TranscriptionAssetCleanupError.meetingAudioFinalizationInProgress = error else {
                 return XCTFail("Expected finalization-in-progress error, got \(error)")
             }
@@ -267,10 +272,11 @@ final class TranscriptionDeletionCleanupTests: XCTestCase {
         let failingAudioURL = failingFolderURL.appendingPathComponent("meeting-playback.m4a")
         XCTAssertTrue(FileManager.default.createFile(atPath: failingAudioURL.path, contents: Data("mix".utf8)))
 
-        XCTAssertThrowsError(try TranscriptionAssetCleanup.removeManagedMeetingAudioFiles(
-            under: rootURL.path,
-            fileManager: ThrowingRemoveFileManager(failingURLs: [failingAudioURL])
-        ))
+        XCTAssertThrowsError(
+            try TranscriptionAssetCleanup.removeManagedMeetingAudioFiles(
+                under: rootURL.path,
+                fileManager: ThrowingRemoveFileManager(failingURLs: [failingAudioURL])
+            ))
         XCTAssertTrue(FileManager.default.fileExists(atPath: failingAudioURL.path))
     }
 
@@ -314,11 +320,12 @@ final class TranscriptionDeletionCleanupTests: XCTestCase {
         let repo = MockTranscriptionRepository()
         repo.transcriptions = [transcription]
 
-        XCTAssertThrowsError(try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
-            for: transcription,
-            repository: repo,
-            fileManager: ThrowingRemoveFileManager(failingURLs: [mixedURL])
-        ))
+        XCTAssertThrowsError(
+            try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
+                for: transcription,
+                repository: repo,
+                fileManager: ThrowingRemoveFileManager(failingURLs: [mixedURL])
+            ))
         XCTAssertTrue(FileManager.default.fileExists(atPath: mixedURL.path))
         XCTAssertEqual(repo.transcriptions.first?.filePath, mixedURL.path)
         XCTAssertEqual(repo.transcriptions.first?.meetingArtifactFolderPath, folderURL.standardizedFileURL.path)
@@ -351,11 +358,12 @@ final class TranscriptionDeletionCleanupTests: XCTestCase {
         let repo = MockTranscriptionRepository()
         repo.transcriptions = [transcription]
 
-        XCTAssertThrowsError(try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
-            for: transcription,
-            repository: repo,
-            fileManager: ThrowingRemoveFileManager(failingURLs: [siblingURL])
-        ))
+        XCTAssertThrowsError(
+            try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
+                for: transcription,
+                repository: repo,
+                fileManager: ThrowingRemoveFileManager(failingURLs: [siblingURL])
+            ))
         XCTAssertNil(repo.transcriptions.first?.filePath)
         XCTAssertEqual(repo.transcriptions.first?.meetingArtifactFolderPath, folderURL.standardizedFileURL.path)
         // The undeletable sibling is left on disk (the partial-failure residue);
@@ -392,11 +400,12 @@ final class TranscriptionDeletionCleanupTests: XCTestCase {
         let mixedURL = folderURL.appendingPathComponent("meeting-playback.m4a")
         FileManager.default.createFile(atPath: mixedURL.path, contents: Data("mix".utf8))
         try MeetingRecordingMetadataStore.save(
-            MeetingRecordingMetadata(sourceAlignment: MeetingSourceAlignment(
-                meetingOriginHostTime: nil,
-                microphone: nil,
-                system: nil
-            )),
+            MeetingRecordingMetadata(
+                sourceAlignment: MeetingSourceAlignment(
+                    meetingOriginHostTime: nil,
+                    microphone: nil,
+                    system: nil
+                )),
             folderURL: folderURL
         )
 

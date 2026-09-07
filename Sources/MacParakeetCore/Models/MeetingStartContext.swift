@@ -33,7 +33,7 @@ public struct MeetingStartContext: Codable, Sendable, Equatable {
 }
 
 public extension MeetingStartContext.TriggerKind {
-    init(_ trigger: TelemetryMeetingRecordingTrigger) {
+    init(_ trigger: MeetingRecordingTrigger) {
         switch trigger {
         case .manual:
             self = .manual

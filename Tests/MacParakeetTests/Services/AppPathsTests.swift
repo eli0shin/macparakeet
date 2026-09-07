@@ -70,7 +70,9 @@ final class AppPathsTests: XCTestCase {
         let environment = [AppPaths.debugAppStateDirEnvironmentKey: root.path]
 
         XCTAssertEqual(AppPaths.resolvedAppSupportDir(environment: environment), root.path)
-        XCTAssertEqual(AppPaths.defaultMeetingRecordingsDir(environment: environment), root.appendingPathComponent("meeting-recordings").path)
+        XCTAssertEqual(
+            AppPaths.defaultMeetingRecordingsDir(environment: environment),
+            root.appendingPathComponent("meeting-recordings").path)
     }
 
     func testDebugAppStateDirScopesFluidAudioModelsInsideThrowawayRoot() {
@@ -78,7 +80,8 @@ final class AppPathsTests: XCTestCase {
             .appendingPathComponent("macparakeet-debug-state-\(UUID().uuidString)", isDirectory: true)
             .standardizedFileURL
         let environment = [AppPaths.debugAppStateDirEnvironmentKey: root.path]
-        let expectedModelsDir = root
+        let expectedModelsDir =
+            root
             .appendingPathComponent("FluidAudio", isDirectory: true)
             .appendingPathComponent("Models", isDirectory: true)
 

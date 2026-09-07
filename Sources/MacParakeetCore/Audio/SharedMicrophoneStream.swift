@@ -37,7 +37,7 @@ import os
 ///    flight. Avoids a format-change in the middle of an active dictation
 ///    stream. Passive warm subscribers keep the engine alive but do not block
 ///    VPIO promotion because they are not user-visible recording sessions.
-///    The deferral counter is exposed for telemetry sizing.
+///    The deferral counter is included in local diagnostics.
 ///
 /// 6. **Subscribers receive a read-only buffer** valid only for the
 ///    synchronous handler call. Retention or mutation requires copying
@@ -103,7 +103,7 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
         /// non-VPIO subscriber leaves. Goes back to false on engagement.
         var vpioDeferred: Bool = false
         /// Lifetime counter — increments each time engagement is deferred.
-        /// Exposed for telemetry sizing of the edge case.
+        /// Included in local diagnostics for the edge case.
         var vpioDeferralCount: Int = 0
         /// A persisted microphone selection change needs the engine to restart
         /// after active capture drains. Passive warm subscribers can keep the

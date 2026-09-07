@@ -9,16 +9,20 @@ enum SettingsDictationHotkeyDisplay {
         pushToTalk: HotkeyTrigger,
         handsFree: HotkeyTrigger
     ) -> String? {
-        guard HotkeyTrigger.isSharedDictationGesture(
-            handsFree: handsFree,
-            pushToTalk: pushToTalk
-        ) else {
+        guard
+            HotkeyTrigger.isSharedDictationGesture(
+                handsFree: handsFree,
+                pushToTalk: pushToTalk
+            )
+        else {
             return nil
         }
-        guard !HotkeyTrigger.isDefaultDictationGesturePreset(
-            handsFree: handsFree,
-            pushToTalk: pushToTalk
-        ) else {
+        guard
+            !HotkeyTrigger.isDefaultDictationGesturePreset(
+                handsFree: handsFree,
+                pushToTalk: pushToTalk
+            )
+        else {
             return nil
         }
         return "Hold \(sharedGestureKeyLabel(for: pushToTalk))"
@@ -28,10 +32,12 @@ enum SettingsDictationHotkeyDisplay {
         handsFree: HotkeyTrigger,
         pushToTalk: HotkeyTrigger
     ) -> String? {
-        guard HotkeyTrigger.isSharedDictationGesture(
-            handsFree: handsFree,
-            pushToTalk: pushToTalk
-        ) else {
+        guard
+            HotkeyTrigger.isSharedDictationGesture(
+                handsFree: handsFree,
+                pushToTalk: pushToTalk
+            )
+        else {
             return nil
         }
         return "Double-tap \(sharedGestureKeyLabel(for: handsFree))"
@@ -267,7 +273,7 @@ struct SettingsView: View {
 
         if let badge = Self.attentionBadge(for: [
             engineSelectorCardStatus,
-            enginesModelsCardStatus
+            enginesModelsCardStatus,
         ]) {
             badges[.engine] = badge
         }
@@ -553,7 +559,8 @@ struct SettingsView: View {
             let size = approximateDownloadSize(for: lifecycle, fallback: variant.approximateDownloadSize)
             return "This frees \(size). You can download \(lifecycle.modelName) again at any time."
         case .whisper:
-            return "This removes the configured Whisper model download from this Mac. You can download it again at any time."
+            return
+                "This removes the configured Whisper model download from this Mac. You can download it again at any time."
         case .cohere:
             let lifecycle = cohereModelLifecycle
             let size = sentenceDownloadSize(for: lifecycle, fallback: "about 2.1 GB")
@@ -593,16 +600,21 @@ struct SettingsView: View {
     private func speechEngineSwitchConfirmationMessage(for engine: SpeechEnginePreference) -> String {
         switch engine {
         case .nemotron:
-            return "Nemotron is a Beta streaming engine. It can improve live preview responsiveness, but quality varies by language and audio. Dictation, file transcription, and meetings pause until the switch finishes."
+            return
+                "Nemotron is a Beta streaming engine. It can improve live preview responsiveness, but quality varies by language and audio. Dictation, file transcription, and meetings pause until the switch finishes."
         case .whisper:
             if viewModel.engine.whisperHasBeenOptimized {
-                return "Whisper may take a moment to load. Dictation, file transcription, and meetings pause until the switch finishes."
+                return
+                    "Whisper may take a moment to load. Dictation, file transcription, and meetings pause until the switch finishes."
             }
-            return "Preparing Whisper can take several minutes the first time while Core ML optimizes it for this Mac. Dictation, file transcription, and meetings pause until the switch finishes."
+            return
+                "Preparing Whisper can take several minutes the first time while Core ML optimizes it for this Mac. Dictation, file transcription, and meetings pause until the switch finishes."
         case .parakeet:
-            return "Switching back to Parakeet reloads the speech engine. Dictation, file transcription, and meetings pause until the switch finishes."
+            return
+                "Switching back to Parakeet reloads the speech engine. Dictation, file transcription, and meetings pause until the switch finishes."
         case .cohere:
-            return "Cohere is a local batch engine. It records first and transcribes after you stop, with no live preview, word timestamps, speaker labels, or auto language detection. Dictation, file transcription, and meetings pause until the switch finishes."
+            return
+                "Cohere is a local batch engine. It records first and transcribes after you stop, with no live preview, word timestamps, speaker labels, or auto language detection. Dictation, file transcription, and meetings pause until the switch finishes."
         }
     }
 
@@ -895,7 +907,8 @@ struct SettingsView: View {
     private var microphoneTestDetail: String {
         switch viewModel.microphoneTestState {
         case .idle:
-            return viewModel.microphoneGranted ? "Run a short level check before recording." : "Grant microphone permission before testing."
+            return viewModel.microphoneGranted
+                ? "Run a short level check before recording." : "Grant microphone permission before testing."
         case .testing:
             return "Speak into the selected microphone."
         case .succeeded:
@@ -985,7 +998,8 @@ struct SettingsView: View {
             return "Cohere is batch-only, so preview stays off until transcription finishes."
         }
 
-        return "Shows a running transcript above the dictation pill as you speak. Parakeet and Nemotron support preview; Whisper is final-transcription only."
+        return
+            "Shows a running transcript above the dictation pill as you speak. Parakeet and Nemotron support preview; Whisper is final-transcription only."
     }
 
     private var dictationCard: some View {
@@ -1143,7 +1157,8 @@ struct SettingsView: View {
 
                 settingsToggleRow(
                     title: "Instant dictation",
-                    detail: "Keeps the mic ready so dictation starts faster and catches your first words; macOS shows the mic indicator while it's on. Pauses for Bluetooth mics like AirPods to protect playback quality.",
+                    detail:
+                        "Keeps the mic ready so dictation starts faster and catches your first words; macOS shows the mic indicator while it's on. Pauses for Bluetooth mics like AirPods to protect playback quality.",
                     isBeta: true,
                     isOn: $viewModel.instantDictationEnabled
                 )
@@ -1152,7 +1167,8 @@ struct SettingsView: View {
 
                 settingsToggleRow(
                     title: "Pause media while dictating",
-                    detail: "Pauses playing media during dictation and resumes it when capture stops. On speakers, a moment of media sound can reach the mic before the pause lands — speak as you press, or use headphones.",
+                    detail:
+                        "Pauses playing media during dictation and resumes it when capture stops. On speakers, a moment of media sound can reach the mic before the pause lands — speak as you press, or use headphones.",
                     isBeta: true,
                     isOn: $viewModel.pauseMediaDuringDictation
                 )
@@ -1161,7 +1177,8 @@ struct SettingsView: View {
 
                 settingsToggleRow(
                     title: "Keep dictation on clipboard",
-                    detail: "Leaves the same text MacParakeet pastes on the clipboard, useful when remote desktops need a manual ⌘V.",
+                    detail:
+                        "Leaves the same text MacParakeet pastes on the clipboard, useful when remote desktops need a manual ⌘V.",
                     isOn: $viewModel.keepDictationOnClipboard
                 )
             }
@@ -1204,7 +1221,8 @@ struct SettingsView: View {
 
                 settingsToggleRow(
                     title: "Show floating meeting controls",
-                    detail: "Shows the small recording pill while a meeting is active. Turn this off to control recording from the menu bar, hotkey, or Meetings tab.",
+                    detail:
+                        "Shows the small recording pill while a meeting is active. Turn this off to control recording from the menu bar, hotkey, or Meetings tab.",
                     isOn: $viewModel.showMeetingRecordingPill
                 )
 
@@ -1238,7 +1256,8 @@ struct SettingsView: View {
 
                 settingsToggleRow(
                     title: "Also save meetings to a folder",
-                    detail: "MacParakeet keeps the complete meeting in its managed storage. Turn this on to also save the selected format to a folder you choose.",
+                    detail:
+                        "MacParakeet keeps the complete meeting in its managed storage. Turn this on to also save the selected format to a folder you choose.",
                     isOn: $viewModel.meetingAutoSave
                 )
 
@@ -1261,7 +1280,8 @@ struct SettingsView: View {
                     HStack(alignment: .center) {
                         rowText(
                             title: "Pending recovery",
-                            detail: "\(viewModel.pendingMeetingRecoveryCount) partial recording\(viewModel.pendingMeetingRecoveryCount == 1 ? "" : "s")"
+                            detail:
+                                "\(viewModel.pendingMeetingRecoveryCount) partial recording\(viewModel.pendingMeetingRecoveryCount == 1 ? "" : "s")"
                         )
                         Spacer(minLength: DesignSystem.Spacing.md)
                         Button {
@@ -1317,7 +1337,8 @@ struct SettingsView: View {
 
                 settingsToggleRow(
                     title: "Stop recording automatically",
-                    detail: "Stop after a meeting app quits, or both channels stay quiet for a few minutes. A countdown lets you keep recording first.",
+                    detail:
+                        "Stop after a meeting app quits, or both channels stay quiet for a few minutes. A countdown lets you keep recording first.",
                     isBeta: true,
                     isOn: $viewModel.meetingAutoStopEnabled
                 )
@@ -1327,10 +1348,12 @@ struct SettingsView: View {
 
     private var meetingAutoSaveOptionsView: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            Text("Complete meeting artifacts—including transcript, notes, metadata, prompt results, and retained audio—stay in \(meetingArtifactsDisplayPath). The selected format is also saved to the folder below after each meeting.")
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Complete meeting artifacts—including transcript, notes, metadata, prompt results, and retained audio—stay in \(meetingArtifactsDisplayPath). The selected format is also saved to the folder below after each meeting."
+            )
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
 
             autoSaveOptions(
                 format: $viewModel.meetingAutoSaveFormat,
@@ -1440,7 +1463,8 @@ struct SettingsView: View {
 
                 settingsToggleRow(
                     title: "Notify when transcription finishes",
-                    detail: "Play a sound when a file, YouTube, or batch transcription completes — plus a notification banner when MacParakeet is in the background.",
+                    detail:
+                        "Play a sound when a file, YouTube, or batch transcription completes — plus a notification banner when MacParakeet is in the background.",
                     isOn: $viewModel.notifyOnTranscriptionComplete
                 )
 
@@ -1817,9 +1841,11 @@ struct SettingsView: View {
                 }
             }
 
-            Text("Transcripts stay. Auto-removed audio is deleted permanently; playback and re-transcription will no longer be available, and MacParakeet cannot detect or backfill speakers for swept meetings.")
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Transcripts stay. Auto-removed audio is deleted permanently; playback and re-transcription will no longer be available, and MacParakeet cannot detect or backfill speakers for swept meetings."
+            )
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -1866,9 +1892,11 @@ struct SettingsView: View {
         case .keepForever:
             return ""
         case .deleteAfterDays(let days):
-            return "MacParakeet will remove saved meeting audio older than \(MeetingAudioRetention.normalizedDeleteAfterDays(days)) days. Transcripts stay, and notes, AI results, and chats stay if they exist. Playback and re-transcription will no longer be available, and MacParakeet cannot detect or backfill speakers for swept meetings."
+            return
+                "MacParakeet will remove saved meeting audio older than \(MeetingAudioRetention.normalizedDeleteAfterDays(days)) days. Transcripts stay, and notes, AI results, and chats stay if they exist. Playback and re-transcription will no longer be available, and MacParakeet cannot detect or backfill speakers for swept meetings."
         case .deleteImmediately:
-            return "New recordings will not keep audio after each final transcript is saved. Audio already saved from past meetings is kept. The meeting stays with its transcript, and notes, AI results, and chats stay if they exist. Playback and re-transcription will no longer be available for new recordings, and MacParakeet cannot detect or backfill speakers for them."
+            return
+                "New recordings will not keep audio after each final transcript is saved. Audio already saved from past meetings is kept. The meeting stays with its transcript, and notes, AI results, and chats stay if they exist. Playback and re-transcription will no longer be available for new recordings, and MacParakeet cannot detect or backfill speakers for them."
         }
     }
 
@@ -1910,7 +1938,8 @@ struct SettingsView: View {
                             buttonTitle: "Clear…",
                             accessibilityLabel: "Clear all dictations",
                             confirmationTitle: "Clear All Dictations?",
-                            confirmationMessage: "This will delete all \(viewModel.dictationCount) dictation\(viewModel.dictationCount == 1 ? "" : "s"), their audio files, and any private metric-only entries. Your lifetime stats are not affected. This cannot be undone.",
+                            confirmationMessage:
+                                "This will delete all \(viewModel.dictationCount) dictation\(viewModel.dictationCount == 1 ? "" : "s"), their audio files, and any private metric-only entries. Your lifetime stats are not affected. This cannot be undone.",
                             confirmButtonLabel: "Clear All",
                             perform: viewModel.clearAllDictations
                         )
@@ -1925,7 +1954,8 @@ struct SettingsView: View {
                             buttonTitle: "Clear…",
                             accessibilityLabel: "Clear Transform history",
                             confirmationTitle: "Clear Transform History?",
-                            confirmationMessage: "This will delete all saved Transform runs. Transform definitions and shortcuts are not affected. This cannot be undone.",
+                            confirmationMessage:
+                                "This will delete all saved Transform runs. Transform definitions and shortcuts are not affected. This cannot be undone.",
                             confirmButtonLabel: "Clear History",
                             perform: viewModel.clearTransformHistory
                         )
@@ -1940,7 +1970,8 @@ struct SettingsView: View {
                             buttonTitle: "Clear…",
                             accessibilityLabel: "Clear downloaded video audio",
                             confirmationTitle: "Clear Downloaded Video Audio?",
-                            confirmationMessage: "This will delete all downloaded video audio files and detach them from existing transcriptions. This cannot be undone.",
+                            confirmationMessage:
+                                "This will delete all downloaded video audio files and detach them from existing transcriptions. This cannot be undone.",
                             confirmButtonLabel: "Clear Audio",
                             perform: viewModel.clearDownloadedYouTubeAudio
                         )
@@ -1957,7 +1988,8 @@ struct SettingsView: View {
                             buttonTitle: "Clear…",
                             accessibilityLabel: "Clear meeting audio",
                             confirmationTitle: "Clear Meeting Audio?",
-                            confirmationMessage: "This will delete all saved meeting audio, including interrupted recovery recordings, and detach audio from existing meeting transcripts. Meeting transcripts stay. Any meeting that hasn't been transcribed yet will lose its retry source permanently. This cannot be undone.",
+                            confirmationMessage:
+                                "This will delete all saved meeting audio, including interrupted recovery recordings, and detach audio from existing meeting transcripts. Meeting transcripts stay. Any meeting that hasn't been transcribed yet will lose its retry source permanently. This cannot be undone.",
                             confirmButtonLabel: "Clear Audio",
                             perform: viewModel.clearMeetingAudio
                         )
@@ -1976,7 +2008,8 @@ struct SettingsView: View {
                             buttonTitle: "Reset…",
                             accessibilityLabel: "Reset lifetime voice stats",
                             confirmationTitle: "Reset Lifetime Stats?",
-                            confirmationMessage: "This will zero your total words, time, count, and longest dictation. Your dictation history is not affected. This cannot be undone.",
+                            confirmationMessage:
+                                "This will zero your total words, time, count, and longest dictation. Your dictation history is not affected. This cannot be undone.",
                             confirmButtonLabel: "Reset",
                             perform: viewModel.resetLifetimeStats
                         )
@@ -2106,7 +2139,8 @@ struct SettingsView: View {
 
     private var speechEngineCardSubtitle: String {
         if viewModel.engine.usesDifferentFinalTranscriptionEngine {
-            return "\(viewModel.engine.speechEnginePreference.displayName) handles dictation and live preview · \(viewModel.engine.transcriptionSpeechEnginePreference.displayName) handles recordings and files."
+            return
+                "\(viewModel.engine.speechEnginePreference.displayName) handles dictation and live preview · \(viewModel.engine.transcriptionSpeechEnginePreference.displayName) handles recordings and files."
         }
         return "Your selected engine handles dictation, meetings, recordings, and files."
     }
@@ -2130,9 +2164,10 @@ struct SettingsView: View {
             strengths: [
                 "Fast everyday dictation",
                 "Timestamps for saved dictations",
-                "English + supported European languages"
+                "English + supported European languages",
             ],
-            helpText: "Choose Parakeet for fast everyday dictation in supported languages. Use Whisper when your dictation language is outside Parakeet's coverage.",
+            helpText:
+                "Choose Parakeet for fast everyday dictation in supported languages. Use Whisper when your dictation language is outside Parakeet's coverage.",
             modelStatus: displayedParakeetModelStatus,
             isSelected: viewModel.engine.speechEnginePreference == .parakeet,
             isBusy: viewModel.engine.speechEngineSwitching,
@@ -2150,9 +2185,10 @@ struct SettingsView: View {
             strengths: [
                 "Live preview while you speak",
                 "English or multilingual builds",
-                "Quality varies by language and audio"
+                "Quality varies by language and audio",
             ],
-            helpText: "Choose Nemotron when responsive live preview matters more than proven final quality. It is Beta, so validate it on your language, device, and audio.",
+            helpText:
+                "Choose Nemotron when responsive live preview matters more than proven final quality. It is Beta, so validate it on your language, device, and audio.",
             modelStatus: displayedNemotronModelStatus,
             isSelected: viewModel.engine.speechEnginePreference == .nemotron,
             isBusy: viewModel.engine.speechEngineSwitching,
@@ -2170,9 +2206,10 @@ struct SettingsView: View {
             strengths: [
                 "Recorded dictation in many languages",
                 "Meeting preview with word timestamps",
-                "Slower cold starts; no dictation preview"
+                "Slower cold starts; no dictation preview",
             ],
-            helpText: "Choose Whisper for recorded dictation outside Parakeet or Nemotron language coverage. It runs locally with word timestamps and can preview meetings, but first use can be slow and live dictation preview stays off.",
+            helpText:
+                "Choose Whisper for recorded dictation outside Parakeet or Nemotron language coverage. It runs locally with word timestamps and can preview meetings, but first use can be slow and live dictation preview stays off.",
             modelStatus: displayedWhisperModelStatus,
             isSelected: viewModel.engine.speechEnginePreference == .whisper,
             isBusy: viewModel.engine.speechEngineSwitching,
@@ -2192,9 +2229,10 @@ struct SettingsView: View {
             strengths: [
                 "Local record-then-transcribe",
                 "Plain text with set language",
-                "No dictation or meeting preview"
+                "No dictation or meeting preview",
             ],
-            helpText: "Choose Cohere when a local batch plain-text transcript is enough and you can set the language. It has no live preview, word timestamps, speaker labels, or auto language detection.",
+            helpText:
+                "Choose Cohere when a local batch plain-text transcript is enough and you can set the language. It has no live preview, word timestamps, speaker labels, or auto language detection.",
             modelStatus: displayedCohereModelStatus,
             isSelected: viewModel.engine.speechEnginePreference == .cohere,
             isBusy: viewModel.engine.speechEngineSwitching,
@@ -2293,7 +2331,7 @@ struct SettingsView: View {
         for engine: SpeechEnginePreference
     ) -> EngineOptionTile.SelectionRole? {
         guard viewModel.engine.usesDifferentFinalTranscriptionEngine,
-              viewModel.engine.speechEnginePreference != viewModel.engine.transcriptionSpeechEnginePreference
+            viewModel.engine.speechEnginePreference != viewModel.engine.transcriptionSpeechEnginePreference
         else { return nil }
         if viewModel.engine.speechEnginePreference == engine { return .live }
         if viewModel.engine.transcriptionSpeechEnginePreference == engine { return .recordings }
@@ -2305,7 +2343,7 @@ struct SettingsView: View {
         for engine: SpeechEnginePreference
     ) -> String {
         guard viewModel.engine.usesDifferentFinalTranscriptionEngine,
-              viewModel.engine.speechEnginePreference != viewModel.engine.transcriptionSpeechEnginePreference
+            viewModel.engine.speechEnginePreference != viewModel.engine.transcriptionSpeechEnginePreference
         else { return base }
         if viewModel.engine.speechEnginePreference == engine {
             return "\(base)\nUsed for live speech."
@@ -2362,7 +2400,8 @@ struct SettingsView: View {
         let lifecycle = parakeetModelLifecycle(for: variant)
         let modelName = lifecycle.modelName
         let downloadSize = approximateDownloadSize(for: lifecycle, fallback: variant.approximateDownloadSize)
-        let downloadStatusLabel = isDownloaded
+        let downloadStatusLabel =
+            isDownloaded
             ? "Downloaded."
             : "\(downloadSize), downloads on first use."
         // The selected build is the one Parakeet loads, so it's protected; only
@@ -2400,7 +2439,9 @@ struct SettingsView: View {
             .buttonStyle(.plain)
             .disabled(viewModel.engine.speechEngineSwitching)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(modelName). \(variant.displayName). \(variant.coverageSummary) \(downloadStatusLabel)")
+            .accessibilityLabel(
+                "\(modelName). \(variant.displayName). \(variant.coverageSummary) \(downloadStatusLabel)"
+            )
             // `.combine` can drop the wrapping Button's role, so assert it explicitly
             // alongside the selected state for VoiceOver.
             .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : [.isButton])
@@ -2448,11 +2489,13 @@ struct SettingsView: View {
     /// drives the actual reload + persistence.
     private func selectParakeetModelVariant(_ variant: ParakeetModelVariant) {
         guard viewModel.engine.parakeetModelVariant != variant,
-              !viewModel.engine.speechEngineSwitching else { return }
+            !viewModel.engine.speechEngineSwitching
+        else { return }
         Task { @MainActor in
             let availability = await viewModel.engine.refreshSpeechEngineSwitchAvailabilityNow()
             guard availability == .available else {
-                viewModel.engine.speechEngineError = EngineSettingsViewModel.speechEngineSwitchUnavailableMessage(for: availability)
+                viewModel.engine.speechEngineError = EngineSettingsViewModel.speechEngineSwitchUnavailableMessage(
+                    for: availability)
                 return
             }
             withAnimation(DesignSystem.Animation.contentSwap) {
@@ -2488,7 +2531,8 @@ struct SettingsView: View {
         let lifecycle = nemotronModelLifecycle(for: variant)
         let modelName = lifecycle.modelName
         let downloadSize = approximateDownloadSize(for: lifecycle, fallback: variant.approximateDownloadSize)
-        let downloadStatusLabel = isDownloaded
+        let downloadStatusLabel =
+            isDownloaded
             ? "Downloaded."
             : "\(downloadSize), downloads on first use."
         // The selected build is the one Nemotron loads, so it's protected; only
@@ -2526,7 +2570,9 @@ struct SettingsView: View {
             .buttonStyle(.plain)
             .disabled(viewModel.engine.speechEngineSwitching)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(modelName). \(variant.displayName). \(variant.coverageSummary) \(downloadStatusLabel)")
+            .accessibilityLabel(
+                "\(modelName). \(variant.displayName). \(variant.coverageSummary) \(downloadStatusLabel)"
+            )
             // `.combine` can drop the wrapping Button's role, so assert it explicitly
             // alongside the selected state for VoiceOver.
             .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : [.isButton])
@@ -2547,11 +2593,13 @@ struct SettingsView: View {
     /// Mirrors `selectParakeetModelVariant` for the Nemotron build picker.
     private func selectNemotronModelVariant(_ variant: NemotronModelVariant) {
         guard viewModel.engine.nemotronModelVariant != variant,
-              !viewModel.engine.speechEngineSwitching else { return }
+            !viewModel.engine.speechEngineSwitching
+        else { return }
         Task { @MainActor in
             let availability = await viewModel.engine.refreshSpeechEngineSwitchAvailabilityNow()
             guard availability == .available else {
-                viewModel.engine.speechEngineError = EngineSettingsViewModel.speechEngineSwitchUnavailableMessage(for: availability)
+                viewModel.engine.speechEngineError = EngineSettingsViewModel.speechEngineSwitchUnavailableMessage(
+                    for: availability)
                 return
             }
             withAnimation(DesignSystem.Animation.contentSwap) {
@@ -2663,7 +2711,8 @@ struct SettingsView: View {
         if engine.usesSpeechEngine(.whisper) {
             SettingsCard(
                 title: "Whisper Language",
-                subtitle: "Auto-detect works for most files. Pin a language for faster startup or mixed-language audio.",
+                subtitle:
+                    "Auto-detect works for most files. Pin a language for faster startup or mixed-language audio.",
                 icon: "character.bubble"
             ) {
                 HStack(alignment: .center) {
@@ -2814,7 +2863,8 @@ struct SettingsView: View {
 
     private var displayedParakeetModelStatus: SettingsViewModel.LocalModelStatus {
         guard viewModel.engine.speechEngineSwitching,
-              currentSpeechEngineSwitchTarget == .parakeet else {
+            currentSpeechEngineSwitchTarget == .parakeet
+        else {
             return viewModel.engine.parakeetStatus
         }
         return .preparing
@@ -2822,7 +2872,8 @@ struct SettingsView: View {
 
     private var displayedParakeetModelStatusDetail: String {
         guard viewModel.engine.speechEngineSwitching,
-              currentSpeechEngineSwitchTarget == .parakeet else {
+            currentSpeechEngineSwitchTarget == .parakeet
+        else {
             return viewModel.engine.parakeetStatusDetail
         }
         return viewModel.engine.speechEngineSwitchDetail ?? "Loading Parakeet with Core ML..."
@@ -2830,7 +2881,8 @@ struct SettingsView: View {
 
     private var displayedWhisperModelStatus: SettingsViewModel.LocalModelStatus {
         guard viewModel.engine.speechEngineSwitching,
-              currentSpeechEngineSwitchTarget == .whisper else {
+            currentSpeechEngineSwitchTarget == .whisper
+        else {
             return viewModel.engine.whisperModelStatus
         }
         return .preparing
@@ -2838,7 +2890,8 @@ struct SettingsView: View {
 
     private var displayedWhisperModelStatusDetail: String {
         guard viewModel.engine.speechEngineSwitching,
-              currentSpeechEngineSwitchTarget == .whisper else {
+            currentSpeechEngineSwitchTarget == .whisper
+        else {
             return viewModel.engine.whisperModelStatusDetail
         }
         return viewModel.engine.speechEngineSwitchDetail ?? "Optimizing Whisper for this Mac..."
@@ -2846,7 +2899,8 @@ struct SettingsView: View {
 
     private var displayedNemotronModelStatus: SettingsViewModel.LocalModelStatus {
         guard viewModel.engine.speechEngineSwitching,
-              currentSpeechEngineSwitchTarget == .nemotron else {
+            currentSpeechEngineSwitchTarget == .nemotron
+        else {
             return viewModel.engine.nemotronModelStatus
         }
         return .preparing
@@ -2854,7 +2908,8 @@ struct SettingsView: View {
 
     private var displayedCohereModelStatus: SettingsViewModel.LocalModelStatus {
         guard viewModel.engine.speechEngineSwitching,
-              currentSpeechEngineSwitchTarget == .cohere else {
+            currentSpeechEngineSwitchTarget == .cohere
+        else {
             return viewModel.engine.cohereModelStatus
         }
         return .preparing
@@ -2862,7 +2917,8 @@ struct SettingsView: View {
 
     private var displayedCohereModelStatusDetail: String {
         guard viewModel.engine.speechEngineSwitching,
-              currentSpeechEngineSwitchTarget == .cohere else {
+            currentSpeechEngineSwitchTarget == .cohere
+        else {
             return viewModel.engine.cohereModelStatusDetail
         }
         return viewModel.engine.speechEngineSwitchDetail ?? "Loading Cohere with Core ML..."
@@ -2870,10 +2926,12 @@ struct SettingsView: View {
 
     private var displayedNemotronModelStatusDetail: String {
         guard viewModel.engine.speechEngineSwitching,
-              currentSpeechEngineSwitchTarget == .nemotron else {
+            currentSpeechEngineSwitchTarget == .nemotron
+        else {
             return viewModel.engine.nemotronModelStatusDetail
         }
-        return viewModel.engine.speechEngineSwitchDetail ?? "Loading \(viewModel.engine.nemotronModelVariant.modelName) with Core ML..."
+        return viewModel.engine.speechEngineSwitchDetail
+            ?? "Loading \(viewModel.engine.nemotronModelVariant.modelName) with Core ML..."
     }
 
     private func speechEngineSwitchBanner(title: String, detail: String) -> some View {
@@ -2910,12 +2968,14 @@ struct SettingsView: View {
     /// no longer starts a potentially multi-minute engine reload by surprise.
     private func selectEngine(_ engine: SpeechEnginePreference) {
         guard viewModel.engine.speechEnginePreference != engine,
-              !viewModel.engine.speechEngineSwitching,
-              viewModel.engine.pendingSpeechEngineSwitchConfirmation == nil else { return }
+            !viewModel.engine.speechEngineSwitching,
+            viewModel.engine.pendingSpeechEngineSwitchConfirmation == nil
+        else { return }
         Task { @MainActor in
             let availability = await viewModel.engine.refreshSpeechEngineSwitchAvailabilityNow()
             guard availability == .available else {
-                viewModel.engine.speechEngineError = EngineSettingsViewModel.speechEngineSwitchUnavailableMessage(for: availability)
+                viewModel.engine.speechEngineError = EngineSettingsViewModel.speechEngineSwitchUnavailableMessage(
+                    for: availability)
                 return
             }
             withAnimation(DesignSystem.Animation.contentSwap) {
@@ -2966,7 +3026,8 @@ struct SettingsView: View {
                 for: lifecycle,
                 fallback: viewModel.engine.nemotronModelVariant.approximateDownloadSize
             )
-            let qualityNote = nemotronUsesFixedLanguage(viewModel.engine.nemotronModelVariant)
+            let qualityNote =
+                nemotronUsesFixedLanguage(viewModel.engine.nemotronModelVariant)
                 ? "quality still being validated"
                 : "quality varies by language"
             return (.download, "\(size) · Beta streaming model, \(qualityNote)")
@@ -3011,7 +3072,8 @@ struct SettingsView: View {
         case .ready, .notLoaded:
             selectEngine(.whisper)
         case .notDownloaded:
-            viewModel.engine.speechEngineError = "Download the Whisper model from Local Models below before switching engines."
+            viewModel.engine.speechEngineError =
+                "Download the Whisper model from Local Models below before switching engines."
         case .repairing:
             viewModel.engine.speechEngineError = "Whisper model is downloading — switch engines once it finishes."
         case .preparing:
@@ -3028,7 +3090,8 @@ struct SettingsView: View {
         case .ready, .notLoaded:
             selectEngine(.nemotron)
         case .notDownloaded:
-            viewModel.engine.speechEngineError = "Download the \(viewModel.engine.nemotronModelVariant.displayName) Nemotron model below before switching engines."
+            viewModel.engine.speechEngineError =
+                "Download the \(viewModel.engine.nemotronModelVariant.displayName) Nemotron model below before switching engines."
         case .repairing:
             viewModel.engine.speechEngineError = "Nemotron model is downloading — switch engines once it finishes."
         case .preparing:
@@ -3045,7 +3108,8 @@ struct SettingsView: View {
         case .ready, .notLoaded:
             selectEngine(.cohere)
         case .notDownloaded:
-            viewModel.engine.speechEngineError = "Download Cohere Transcribe from Local Models below before switching engines."
+            viewModel.engine.speechEngineError =
+                "Download Cohere Transcribe from Local Models below before switching engines."
         case .repairing:
             viewModel.engine.speechEngineError = "Cohere Transcribe is downloading — switch engines once it finishes."
         case .preparing:
@@ -3087,13 +3151,15 @@ struct SettingsView: View {
     private var parakeetOverflowActions: [ModelRowAction] {
         switch viewModel.engine.parakeetStatus {
         case .ready, .notLoaded:
-            return [ModelRowAction(
-                label: "Repair…",
-                isProminent: false,
-                help: "Re-validate the Parakeet files and load the model again."
-            ) {
-                viewModel.engine.repairParakeetModel()
-            }]
+            return [
+                ModelRowAction(
+                    label: "Repair…",
+                    isProminent: false,
+                    help: "Re-validate the Parakeet files and load the model again."
+                ) {
+                    viewModel.engine.repairParakeetModel()
+                }
+            ]
         default:
             return []
         }
@@ -3175,22 +3241,25 @@ struct SettingsView: View {
     private var nemotronOverflowActions: [ModelRowAction] {
         switch viewModel.engine.nemotronModelStatus {
         case .ready, .notLoaded:
-            var actions = [ModelRowAction(
-                label: "Repair…",
-                isProminent: false,
-                help: "Re-check the Nemotron files and re-download any missing model assets."
-            ) {
-                viewModel.engine.downloadNemotronModel()
-            }]
-            if !viewModel.engine.usesSpeechEngine(.nemotron) {
-                actions.append(ModelRowAction(
-                    label: "Delete download…",
+            var actions = [
+                ModelRowAction(
+                    label: "Repair…",
                     isProminent: false,
-                    isDestructive: true,
-                    help: "Remove the selected Nemotron build's download from this Mac."
+                    help: "Re-check the Nemotron files and re-download any missing model assets."
                 ) {
-                    pendingModelDeletion = .nemotron(viewModel.engine.nemotronModelVariant)
-                })
+                    viewModel.engine.downloadNemotronModel()
+                }
+            ]
+            if !viewModel.engine.usesSpeechEngine(.nemotron) {
+                actions.append(
+                    ModelRowAction(
+                        label: "Delete download…",
+                        isProminent: false,
+                        isDestructive: true,
+                        help: "Remove the selected Nemotron build's download from this Mac."
+                    ) {
+                        pendingModelDeletion = .nemotron(viewModel.engine.nemotronModelVariant)
+                    })
             }
             return actions
         default:
@@ -3206,24 +3275,27 @@ struct SettingsView: View {
             // (which downloads if files are missing); Whisper re-runs the
             // download (no-op via HuggingFace cache when files are intact).
             // The user shouldn't have to reason about that asymmetry.
-            var actions = [ModelRowAction(
-                label: "Repair…",
-                isProminent: false,
-                help: "Re-check the Whisper files and re-download any missing model assets."
-            ) {
-                viewModel.engine.downloadWhisperModel()
-            }]
+            var actions = [
+                ModelRowAction(
+                    label: "Repair…",
+                    isProminent: false,
+                    help: "Re-check the Whisper files and re-download any missing model assets."
+                ) {
+                    viewModel.engine.downloadWhisperModel()
+                }
+            ]
             // Offer delete only when Whisper isn't the active engine — deleting
             // the in-use model would force a silent re-download next time.
             if !viewModel.engine.usesSpeechEngine(.whisper) {
-                actions.append(ModelRowAction(
-                    label: "Delete download…",
-                    isProminent: false,
-                    isDestructive: true,
-                    help: "Remove the configured Whisper model download from this Mac."
-                ) {
-                    pendingModelDeletion = .whisper
-                })
+                actions.append(
+                    ModelRowAction(
+                        label: "Delete download…",
+                        isProminent: false,
+                        isDestructive: true,
+                        help: "Remove the configured Whisper model download from this Mac."
+                    ) {
+                        pendingModelDeletion = .whisper
+                    })
             }
             return actions
         default:
@@ -3235,28 +3307,31 @@ struct SettingsView: View {
         var actions: [ModelRowAction] = []
         switch viewModel.engine.cohereModelStatus {
         case .ready, .notLoaded:
-            actions.append(ModelRowAction(
-                label: "Repair…",
-                isProminent: false,
-                help: "Re-check Cohere Transcribe files and re-download any missing model assets."
-            ) {
-                viewModel.engine.downloadCohereModel()
-            })
+            actions.append(
+                ModelRowAction(
+                    label: "Repair…",
+                    isProminent: false,
+                    help: "Re-check Cohere Transcribe files and re-download any missing model assets."
+                ) {
+                    viewModel.engine.downloadCohereModel()
+                })
         case .failed, .notDownloaded:
             break
         default:
             return []
         }
         if viewModel.engine.canDeleteCohereModel,
-           !viewModel.engine.usesSpeechEngine(.cohere) {
-            actions.append(ModelRowAction(
-                label: "Delete download…",
-                isProminent: false,
-                isDestructive: true,
-                help: "Remove the Cohere Transcribe download from this Mac."
-            ) {
-                pendingModelDeletion = .cohere
-            })
+            !viewModel.engine.usesSpeechEngine(.cohere)
+        {
+            actions.append(
+                ModelRowAction(
+                    label: "Delete download…",
+                    isProminent: false,
+                    isDestructive: true,
+                    help: "Remove the Cohere Transcribe download from this Mac."
+                ) {
+                    pendingModelDeletion = .cohere
+                })
         }
         return actions
     }
@@ -3324,7 +3399,8 @@ struct SettingsView: View {
     }
 
     private var permissionsCard: some View {
-        let permissionsSubtitle = AppFeatures.meetingRecordingEnabled
+        let permissionsSubtitle =
+            AppFeatures.meetingRecordingEnabled
             ? "Microphone and Accessibility are required. Screen Recording is needed for system-audio meetings."
             : "Microphone and Accessibility are required."
 
@@ -3355,14 +3431,16 @@ struct SettingsView: View {
                     HStack {
                         rowText(
                             title: "Screen & System Audio Recording",
-                            detail: "Required for meeting modes that capture system audio. MacParakeet never records your screen."
+                            detail:
+                                "Required for meeting modes that capture system audio. MacParakeet never records your screen."
                         )
                         Spacer()
                         screenRecordingPermissionPill
                     }
                 }
 
-                let needsScreenRecordingAction = AppFeatures.meetingRecordingEnabled
+                let needsScreenRecordingAction =
+                    AppFeatures.meetingRecordingEnabled
                     && viewModel.meetingAudioSourceMode.capturesSystemAudio
                     && !viewModel.screenRecordingGranted
                 if !viewModel.accessibilityGranted || needsScreenRecordingAction {
@@ -3557,11 +3635,12 @@ struct SettingsView: View {
                             actionsDisabled: actionsDisabled
                         )
                     } else if !overflowActions.isEmpty,
-                              !actionsDisabled,
-                              !isWorking,
-                              status != .checking,
-                              status != .repairing,
-                              status != .preparing {
+                        !actionsDisabled,
+                        !isWorking,
+                        status != .checking,
+                        status != .repairing,
+                        status != .preparing
+                    {
                         Menu {
                             ForEach(overflowActions) { action in
                                 Button(role: action.isDestructive ? .destructive : nil, action: action.run) {
@@ -3779,7 +3858,8 @@ struct SettingsView: View {
         .padding(.vertical, 4)
         .background(
             Capsule()
-                .fill(granted ? DesignSystem.Colors.successGreen.opacity(0.1) : DesignSystem.Colors.errorRed.opacity(0.1))
+                .fill(
+                    granted ? DesignSystem.Colors.successGreen.opacity(0.1) : DesignSystem.Colors.errorRed.opacity(0.1))
         )
     }
 
@@ -3806,28 +3886,29 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func modelStatusPill(_ status: SettingsViewModel.LocalModelStatus) -> some View {
-        let (icon, text, color): (String, String, Color) = switch status {
-        case .unknown:
-            ("questionmark.circle.fill", "Unknown", .secondary)
-        case .checking:
-            ("clock.fill", "Checking", DesignSystem.Colors.warningAmber)
-        case .ready:
-            ("checkmark.circle.fill", "Ready", DesignSystem.Colors.successGreen)
-        case .notLoaded:
-            // The model is on disk and will lazy-load on first use; this is a
-            // healthy idle state, not an error. Earlier copy ("Not Loaded"
-            // with a pause icon) read as broken and prompted users to hit
-            // Repair to "fix" something that wasn't actually broken.
-            ("checkmark.circle.fill", "Installed", DesignSystem.Colors.successGreen)
-        case .notDownloaded:
-            ("arrow.down.circle.fill", "Not Downloaded", DesignSystem.Colors.errorRed)
-        case .preparing:
-            ("gearshape.fill", "Preparing", DesignSystem.Colors.warningAmber)
-        case .repairing:
-            ("wrench.and.screwdriver.fill", "Repairing", DesignSystem.Colors.warningAmber)
-        case .failed:
-            ("xmark.circle.fill", "Failed", DesignSystem.Colors.errorRed)
-        }
+        let (icon, text, color): (String, String, Color) =
+            switch status {
+            case .unknown:
+                ("questionmark.circle.fill", "Unknown", .secondary)
+            case .checking:
+                ("clock.fill", "Checking", DesignSystem.Colors.warningAmber)
+            case .ready:
+                ("checkmark.circle.fill", "Ready", DesignSystem.Colors.successGreen)
+            case .notLoaded:
+                // The model is on disk and will lazy-load on first use; this is a
+                // healthy idle state, not an error. Earlier copy ("Not Loaded"
+                // with a pause icon) read as broken and prompted users to hit
+                // Repair to "fix" something that wasn't actually broken.
+                ("checkmark.circle.fill", "Installed", DesignSystem.Colors.successGreen)
+            case .notDownloaded:
+                ("arrow.down.circle.fill", "Not Downloaded", DesignSystem.Colors.errorRed)
+            case .preparing:
+                ("gearshape.fill", "Preparing", DesignSystem.Colors.warningAmber)
+            case .repairing:
+                ("wrench.and.screwdriver.fill", "Repairing", DesignSystem.Colors.warningAmber)
+            case .failed:
+                ("xmark.circle.fill", "Failed", DesignSystem.Colors.errorRed)
+            }
 
         HStack(spacing: 4) {
             Image(systemName: icon)

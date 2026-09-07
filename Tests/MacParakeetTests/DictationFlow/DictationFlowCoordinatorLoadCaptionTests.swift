@@ -14,7 +14,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
     )
 
     override func tearDown() {
-        Telemetry.configure(NoOpTelemetryService())
         super.tearDown()
     }
 
@@ -25,7 +24,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(60))
 
         XCTAssertNil(harness.coordinator.processingLoadCaptionForTesting)
-        XCTAssertFalse(harness.telemetry.snapshot().containsCaptionShown)
     }
 
     func testProcessingExitBeforeGraceSuppressesCaption() async throws {
@@ -43,7 +41,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(620))
 
         XCTAssertNil(harness.coordinator.processingLoadCaptionForTesting)
-        XCTAssertFalse(harness.telemetry.snapshot().containsCaptionShown)
     }
 
     func testRuntimeReadyBeforeGraceSuppressesCaption() async throws {
@@ -57,7 +54,7 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
             )
         )
 
-        harness.coordinator.startDictation(mode: .persistent, trigger: .hotkey)
+        harness.coordinator.startDictation(mode: .persistent)
         let started = await waitUntil { harness.coordinator.overlayStateForTesting?.isRecordingForTest == true }
         XCTAssertTrue(started)
         harness.coordinator.stopDictation()
@@ -68,7 +65,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(120))
 
         XCTAssertNil(harness.coordinator.processingLoadCaptionForTesting)
-        XCTAssertFalse(harness.telemetry.snapshot().containsCaptionShown)
     }
 
     func testFirstInstallShowsPreparingThenClearsOnSuccess() async throws {
@@ -90,14 +86,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
             harness.coordinator.processingLoadCaptionForTesting == nil
         }
         XCTAssertTrue(cleared)
-
-        let recordedSuccess = await waitUntil(timeoutMs: 3_000) {
-            harness.telemetry.snapshot().containsCaptionDuration(outcome: "success")
-        }
-        XCTAssertTrue(recordedSuccess)
-        let events = harness.telemetry.snapshot()
-        XCTAssertTrue(events.containsCaptionShown(firstInstall: true))
-        XCTAssertTrue(events.containsCaptionDuration(outcome: "success"))
     }
 
     func testFirstInstallEscalatesToSubcopyAfterDelay() async throws {
@@ -128,7 +116,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(70))
 
         XCTAssertEqual(harness.coordinator.processingLoadCaptionForTesting, .preparing)
-        XCTAssertTrue(harness.telemetry.snapshot().containsCaptionShown(firstInstall: false))
     }
 
     func testCohereShowsOptimizingCaptionAndEscalatesAfterFirstDictation() async throws {
@@ -172,7 +159,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
         let errorShown = await waitUntil { harness.coordinator.overlayStateForTesting?.isErrorForTest == true }
         XCTAssertTrue(errorShown)
         XCTAssertNil(harness.coordinator.processingLoadCaptionForTesting)
-        XCTAssertTrue(harness.telemetry.snapshot().containsCaptionDuration(outcome: "failure"))
     }
 
     func testNoSpeechDismissesCaptionWithSnakeCaseOutcome() async throws {
@@ -192,11 +178,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
             harness.coordinator.processingLoadCaptionForTesting == nil
         }
         XCTAssertTrue(cleared)
-
-        let recordedNoSpeech = await waitUntil(timeoutMs: 3_000) {
-            harness.telemetry.snapshot().containsCaptionDuration(outcome: "no_speech")
-        }
-        XCTAssertTrue(recordedNoSpeech)
     }
 
     func testPasteFailureDismissesCaptionWithFailureOutcome() async throws {
@@ -206,12 +187,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
         try await harness.startAndStop()
         let shown = await harness.captionSignal.wait(for: .preparing)
         XCTAssertTrue(shown)
-        let recordedFailure = await waitUntil {
-            harness.telemetry.snapshot().containsCaptionDuration(outcome: "failure")
-        }
-
-        XCTAssertTrue(recordedFailure)
-        XCTAssertFalse(harness.telemetry.snapshot().containsCaptionDuration(outcome: "success"))
     }
 
     func testCancelDuringVisibleCaptionClearsCaption() async throws {
@@ -226,7 +201,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
             harness.coordinator.processingLoadCaptionForTesting == nil
         }
         XCTAssertTrue(cleared)
-        XCTAssertTrue(harness.telemetry.snapshot().containsCaptionDuration(outcome: "cancelled"))
     }
 
     func testSecondDictationWarmRuntimeDoesNotShowCaption() async throws {
@@ -244,9 +218,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
         await harness.stt.setTranscribeDelay(milliseconds: 80)
         try await harness.startAndStop()
         try await Task.sleep(for: .milliseconds(60))
-
-        let shownCount = harness.telemetry.snapshot().captionShownCount
-        XCTAssertEqual(shownCount, 1)
         XCTAssertNil(harness.coordinator.processingLoadCaptionForTesting)
     }
 
@@ -262,7 +233,7 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
 
         await harness.stt.setReady(false)
         await harness.stt.setTranscribeDelay(milliseconds: 300)
-        harness.coordinator.startDictation(mode: .persistent, trigger: .hotkey)
+        harness.coordinator.startDictation(mode: .persistent)
         let secondStarted = await waitUntil {
             harness.coordinator.overlayStateForTesting?.isRecordingForTest == true
         }
@@ -333,7 +304,7 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
         // produced. Even while the success checkmark is visible, a later
         // preference change cannot race ahead of it — the captured (inline)
         // style is applied.
-        harness.coordinator.startDictation(mode: .persistent, trigger: .hotkey)
+        harness.coordinator.startDictation(mode: .persistent)
         let started = await waitUntil { harness.coordinator.overlayStateForTesting?.isRecordingForTest == true }
         XCTAssertTrue(started)
         harness.coordinator.stopDictation()
@@ -388,8 +359,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
         timing: DictationProcessingLoadCaptionTiming? = nil,
         transcribeGate: AsyncGate? = nil
     ) throws -> Harness {
-        let telemetry = LoadCaptionTelemetrySpy()
-        Telemetry.configure(telemetry)
         let captionSignal = StateSignal<ProcessingLoadCaption?>()
 
         let dbManager = try DatabaseManager()
@@ -403,7 +372,8 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
         )
         let repo = DictationRepository(dbQueue: dbManager.dbQueue)
         let preferencesDefaults = UserDefaults(suiteName: "load-caption-\(UUID().uuidString)")!
-        preferencesDefaults.set(keepDictationOnClipboard, forKey: UserDefaultsAppRuntimePreferences.keepDictationOnClipboardKey)
+        preferencesDefaults.set(
+            keepDictationOnClipboard, forKey: UserDefaultsAppRuntimePreferences.keepDictationOnClipboardKey)
         preferencesDefaults.set(
             dictationInsertionStyle.rawValue,
             forKey: UserDefaultsAppRuntimePreferences.dictationInsertionStyleKey
@@ -459,7 +429,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
         return Harness(
             coordinator: coordinator,
             stt: stt,
-            telemetry: telemetry,
             clipboard: clipboard,
             preferencesDefaults: preferencesDefaults,
             captionSignal: captionSignal
@@ -493,14 +462,13 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
     private struct Harness {
         let coordinator: DictationFlowCoordinator
         let stt: DelayedSTTClient
-        let telemetry: LoadCaptionTelemetrySpy
         let clipboard: MockClipboardService
         let preferencesDefaults: UserDefaults
         let captionSignal: StateSignal<ProcessingLoadCaption?>
 
         @MainActor
         func startAndStop() async throws {
-            coordinator.startDictation(mode: .persistent, trigger: .hotkey)
+            coordinator.startDictation(mode: .persistent)
             let started = await waitUntil { coordinator.overlayStateForTesting?.isRecordingForTest == true }
             XCTAssertTrue(started)
             coordinator.stopDictation()
@@ -667,68 +635,6 @@ private actor AsyncGate {
         guard let index = continuations.firstIndex(where: { $0.id == id }) else { return }
         let waiter = continuations.remove(at: index)
         waiter.continuation.resume(throwing: CancellationError())
-    }
-}
-
-private final class LoadCaptionTelemetrySpy: TelemetryServiceProtocol, @unchecked Sendable {
-    private let lock = NSLock()
-    private var events: [TelemetryEventSpec] = []
-
-    func send(_ event: TelemetryEventSpec) {
-        lock.lock()
-        events.append(event)
-        lock.unlock()
-    }
-
-    func sendAndFlush(_ event: TelemetryEventSpec) async -> Bool {
-        send(event)
-        return true
-    }
-
-    func flush() async {}
-    func clearQueue() {
-        lock.lock()
-        events.removeAll()
-        lock.unlock()
-    }
-    func flushForTermination() {}
-
-    func snapshot() -> [TelemetryEventSpec] {
-        lock.lock()
-        defer { lock.unlock() }
-        return events
-    }
-}
-
-private extension Array where Element == TelemetryEventSpec {
-    var containsCaptionShown: Bool {
-        contains { event in
-            if case .dictationFirstLoadCaptionShown = event { return true }
-            return false
-        }
-    }
-
-    var captionShownCount: Int {
-        filter { event in
-            if case .dictationFirstLoadCaptionShown = event { return true }
-            return false
-        }.count
-    }
-
-    func containsCaptionShown(firstInstall: Bool) -> Bool {
-        contains { event in
-            guard case .dictationFirstLoadCaptionShown(let value) = event else { return false }
-            return value == firstInstall
-        }
-    }
-
-    func containsCaptionDuration(outcome: String) -> Bool {
-        contains { event in
-            guard case .dictationFirstLoadCaptionDuration(let durationMs, let value) = event else {
-                return false
-            }
-            return durationMs >= 0 && value == outcome
-        }
     }
 }
 

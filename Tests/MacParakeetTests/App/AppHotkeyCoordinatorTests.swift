@@ -221,7 +221,7 @@ final class AppHotkeyCoordinatorTests: XCTestCase {
             plan,
             AppHotkeyCoordinator.DictationHotkeyPlan(
                 specs: [
-                    .init(trigger: .control, gestureMode: .singleTapToggle),
+                    .init(trigger: .control, gestureMode: .singleTapToggle)
                 ],
                 conflict: .init(trigger: pushToTalk, conflicts: [.control])
             )

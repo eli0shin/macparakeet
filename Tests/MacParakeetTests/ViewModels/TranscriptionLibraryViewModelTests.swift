@@ -57,12 +57,13 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
 
     func testFilterAll() async throws {
         try repo.save(Transcription(fileName: "local.mp3", status: .completed))
-        try repo.save(Transcription(
-            fileName: "youtube.mp3",
-            status: .completed,
-            sourceURL: "https://youtube.com/watch?v=abc",
-            sourceType: .youtube
-        ))
+        try repo.save(
+            Transcription(
+                fileName: "youtube.mp3",
+                status: .completed,
+                sourceURL: "https://youtube.com/watch?v=abc",
+                sourceType: .youtube
+            ))
 
         vm.filter = .all
         await load()
@@ -71,12 +72,13 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
 
     func testFilterYouTube() async throws {
         try repo.save(Transcription(fileName: "local.mp3", status: .completed))
-        try repo.save(Transcription(
-            fileName: "youtube.mp3",
-            status: .completed,
-            sourceURL: "https://youtube.com/watch?v=abc",
-            sourceType: .youtube
-        ))
+        try repo.save(
+            Transcription(
+                fileName: "youtube.mp3",
+                status: .completed,
+                sourceURL: "https://youtube.com/watch?v=abc",
+                sourceType: .youtube
+            ))
 
         vm.filter = .youtube
         await load()
@@ -86,13 +88,17 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
 
     func testFilterPodcast() async throws {
         try repo.save(Transcription(fileName: "local.mp3", status: .completed, sourceType: .file))
-        try repo.save(Transcription(fileName: "youtube.mp3", status: .completed, sourceURL: "https://youtube.com/watch?v=abc", sourceType: .youtube))
-        try repo.save(Transcription(
-            fileName: "episode.mp3",
-            status: .completed,
-            sourceURL: "https://podcasts.apple.com/us/podcast/x/id1?i=2",
-            sourceType: .podcast
-        ))
+        try repo.save(
+            Transcription(
+                fileName: "youtube.mp3", status: .completed, sourceURL: "https://youtube.com/watch?v=abc",
+                sourceType: .youtube))
+        try repo.save(
+            Transcription(
+                fileName: "episode.mp3",
+                status: .completed,
+                sourceURL: "https://podcasts.apple.com/us/podcast/x/id1?i=2",
+                sourceType: .podcast
+            ))
 
         vm.filter = .podcast
         await load()
@@ -103,7 +109,10 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
     func testFilterLocal() async throws {
         try repo.save(Transcription(fileName: "local.mp3", status: .completed, sourceType: .file))
         try repo.save(Transcription(fileName: "meeting.mp3", status: .completed, sourceType: .meeting))
-        try repo.save(Transcription(fileName: "youtube.mp3", status: .completed, sourceURL: "https://youtube.com/watch?v=abc", sourceType: .youtube))
+        try repo.save(
+            Transcription(
+                fileName: "youtube.mp3", status: .completed, sourceURL: "https://youtube.com/watch?v=abc",
+                sourceType: .youtube))
 
         vm.filter = .local
         await load()
@@ -152,7 +161,8 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         let meetingVM = TranscriptionLibraryViewModel(scope: .meetings)
         meetingVM.configure(transcriptionRepo: repo)
 
-        try repo.save(Transcription(fileName: "fav meeting.mp3", status: .completed, isFavorite: true, sourceType: .meeting))
+        try repo.save(
+            Transcription(fileName: "fav meeting.mp3", status: .completed, isFavorite: true, sourceType: .meeting))
         try repo.save(Transcription(fileName: "normal meeting.mp3", status: .completed, sourceType: .meeting))
         try repo.save(Transcription(fileName: "fav local.mp3", status: .completed, isFavorite: true, sourceType: .file))
 
@@ -191,12 +201,13 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
     }
 
     func testSearchByChannel() async throws {
-        try repo.save(Transcription(
-            fileName: "Video",
-            status: .completed,
-            sourceURL: "https://youtube.com/watch?v=abc",
-            channelName: "TechChannel"
-        ))
+        try repo.save(
+            Transcription(
+                fileName: "Video",
+                status: .completed,
+                sourceURL: "https://youtube.com/watch?v=abc",
+                channelName: "TechChannel"
+            ))
         try repo.save(Transcription(fileName: "Other", status: .completed))
 
         vm.searchText = "techchannel"
@@ -586,9 +597,12 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
 
     func testSelectLoadedVisibleTranscriptionsExcludesUnloadedRows() async throws {
         vm.pageSize = 2
-        try repo.save(Transcription(createdAt: Date(timeIntervalSince1970: 3), fileName: "third.mp3", status: .completed))
-        try repo.save(Transcription(createdAt: Date(timeIntervalSince1970: 2), fileName: "second.mp3", status: .completed))
-        try repo.save(Transcription(createdAt: Date(timeIntervalSince1970: 1), fileName: "first.mp3", status: .completed))
+        try repo.save(
+            Transcription(createdAt: Date(timeIntervalSince1970: 3), fileName: "third.mp3", status: .completed))
+        try repo.save(
+            Transcription(createdAt: Date(timeIntervalSince1970: 2), fileName: "second.mp3", status: .completed))
+        try repo.save(
+            Transcription(createdAt: Date(timeIntervalSince1970: 1), fileName: "first.mp3", status: .completed))
 
         await load()
 
@@ -620,7 +634,8 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
 
     func testSelectedLoadedTranscriptionsForExportFollowsVisibleOrder() async throws {
         let first = Transcription(createdAt: Date(timeIntervalSince1970: 2), fileName: "first.mp3", status: .completed)
-        let second = Transcription(createdAt: Date(timeIntervalSince1970: 1), fileName: "second.mp3", status: .completed)
+        let second = Transcription(
+            createdAt: Date(timeIntervalSince1970: 1), fileName: "second.mp3", status: .completed)
         try repo.save(second)
         try repo.save(first)
 

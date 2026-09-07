@@ -25,10 +25,12 @@ func validateCLISpeechEngineMemoryRequirement(
     for engine: SpeechEnginePreference,
     physicalMemoryBytes: UInt64 = ProcessInfo.processInfo.physicalMemory
 ) throws {
-    guard let status = SpeechEngineCapabilityRegistry.memoryRequirementStatus(
-        for: engine,
-        physicalMemoryBytes: physicalMemoryBytes
-    ), !status.isSatisfied else {
+    guard
+        let status = SpeechEngineCapabilityRegistry.memoryRequirementStatus(
+            for: engine,
+            physicalMemoryBytes: physicalMemoryBytes
+        ), !status.isSatisfied
+    else {
         return
     }
     throw ValidationError(
@@ -116,7 +118,7 @@ private func isUUIDPrefixCandidate(_ value: String) -> Bool {
 private func uuidPrefixSearchKey(_ value: String) -> String? {
     let lowered = value.lowercased()
     guard lowered.count >= minimumUUIDPrefixLength,
-          isUUIDPrefixCandidate(lowered)
+        isUUIDPrefixCandidate(lowered)
     else {
         return nil
     }
@@ -126,8 +128,8 @@ private func uuidPrefixSearchKey(_ value: String) -> String? {
 private func shortUUIDPrefixErrorIfApplicable(_ value: String) -> CLILookupError? {
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty,
-          trimmed.count < minimumUUIDPrefixLength,
-          isUUIDPrefixCandidate(trimmed)
+        trimmed.count < minimumUUIDPrefixLength,
+        isUUIDPrefixCandidate(trimmed)
     else {
         return nil
     }
@@ -172,8 +174,9 @@ func findMeeting(idOrName: String, repo: TranscriptionRepository) throws -> Tran
     guard !trimmed.isEmpty else { throw CLILookupError.emptyID }
 
     if let uuid = UUID(uuidString: trimmed),
-       let transcription = try repo.fetch(id: uuid),
-       transcription.sourceType == .meeting {
+        let transcription = try repo.fetch(id: uuid),
+        transcription.sourceType == .meeting
+    {
         return transcription
     }
 
@@ -233,8 +236,9 @@ func findPrompt(idOrName: String, repo: PromptRepository) throws -> Prompt {
     guard !trimmed.isEmpty else { throw CLILookupError.emptyID }
 
     if let uuid = UUID(uuidString: trimmed),
-       let prompt = try repo.fetch(id: uuid),
-       prompt.category == .result {
+        let prompt = try repo.fetch(id: uuid),
+        prompt.category == .result
+    {
         return prompt
     }
 
@@ -351,7 +355,7 @@ func withStandardOutputRedirectedToStandardError<T>(
 /// source of truth for branching; the envelope is the source of truth for
 /// *why* it failed.
 public struct CLIErrorEnvelope: Encodable {
-    public let ok: Bool   // always false
+    public let ok: Bool  // always false
     public let error: String
     public let errorType: String
     public let fix: String?
@@ -456,19 +460,19 @@ enum CLIErrorType {
         if let history = error as? CLITransformHistoryError {
             switch history {
             case .notFound, .ambiguous: return lookup
-            case .invalidPrefix:        return validation
-            case .deleteFailed:         return runtime
+            case .invalidPrefix: return validation
+            case .deleteFailed: return runtime
             }
         }
         if let qpe = error as? QuickPromptCLIError {
             switch qpe {
             case .cannotDeleteBuiltIn: return validation
-            case .deleteFailed:        return runtime
-            case .emptyBody:           return inputEmpty
-            case .readFailed:          return inputMissing
-            case .writeFailed:         return runtime
-            case .importSchemaError:   return importSchema
-            case .importCancelled:     return validation
+            case .deleteFailed: return runtime
+            case .emptyBody: return inputEmpty
+            case .readFailed: return inputMissing
+            case .writeFailed: return runtime
+            case .importSchemaError: return importSchema
+            case .importCancelled: return validation
             }
         }
         if let cli = error as? CLIError {
@@ -553,11 +557,12 @@ func printEnvelope<T: Encodable>(
     data: T,
     warnings: [String] = []
 ) throws {
-    try printJSON(CLISuccessEnvelope(
-        command: command,
-        data: data,
-        meta: CLIEnvelopeMeta(warnings: warnings)
-    ))
+    try printJSON(
+        CLISuccessEnvelope(
+            command: command,
+            data: data,
+            meta: CLIEnvelopeMeta(warnings: warnings)
+        ))
 }
 
 /// Wrap a `--json`-aware CLI body. On error: when `json` is true, emit a

@@ -9,10 +9,11 @@ import Metal
 @Observable
 public final class OnboardingViewModel {
     private let logger = Logger(subsystem: "com.macparakeet.viewmodels", category: "OnboardingViewModel")
-    public typealias WhisperModelDownloader = @Sendable (
-        _ model: String,
-        _ onProgress: @escaping @Sendable (_ completed: Int, _ total: Int) -> Void
-    ) async throws -> Void
+    public typealias WhisperModelDownloader =
+        @Sendable (
+            _ model: String,
+            _ onProgress: @escaping @Sendable (_ completed: Int, _ total: Int) -> Void
+        ) async throws -> Void
 
     public struct WhisperOnboardingRecommendation: Sendable, Equatable {
         public let languageCode: String
@@ -40,7 +41,7 @@ public final class OnboardingViewModel {
             }
         }
 
-        public var telemetryName: String {
+        public var identifier: String {
             switch self {
             case .welcome: return "welcome"
             case .microphone: return "microphone"
@@ -92,14 +93,9 @@ public final class OnboardingViewModel {
     private let downloadWhisperModel: WhisperModelDownloader
     private let defaults: UserDefaults
     private let now: @Sendable () -> Date
-    private var startedAt: Date
     private let permissionPollingInterval: Duration
     private let warmUpStallTimeout: Duration
-    private var didEmitInitialStep = false
     private var completionForCurrentRun: Completion?
-    private var accessibilityPromptedInCurrentRun = false
-    private var accessibilityGrantedTelemetrySent = false
-    private var accessibilityDeniedTelemetrySent = false
     private var engineGeneration: Int = 0
     private var refreshTask: Task<Void, Never>?
     private var permissionPollingTask: Task<Void, Never>?
@@ -149,15 +145,16 @@ public final class OnboardingViewModel {
         self.availableDiskBytes = availableDiskBytes ?? { Self.defaultAvailableDiskBytes() }
         self.isNetworkReachable = isNetworkReachable ?? { await Self.defaultNetworkReachabilityCheck() }
         self.isSpeechModelCached = isSpeechModelCached ?? { STTRuntime.isModelCached() }
-        self.isWhisperModelDownloaded = isWhisperModelDownloaded ?? {
-            WhisperEngine.isModelDownloaded(model: SpeechEnginePreference.whisperModelVariant())
-        }
-        self.downloadWhisperModel = downloadWhisperModel ?? { model, progress in
-            _ = try await WhisperEngine.downloadModel(model: model, onProgress: progress)
-        }
+        self.isWhisperModelDownloaded =
+            isWhisperModelDownloaded ?? {
+                WhisperEngine.isModelDownloaded(model: SpeechEnginePreference.whisperModelVariant())
+            }
+        self.downloadWhisperModel =
+            downloadWhisperModel ?? { model, progress in
+                _ = try await WhisperEngine.downloadModel(model: model, onProgress: progress)
+            }
         self.defaults = defaults
         self.now = now
-        self.startedAt = now()
         self.permissionPollingInterval = permissionPollingInterval
         self.warmUpStallTimeout = warmUpStallTimeout
         self.whisperRecommendation = Self.recommendedWhisperLanguage(
@@ -185,26 +182,15 @@ public final class OnboardingViewModel {
         let completedAt = now()
         let iso = ISO8601DateFormatter().string(from: completedAt)
         defaults.set(iso, forKey: Self.onboardingCompletedKey)
-        let durationSeconds = completedAt.timeIntervalSince(startedAt)
-        sendStepTelemetry(step: .done, action: .completed, at: completedAt)
-        Telemetry.send(.onboardingCompleted(durationSeconds: durationSeconds))
         let completion = Completion(completedAt: completedAt)
         completionForCurrentRun = completion
         return completion
     }
 
-    public func markOnboardingShown() {
-        guard !didEmitInitialStep else { return }
-        didEmitInitialStep = true
-        sendStepTelemetry(step: step, action: .viewed)
-    }
-
-    public func markOnboardingDismissed() {
+    public func handleOnboardingDismissed() {
         if step == .accessibility {
             refreshAccessibilityPermission()
         }
-        emitAccessibilityDeniedIfNeeded()
-        sendStepTelemetry(step: step, action: .dismissed)
     }
 
     public func startNewCurrentRun() {
@@ -219,12 +205,7 @@ public final class OnboardingViewModel {
 
     private func resetCurrentRunState() {
         step = .welcome
-        startedAt = now()
-        didEmitInitialStep = false
         completionForCurrentRun = nil
-        accessibilityPromptedInCurrentRun = false
-        accessibilityGrantedTelemetrySent = false
-        accessibilityDeniedTelemetrySent = false
     }
 
     public func refresh() {
@@ -257,9 +238,7 @@ public final class OnboardingViewModel {
         let visible = Self.visibleSteps
         let currentRaw = step.rawValue
         guard let next = visible.first(where: { $0.rawValue > currentRaw }) else { return }
-        emitAccessibilityDeniedIfLeavingAccessibility(for: next)
         step = next
-        sendStepTelemetry(step: next, action: .forward)
         refresh()
     }
 
@@ -267,16 +246,12 @@ public final class OnboardingViewModel {
         let visible = Self.visibleSteps
         let currentRaw = step.rawValue
         guard let prev = visible.last(where: { $0.rawValue < currentRaw }) else { return }
-        emitAccessibilityDeniedIfLeavingAccessibility(for: prev)
         step = prev
-        sendStepTelemetry(step: prev, action: .back)
         refresh()
     }
 
     public func jump(to target: Step) {
-        emitAccessibilityDeniedIfLeavingAccessibility(for: target)
         step = target
-        sendStepTelemetry(step: target, action: .jump)
         refresh()
     }
 
@@ -306,26 +281,18 @@ public final class OnboardingViewModel {
 
     public func requestMicrophoneAccess() {
         isBusy = true
-        Telemetry.send(.permissionPrompted(permission: .microphone))
         Task {
             _ = await permissionService.requestMicrophonePermission()
             let mic = await permissionService.checkMicrophonePermission()
             await MainActor.run {
                 self.micStatus = mic
                 self.isBusy = false
-                if mic == .granted {
-                    Telemetry.send(.permissionGranted(permission: .microphone))
-                } else {
-                    Telemetry.send(.permissionDenied(permission: .microphone))
-                }
             }
         }
     }
 
     public func requestAccessibilityAccess(prompt: Bool = true) {
         isBusy = true
-        Telemetry.send(.permissionPrompted(permission: .accessibility))
-        accessibilityPromptedInCurrentRun = true
         _ = permissionService.requestAccessibilityPermission(prompt: prompt)
         refreshAccessibilityPermission()
         isBusy = false
@@ -333,34 +300,6 @@ public final class OnboardingViewModel {
 
     private func applyAccessibilityPermission(_ granted: Bool) {
         accessibilityGranted = granted
-        if granted {
-            emitAccessibilityGrantedIfNeeded()
-        }
-    }
-
-    private func emitAccessibilityGrantedIfNeeded() {
-        guard accessibilityPromptedInCurrentRun,
-              !accessibilityGrantedTelemetrySent
-        else { return }
-
-        Telemetry.send(.permissionGranted(permission: .accessibility))
-        accessibilityGrantedTelemetrySent = true
-    }
-
-    private func emitAccessibilityDeniedIfLeavingAccessibility(for nextStep: Step) {
-        guard step == .accessibility, nextStep != .accessibility else { return }
-        refreshAccessibilityPermission()
-        emitAccessibilityDeniedIfNeeded()
-    }
-
-    private func emitAccessibilityDeniedIfNeeded() {
-        guard accessibilityPromptedInCurrentRun,
-              !accessibilityGranted,
-              !accessibilityDeniedTelemetrySent
-        else { return }
-
-        Telemetry.send(.permissionDenied(permission: .accessibility))
-        accessibilityDeniedTelemetrySent = true
     }
 
     public func startPermissionPolling() {
@@ -391,9 +330,6 @@ public final class OnboardingViewModel {
     private func applyEngineWarmUpFailure(_ message: String) {
         engineBusy = false
         engineState = .failed(message: message)
-        if step == .engine {
-            sendStepTelemetry(step: .engine, action: .engineFailed, engineState: "failed")
-        }
     }
 
     public func startEngineWarmUp() {
@@ -441,9 +377,13 @@ public final class OnboardingViewModel {
 
             do {
                 try await runEnginePreflight()
-                guard self.engineGeneration == generation, self.warmUpObservationToken == observationToken else { return }
+                guard self.engineGeneration == generation, self.warmUpObservationToken == observationToken else {
+                    return
+                }
             } catch {
-                guard self.engineGeneration == generation, self.warmUpObservationToken == observationToken else { return }
+                guard self.engineGeneration == generation, self.warmUpObservationToken == observationToken else {
+                    return
+                }
                 self.applyEngineWarmUpFailure(error.localizedDescription)
                 clearObservationIfCurrent(nil)
                 return
@@ -459,11 +399,6 @@ public final class OnboardingViewModel {
             // suppressed (reset to .idle) and silently re-attempted there, so one
             // session can emit started×2 / failed×1. modelDownloadCompleted still
             // fires once (only on the successful attempt's .ready). See §5.4.
-            let warmUpStartedAt = Date()
-            Telemetry.send(.modelDownloadStarted(
-                modelKind: .localSpeechStack,
-                speechEngine: .parakeet
-            ))
             await sttClient.backgroundWarmUp()
             guard self.engineGeneration == generation, self.warmUpObservationToken == observationToken else { return }
 
@@ -478,7 +413,9 @@ public final class OnboardingViewModel {
             defer { clearObservationIfCurrent(observerId) }
 
             observationLoop: for await state in stream {
-                guard self.engineGeneration == generation, self.warmUpObservationToken == observationToken else { break }
+                guard self.engineGeneration == generation, self.warmUpObservationToken == observationToken else {
+                    break
+                }
                 // Each event resets the stall-watchdog clock. If this loop
                 // doesn't iterate again within `warmUpStallTimeout`, the
                 // watchdog transitions to .failed and cancels observation.
@@ -489,33 +426,23 @@ public final class OnboardingViewModel {
                 case .working(let message, let progress):
                     self.engineState = .working(message: message, progress: progress)
                 case .ready:
-                    let durationSeconds = Date().timeIntervalSince(warmUpStartedAt)
-                    Telemetry.send(.modelDownloadCompleted(
-                        durationSeconds: durationSeconds,
-                        modelKind: .localSpeechStack,
-                        speechEngine: .parakeet
-                    ))
                     do {
                         try await self.prepareDiarizationModelsIfNeeded(generation: generation)
                     } catch is CancellationError {
                         break observationLoop
                     } catch {
-                        guard self.engineGeneration == generation, self.warmUpObservationToken == observationToken else { break observationLoop }
+                        guard self.engineGeneration == generation, self.warmUpObservationToken == observationToken
+                        else { break observationLoop }
                         self.applyEngineWarmUpFailure(error.localizedDescription)
                         break observationLoop
                     }
-                    guard self.engineGeneration == generation, self.warmUpObservationToken == observationToken else { break observationLoop }
+                    guard self.engineGeneration == generation, self.warmUpObservationToken == observationToken else {
+                        break observationLoop
+                    }
                     self.engineState = .ready
                     self.engineBusy = false
-                    self.sendStepTelemetry(step: .engine, action: .engineReady, engineState: "ready")
                     break observationLoop
                 case .failed(let message):
-                    Telemetry.send(.modelDownloadFailed(
-                        errorType: "BackgroundWarmUpError",
-                        errorDetail: message,
-                        modelKind: .localSpeechStack,
-                        speechEngine: .parakeet
-                    ))
                     self.applyEngineWarmUpFailure(message)
                     break observationLoop
                 }
@@ -555,7 +482,6 @@ public final class OnboardingViewModel {
                     recommendation.languageCode,
                     defaults: self.defaults
                 )
-                Telemetry.send(.settingChanged(setting: .whisperDefaultLanguage))
 
                 try await self.activateWhisperEngine(generation: generation)
                 guard self.engineGeneration == generation else { return }
@@ -565,7 +491,6 @@ public final class OnboardingViewModel {
 
                 self.engineState = .ready
                 self.engineBusy = false
-                self.sendStepTelemetry(step: .engine, action: .engineReady, engineState: "ready")
             } catch is CancellationError {
                 guard self.engineGeneration == generation else { return }
                 self.engineState = .idle
@@ -583,13 +508,7 @@ public final class OnboardingViewModel {
         generation: Int
     ) async throws {
         let friendly = SpeechEnginePreference.friendlyVariantName(modelVariant)
-        let operationContext = Observability.childOperationContext()
         engineState = .working(message: "Downloading Whisper \(friendly)...", progress: nil)
-        Telemetry.send(.modelDownloadStarted(
-            modelKind: .whisperSTT,
-            speechEngine: .whisper,
-            engineVariant: modelVariant
-        ))
 
         do {
             try await downloadWhisperModel(modelVariant) { [weak self] completed, total in
@@ -603,62 +522,9 @@ public final class OnboardingViewModel {
                     )
                 }
             }
-            let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-            Telemetry.send(.modelDownloadCompleted(
-                durationSeconds: durationSeconds,
-                modelKind: .whisperSTT,
-                speechEngine: .whisper,
-                engineVariant: modelVariant
-            ))
-            Telemetry.send(.modelOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                action: .download,
-                outcome: .success,
-                stage: .download,
-                modelKind: .whisperSTT,
-                speechEngine: .whisper,
-                engineVariant: modelVariant,
-                durationSeconds: durationSeconds,
-                errorType: nil
-            ))
         } catch is CancellationError {
-            let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-            Telemetry.send(.modelOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                action: .download,
-                outcome: .cancelled,
-                stage: .download,
-                modelKind: .whisperSTT,
-                speechEngine: .whisper,
-                engineVariant: modelVariant,
-                durationSeconds: durationSeconds,
-                errorType: "CancellationError"
-            ))
             throw CancellationError()
         } catch {
-            let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-            let errorType = TelemetryErrorClassifier.classify(error)
-            Telemetry.send(.modelDownloadFailed(
-                errorType: errorType,
-                errorDetail: TelemetryErrorClassifier.errorDetail(error),
-                modelKind: .whisperSTT,
-                speechEngine: .whisper,
-                engineVariant: modelVariant
-            ))
-            Telemetry.send(.modelOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                action: .download,
-                outcome: .failure,
-                stage: .download,
-                modelKind: .whisperSTT,
-                speechEngine: .whisper,
-                engineVariant: modelVariant,
-                durationSeconds: durationSeconds,
-                errorType: errorType
-            ))
             throw error
         }
     }
@@ -669,13 +535,10 @@ public final class OnboardingViewModel {
             return
         }
 
-        let previousPreference = SpeechEnginePreference.current(defaults: defaults)
-        let operationContext = Observability.childOperationContext()
-        let switchWasCold = SpeechEnginePreference.isColdSwitch(to: .whisper, defaults: defaults)
         engineState = .working(message: "Preparing Whisper for this Mac...", progress: nil)
 
         do {
-            try await Observability.withOperationContext(operationContext) {
+            try await {
                 try await speechEngineSwitcher.setSpeechEngine(.whisper) { [weak self] message in
                     Task { @MainActor [weak self] in
                         guard let self, self.engineGeneration == generation else { return }
@@ -690,32 +553,9 @@ public final class OnboardingViewModel {
                         }
                     }
                 }
-            }
+            }()
             SpeechEnginePreference.whisper.save(to: defaults)
-            Telemetry.send(.speechEngineSwitchOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                fromEngine: previousPreference,
-                toEngine: .whisper,
-                outcome: .success,
-                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                blockedReason: nil,
-                errorType: nil,
-                wasCold: switchWasCold
-            ))
         } catch {
-            let errorType = TelemetryErrorClassifier.classify(error)
-            Telemetry.send(.speechEngineSwitchOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                fromEngine: previousPreference,
-                toEngine: .whisper,
-                outcome: error is CancellationError ? .cancelled : .failure,
-                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                blockedReason: Self.telemetrySpeechEngineSwitchBlockedReason(for: error),
-                errorType: errorType,
-                wasCold: switchWasCold
-            ))
             throw error
         }
     }
@@ -734,11 +574,6 @@ public final class OnboardingViewModel {
             })
         } catch {
             logger.error("diarization_model_prep_failed error=\(error.localizedDescription, privacy: .public)")
-            Telemetry.send(.errorOccurred(
-                domain: "diarization",
-                code: "model_prep_failed",
-                description: TelemetryErrorClassifier.errorDetail(error)
-            ))
             throw error
         }
     }
@@ -778,35 +613,6 @@ public final class OnboardingViewModel {
         warmUpObserverId = nil
     }
 
-    private func sendStepTelemetry(
-        step: Step,
-        action: TelemetryOnboardingAction,
-        at date: Date? = nil,
-        engineState explicitEngineState: String? = nil
-    ) {
-        let visible = Self.visibleSteps
-        let stepIndex = visible.firstIndex(of: step).map { $0 + 1 }
-        let engineState = explicitEngineState ?? {
-            guard step == .engine else { return nil }
-            switch self.engineState {
-            case .idle: return "idle"
-            case .working: return "working"
-            case .ready: return "ready"
-            case .failed: return "failed"
-            }
-        }()
-        let elapsedSeconds = (date ?? now()).timeIntervalSince(startedAt)
-
-        Telemetry.send(.onboardingStep(
-            step: step.telemetryName,
-            action: action,
-            elapsedSeconds: elapsedSeconds,
-            stepIndex: stepIndex,
-            totalSteps: visible.count,
-            engineState: engineState
-        ))
-    }
-
     /// Schedule (or reschedule) the warm-up stall watchdog. Cancels any
     /// previously-running watchdog. If the new timer expires before another
     /// stream event resets it, transitions `engineState` to `.failed` with a
@@ -822,17 +628,12 @@ public final class OnboardingViewModel {
             try? await Task.sleep(for: stallTimeout)
             guard !Task.isCancelled, let self else { return }
             guard self.engineGeneration == generation,
-                  self.warmUpObservationToken == observationToken else { return }
+                self.warmUpObservationToken == observationToken
+            else { return }
             // No progress event for `warmUpStallTimeout`. Declare stuck.
             let stallSeconds = Int(stallTimeout.components.seconds)
             let detail = "no warm-up progress for \(stallSeconds)s"
             self.logger.error("warm_up_stall_detected detail=\(detail, privacy: .public)")
-            Telemetry.send(.modelDownloadFailed(
-                errorType: "WarmUpStalled",
-                errorDetail: detail,
-                modelKind: .localSpeechStack,
-                speechEngine: .parakeet
-            ))
             self.applyEngineWarmUpFailure(
                 "Setup is taking longer than expected. Check your network connection and tap Retry."
             )
@@ -892,7 +693,8 @@ public final class OnboardingViewModel {
         guard !whisperDownloaded || !diarizationAssetsReady else { return }
 
         guard let freeBytes = availableDiskBytes() else {
-            let requiredDiskBytes = whisperDownloaded ? requiredDiarizationSetupDiskBytes : requiredWhisperSetupDiskBytes
+            let requiredDiskBytes =
+                whisperDownloaded ? requiredDiarizationSetupDiskBytes : requiredWhisperSetupDiskBytes
             throw STTError.engineStartFailed(
                 "Unable to determine free disk space. Verify at least \(Self.formatGiB(requiredDiskBytes)) is available for multilingual setup, then retry."
             )
@@ -908,7 +710,8 @@ public final class OnboardingViewModel {
         }
 
         guard await isNetworkReachable() else {
-            let networkRequirement = whisperDownloaded
+            let networkRequirement =
+                whisperDownloaded
                 ? "Internet connection is required to download speaker models. Check your network and retry."
                 : "Internet connection is required to download the Whisper model. Check your network and retry."
             throw STTError.engineStartFailed(
@@ -945,25 +748,6 @@ public final class OnboardingViewModel {
             )
         }
         return nil
-    }
-
-    private static func telemetrySpeechEngineSwitchBlockedReason(
-        for error: Error
-    ) -> TelemetrySpeechEngineSwitchBlockedReason? {
-        guard let sttError = error as? STTError else { return nil }
-        switch sttError {
-        case .engineBusy:
-            return .engineBusy
-        case .modelDownloadFailed, .modelNotLoaded:
-            return .modelNotDownloaded
-        case .engineNotRunning,
-             .engineStartFailed,
-             .transcriptionFailed,
-             .timeout,
-             .outOfMemory,
-             .invalidResponse:
-            return nil
-        }
     }
 
     private nonisolated static func defaultAvailableDiskBytes() -> Int64? {

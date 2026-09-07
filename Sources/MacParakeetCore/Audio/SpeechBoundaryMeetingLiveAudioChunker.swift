@@ -3,7 +3,7 @@ import OSLog
 
 /// Counters exposed for unit-test observation of the chunker's state machine
 /// (silence drops, force emits, fallback). Not user-facing; carries no
-/// transcript or audio. A natural hook for Phase 5 telemetry if it lands.
+/// transcript or audio.
 struct MeetingLiveChunkingDiagnostics: Sendable {
     var chunksEmitted = 0
     var speechEndEvents = 0
@@ -58,10 +58,10 @@ actor SpeechBoundaryMeetingLiveAudioChunker: MeetingLiveAudioChunking {
     /// passed, so windows must be exactly this size to keep the boundary
     /// timeline aligned.
     private static let vadWindow = 4_096
-    private static let minChunkSamples = 2 * sampleRate          // 2.0s
-    private static let maxChunkSamples = 10 * sampleRate         // 10.0s
-    private static let forceEmitTailOverlap = sampleRate / 4     // 0.25s
-    private static let flushMinSamples = sampleRate / 2          // 0.5s
+    private static let minChunkSamples = 2 * sampleRate  // 2.0s
+    private static let maxChunkSamples = 10 * sampleRate  // 10.0s
+    private static let forceEmitTailOverlap = sampleRate / 4  // 0.25s
+    private static let flushMinSamples = sampleRate / 2  // 0.5s
     /// Degraded-fallback fixed cadence, identical to `AudioChunker`.
     private static let fixedWindow = 5 * sampleRate
     private static let fixedOverlap = 1 * sampleRate

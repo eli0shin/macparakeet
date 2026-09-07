@@ -86,7 +86,7 @@ public final class YouTubeAudioPlaybackConverter: YouTubeAudioPlaybackConverting
     /// with no surfaced error. See memory: reference_avplayer_codec_limits.
     /// `weba` is yt-dlp's audio-only WebM extension.
     public static let unplayableExtensions: Set<String> = [
-        "webm", "weba", "opus", "ogg", "mkv"
+        "webm", "weba", "opus", "ogg", "mkv",
     ]
 
     /// Cheap pre-check so callers can avoid spinning up an ffmpeg process
@@ -111,7 +111,8 @@ public final class YouTubeAudioPlaybackConverter: YouTubeAudioPlaybackConverting
         // Write next to the source so storage retention rules (clear cache,
         // Settings > Downloaded YouTube audio) keep applying without any
         // path-rewriting elsewhere in the app.
-        let outputURL = inputURL
+        let outputURL =
+            inputURL
             .deletingPathExtension()
             .appendingPathExtension("m4a")
 
@@ -166,7 +167,9 @@ public final class YouTubeAudioPlaybackConverter: YouTubeAudioPlaybackConverting
             )
         } catch {
             guard thumbnailURL != nil else { throw error }
-            logger.warning("Retrying playback conversion without thumbnail metadata because thumbnail embed failed: \(error.localizedDescription, privacy: .private)")
+            logger.warning(
+                "Retrying playback conversion without thumbnail metadata because thumbnail embed failed: \(error.localizedDescription, privacy: .private)"
+            )
             try await runFFmpegWithDyldFallback(
                 primaryPath: ffmpegPath,
                 inputURL: inputURL,
@@ -179,8 +182,9 @@ public final class YouTubeAudioPlaybackConverter: YouTubeAudioPlaybackConverting
         // Sanity check: ffmpeg can exit 0 yet write an empty file (rare,
         // but the cost of "we already deleted the source webm" makes the
         // check worth a stat call).
-        let outputSize = (try? FileManager.default
-            .attributesOfItem(atPath: tempOutputURL.path)[.size] as? Int) ?? 0
+        let outputSize =
+            (try? FileManager.default
+                .attributesOfItem(atPath: tempOutputURL.path)[.size] as? Int) ?? 0
         guard outputSize > 0 else {
             try? FileManager.default.removeItem(at: tempOutputURL)
             throw YouTubeAudioPlaybackConverterError.conversionFailed(
@@ -242,7 +246,7 @@ public final class YouTubeAudioPlaybackConverter: YouTubeAudioPlaybackConverting
         args += [
             "-movflags", "+faststart",
             "-y",
-            outputPath
+            outputPath,
         ]
         return args
     }
@@ -292,13 +296,15 @@ public final class YouTubeAudioPlaybackConverter: YouTubeAudioPlaybackConverting
             )
         } catch let error as YouTubeAudioPlaybackConverterError {
             guard case .conversionFailed(let reason) = error,
-                  reason.contains("dyld") || reason.contains("Library not loaded"),
-                  let fallbackPath = BinaryBootstrap.findSystemFFmpeg(),
-                  fallbackPath != primaryPath
+                reason.contains("dyld") || reason.contains("Library not loaded"),
+                let fallbackPath = BinaryBootstrap.findSystemFFmpeg(),
+                fallbackPath != primaryPath
             else {
                 throw error
             }
-            logger.info("Bundled ffmpeg failed with dyld error; retrying via system ffmpeg at \(fallbackPath, privacy: .public)")
+            logger.info(
+                "Bundled ffmpeg failed with dyld error; retrying via system ffmpeg at \(fallbackPath, privacy: .public)"
+            )
             try await runFFmpeg(
                 ffmpegPath: fallbackPath,
                 inputURL: inputURL,
@@ -339,7 +345,8 @@ public final class YouTubeAudioPlaybackConverter: YouTubeAudioPlaybackConverting
         if !FileManager.default.fileExists(atPath: tempDir.path) {
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         }
-        let stderrURL = tempDir
+        let stderrURL =
+            tempDir
             .appendingPathComponent("ffmpeg-playback-stderr-\(UUID().uuidString).log")
         defer { try? FileManager.default.removeItem(at: stderrURL) }
         FileManager.default.createFile(atPath: stderrURL.path, contents: Data())
@@ -371,7 +378,7 @@ public final class YouTubeAudioPlaybackConverter: YouTubeAudioPlaybackConverting
 
     /// ffmpeg's startup banner is long; surface only the final lines where
     /// the actual error lives. Matches AudioFileConverter's behavior so
-    /// telemetry stays consistent if/when we add it.
+    /// local diagnostics stay consistent.
     private static func tailForError(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let limit = 384
@@ -385,9 +392,10 @@ public final class YouTubeAudioPlaybackConverter: YouTubeAudioPlaybackConverting
         nextTo outputURL: URL
     ) async -> URL? {
         guard let urlString,
-              let url = URL(string: urlString),
-              let scheme = url.scheme?.lowercased(),
-              ["http", "https"].contains(scheme) else {
+            let url = URL(string: urlString),
+            let scheme = url.scheme?.lowercased(),
+            ["http", "https"].contains(scheme)
+        else {
             return nil
         }
 
@@ -396,7 +404,8 @@ public final class YouTubeAudioPlaybackConverter: YouTubeAudioPlaybackConverting
             request.timeoutInterval = 15
             let (data, response) = try await URLSession.shared.data(for: request)
             if let http = response as? HTTPURLResponse,
-               !(200...299).contains(http.statusCode) {
+                !(200...299).contains(http.statusCode)
+            {
                 return nil
             }
             guard !data.isEmpty else { return nil }
@@ -405,14 +414,17 @@ public final class YouTubeAudioPlaybackConverter: YouTubeAudioPlaybackConverting
             try data.write(to: thumbnailURL)
             return thumbnailURL
         } catch {
-            logger.warning("Failed to download YouTube thumbnail for audio metadata: \(error.localizedDescription, privacy: .private)")
+            logger.warning(
+                "Failed to download YouTube thumbnail for audio metadata: \(error.localizedDescription, privacy: .private)"
+            )
             return nil
         }
     }
 
     private static func temporaryThumbnailURL(for outputURL: URL, remoteURL: URL) -> URL {
         let ext = remoteURL.pathExtension.trimmingCharacters(in: .whitespacesAndNewlines)
-        return outputURL
+        return
+            outputURL
             .deletingLastPathComponent()
             .appendingPathComponent(
                 "\(outputURL.deletingPathExtension().lastPathComponent).thumb-\(UUID().uuidString)"

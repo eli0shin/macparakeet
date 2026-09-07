@@ -203,7 +203,8 @@ public final class PromptResultsViewModel {
         }
         currentProviderID = config.id
         if config.id == .localCLI {
-            let displayName = cliConfigStore
+            let displayName =
+                cliConfigStore
                 .flatMap { $0.load() }
                 .map { LocalCLITemplate.displayName(for: $0.commandTemplate) }
                 ?? "Custom CLI"
@@ -243,10 +244,12 @@ public final class PromptResultsViewModel {
         do {
             visiblePrompts = try promptRepo.fetchVisible(category: .result)
             if let selectedPrompt,
-               let refreshed = visiblePrompts.first(where: { $0.id == selectedPrompt.id }) {
+                let refreshed = visiblePrompts.first(where: { $0.id == selectedPrompt.id })
+            {
                 self.selectedPrompt = refreshed
             } else {
-                self.selectedPrompt = visiblePrompts.first(where: { $0.isAutoRun })
+                self.selectedPrompt =
+                    visiblePrompts.first(where: { $0.isAutoRun })
                     ?? visiblePrompts.first
             }
             errorMessage = nil
@@ -371,7 +374,9 @@ public final class PromptResultsViewModel {
         do {
             autoPrompts = try promptRepo?.fetchAutoRunPrompts(for: sourceType) ?? []
         } catch {
-            logger.warning("Skipping auto-run prompts because preferences could not be loaded: \(error.localizedDescription, privacy: .private)")
+            logger.warning(
+                "Skipping auto-run prompts because preferences could not be loaded: \(error.localizedDescription, privacy: .private)"
+            )
             return []
         }
         guard !autoPrompts.isEmpty else { return [] }
@@ -460,9 +465,11 @@ public final class PromptResultsViewModel {
     private func processNextQueuedGeneration() {
         guard streamingTask == nil, llmService != nil else { return }
         guard let currentTranscriptionID else { return }
-        guard let nextIndex = pendingGenerations.firstIndex(where: {
-            $0.state == .queued && $0.transcriptionId == currentTranscriptionID
-        }) else { return }
+        guard
+            let nextIndex = pendingGenerations.firstIndex(where: {
+                $0.state == .queued && $0.transcriptionId == currentTranscriptionID
+            })
+        else { return }
 
         pendingGenerations[nextIndex].state = .streaming
         let generation = pendingGenerations[nextIndex]
@@ -584,8 +591,8 @@ public final class PromptResultsViewModel {
         // llmService gates enqueueGeneration; checking it before removal
         // keeps the failed card (and its error) when retry can't start.
         guard llmService != nil,
-              let index = pendingGenerations.firstIndex(where: { $0.id == id }),
-              case .failed = pendingGenerations[index].state
+            let index = pendingGenerations.firstIndex(where: { $0.id == id }),
+            case .failed = pendingGenerations[index].state
         else { return nil }
         let failed = pendingGenerations.remove(at: index)
         return enqueueGeneration(
@@ -636,7 +643,9 @@ public final class PromptResultsViewModel {
         do {
             return try transcriptionRepo.fetch(id: transcriptionId)?.userNotes
         } catch {
-            logger.warning("Failed to fetch userNotes for transcription \(transcriptionId.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.warning(
+                "Failed to fetch userNotes for transcription \(transcriptionId.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
             return nil
         }
     }
@@ -644,13 +653,13 @@ public final class PromptResultsViewModel {
     /// Refreshes meeting artifacts; failures are logged and never surfaced or thrown, and refresh never blocks or fails the triggering user action.
     private func refreshMeetingArtifacts(transcriptionId: UUID) async {
         guard let meetingArtifactStore,
-              let transcriptionRepo,
-              let promptResultRepo
+            let transcriptionRepo,
+            let promptResultRepo
         else { return }
 
         do {
             guard let transcription = try transcriptionRepo.fetch(id: transcriptionId),
-                  transcription.sourceType == .meeting
+                transcription.sourceType == .meeting
             else { return }
             let promptResults = try promptResultRepo.fetchAll(transcriptionId: transcriptionId)
             _ = try await Task.detached(priority: .utility) {
@@ -660,7 +669,9 @@ public final class PromptResultsViewModel {
                 )
             }.value
         } catch {
-            logger.warning("Failed to refresh meeting artifact for prompt results \(transcriptionId.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.warning(
+                "Failed to refresh meeting artifact for prompt results \(transcriptionId.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 

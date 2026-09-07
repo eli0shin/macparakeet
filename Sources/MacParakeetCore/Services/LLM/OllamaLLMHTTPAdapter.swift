@@ -38,7 +38,8 @@ struct OllamaLLMHTTPAdapter: LLMHTTPAdapter {
         // fabricated `totalTokens` for partial reports.
         let usage: TokenUsage?
         if let prompt = ollamaResponse.prompt_eval_count,
-           let completion = ollamaResponse.eval_count {
+            let completion = ollamaResponse.eval_count
+        {
             usage = TokenUsage(promptTokens: prompt, completionTokens: completion)
         } else {
             usage = nil
@@ -82,8 +83,9 @@ struct OllamaLLMHTTPAdapter: LLMHTTPAdapter {
                         try Task.checkCancellation()
 
                         guard !line.isEmpty,
-                              let data = line.data(using: .utf8),
-                              let chunk = try? JSONDecoder().decode(OllamaChatResponse.self, from: data) else {
+                            let data = line.data(using: .utf8),
+                            let chunk = try? JSONDecoder().decode(OllamaChatResponse.self, from: data)
+                        else {
                             continue
                         }
 

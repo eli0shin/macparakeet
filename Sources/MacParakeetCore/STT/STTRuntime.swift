@@ -62,7 +62,6 @@ protocol STTRuntimeProtocol: Sendable {
     func speechEngineCapabilities(
         for selection: SpeechEngineSelection
     ) async -> SpeechEngineCapabilities
-    func currentSpeechEngineTelemetryAttribution() async -> SpeechEngineTelemetryAttribution
 }
 
 extension STTRuntimeProtocol {
@@ -722,7 +721,6 @@ public actor STTRuntime: STTRuntimeProtocol {
             )
             let words = STTWordTimingBuilder.words(from: boostedResult.tokenTimings)
             onProgress?(100, 100)
-            // Telemetry `language` is attributed "en": MacParakeet positions
             // Parakeet as English-first (v2 is English-only; v3 multilingual is
             // not surfaced via a Parakeet language picker), so this reflects the
             // app's configuration rather than per-segment detection. The
@@ -1044,11 +1042,6 @@ public actor STTRuntime: STTRuntimeProtocol {
         speechEngine selection: SpeechEngineSelection,
         onProgress: (@Sendable (String) -> Void)?
     ) async throws {
-        let start = ContinuousClock.now
-        let operationContext = Observability.childOperationContext()
-        let modelKind = telemetryModelKind(for: selection.engine)
-        let engineVariant = telemetryEngineVariant(for: selection.engine)
-
         do {
             try validateMemoryRequirement(for: selection.engine)
             switch selection.engine {
@@ -1071,60 +1064,11 @@ public actor STTRuntime: STTRuntimeProtocol {
                 try await engine.prepare(onProgress: onProgress)
             }
 
-            let elapsed = start.duration(to: .now)
-            let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-            Telemetry.send(
-                .modelLoaded(
-                    loadTimeSeconds: seconds,
-                    modelKind: modelKind,
-                    speechEngine: selection.engine,
-                    engineVariant: engineVariant
-                ))
-            Telemetry.send(
-                .modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .warmUp,
-                    outcome: .success,
-                    stage: .warmUp,
-                    modelKind: modelKind,
-                    speechEngine: selection.engine,
-                    engineVariant: engineVariant,
-                    durationSeconds: seconds,
-                    errorType: nil
-                ))
             onProgress?("Ready")
         } catch is CancellationError {
-            let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-            Telemetry.send(
-                .modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .warmUp,
-                    outcome: .cancelled,
-                    stage: .warmUp,
-                    modelKind: modelKind,
-                    speechEngine: selection.engine,
-                    engineVariant: engineVariant,
-                    durationSeconds: durationSeconds,
-                    errorType: "CancellationError"
-                ))
             throw CancellationError()
         } catch {
             let mapped = try Self.mapWarmUpError(error)
-            Telemetry.send(
-                .modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .warmUp,
-                    outcome: .failure,
-                    stage: .warmUp,
-                    modelKind: modelKind,
-                    speechEngine: selection.engine,
-                    engineVariant: engineVariant,
-                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                    errorType: TelemetryErrorClassifier.classify(mapped)
-                ))
             throw mapped
         }
     }
@@ -1263,9 +1207,6 @@ public actor STTRuntime: STTRuntimeProtocol {
     }
 
     public func clearModelCache() async {
-        let operationContext = Observability.childOperationContext()
-        let activeSpeechEngine = speechEngine
-        let engineVariant = telemetryEngineVariant(for: activeSpeechEngine)
         await shutdown()
         Self.clearFluidAudioModelCaches()
         try? FileManager.default.removeItem(atPath: AppPaths.whisperModelsDir)
@@ -1282,19 +1223,6 @@ public actor STTRuntime: STTRuntimeProtocol {
             cacheRoot: CohereTranscribeEngine.defaultCacheRoot().deletingLastPathComponent()
         )
         setBackgroundWarmUpState(.idle)
-        Telemetry.send(
-            .modelOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                action: .clearCache,
-                outcome: .success,
-                stage: .clearCache,
-                modelKind: .localSpeechStack,
-                speechEngine: activeSpeechEngine,
-                engineVariant: engineVariant,
-                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                errorType: nil
-            ))
     }
 
     nonisolated static func clearFluidAudioModelCaches(
@@ -1331,7 +1259,7 @@ public actor STTRuntime: STTRuntimeProtocol {
 
         let previous = speechEngine
         let startedAt = Date()
-        let targetVariant = telemetryEngineVariant(for: preference) ?? "none"
+        let targetVariant = speechEngineVariant(for: preference) ?? "none"
         logger.notice(
             "speech_engine_switch_start from=\(previous.rawValue, privacy: .public) to=\(preference.rawValue, privacy: .public) variant=\(targetVariant, privacy: .public)"
         )
@@ -1583,7 +1511,6 @@ public actor STTRuntime: STTRuntimeProtocol {
             try await Self.downloadNemotronModel(
                 modelVariant: variant,
                 language: SpeechEnginePreference.nemotronDefaultLanguage(defaults: defaults),
-                emitTelemetry: false,
                 onProgress: onProgress
             )
 
@@ -1694,15 +1621,6 @@ public actor STTRuntime: STTRuntimeProtocol {
         SpeechEnginePreference.normalizeNemotronLanguage(requested) == loaded
     }
 
-    public func currentSpeechEngineTelemetryAttribution() async -> SpeechEngineTelemetryAttribution {
-        let engine = effectiveSpeechEnginePreference()
-        return SpeechEngineTelemetryAttribution(
-            speechEngine: engine,
-            engineVariant: telemetryEngineVariant(for: engine),
-            language: defaultLanguage(for: engine)
-        )
-    }
-
     public nonisolated static func isModelCached(version: AsrModelVersion = .v3) -> Bool {
         let cacheDir = AppPaths.fluidAudioModelDirectory(forASRVersion: version)
         return AsrModels.modelsExist(at: cacheDir, version: version)
@@ -1730,29 +1648,15 @@ public actor STTRuntime: STTRuntimeProtocol {
     /// headlessly without touching the runtime.
     @discardableResult
     public nonisolated static func deleteParakeetModel(version: AsrModelVersion) -> Bool {
-        let operationContext = Observability.childOperationContext()
         let removed = removeParakeetModelFiles(
             at: AppPaths.fluidAudioModelDirectory(forASRVersion: version)
         )
-        Telemetry.send(
-            .modelOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                action: .deleteModel,
-                outcome: removed ? .success : .failure,
-                stage: .delete,
-                modelKind: .parakeetSTT,
-                speechEngine: .parakeet,
-                engineVariant: ParakeetModelVariant(asrModelVersion: version).rawValue,
-                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                errorType: nil
-            ))
         return removed
     }
 
     /// File-removal core of ``deleteParakeetModel(version:)``, split out so the
     /// directory resolution can be exercised against a temp dir in tests without
-    /// emitting telemetry. Returns `true` only when the directory existed and is
+    /// Returns `true` only when the directory existed and was
     /// gone afterward.
     @discardableResult
     nonisolated static func removeParakeetModelFiles(at directory: URL) -> Bool {
@@ -1782,7 +1686,7 @@ public actor STTRuntime: STTRuntimeProtocol {
     }
 
     /// Deletes a downloaded Whisper variant from disk, leaving Parakeet and the
-    /// speaker models untouched. Thin telemetry-emitting wrapper over
+    /// speaker models untouched. Thin wrapper over
     /// ``WhisperEngine/deleteModel(model:downloadBase:defaults:)`` so model
     /// deletions report through the same `model_operation` channel as Parakeet.
     /// Pure-file deletion (and its unit tests) lives on `WhisperEngine`.
@@ -1791,34 +1695,18 @@ public actor STTRuntime: STTRuntimeProtocol {
         variant: String = SpeechEnginePreference.defaultWhisperModelVariant,
         defaults: UserDefaults = .standard
     ) -> Bool {
-        let operationContext = Observability.childOperationContext()
         let removed = WhisperEngine.deleteModel(model: variant, defaults: defaults)
-        Telemetry.send(
-            .modelOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                action: .deleteModel,
-                outcome: removed ? .success : .failure,
-                stage: .delete,
-                modelKind: .whisperSTT,
-                speechEngine: .whisper,
-                engineVariant: SpeechEnginePreference.normalizeModelVariant(variant) ?? variant,
-                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                errorType: nil
-            ))
         return removed
     }
 
     public nonisolated static func downloadNemotronModel(
         modelVariant: NemotronModelVariant = SpeechEnginePreference.defaultNemotronModelVariant,
         language: String? = nil,
-        emitTelemetry: Bool = true,
         onProgress: (@Sendable (String) -> Void)? = nil
     ) async throws {
         try await downloadNemotronModel(
             modelVariant: modelVariant,
             language: language,
-            emitTelemetry: emitTelemetry,
             onProgress: onProgress,
             downloader: { modelVariant, language, onProgress in
                 if modelVariant.isEnglishOnly {
@@ -1836,7 +1724,6 @@ public actor STTRuntime: STTRuntimeProtocol {
     nonisolated static func downloadNemotronModel(
         modelVariant: NemotronModelVariant = SpeechEnginePreference.defaultNemotronModelVariant,
         language: String? = nil,
-        emitTelemetry: Bool,
         onProgress: (@Sendable (String) -> Void)? = nil,
         downloader:
             @escaping @Sendable (
@@ -1845,83 +1732,10 @@ public actor STTRuntime: STTRuntimeProtocol {
                 (@Sendable (String) -> Void)?
             ) async throws -> URL
     ) async throws {
-        let operationContext = Observability.childOperationContext()
-        if emitTelemetry {
-            Telemetry.send(
-                .modelDownloadStarted(
-                    modelKind: .nemotronSTT,
-                    speechEngine: .nemotron,
-                    engineVariant: modelVariant.rawValue
-                ))
-        }
-
         do {
             _ = try await downloader(modelVariant, language, onProgress)
-            guard emitTelemetry else { return }
-            let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-            Telemetry.send(
-                .modelDownloadCompleted(
-                    durationSeconds: durationSeconds,
-                    modelKind: .nemotronSTT,
-                    speechEngine: .nemotron,
-                    engineVariant: modelVariant.rawValue
-                ))
-            Telemetry.send(
-                .modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .download,
-                    outcome: .success,
-                    stage: .download,
-                    modelKind: .nemotronSTT,
-                    speechEngine: .nemotron,
-                    engineVariant: modelVariant.rawValue,
-                    durationSeconds: durationSeconds,
-                    errorType: nil
-                ))
         } catch is CancellationError {
-            if emitTelemetry {
-                Telemetry.send(
-                    .modelOperation(
-                        operationID: operationContext.operationID,
-                        operationContext: operationContext,
-                        action: .download,
-                        outcome: .cancelled,
-                        stage: .download,
-                        modelKind: .nemotronSTT,
-                        speechEngine: .nemotron,
-                        engineVariant: modelVariant.rawValue,
-                        durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                        errorType: "CancellationError"
-                    ))
-            }
             throw CancellationError()
-        } catch {
-            let errorType = TelemetryErrorClassifier.classify(error)
-            if emitTelemetry {
-                Telemetry.send(
-                    .modelDownloadFailed(
-                        errorType: errorType,
-                        errorDetail: TelemetryErrorClassifier.errorDetail(error),
-                        modelKind: .nemotronSTT,
-                        speechEngine: .nemotron,
-                        engineVariant: modelVariant.rawValue
-                    ))
-                Telemetry.send(
-                    .modelOperation(
-                        operationID: operationContext.operationID,
-                        operationContext: operationContext,
-                        action: .download,
-                        outcome: .failure,
-                        stage: .download,
-                        modelKind: .nemotronSTT,
-                        speechEngine: .nemotron,
-                        engineVariant: modelVariant.rawValue,
-                        durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                        errorType: errorType
-                    ))
-            }
-            throw error
         }
     }
 
@@ -1930,24 +1744,10 @@ public actor STTRuntime: STTRuntimeProtocol {
         modelVariant: NemotronModelVariant = SpeechEnginePreference.defaultNemotronModelVariant,
         language: String? = nil
     ) -> Bool {
-        let operationContext = Observability.childOperationContext()
         let removed =
             modelVariant.isEnglishOnly
             ? NemotronEnglishEngine.deleteModel()
             : NemotronEngine.deleteModel(modelVariant: modelVariant, language: language)
-        Telemetry.send(
-            .modelOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                action: .deleteModel,
-                outcome: removed ? .success : .failure,
-                stage: .delete,
-                modelKind: .nemotronSTT,
-                speechEngine: .nemotron,
-                engineVariant: modelVariant.rawValue,
-                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                errorType: nil
-            ))
         return removed
     }
 
@@ -2248,12 +2048,8 @@ public actor STTRuntime: STTRuntimeProtocol {
         }
     }
 
-    private func telemetryModelKind(for engine: SpeechEnginePreference) -> TelemetryModelKind {
-        capabilities(for: engine).telemetryIdentity.modelKind
-    }
-
-    private func telemetryEngineVariant(for engine: SpeechEnginePreference) -> String? {
-        capabilities(for: engine).telemetryIdentity.engineVariant.value(defaults: defaults)
+    private func speechEngineVariant(for engine: SpeechEnginePreference) -> String? {
+        capabilities(for: engine).identity.engineVariant.value(defaults: defaults)
     }
 
     private func defaultLanguage(for engine: SpeechEnginePreference) -> String? {

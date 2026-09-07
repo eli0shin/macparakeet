@@ -84,12 +84,13 @@ final class ExtractChannelZeroTests: XCTestCase {
         // most macOS device formats are non-interleaved). Pass-through is
         // the safe degradation — the converter mixes channels, which is
         // wrong for VPIO but defensible for arbitrary multi-mic devices.
-        let format = try XCTUnwrap(AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 48_000,
-            channels: 2,
-            interleaved: true
-        ))
+        let format = try XCTUnwrap(
+            AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 48_000,
+                channels: 2,
+                interleaved: true
+            ))
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 32))
         buffer.frameLength = 32
 
@@ -149,12 +150,13 @@ final class ExtractChannelZeroTests: XCTestCase {
     ) throws -> AVAudioPCMBuffer {
         let format: AVAudioFormat
         if channels <= 2 {
-            format = try XCTUnwrap(AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: sampleRate,
-                channels: channels,
-                interleaved: false
-            ))
+            format = try XCTUnwrap(
+                AVAudioFormat(
+                    commonFormat: .pcmFormatFloat32,
+                    sampleRate: sampleRate,
+                    channels: channels,
+                    interleaved: false
+                ))
         } else {
             // AVAudioFormat's convenience initializer only accepts standard
             // mono/stereo layouts. For ch≥3 we use the discrete-in-order
@@ -162,12 +164,13 @@ final class ExtractChannelZeroTests: XCTestCase {
             // VPIO advertises its multi-channel duplex output.
             let layoutTag = AudioChannelLayoutTag(kAudioChannelLayoutTag_DiscreteInOrder) | channels
             let layout = try XCTUnwrap(AVAudioChannelLayout(layoutTag: layoutTag))
-            format = try XCTUnwrap(AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: sampleRate,
-                interleaved: false,
-                channelLayout: layout
-            ))
+            format = try XCTUnwrap(
+                AVAudioFormat(
+                    commonFormat: .pcmFormatFloat32,
+                    sampleRate: sampleRate,
+                    interleaved: false,
+                    channelLayout: layout
+                ))
         }
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
         buffer.frameLength = frames

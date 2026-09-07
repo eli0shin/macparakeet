@@ -81,7 +81,7 @@ public actor BinaryBootstrap {
         }
 
         if let bundledPath = bundledYtDlpPath(),
-           fileManager.isExecutableFile(atPath: bundledPath)
+            fileManager.isExecutableFile(atPath: bundledPath)
         {
             try installExecutable(from: URL(fileURLWithPath: bundledPath), toPath: targetPath)
             defaults.set(now(), forKey: Self.ytDlpLastUpdateCheckKey)
@@ -98,7 +98,7 @@ public actor BinaryBootstrap {
 
         let targetPath = ytDlpBinaryPath()
         if let bundledPath = bundledYtDlpPath(),
-           fileManager.isExecutableFile(atPath: bundledPath)
+            fileManager.isExecutableFile(atPath: bundledPath)
         {
             try installExecutable(from: URL(fileURLWithPath: bundledPath), toPath: targetPath)
             defaults.set(now(), forKey: Self.ytDlpLastUpdateCheckKey)
@@ -167,15 +167,15 @@ public actor BinaryBootstrap {
         fileManager: FileManager = .default
     ) -> String? {
         if let bundledFFmpegPath,
-           fileManager.isExecutableFile(atPath: bundledFFmpegPath)
+            fileManager.isExecutableFile(atPath: bundledFFmpegPath)
         {
             return bundledFFmpegPath
         }
 
         if let override = environment["MACPARAKEET_FFMPEG_PATH"]?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !override.isEmpty,
-           fileManager.isExecutableFile(atPath: override)
+            !override.isEmpty,
+            fileManager.isExecutableFile(atPath: override)
         {
             return override
         }
@@ -240,7 +240,8 @@ public actor BinaryBootstrap {
     private func download(url: URL, to destination: URL) async throws {
         let (tmpURL, response) = try await session.download(from: url)
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
-            throw BinaryBootstrapError.downloadFailed("HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1) from \(url.absoluteString)")
+            throw BinaryBootstrapError.downloadFailed(
+                "HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1) from \(url.absoluteString)")
         }
 
         try? fileManager.removeItem(at: destination)
@@ -254,7 +255,8 @@ public actor BinaryBootstrap {
     private func fetchText(from url: URL) async throws -> String {
         let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
-            throw BinaryBootstrapError.downloadFailed("HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1) from \(url.absoluteString)")
+            throw BinaryBootstrapError.downloadFailed(
+                "HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1) from \(url.absoluteString)")
         }
         guard let text = String(data: data, encoding: .utf8) else {
             throw BinaryBootstrapError.checksumUnavailable("Checksum file is not valid UTF-8")

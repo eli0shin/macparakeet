@@ -49,7 +49,8 @@ public final class PromptRepository: PromptRepositoryProtocol {
 
     public func fetchVisible(category: Prompt.Category? = nil) throws -> [Prompt] {
         try dbQueue.read { db in
-            var request = Prompt
+            var request =
+                Prompt
                 .filter(Prompt.Columns.isVisible == true)
                 .order(Prompt.Columns.sortOrder.asc, Prompt.Columns.name.asc)
             if let category {

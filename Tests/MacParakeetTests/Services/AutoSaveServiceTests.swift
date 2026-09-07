@@ -1,36 +1,6 @@
 import XCTest
 @testable import MacParakeetCore
 
-private final class AutoSaveTelemetrySpy: TelemetryServiceProtocol, @unchecked Sendable {
-    private let lock = NSLock()
-    private var events: [TelemetryEventSpec] = []
-
-    func send(_ event: TelemetryEventSpec) {
-        lock.lock()
-        events.append(event)
-        lock.unlock()
-    }
-
-    func sendAndFlush(_ event: TelemetryEventSpec) async -> Bool {
-        send(event)
-        return true
-    }
-
-    func flush() async {}
-    func clearQueue() {
-        lock.lock()
-        events.removeAll()
-        lock.unlock()
-    }
-    func flushForTermination() {}
-
-    func snapshot() -> [TelemetryEventSpec] {
-        lock.lock()
-        defer { lock.unlock() }
-        return events
-    }
-}
-
 @MainActor
 final class AutoSaveServiceTests: XCTestCase {
 
@@ -47,7 +17,6 @@ final class AutoSaveServiceTests: XCTestCase {
     }
 
     override func tearDown() {
-        Telemetry.configure(NoOpTelemetryService())
         try? FileManager.default.removeItem(at: tempDir)
         if let name = defaults.volatileDomainNames.first {
             defaults.removeVolatileDomain(forName: name)
@@ -326,29 +295,6 @@ final class AutoSaveServiceTests: XCTestCase {
         XCTAssertFalse(deletedFolderIsUsable)
     }
 
-    func testDeletedFolderEmitsUnavailableOperation() {
-        let telemetry = AutoSaveTelemetrySpy()
-        Telemetry.configure(telemetry)
-        configureAutoSave(enabled: true, format: .txt)
-        try! FileManager.default.removeItem(at: tempDir)
-
-        let service = makeService()
-        service.saveIfEnabled(makeTranscription())
-
-        let operation = telemetry.snapshot().reversed().first {
-            if case .autoSaveOperation = $0 { return true }
-            return false
-        }
-        guard let operation,
-              case .autoSaveOperation(_, _, let scope, let format, let outcome, _, let errorType) = operation else {
-            return XCTFail("Expected auto_save_operation telemetry")
-        }
-        XCTAssertEqual(scope, .transcription)
-        XCTAssertEqual(format, .txt)
-        XCTAssertEqual(outcome, .unavailable)
-        XCTAssertEqual(errorType, "folder_unavailable")
-    }
-
     func testFallsBackToMarkdownForInvalidStoredFormat() {
         configureAutoSave(enabled: true, format: .md)
         // Corrupt the format key
@@ -462,8 +408,9 @@ final class AutoSaveServiceTests: XCTestCase {
 
         let url = service.buildFileURL(for: transcription, format: .md, in: tempDir)
         let name = url.lastPathComponent
-        XCTAssertTrue(name.contains("Roadmap Sync"),
-                      "Filename should contain the calendar event title, got \(name)")
+        XCTAssertTrue(
+            name.contains("Roadmap Sync"),
+            "Filename should contain the calendar event title, got \(name)")
         XCTAssertTrue(name.hasSuffix(".md"))
     }
 
@@ -487,7 +434,8 @@ final class AutoSaveServiceTests: XCTestCase {
         // Sanitizer strips ":" but preserves the rest — the human-readable
         // bits the user remembers ("Apr 6", "10 02 PM") survive.
         XCTAssertTrue(name.contains("Meeting"), "Filename should contain the displayName")
-        XCTAssertTrue(name.contains("Apr 6"), "Filename should preserve the date components from the displayName, got \(name)")
+        XCTAssertTrue(
+            name.contains("Apr 6"), "Filename should preserve the date components from the displayName, got \(name)")
         XCTAssertTrue(name.hasSuffix(".md"))
     }
 

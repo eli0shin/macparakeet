@@ -14,7 +14,9 @@ public struct LLMRunRecorder: Sendable {
         do {
             try await repository.save(run)
         } catch {
-            logger.error("llm_run_record_failed feature=\(run.feature.rawValue, privacy: .public) status=\(run.status.rawValue, privacy: .public) error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
+            logger.error(
+                "llm_run_record_failed feature=\(run.feature.rawValue, privacy: .public) status=\(run.status.rawValue, privacy: .public) error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+            )
         }
     }
 }

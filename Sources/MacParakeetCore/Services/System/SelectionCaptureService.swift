@@ -45,7 +45,7 @@ public enum SelectionCaptureResult: @unchecked Sendable {
         }
     }
 
-    /// Telemetry/diagnostic tag for log lines.
+    /// Diagnostic tag for log lines.
     public var pathTag: String {
         switch self {
         case .ax: return "ax"
@@ -219,7 +219,8 @@ public actor SelectionCaptureService {
 
         if let element = backend.focusedElement() {
             if let text = backend.selectedText(of: element),
-               !text.isEmpty {
+                !text.isEmpty
+            {
                 return .ax(text: text, element: AXFocusedElement(element), target: target)
             }
         }
@@ -244,7 +245,9 @@ public actor SelectionCaptureService {
         if now == temporaryChangeCount {
             await restoreSnapshotOnMain(snapshot)
         } else {
-            logger.notice("transforms-spike: skipping abandoned-capture clipboard restore — user copied content mid-transform (capture=\(temporaryChangeCount, privacy: .public), now=\(now, privacy: .public))")
+            logger.notice(
+                "transforms-spike: skipping abandoned-capture clipboard restore — user copied content mid-transform (capture=\(temporaryChangeCount, privacy: .public), now=\(now, privacy: .public))"
+            )
         }
     }
 
@@ -373,7 +376,7 @@ struct SystemSelectionCaptureBackend: SelectionCaptureBackend, @unchecked Sendab
     @MainActor
     func frontmostApplicationTarget() -> SelectionCaptureTarget? {
         guard let app = NSWorkspace.shared.frontmostApplication,
-              let bundleIdentifier = app.bundleIdentifier
+            let bundleIdentifier = app.bundleIdentifier
         else {
             return nil
         }
@@ -421,7 +424,8 @@ struct SystemSelectionCaptureBackend: SelectionCaptureBackend, @unchecked Sendab
             modifierKeyState: UInt32(cmdKey >> 8)
         )
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: cKeyCode, keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: cKeyCode, keyDown: false) else {
+            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: cKeyCode, keyDown: false)
+        else {
             throw SelectionCaptureError.eventPostingFailed
         }
         keyDown.flags = .maskCommand

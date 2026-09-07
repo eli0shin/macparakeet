@@ -79,10 +79,9 @@ struct BulkTranscriptExportResult: Identifiable, Sendable {
 
 @MainActor
 enum TranscriptResultActions {
-    static func copyText(_ text: String, source: TelemetryCopySource = .transcription) {
+    static func copyText(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        Telemetry.send(.copyToClipboard(source: source))
     }
 
     static func exportPromptResultToDownloads(
@@ -104,15 +103,8 @@ enum TranscriptResultActions {
             let fileURL = nextAvailableURL(in: downloadsURL, stem: stem, format: format)
 
             try promptResult.content.write(to: fileURL, atomically: true, encoding: .utf8)
-            Telemetry.send(.exportUsed(format: format.rawValue))
             return fileURL
         } catch {
-            Telemetry.send(
-                .exportFailed(
-                    format: format.rawValue,
-                    errorType: TelemetryErrorClassifier.classify(error),
-                    errorDetail: TelemetryErrorClassifier.errorDetail(error)
-                ))
             throw error
         }
     }
@@ -135,15 +127,8 @@ enum TranscriptResultActions {
                 to: fileURL
             )
 
-            Telemetry.send(.exportUsed(format: format.rawValue))
             return fileURL
         } catch {
-            Telemetry.send(
-                .exportFailed(
-                    format: format.rawValue,
-                    errorType: TelemetryErrorClassifier.classify(error),
-                    errorDetail: TelemetryErrorClassifier.errorDetail(error)
-                ))
             throw error
         }
     }
@@ -225,17 +210,6 @@ enum TranscriptResultActions {
         }
 
         let exportedURLs = exportedFiles.map(\.url)
-        if !exportedURLs.isEmpty {
-            Telemetry.send(.exportUsed(format: format.rawValue))
-        }
-        if failedCount > 0 {
-            Telemetry.send(
-                .exportFailed(
-                    format: format.rawValue,
-                    errorType: exportedURLs.isEmpty ? "bulk_total_failure" : "bulk_partial_failure",
-                    errorDetail: firstErrorDescription
-                ))
-        }
 
         return BulkTranscriptExportResult(
             directory: directory,

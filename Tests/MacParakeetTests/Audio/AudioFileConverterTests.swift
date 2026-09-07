@@ -76,9 +76,10 @@ final class AudioFileConverterTests: XCTestCase {
         )
 
         XCTAssertTrue(args.contains("-filter_complex"))
-        XCTAssertTrue(args.contains(
-            "[0:a]pan=stereo|c0=c0|c1=0*c0,adelay=0|0[a0];[1:a]pan=stereo|c0=0*c0|c1=c0,adelay=0|0[a1];[a0][a1]amix=inputs=2:duration=longest:normalize=0[a]"
-        ))
+        XCTAssertTrue(
+            args.contains(
+                "[0:a]pan=stereo|c0=c0|c1=0*c0,adelay=0|0[a0];[1:a]pan=stereo|c0=0*c0|c1=c0,adelay=0|0[a1];[a0][a1]amix=inputs=2:duration=longest:normalize=0[a]"
+            ))
         XCTAssertTrue(args.contains("-map"))
         XCTAssertTrue(args.contains("[a]"))
         XCTAssertTrue(args.contains("-ac"))
@@ -112,9 +113,10 @@ final class AudioFileConverterTests: XCTestCase {
         )
 
         XCTAssertTrue(args.contains("-filter_complex"))
-        XCTAssertTrue(args.contains(
-            "[0:a]pan=stereo|c0=c0|c1=0*c0,adelay=0|0[a0];[1:a]pan=stereo|c0=0*c0|c1=c0,adelay=150|150[a1];[a0][a1]amix=inputs=2:duration=longest:normalize=0[a]"
-        ))
+        XCTAssertTrue(
+            args.contains(
+                "[0:a]pan=stereo|c0=c0|c1=0*c0,adelay=0|0[a0];[1:a]pan=stereo|c0=0*c0|c1=c0,adelay=150|150[a1];[a0][a1]amix=inputs=2:duration=longest:normalize=0[a]"
+            ))
     }
 
     func testFFmpegMixArgumentsKeepLongestDualSourceDuration() {
@@ -138,12 +140,12 @@ final class AudioFileConverterTests: XCTestCase {
 
     func testTailForErrorKeepsFailureReasonFromEnd() {
         let stderr = """
-        ffmpeg version 8.1 Copyright ...
-          configuration: --prefix=/opt/homebrew --enable-libx264 --enable-libx265
-        Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/tmp/input.mp4':
-        Error opening input file /tmp/input.mp4.
-        Error opening input files: No such file or directory
-        """
+            ffmpeg version 8.1 Copyright ...
+              configuration: --prefix=/opt/homebrew --enable-libx264 --enable-libx265
+            Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/tmp/input.mp4':
+            Error opening input file /tmp/input.mp4.
+            Error opening input files: No such file or directory
+            """
 
         let tail = AudioFileConverter.tailForError(stderr, limit: 90)
 

@@ -42,6 +42,8 @@ final class MeetingTitleGeneratorTests: XCTestCase {
         XCTAssertNil(MeetingTitleGenerator.validatedTitle(from: "Meeting Jun 17, 2026"))
         XCTAssertNil(MeetingTitleGenerator.validatedTitle(from: "Product Review\nCustomer Followup"))
         XCTAssertNil(MeetingTitleGenerator.validatedTitle(from: "One"))
-        XCTAssertNil(MeetingTitleGenerator.validatedTitle(from: "This title has far too many words to be a usable meeting title"))
+        XCTAssertNil(
+            MeetingTitleGenerator.validatedTitle(from: "This title has far too many words to be a usable meeting title")
+        )
     }
 }

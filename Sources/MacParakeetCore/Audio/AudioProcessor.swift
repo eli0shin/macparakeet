@@ -37,10 +37,6 @@ public actor AudioProcessor: AudioProcessorProtocol {
         get async { await recorder.isRecording }
     }
 
-    public var recordingDeviceInfo: RecordingDeviceInfo? {
-        get async { await recorder.deviceInfo }
-    }
-
     public var lastCaptureHealth: AudioCaptureHealth? {
         get async { await recorder.lastCaptureHealth }
     }

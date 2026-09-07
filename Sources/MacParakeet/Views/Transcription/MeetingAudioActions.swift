@@ -25,7 +25,8 @@ enum MeetingAudioActions {
     @discardableResult
     static func revealInFinder(_ transcription: Transcription) -> Bool {
         guard MeetingAudioFile.isAvailable(for: transcription),
-              let url = MeetingAudioFile.mixedAudioURL(for: transcription) else {
+            let url = MeetingAudioFile.mixedAudioURL(for: transcription)
+        else {
             return false
         }
         NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -53,7 +54,8 @@ enum MeetingAudioActions {
         for transcription: Transcription
     ) async throws -> SaveOutcome {
         guard MeetingAudioFile.isAvailable(for: transcription),
-              let sourceURL = MeetingAudioFile.mixedAudioURL(for: transcription) else {
+            let sourceURL = MeetingAudioFile.mixedAudioURL(for: transcription)
+        else {
             return .sourceUnavailable
         }
 
@@ -68,7 +70,8 @@ enum MeetingAudioActions {
         panel.canCreateDirectories = true
         panel.showsTagField = false
         if let downloads = FileManager.default
-            .urls(for: .downloadsDirectory, in: .userDomainMask).first {
+            .urls(for: .downloadsDirectory, in: .userDomainMask).first
+        {
             panel.directoryURL = downloads
         }
 

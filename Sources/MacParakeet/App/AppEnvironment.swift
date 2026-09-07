@@ -342,18 +342,7 @@ final class AppEnvironment {
                 Self.dictationPreviewSpeechEngine()
             },
             markFirstDictationCompleted: { [runtimePreferences] in
-                // Fire the activation milestone exactly once, the first time a
-                // dictation ever completes on this install. `activation_window`
-                // buckets the time since onboarding completed (coarse only).
-                guard runtimePreferences.markFirstDictationCompleted() else { return }
-                let secondsSinceOnboarding = UserDefaults.standard
-                    .string(forKey: OnboardingViewModel.onboardingCompletedKey)
-                    .flatMap { ISO8601DateFormatter().date(from: $0) }
-                    .map { Date().timeIntervalSince($0) }
-                Telemetry.send(
-                    .firstDictationCompleted(
-                        activationWindow: TelemetryActivationWindow(secondsSinceOnboarding: secondsSinceOnboarding)
-                    ))
+                _ = runtimePreferences.markFirstDictationCompleted()
             }
         )
 

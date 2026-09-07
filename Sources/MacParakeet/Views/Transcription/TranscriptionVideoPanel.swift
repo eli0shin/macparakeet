@@ -24,7 +24,7 @@ struct TranscriptionVideoPanel: View {
                             player: player,
                             subtitleText: playerViewModel.showSubtitles ? playerViewModel.currentSubtitleText : nil
                         )
-                        .aspectRatio(16/9, contentMode: .fit)
+                        .aspectRatio(16 / 9, contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius))
 
                         HStack(spacing: 8) {
@@ -36,17 +36,26 @@ struct TranscriptionVideoPanel: View {
                                 playerViewModel.showSubtitles.toggle()
                             } label: {
                                 HStack(spacing: 5) {
-                                    Image(systemName: playerViewModel.showSubtitles ? "captions.bubble.fill" : "captions.bubble")
-                                        .font(.system(size: 14, weight: .medium))
+                                    Image(
+                                        systemName: playerViewModel.showSubtitles
+                                            ? "captions.bubble.fill" : "captions.bubble"
+                                    )
+                                    .font(.system(size: 14, weight: .medium))
                                     Text("CC")
                                         .font(.system(size: 12, weight: .semibold))
                                 }
-                                .foregroundStyle(playerViewModel.showSubtitles ? DesignSystem.Colors.accent : DesignSystem.Colors.textSecondary)
+                                .foregroundStyle(
+                                    playerViewModel.showSubtitles
+                                        ? DesignSystem.Colors.accent : DesignSystem.Colors.textSecondary
+                                )
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
                                 .background(
                                     Capsule()
-                                        .fill(playerViewModel.showSubtitles ? DesignSystem.Colors.accent.opacity(0.12) : DesignSystem.Colors.surfaceElevated)
+                                        .fill(
+                                            playerViewModel.showSubtitles
+                                                ? DesignSystem.Colors.accent.opacity(0.12)
+                                                : DesignSystem.Colors.surfaceElevated)
                                 )
                             }
                             .buttonStyle(.plain)
@@ -89,7 +98,7 @@ struct TranscriptionVideoPanel: View {
                 }
             }
         }
-        .aspectRatio(16/9, contentMode: .fit)
+        .aspectRatio(16 / 9, contentMode: .fit)
     }
 
     private var loadingTitle: String {
@@ -128,7 +137,7 @@ struct TranscriptionVideoPanel: View {
             .parakeetAction(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .aspectRatio(16/9, contentMode: .fit)
+        .aspectRatio(16 / 9, contentMode: .fit)
         .background(
             RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
                 .fill(DesignSystem.Colors.surfaceElevated)
@@ -145,7 +154,7 @@ struct TranscriptionVideoPanel: View {
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
         }
         .frame(maxWidth: .infinity)
-        .aspectRatio(16/9, contentMode: .fit)
+        .aspectRatio(16 / 9, contentMode: .fit)
         .background(
             RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
                 .fill(DesignSystem.Colors.surfaceElevated)

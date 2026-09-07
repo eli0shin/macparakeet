@@ -57,7 +57,9 @@ final class PodcastEpisodeMatcherTests: XCTestCase {
 
     func testFindByTitleExactThenSubstring() {
         let eps = episodes()
-        XCTAssertEqual(PodcastEpisodeMatcher.findByTitle(eps, query: "Episode 704: Data Strategy")?.audioURL, "https://x/ep704.mp3")
+        XCTAssertEqual(
+            PodcastEpisodeMatcher.findByTitle(eps, query: "Episode 704: Data Strategy")?.audioURL, "https://x/ep704.mp3"
+        )
         XCTAssertEqual(PodcastEpisodeMatcher.findByTitle(eps, query: "train your ai")?.audioURL, "https://x/ep705.mp3")
         XCTAssertNil(PodcastEpisodeMatcher.findByTitle(eps, query: "nonexistent"))
     }
@@ -81,7 +83,9 @@ final class PodcastEpisodeMatcherTests: XCTestCase {
         let eps = episodes()
         XCTAssertEqual(PodcastEpisodeMatcher.selectEpisode(eps, hints: [])?.audioURL, "https://x/ep705.mp3")
         XCTAssertEqual(PodcastEpisodeMatcher.selectEpisode(eps, hints: ["704"])?.audioURL, "https://x/ep704.mp3")
-        XCTAssertEqual(PodcastEpisodeMatcher.selectEpisode(eps, hints: ["zzz"])?.audioURL, "https://x/ep705.mp3", "unmatched hints → latest")
+        XCTAssertEqual(
+            PodcastEpisodeMatcher.selectEpisode(eps, hints: ["zzz"])?.audioURL, "https://x/ep705.mp3",
+            "unmatched hints → latest")
         XCTAssertNil(PodcastEpisodeMatcher.selectEpisode([], hints: []))
     }
 }

@@ -7,7 +7,9 @@ private struct PreviewCallWaiter {
     let continuation: CheckedContinuation<Bool, Never>
 }
 
-public actor MockSTTClient: STTClientProtocol, STTDictationPreviewTranscribing, SpeechEngineRoutedTranscribing, STTLiveDictationTranscribing, SpeechEngineSwitching, SpeechEngineTelemetryAttributing, SpeechEngineRoutedWarmUpManaging {
+public actor MockSTTClient: STTClientProtocol, STTDictationPreviewTranscribing, SpeechEngineRoutedTranscribing,
+    STTLiveDictationTranscribing, SpeechEngineSwitching, SpeechEngineRoutedWarmUpManaging
+{
     public var transcribeResult: STTResult?
     public var transcribeError: Error?
     public var transcribeCallCount = 0
@@ -53,7 +55,6 @@ public actor MockSTTClient: STTClientProtocol, STTDictationPreviewTranscribing, 
     public var previewSamples: [[Float]] = []
     public var previewSelections: [SpeechEngineSelection] = []
     public var liveEnabled = false
-    public var telemetryAttribution: SpeechEngineTelemetryAttribution?
     private var warmUpState: STTWarmUpState = .idle
     private var warmUpObservers: [UUID: AsyncStream<STTWarmUpState>.Continuation] = [:]
     private var backgroundWarmUpTask: Task<Void, Never>?
@@ -71,14 +72,6 @@ public actor MockSTTClient: STTClientProtocol, STTDictationPreviewTranscribing, 
     private var previewCallWaiters: [PreviewCallWaiter] = []
 
     public init() {}
-
-    public func configureTelemetryAttribution(_ attribution: SpeechEngineTelemetryAttribution?) {
-        telemetryAttribution = attribution
-    }
-
-    public func currentSpeechEngineTelemetryAttribution() async -> SpeechEngineTelemetryAttribution? {
-        telemetryAttribution
-    }
 
     public func configure(result: STTResult) {
         self.transcribeResult = result

@@ -117,11 +117,14 @@ public struct MeetingMarkdownArtifactPaths: Sendable, Equatable {
                 MeetingMarkdownPromptResultFile(
                     id: result.id,
                     name: result.promptName,
-                    path: promptResultsDirectoryURL
-                        .appendingPathComponent(MeetingArtifactStore.promptResultMarkdownFileName(
-                            index: index + 1,
-                            name: result.promptName
-                        ))
+                    path:
+                        promptResultsDirectoryURL
+                        .appendingPathComponent(
+                            MeetingArtifactStore.promptResultMarkdownFileName(
+                                index: index + 1,
+                                name: result.promptName
+                            )
+                        )
                         .path
                 )
             }
@@ -162,10 +165,11 @@ public struct MeetingMarkdownRenderer: Sendable {
                 promptResultCount: promptResults.count
             )
         ]
-        sections.append(contentsOf: meetingContentSections(
-            transcription: transcription,
-            transcript: transcript.text
-        ))
+        sections.append(
+            contentsOf: meetingContentSections(
+                transcription: transcription,
+                transcript: transcript.text
+            ))
 
         if !promptResults.isEmpty {
             sections.append(promptResultsSection(promptResults, artifactPaths: artifactPaths))
@@ -303,7 +307,8 @@ public struct MeetingMarkdownRenderer: Sendable {
     }
 
     private func yamlString(_ value: String) -> String {
-        let escaped = value
+        let escaped =
+            value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
@@ -320,7 +325,7 @@ public struct MeetingMarkdownRenderer: Sendable {
 
 private func normalizedNonEmptyText(_ value: String?) -> String? {
     guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !trimmed.isEmpty
+        !trimmed.isEmpty
     else {
         return nil
     }

@@ -204,7 +204,9 @@ public actor SelectionReplacementService {
             return savedSnapshot
         }
 
-        logger.notice("transforms-spike: preserving clipboard content copied during LLM phase (capture=\(temporaryChangeCount, privacy: .public), now=\(now, privacy: .public))")
+        logger.notice(
+            "transforms-spike: preserving clipboard content copied during LLM phase (capture=\(temporaryChangeCount, privacy: .public), now=\(now, privacy: .public))"
+        )
         return await snapshotPasteboardForFallback()
     }
 
@@ -300,7 +302,9 @@ public actor SelectionReplacementService {
         if now == ourChangeCount {
             await restoreSnapshotOnMain(snapshot)
         } else {
-            logger.notice("transforms-spike: skipping clipboard restore — user copied content mid-transform (ours=\(ourChangeCount, privacy: .public), now=\(now, privacy: .public))")
+            logger.notice(
+                "transforms-spike: skipping clipboard restore — user copied content mid-transform (ours=\(ourChangeCount, privacy: .public), now=\(now, privacy: .public))"
+            )
         }
     }
 
@@ -358,7 +362,7 @@ struct SystemSelectionReplacementBackend: SelectionReplacementBackend, @unchecke
     @MainActor
     func activateApplication(target: SelectionCaptureTarget) -> Bool {
         guard let app = NSRunningApplication(processIdentifier: target.processIdentifier),
-              app.bundleIdentifier == target.bundleIdentifier
+            app.bundleIdentifier == target.bundleIdentifier
         else {
             return false
         }
@@ -406,7 +410,8 @@ struct SystemSelectionReplacementBackend: SelectionReplacementBackend, @unchecke
             modifierKeyState: UInt32(cmdKey >> 8)
         )
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false) else {
+            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false)
+        else {
             throw SelectionReplacementError.eventPostingFailed
         }
         keyDown.flags = .maskCommand

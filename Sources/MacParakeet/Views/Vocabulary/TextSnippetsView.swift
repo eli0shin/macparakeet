@@ -169,10 +169,13 @@ struct TextSnippetsView: View {
         let isHovered = hoveredSnippetID == snippet.id
         let usageHint = snippetUsageHint(snippet)
         return HStack(spacing: DesignSystem.Spacing.md) {
-            Toggle("", isOn: Binding(
-                get: { snippet.isEnabled },
-                set: { _ in viewModel.toggleEnabled(snippet) }
-            ))
+            Toggle(
+                "",
+                isOn: Binding(
+                    get: { snippet.isEnabled },
+                    set: { _ in viewModel.toggleEnabled(snippet) }
+                )
+            )
             .labelsHidden()
             .parakeetSwitch()
             .controlSize(.small)
@@ -304,10 +307,13 @@ private struct SnippetEditRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
-            Toggle("", isOn: Binding(
-                get: { snippet.isEnabled },
-                set: { _ in viewModel.toggleEnabled(snippet) }
-            ))
+            Toggle(
+                "",
+                isOn: Binding(
+                    get: { snippet.isEnabled },
+                    set: { _ in viewModel.toggleEnabled(snippet) }
+                )
+            )
             .labelsHidden()
             .parakeetSwitch()
             .controlSize(.small)

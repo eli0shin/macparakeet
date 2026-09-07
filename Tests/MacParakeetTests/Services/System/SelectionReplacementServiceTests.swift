@@ -167,7 +167,9 @@ final class SelectionReplacementServiceTests: XCTestCase {
 
         XCTAssertEqual(backend.cmdVPostCount(), 1)
         XCTAssertEqual(backend.restoreCount(), 1)
-        XCTAssertEqual(backend.lastRestoredChangeCount(), 12, "Restore should use the user's newer clipboard snapshot, not the pre-transform one")
+        XCTAssertEqual(
+            backend.lastRestoredChangeCount(), 12,
+            "Restore should use the user's newer clipboard snapshot, not the pre-transform one")
     }
 
     func testClipboardPasteReactivatesOriginalTargetBeforeCmdV() async throws {
@@ -358,8 +360,9 @@ final class FakeSelectionReplacementBackend: SelectionReplacementBackend, @unche
         let simulateBump = simulateUserCopyAfterWrite
         return lock.withLock { state in
             if simulateBump,
-               state.pastePayloadWritten,
-               state.returnedOurChangeCountAfterWrite {
+                state.pastePayloadWritten,
+                state.returnedOurChangeCountAfterWrite
+            {
                 return state.changeCount + 1
             }
             if state.pastePayloadWritten {

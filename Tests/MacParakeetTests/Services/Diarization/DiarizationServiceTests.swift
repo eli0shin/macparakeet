@@ -128,15 +128,16 @@ final class DiarizationServiceTests: XCTestCase {
         let customDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
             .standardizedFileURL
-        let manager = RecordingOfflineDiarizerManager(result: DiarizationResult(segments: [
-            TimedSpeakerSegment(
-                speakerId: "speaker_0",
-                embedding: [],
-                startTimeSeconds: 0,
-                endTimeSeconds: 1.2,
-                qualityScore: 0.9
-            ),
-        ]))
+        let manager = RecordingOfflineDiarizerManager(
+            result: DiarizationResult(segments: [
+                TimedSpeakerSegment(
+                    speakerId: "speaker_0",
+                    embedding: [],
+                    startTimeSeconds: 0,
+                    endTimeSeconds: 1.2,
+                    qualityScore: 0.9
+                )
+            ]))
         let service = DiarizationService(manager: manager, modelsDirectory: customDirectory)
         let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
 

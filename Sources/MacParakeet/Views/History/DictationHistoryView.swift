@@ -101,19 +101,23 @@ struct DictationHistoryView: View {
                 .opacity(0.4)
 
             VStack(spacing: DesignSystem.Spacing.sm) {
-                Text(viewModel.searchText.isEmpty
-                     ? "Your voice, captured."
-                     : "No matching records")
-                    .font(DesignSystem.Typography.pageTitle)
-                    .foregroundStyle(.primary)
+                Text(
+                    viewModel.searchText.isEmpty
+                        ? "Your voice, captured."
+                        : "No matching records"
+                )
+                .font(DesignSystem.Typography.pageTitle)
+                .foregroundStyle(.primary)
 
-                Text(viewModel.searchText.isEmpty
-                     ? (HotkeyTrigger.current.isDisabled
-                        ? "Click the dictation pill or set a hotkey in Settings to start dictating."
-                        : "Tap \(HotkeyTrigger.current.displayName) to start dictating from any app.")
-                     : "Try different words or clear your search.")
-                    .font(DesignSystem.Typography.bodySmall)
-                    .foregroundStyle(.secondary)
+                Text(
+                    viewModel.searchText.isEmpty
+                        ? (HotkeyTrigger.current.isDisabled
+                            ? "Click the dictation pill or set a hotkey in Settings to start dictating."
+                            : "Tap \(HotkeyTrigger.current.displayName) to start dictating from any app.")
+                        : "Try different words or clear your search."
+                )
+                .font(DesignSystem.Typography.bodySmall)
+                .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -336,7 +340,8 @@ struct DictationHistoryView: View {
 
     private func collapseExpansionIfUnavailable(for dictation: Dictation) {
         guard expandedDictationIDs.contains(dictation.id),
-              !DictationTranscriptPresentation.isExpandable(dictation.displayText) else {
+            !DictationTranscriptPresentation.isExpandable(dictation.displayText)
+        else {
             return
         }
 
@@ -359,7 +364,8 @@ enum DictationTranscriptPresentation {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return false }
 
-        let lineBreakCount = trimmedText
+        let lineBreakCount =
+            trimmedText
             .replacingOccurrences(of: "\r\n", with: "\n")
             .filter(\.isNewline)
             .count
@@ -373,7 +379,8 @@ enum DictationTranscriptPresentation {
         canToggleExpansion: Bool = true
     ) -> Int? {
         guard !isExpanded,
-              isExpandable(text, canToggleExpansion: canToggleExpansion) else {
+            isExpandable(text, canToggleExpansion: canToggleExpansion)
+        else {
             return nil
         }
         return collapsedLineLimit
@@ -571,7 +578,8 @@ struct DictationCardRow: View {
         .animation(DesignSystem.Animation.selectionChange, value: isSelected)
         .animation(DesignSystem.Animation.contentSwap, value: isExpanded)
         .onChange(of: transcriptPlainText) { _, _ in
-            expandedTranscriptContentHeight = DictationTranscriptPresentation
+            expandedTranscriptContentHeight =
+                DictationTranscriptPresentation
                 .resetMeasuredExpandedContentHeight(isCurrentlyExpanded: isExpanded)
         }
         .onPreferenceChange(ExpandedTranscriptHeightKey.self) { height in
@@ -605,7 +613,8 @@ struct DictationCardRow: View {
         if isExpanded && isExpandable {
             expandedTranscriptContent
         } else {
-            let lineLimit = isExpandable
+            let lineLimit =
+                isExpandable
                 ? DictationTranscriptPresentation.lineLimit(
                     for: transcriptPlainText,
                     isExpanded: isExpanded
@@ -676,7 +685,8 @@ struct DictationCardRow: View {
 
     private func updateExpandedTranscriptContentHeight(_ height: CGFloat) {
         guard height > 0,
-              abs(height - expandedTranscriptContentHeight) > 0.5 else {
+            abs(height - expandedTranscriptContentHeight) > 0.5
+        else {
             return
         }
 

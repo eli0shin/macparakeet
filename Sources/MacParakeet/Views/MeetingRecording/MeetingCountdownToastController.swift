@@ -133,7 +133,8 @@ final class MeetingCountdownToastController {
             // Top-right of the visible frame, like a system notification: tucked
             // under the menu bar in the corner so it's noticeable without
             // covering the active app's center of attention.
-            let panelSize = hosting.fittingSize.width > 0
+            let panelSize =
+                hosting.fittingSize.width > 0
                 ? hosting.fittingSize
                 : NSSize(width: 300, height: 80)
             let frame = screen.visibleFrame

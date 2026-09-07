@@ -28,7 +28,8 @@ enum ChildProcessWaiter {
         }
 
         func resume(_ outcome: WaitEvent, process: Process) {
-            let result = state.withLock { state -> (completed: Bool, continuation: CheckedContinuation<WaitEvent, Never>?) in
+            let result = state.withLock {
+                state -> (completed: Bool, continuation: CheckedContinuation<WaitEvent, Never>?) in
                 guard state.outcome == nil else { return (false, nil) }
                 state.outcome = outcome
                 let continuation = state.continuation

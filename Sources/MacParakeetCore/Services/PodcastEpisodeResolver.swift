@@ -79,13 +79,14 @@ public actor PodcastEpisodeResolver: PodcastResolving {
     private let dataFetcher: DataFetcher
 
     public init(dataFetcher: DataFetcher? = nil) {
-        self.dataFetcher = dataFetcher ?? { url in
-            let (data, response) = try await URLSession.shared.data(from: url)
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                throw PodcastResolveError.lookupFailed("HTTP \(http.statusCode)")
+        self.dataFetcher =
+            dataFetcher ?? { url in
+                let (data, response) = try await URLSession.shared.data(from: url)
+                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                    throw PodcastResolveError.lookupFailed("HTTP \(http.statusCode)")
+                }
+                return data
             }
-            return data
-        }
     }
 
     public func resolve(url: String) async throws -> ResolvedPodcastEpisode {
@@ -181,7 +182,8 @@ public actor PodcastEpisodeResolver: PodcastResolving {
         }
         // `raw.count >= 10` is guaranteed above, so `prefix(10)` is exactly 10 chars.
         let datePart = String(raw.prefix(10))
-        let isYYYYMMDD = datePart[datePart.index(datePart.startIndex, offsetBy: 4)] == "-"
+        let isYYYYMMDD =
+            datePart[datePart.index(datePart.startIndex, offsetBy: 4)] == "-"
             && datePart[datePart.index(datePart.startIndex, offsetBy: 7)] == "-"
         return isYYYYMMDD ? datePart : nil
     }

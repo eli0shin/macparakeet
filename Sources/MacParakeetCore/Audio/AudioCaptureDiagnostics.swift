@@ -35,7 +35,8 @@ public enum AudioCaptureDiagnostics {
         guard let deviceID else { return "none" }
         let transport = AudioDeviceManager.transportType(deviceID)
         if transport == kAudioDeviceTransportTypeAggregate,
-           let subTransport = AudioDeviceManager.subDeviceTransport(deviceID) {
+            let subTransport = AudioDeviceManager.subDeviceTransport(deviceID)
+        {
             return "aggregate-\(safeTransportLabel(subTransport))"
         }
         return safeTransportLabel(transport)
@@ -55,7 +56,7 @@ public enum AudioCaptureDiagnostics {
     }
 
     static func errorType(_ error: Error) -> String {
-        TelemetryErrorClassifier.classify(error)
+        DiagnosticErrorClassifier.classify(error)
     }
 
     static func errorFields(_ error: Error) -> String {
@@ -67,7 +68,7 @@ public enum AudioCaptureDiagnostics {
     }
 
     static func sanitizedMessage(_ message: String) -> String {
-        TelemetryErrorClassifier.sanitize(message)
+        DiagnosticErrorClassifier.sanitize(message)
             .replacingOccurrences(of: "\r\n", with: " ")
             .replacingOccurrences(of: "\n", with: " ")
             .replacingOccurrences(of: "\r", with: " ")
@@ -99,13 +100,15 @@ public enum AudioCaptureDiagnostics {
                 )
 
                 if let attributes = try? fm.attributesOfItem(atPath: logURL.path),
-                   let size = attributes[.size] as? UInt64,
-                   size > maxLogBytes {
+                    let size = attributes[.size] as? UInt64,
+                    size > maxLogBytes
+                {
                     try? fm.removeItem(at: logURL)
                 }
 
                 if fm.fileExists(atPath: logURL.path),
-                   let handle = try? FileHandle(forWritingTo: logURL) {
+                    let handle = try? FileHandle(forWritingTo: logURL)
+                {
                     try handle.seekToEnd()
                     try handle.write(contentsOf: data)
                     try handle.close()
@@ -127,7 +130,8 @@ public enum AudioCaptureDiagnostics {
     static func diagnosticLogURL() -> URL {
         let environment = ProcessInfo.processInfo.environment
         if let overridePath = environment[logPathOverrideEnvironmentKey],
-           !overridePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            !overridePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
             return URL(fileURLWithPath: overridePath)
         }
 

@@ -144,7 +144,7 @@ enum SettingsTabMetadata {
         tabBadges: [
             .capture: .recommended,
             .engine: .required,
-            .system: .recommended
+            .system: .recommended,
         ]
     )
     .padding()
@@ -159,7 +159,7 @@ enum SettingsTabMetadata {
         activeTab: $tab,
         tabBadges: [
             .capture: .recommended,
-            .engine: .required
+            .engine: .required,
         ]
     )
     .padding()

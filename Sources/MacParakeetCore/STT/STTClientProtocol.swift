@@ -69,26 +69,6 @@ public protocol SpeechEngineRoutedTranscribing: STTTranscribing {
     ) async throws -> STTResult
 }
 
-public struct SpeechEngineTelemetryAttribution: Equatable, Sendable {
-    public let speechEngine: SpeechEnginePreference
-    public let engineVariant: String?
-    public let language: String?
-
-    public init(
-        speechEngine: SpeechEnginePreference,
-        engineVariant: String?,
-        language: String?
-    ) {
-        self.speechEngine = speechEngine
-        self.engineVariant = engineVariant
-        self.language = language
-    }
-}
-
-public protocol SpeechEngineTelemetryAttributing: Sendable {
-    func currentSpeechEngineTelemetryAttribution() async -> SpeechEngineTelemetryAttribution?
-}
-
 public protocol STTRuntimeManaging: Sendable {
     func warmUp(onProgress: (@Sendable (String) -> Void)?) async throws
     func backgroundWarmUp() async
@@ -194,7 +174,8 @@ public enum STTError: Error, LocalizedError {
         case .transcriptionFailed(let reason): return "Transcription failed: \(reason)"
         case .timeout: return "STT request timed out"
         case .modelNotLoaded: return "STT model not loaded"
-        case .modelDownloadFailed: return "Speech model isn't downloaded yet — check your internet connection and try again."
+        case .modelDownloadFailed:
+            return "Speech model isn't downloaded yet — check your internet connection and try again."
         case .outOfMemory: return "Out of memory during transcription"
         case .invalidResponse: return "Invalid response from speech engine"
         case .engineBusy: return "Speech engine is busy. Try again after the current transcription finishes."

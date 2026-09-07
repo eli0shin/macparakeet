@@ -57,7 +57,8 @@ public final class ThumbnailCacheService: Sendable {
         let (data, response) = try await URLSession.shared.data(from: url)
 
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+            (200...299).contains(httpResponse.statusCode)
+        else {
             throw ThumbnailError.downloadFailed
         }
 
@@ -116,7 +117,8 @@ public final class ThumbnailCacheService: Sendable {
         }
 
         guard process.terminationStatus == 0,
-              FileManager.default.fileExists(atPath: dest.path) else {
+            FileManager.default.fileExists(atPath: dest.path)
+        else {
             throw ThumbnailError.extractionFailed
         }
 

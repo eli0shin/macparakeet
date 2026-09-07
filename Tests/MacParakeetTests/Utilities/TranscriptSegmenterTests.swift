@@ -113,19 +113,23 @@ final class TranscriptSegmenterTests: XCTestCase {
             idGenerator: { ids.removeFirst() }
         )
 
-        XCTAssertEqual(segments.map(\.id), [
-            UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
-            UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
-        ])
+        XCTAssertEqual(
+            segments.map(\.id),
+            [
+                UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+                UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
+            ])
         XCTAssertEqual(segments.map(\.text), ["This is done.", "Remote answer"])
         XCTAssertEqual(segments.map(\.startMs), [0, 640])
         XCTAssertEqual(segments.map(\.endMs), [520, 1_000])
         XCTAssertEqual(segments.map(\.speakerId), ["s1", "s2"])
         XCTAssertEqual(segments.map(\.speakerLabel), ["Dana", "Riley"])
-        XCTAssertEqual(segments.map(\.wordRange), [
-            TranscriptSegmentWordRange(startIndex: 0, endIndexExclusive: 3),
-            TranscriptSegmentWordRange(startIndex: 3, endIndexExclusive: 5),
-        ])
+        XCTAssertEqual(
+            segments.map(\.wordRange),
+            [
+                TranscriptSegmentWordRange(startIndex: 0, endIndexExclusive: 3),
+                TranscriptSegmentWordRange(startIndex: 3, endIndexExclusive: 5),
+            ])
 
         let presentationSegments = TranscriptSegmenter.groupIntoSegments(words: words)
         XCTAssertEqual(presentationSegments.map(\.text), segments.map(\.text))

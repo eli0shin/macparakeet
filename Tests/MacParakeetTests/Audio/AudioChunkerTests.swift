@@ -51,12 +51,14 @@ final class AudioChunkerTests: XCTestCase {
     }
 
     func testExtractAndResampleAcceptsInt16PCMBuffer() {
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: 16_000,
-            channels: 1,
-            interleaved: false
-        ), let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4) else {
+        guard
+            let format = AVAudioFormat(
+                commonFormat: .pcmFormatInt16,
+                sampleRate: 16_000,
+                channels: 1,
+                interleaved: false
+            ), let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4)
+        else {
             return XCTFail("Failed to create Int16 PCM buffer")
         }
 
@@ -80,12 +82,14 @@ final class AudioChunkerTests: XCTestCase {
     }
 
     func testExtractSamplesDownmixesFloatStereoBuffers() {
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 16_000,
-            channels: 2,
-            interleaved: false
-        ), let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4) else {
+        guard
+            let format = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 16_000,
+                channels: 2,
+                interleaved: false
+            ), let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4)
+        else {
             return XCTFail("Failed to create Float32 stereo buffer")
         }
 
@@ -114,12 +118,14 @@ final class AudioChunkerTests: XCTestCase {
     }
 
     func testExtractSamplesDownmixesInt16StereoBuffers() {
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: 16_000,
-            channels: 2,
-            interleaved: false
-        ), let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4) else {
+        guard
+            let format = AVAudioFormat(
+                commonFormat: .pcmFormatInt16,
+                sampleRate: 16_000,
+                channels: 2,
+                interleaved: false
+            ), let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4)
+        else {
             return XCTFail("Failed to create Int16 stereo buffer")
         }
 
@@ -148,12 +154,14 @@ final class AudioChunkerTests: XCTestCase {
     }
 
     func testExtractSamplesDownmixesInt32StereoBuffers() {
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatInt32,
-            sampleRate: 16_000,
-            channels: 2,
-            interleaved: false
-        ), let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4) else {
+        guard
+            let format = AVAudioFormat(
+                commonFormat: .pcmFormatInt32,
+                sampleRate: 16_000,
+                channels: 2,
+                interleaved: false
+            ), let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4)
+        else {
             return XCTFail("Failed to create Int32 stereo buffer")
         }
 

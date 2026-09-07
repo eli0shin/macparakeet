@@ -26,8 +26,11 @@ public final class VideoStreamService: Sendable {
 
         // Check cache
         if let cached = Self.cache.withLock({ $0[videoID] }),
-           cached.expiresAt > Date() {
-            logger.notice("video_stream_cache_hit video_id=\(videoID, privacy: .private) expires_in_seconds=\(Int(cached.expiresAt.timeIntervalSinceNow), privacy: .public)")
+            cached.expiresAt > Date()
+        {
+            logger.notice(
+                "video_stream_cache_hit video_id=\(videoID, privacy: .private) expires_in_seconds=\(Int(cached.expiresAt.timeIntervalSinceNow), privacy: .public)"
+            )
             return cached.url
         }
         logger.notice("video_stream_cache_miss video_id=\(videoID, privacy: .private)")
@@ -37,7 +40,9 @@ public final class VideoStreamService: Sendable {
         Self.cache.withLock {
             $0[videoID] = CachedURL(url: url, expiresAt: Date().addingTimeInterval(Self.cacheTTL))
         }
-        logger.notice("video_stream_cached video_id=\(videoID, privacy: .private) ttl_seconds=\(Int(Self.cacheTTL), privacy: .public)")
+        logger.notice(
+            "video_stream_cached video_id=\(videoID, privacy: .private) ttl_seconds=\(Int(Self.cacheTTL), privacy: .public)"
+        )
 
         return url
     }
@@ -108,7 +113,9 @@ public final class VideoStreamService: Sendable {
         )
 
         let elapsed = ContinuousClock.now - startTime
-        logger.notice("video_stream_yt_dlp_finished elapsed=\(String(describing: elapsed), privacy: .public) exit=\(process.terminationStatus, privacy: .public)")
+        logger.notice(
+            "video_stream_yt_dlp_finished elapsed=\(String(describing: elapsed), privacy: .public) exit=\(process.terminationStatus, privacy: .public)"
+        )
 
         let stdout = String(data: result.stdout, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let stderr = String(data: result.stderr, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -130,12 +137,14 @@ public final class VideoStreamService: Sendable {
             throw VideoStreamError.invalidStreamURL
         }
 
-        logger.notice("video_stream_extraction_succeeded video_id=\(videoID, privacy: .private) elapsed=\(String(describing: elapsed), privacy: .public)")
+        logger.notice(
+            "video_stream_extraction_succeeded video_id=\(videoID, privacy: .private) elapsed=\(String(describing: elapsed), privacy: .public)"
+        )
         return url
     }
 
     private static func sanitizedYtDlpMessage(_ raw: String) -> String {
-        String(TelemetryErrorClassifier.sanitize(raw).prefix(512))
+        String(DiagnosticErrorClassifier.sanitize(raw).prefix(512))
     }
 
     private func resolveYtDlpPath() throws -> String {

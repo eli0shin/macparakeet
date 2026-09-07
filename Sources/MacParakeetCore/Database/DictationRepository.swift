@@ -202,7 +202,8 @@ public final class DictationRepository: DictationRepositoryProtocol {
 
     public func fetchAll(limit: Int? = nil) throws -> [Dictation] {
         try dbQueue.read { db in
-            var request = Dictation
+            var request =
+                Dictation
                 .filter(Dictation.Columns.hidden == false)
                 .order(Dictation.Columns.createdAt.desc)
             if let limit {
@@ -218,7 +219,8 @@ public final class DictationRepository: DictationRepositoryProtocol {
             guard !trimmed.isEmpty else { return [] }
 
             // Escape LIKE wildcards so literal % and _ in user input are matched verbatim.
-            let escaped = trimmed
+            let escaped =
+                trimmed
                 .replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "%", with: "\\%")
                 .replacingOccurrences(of: "_", with: "\\_")
@@ -252,14 +254,16 @@ public final class DictationRepository: DictationRepositoryProtocol {
 
     public func clearMissingAudioPaths() throws {
         try dbQueue.write { db in
-            let dictations = try Dictation
+            let dictations =
+                try Dictation
                 .filter(Dictation.Columns.audioPath != nil)
                 .filter(Dictation.Columns.hidden == false)
                 .fetchAll(db)
 
             for var dictation in dictations {
                 guard let path = dictation.audioPath,
-                      !FileManager.default.fileExists(atPath: path) else { continue }
+                    !FileManager.default.fileExists(atPath: path)
+                else { continue }
                 dictation.audioPath = nil
                 try dictation.update(db)
             }
@@ -309,33 +313,39 @@ public final class DictationRepository: DictationRepositoryProtocol {
         // zeros and mask a broken invariant. See also `incrementLifetimeStats`,
         // which throws on the write path for the same reason.
         try dbQueue.write { db in
-            var lifetime = try Row.fetchOne(db, sql: """
-                SELECT totalCount, totalDurationMs, totalWords, longestDurationMs
-                FROM lifetime_dictation_stats WHERE id = 1
-                """)
-            if lifetime == nil {
-                try Self.recomputeLifetimeStats(db: db)
-                lifetime = try Row.fetchOne(db, sql: """
+            var lifetime = try Row.fetchOne(
+                db,
+                sql: """
                     SELECT totalCount, totalDurationMs, totalWords, longestDurationMs
                     FROM lifetime_dictation_stats WHERE id = 1
                     """)
+            if lifetime == nil {
+                try Self.recomputeLifetimeStats(db: db)
+                lifetime = try Row.fetchOne(
+                    db,
+                    sql: """
+                        SELECT totalCount, totalDurationMs, totalWords, longestDurationMs
+                        FROM lifetime_dictation_stats WHERE id = 1
+                        """)
             }
             let totalCount: Int = lifetime?["totalCount"] ?? 0
             let totalDuration: Int = lifetime?["totalDurationMs"] ?? 0
             let totalWords: Int = lifetime?["totalWords"] ?? 0
             let longestDuration: Int = lifetime?["longestDurationMs"] ?? 0
-            let averageDuration = totalCount > 0
+            let averageDuration =
+                totalCount > 0
                 ? Int((Double(totalDuration) / Double(totalCount)).rounded())
                 : 0
 
             // visibleCount reflects what's currently in the user's history.
-            let visibleCount: Int = try Int.fetchOne(
-                db,
-                sql: """
-                    SELECT COUNT(*) FROM dictations
-                    WHERE status = 'completed' AND hidden = 0
-                    """
-            ) ?? 0
+            let visibleCount: Int =
+                try Int.fetchOne(
+                    db,
+                    sql: """
+                        SELECT COUNT(*) FROM dictations
+                        WHERE status = 'completed' AND hidden = 0
+                        """
+                ) ?? 0
 
             // Weekly streak / this-week derived from current rows (intentionally
             // resets when the user clears history — it's "are you on a streak right
@@ -523,11 +533,13 @@ public final class DictationRepository: DictationRepositoryProtocol {
         // Wipe any prior rows so re-running this is idempotent.
         try db.execute(sql: "DELETE FROM daily_dictation_stats")
 
-        let rows = try Row.fetchAll(db, sql: """
-            SELECT createdAt, durationMs, wordCount
-            FROM dictations
-            WHERE status = 'completed'
-        """)
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+                    SELECT createdAt, durationMs, wordCount
+                    FROM dictations
+                    WHERE status = 'completed'
+                """)
 
         var buckets: [String: (count: Int, words: Int, durationMs: Int)] = [:]
         for row in rows {
@@ -592,12 +604,13 @@ public final class DictationRepository: DictationRepositoryProtocol {
             for offset in 0..<days {
                 guard let day = calendar.date(byAdding: .day, value: offset, to: start) else { continue }
                 let bucket = byKey[Self.dayKey(for: day, calendar: calendar)] ?? (0, 0, 0)
-                result.append(DailyDictationStat(
-                    day: day,
-                    count: bucket.count,
-                    words: bucket.words,
-                    durationMs: bucket.durationMs
-                ))
+                result.append(
+                    DailyDictationStat(
+                        day: day,
+                        count: bucket.count,
+                        words: bucket.words,
+                        durationMs: bucket.durationMs
+                    ))
             }
             return result
         }
@@ -640,17 +653,19 @@ public final class DictationRepository: DictationRepositoryProtocol {
         guard safeLimit > 0 else { return [] }
 
         return try dbQueue.read { db in
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT pastedToApp, COUNT(*) AS cnt, COALESCE(SUM(wordCount), 0) AS words
-                FROM dictations
-                WHERE status = 'completed'
-                  AND hidden = 0
-                  AND pastedToApp IS NOT NULL
-                  AND TRIM(pastedToApp) != ''
-                GROUP BY pastedToApp
-                ORDER BY cnt DESC, pastedToApp ASC
-                LIMIT ?
-            """, arguments: [safeLimit])
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                        SELECT pastedToApp, COUNT(*) AS cnt, COALESCE(SUM(wordCount), 0) AS words
+                        FROM dictations
+                        WHERE status = 'completed'
+                          AND hidden = 0
+                          AND pastedToApp IS NOT NULL
+                          AND TRIM(pastedToApp) != ''
+                        GROUP BY pastedToApp
+                        ORDER BY cnt DESC, pastedToApp ASC
+                        LIMIT ?
+                    """, arguments: [safeLimit])
             return rows.map { row in
                 let app: String = row["pastedToApp"] ?? ""
                 let cnt: Int = row["cnt"] ?? 0
@@ -717,7 +732,8 @@ public final class DictationRepository: DictationRepositoryProtocol {
         var run = 1
         for i in 1..<dates.count {
             if let nextDay = calendar.date(byAdding: .day, value: 1, to: dates[i - 1]),
-               calendar.isDate(nextDay, inSameDayAs: dates[i]) {
+                calendar.isDate(nextDay, inSameDayAs: dates[i])
+            {
                 run += 1
                 longest = max(longest, run)
             } else {

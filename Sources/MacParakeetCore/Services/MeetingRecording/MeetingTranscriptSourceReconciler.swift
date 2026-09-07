@@ -90,13 +90,15 @@ struct MeetingTranscriptSourceReconciler {
                 let windowEnd = microphoneToken.word.endMs + toleranceMs
 
                 while systemIndex < tokenWords.count,
-                      tokenWords[systemIndex].word.endMs < windowStart {
+                    tokenWords[systemIndex].word.endMs < windowStart
+                {
                     systemIndex += 1
                 }
 
                 var candidateIndex = systemIndex
                 while candidateIndex < tokenWords.count,
-                      tokenWords[candidateIndex].word.startMs <= windowEnd {
+                    tokenWords[candidateIndex].word.startMs <= windowEnd
+                {
                     if MeetingTranscriptSourceReconciler.tokensRoughlyMatch(
                         microphoneToken.token,
                         tokenWords[candidateIndex].token
@@ -127,12 +129,14 @@ struct MeetingTranscriptSourceReconciler {
                 let windowEnd = microphoneToken.word.endMs + toleranceMs
 
                 while systemIndex < tokenWords.count,
-                      tokenWords[systemIndex].word.endMs < windowStart {
+                    tokenWords[systemIndex].word.endMs < windowStart
+                {
                     systemIndex += 1
                 }
 
                 if systemIndex < tokenWords.count,
-                   tokenWords[systemIndex].word.startMs <= windowEnd {
+                    tokenWords[systemIndex].word.startMs <= windowEnd
+                {
                     count += 1
                 }
             }
@@ -215,11 +219,12 @@ struct MeetingTranscriptSourceReconciler {
 
         for (index, word) in words.enumerated().dropFirst() {
             if word.startMs - lastEndMs > runGapMs {
-                runs.append(WordRun(
-                    indexes: currentIndexes,
-                    words: currentWords,
-                    tokenWords: tokenizedMicrophoneWords(currentWords, indexes: currentIndexes)
-                ))
+                runs.append(
+                    WordRun(
+                        indexes: currentIndexes,
+                        words: currentWords,
+                        tokenWords: tokenizedMicrophoneWords(currentWords, indexes: currentIndexes)
+                    ))
                 currentIndexes = [index]
                 currentWords = [word]
             } else {
@@ -229,11 +234,12 @@ struct MeetingTranscriptSourceReconciler {
             lastEndMs = word.endMs
         }
 
-        runs.append(WordRun(
-            indexes: currentIndexes,
-            words: currentWords,
-            tokenWords: tokenizedMicrophoneWords(currentWords, indexes: currentIndexes)
-        ))
+        runs.append(
+            WordRun(
+                indexes: currentIndexes,
+                words: currentWords,
+                tokenWords: tokenizedMicrophoneWords(currentWords, indexes: currentIndexes)
+            ))
         return runs
     }
 
@@ -245,7 +251,8 @@ struct MeetingTranscriptSourceReconciler {
             return false
         }
 
-        let confidenceAllowsDrop = run.averageConfidence <= duplicateLowConfidenceThreshold
+        let confidenceAllowsDrop =
+            run.averageConfidence <= duplicateLowConfidenceThreshold
             || (run.tokens.count <= 2 && run.averageConfidence <= duplicateShortConfidenceThreshold)
         guard confidenceAllowsDrop else { return false }
 
@@ -327,9 +334,10 @@ struct MeetingTranscriptSourceReconciler {
         toleranceMs: Int
     ) -> Bool {
         guard let lhsStart = lhs.first?.startMs,
-              let lhsEnd = lhs.last?.endMs,
-              let rhsStart = rhs.first?.startMs,
-              let rhsEnd = rhs.last?.endMs else {
+            let lhsEnd = lhs.last?.endMs,
+            let rhsStart = rhs.first?.startMs,
+            let rhsEnd = rhs.last?.endMs
+        else {
             return false
         }
 

@@ -152,21 +152,21 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
     static func effectiveDisplayTitleExpression(tableAlias: String? = nil) -> String {
         let prefix = tableAlias.map { "\($0)." } ?? ""
         return """
-        COALESCE(
-            CASE
-                WHEN \(prefix)sourceType = 'meeting' THEN NULL
-                ELSE NULLIF(TRIM(\(prefix)titleOverride), '')
-            END,
-            CASE
-                WHEN \(prefix)sourceType = 'meeting' THEN COALESCE(
-                    NULLIF(TRIM(\(prefix)fileName), ''),
-                    \(prefix)fileName
-                )
-                WHEN \(prefix)sourceType = 'file' THEN \(prefix)fileName
-                ELSE COALESCE(NULLIF(TRIM(\(prefix)derivedTitle), ''), \(prefix)fileName)
-            END
-        )
-        """
+            COALESCE(
+                CASE
+                    WHEN \(prefix)sourceType = 'meeting' THEN NULL
+                    ELSE NULLIF(TRIM(\(prefix)titleOverride), '')
+                END,
+                CASE
+                    WHEN \(prefix)sourceType = 'meeting' THEN COALESCE(
+                        NULLIF(TRIM(\(prefix)fileName), ''),
+                        \(prefix)fileName
+                    )
+                    WHEN \(prefix)sourceType = 'file' THEN \(prefix)fileName
+                    ELSE COALESCE(NULLIF(TRIM(\(prefix)derivedTitle), ''), \(prefix)fileName)
+                END
+            )
+            """
     }
 
     public init(dbQueue: DatabaseQueue) {
@@ -514,7 +514,8 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
     ) throws -> Bool {
         try dbQueue.write { db in
             guard var transcription = try Transcription.fetchOne(db, key: id),
-                  transcription.status == expectedStatus else {
+                transcription.status == expectedStatus
+            else {
                 return false
             }
             transcription.status = status

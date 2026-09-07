@@ -16,4 +16,3 @@ public enum KeyValueStoreError: Error, LocalizedError {
         }
     }
 }
-

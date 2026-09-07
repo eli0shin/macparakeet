@@ -64,7 +64,8 @@ public struct MeetingEchoSuppressionConfiguration: Sendable, Equatable {
     public static func fromEnvironment(
         _ environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> MeetingEchoSuppressionConfiguration {
-        let mode = environment[modeEnvironmentKey]
+        let mode =
+            environment[modeEnvironmentKey]
             .flatMap(MeetingEchoSuppressionMode.init(environmentValue:)) ?? .automatic
         let libraryURL = environment[libraryPathEnvironmentKey]
             .flatMap { Self.fileURL(from: $0) }
@@ -75,13 +76,17 @@ public struct MeetingEchoSuppressionConfiguration: Sendable, Equatable {
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                 return trimmed.isEmpty ? nil : trimmed
             }
-        let sampleRate = environment[sampleRateEnvironmentKey]
+        let sampleRate =
+            environment[sampleRateEnvironmentKey]
             .flatMap(Self.integerValue(from:)) ?? defaultSampleRate
-        let frameSize = environment[frameSizeEnvironmentKey]
+        let frameSize =
+            environment[frameSizeEnvironmentKey]
             .flatMap(Self.integerValue(from:)) ?? defaultFrameSize
-        let referenceDelayMs = environment[referenceDelayMsEnvironmentKey]
+        let referenceDelayMs =
+            environment[referenceDelayMsEnvironmentKey]
             .flatMap(Self.integerValue(from:)) ?? defaultReferenceDelayMs
-        let adaptiveReferenceDelay = environment[adaptiveReferenceDelayEnvironmentKey]
+        let adaptiveReferenceDelay =
+            environment[adaptiveReferenceDelayEnvironmentKey]
             .flatMap(Self.boolValue(from:)) ?? defaultAdaptiveReferenceDelay
 
         return MeetingEchoSuppressionConfiguration(
@@ -166,11 +171,13 @@ enum MeetingEchoSuppressionFactory {
         case .off:
             return PassthroughMicConditioner()
         case .automatic:
-            guard let resolved = resolveDynamicAssets(
-                configuration: configuration,
-                bundle: bundle,
-                fileManager: fileManager
-            ) else {
+            guard
+                let resolved = resolveDynamicAssets(
+                    configuration: configuration,
+                    bundle: bundle,
+                    fileManager: fileManager
+                )
+            else {
                 return PassthroughMicConditioner()
             }
             return makeDynamicConditioner(
@@ -179,11 +186,13 @@ enum MeetingEchoSuppressionFactory {
                 fileManager: fileManager
             )
         case .dynamicLibrary:
-            guard let resolved = resolveDynamicAssets(
-                configuration: configuration,
-                bundle: bundle,
-                fileManager: fileManager
-            ) else {
+            guard
+                let resolved = resolveDynamicAssets(
+                    configuration: configuration,
+                    bundle: bundle,
+                    fileManager: fileManager
+                )
+            else {
                 return unavailableDynamicConditioner(reason: "assets_missing")
             }
             return makeDynamicConditioner(
@@ -244,8 +253,9 @@ enum MeetingEchoSuppressionFactory {
         fileManager: FileManager
     ) -> [URL?] {
         var candidates: [URL?] = [configuration.modelURL]
-        guard let modelDirectory = bundle.resourceURL?
-            .appendingPathComponent(defaultModelDirectoryName)
+        guard
+            let modelDirectory = bundle.resourceURL?
+                .appendingPathComponent(defaultModelDirectoryName)
         else {
             return candidates
         }
@@ -253,14 +263,15 @@ enum MeetingEchoSuppressionFactory {
         let knownNames = Set(bundledModelNames.map { $0.lowercased() })
         candidates += bundledModelNames.map { modelDirectory.appendingPathComponent($0) }
 
-        let discovered = (try? fileManager.contentsOfDirectory(
-            at: modelDirectory,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ))?
+        let discovered =
+            (try? fileManager.contentsOfDirectory(
+                at: modelDirectory,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            ))?
             .filter { url in
                 guard url.pathExtension.lowercased() == "gguf",
-                      !knownNames.contains(url.lastPathComponent.lowercased())
+                    !knownNames.contains(url.lastPathComponent.lowercased())
                 else {
                     return false
                 }
@@ -303,7 +314,7 @@ enum MeetingEchoSuppressionFactory {
             }
 
             guard fileManager.isReadableFile(atPath: resolved.libraryURL.path),
-                  fileManager.isReadableFile(atPath: resolved.modelURL.path)
+                fileManager.isReadableFile(atPath: resolved.modelURL.path)
             else {
                 return unavailableDynamicConditioner(reason: "assets_not_readable")
             }
@@ -405,23 +416,27 @@ private enum DynamicLibraryMeetingEchoProcessorError: Error, CustomStringConvert
         case .createFailed(let message):
             return "create failed: \(message)"
         case let .invalidFrameSize(expected, microphone, reference, output):
-            return "invalid frame size: expected=\(expected) microphone=\(microphone) reference=\(reference) output=\(output)"
+            return
+                "invalid frame size: expected=\(expected) microphone=\(microphone) reference=\(reference) output=\(output)"
         case let .processingFailed(code, message):
             return "processing failed: code=\(code) message=\(message)"
         }
     }
 }
 
-final class DynamicLibraryMeetingEchoProcessor: MeetingEchoSuppressing, MeetingEchoModelVersionProviding, @unchecked Sendable {
+final class DynamicLibraryMeetingEchoProcessor: MeetingEchoSuppressing, MeetingEchoModelVersionProviding,
+    @unchecked Sendable
+{
     private typealias ContextHandle = UInt
     private typealias NewFunction = @convention(c) (UnsafePointer<CChar>) -> ContextHandle
-    private typealias ProcessFunction = @convention(c) (
-        ContextHandle,
-        UnsafePointer<Float>,
-        UnsafePointer<Float>,
-        Int32,
-        UnsafeMutablePointer<Float>
-    ) -> Int32
+    private typealias ProcessFunction =
+        @convention(c) (
+            ContextHandle,
+            UnsafePointer<Float>,
+            UnsafePointer<Float>,
+            Int32,
+            UnsafeMutablePointer<Float>
+        ) -> Int32
     private typealias ResetFunction = @convention(c) (ContextHandle) -> Void
     private typealias FreeFunction = @convention(c) (ContextHandle) -> Void
     private typealias IntegerGetterFunction = @convention(c) (ContextHandle) -> Int32
@@ -504,8 +519,8 @@ final class DynamicLibraryMeetingEchoProcessor: MeetingEchoSuppressing, MeetingE
 
     func processFrame(microphone: [Float], reference: [Float], output: inout [Float]) throws {
         guard microphone.count == frameSize,
-              reference.count == frameSize,
-              output.count == frameSize
+            reference.count == frameSize,
+            output.count == frameSize
         else {
             throw DynamicLibraryMeetingEchoProcessorError.invalidFrameSize(
                 expected: frameSize,

@@ -43,7 +43,7 @@ public enum DictationFlowFinishOutcome: Equatable, Sendable {
 
 // MARK: - Events
 
-/// Cancel reason for telemetry and hotkey state machine sync.
+/// Cancel reason for hotkey state machine synchronization.
 public enum DictationFlowCancelReason: Equatable, Sendable {
     case escape
     case ui
@@ -112,7 +112,7 @@ public enum DictationFlowEffect: Equatable, Sendable {
     case stopRecordingAndTranscribe(mode: FnKeyStateMachine.RecordingMode)
     case cancelRecording(reason: DictationFlowCancelReason)
     case discardRecording
-    /// Confirm a pending cancel. Pass a reason only when cancel telemetry has
+    /// Confirm a pending cancel. Pass a reason only when cancellation has
     /// not already been recorded by a preceding `cancelRecording` effect.
     case confirmCancel(reason: DictationFlowCancelReason?)
     case undoCancelAndTranscribe
@@ -209,7 +209,9 @@ public struct DictationFlowStateMachine: Sendable, Equatable {
         case (.checkingEntitlements, .entitlementsDenied(let gen)):
             guard gen == generation else { return [] }
             state = .idle
-            return [.hideOverlay, .resetHotkeyStateMachine, .updateMenuBar(.idle), .presentEntitlementsAlert, .showIdlePill]
+            return [
+                .hideOverlay, .resetHotkeyStateMachine, .updateMenuBar(.idle), .presentEntitlementsAlert, .showIdlePill,
+            ]
 
         case (.checkingEntitlements, .cancelRequested):
             state = .idle
@@ -231,7 +233,10 @@ public struct DictationFlowStateMachine: Sendable, Equatable {
 
         case (.checkingEntitlements, .dismissRequested):
             state = .idle
-            return [.cancelAllTimers, .cancelRecordingTask, .hideOverlay, .resetHotkeyStateMachine, .updateMenuBar(.idle), .showIdlePill]
+            return [
+                .cancelAllTimers, .cancelRecordingTask, .hideOverlay, .resetHotkeyStateMachine, .updateMenuBar(.idle),
+                .showIdlePill,
+            ]
 
         // MARK: Starting service
 
@@ -243,7 +248,10 @@ public struct DictationFlowStateMachine: Sendable, Equatable {
         case (.startingService, .startFailed(let gen, let message)):
             guard gen == generation else { return [] }
             state = .finishing(outcome: .error(message))
-            return [.showError(message), .resetHotkeyStateMachine, .updateMenuBar(.idle), .startDisplayDismissTimer(seconds: 5)]
+            return [
+                .showError(message), .resetHotkeyStateMachine, .updateMenuBar(.idle),
+                .startDisplayDismissTimer(seconds: 5),
+            ]
 
         case (.startingService(let mode), .stopRequested):
             state = .pendingStop(mode: mode)
@@ -353,12 +361,18 @@ public struct DictationFlowStateMachine: Sendable, Equatable {
         case (.pendingStop(let mode), .recordingStarted(let gen)):
             guard gen == generation else { return [] }
             state = .processing
-            return [.cancelRecordingTask, .stopRecordingAndTranscribe(mode: mode), .showProcessingState, .updateMenuBar(.processing)]
+            return [
+                .cancelRecordingTask, .stopRecordingAndTranscribe(mode: mode), .showProcessingState,
+                .updateMenuBar(.processing),
+            ]
 
         case (.pendingStop, .startFailed(let gen, let message)):
             guard gen == generation else { return [] }
             state = .finishing(outcome: .error(message))
-            return [.showError(message), .resetHotkeyStateMachine, .updateMenuBar(.idle), .startDisplayDismissTimer(seconds: 5)]
+            return [
+                .showError(message), .resetHotkeyStateMachine, .updateMenuBar(.idle),
+                .startDisplayDismissTimer(seconds: 5),
+            ]
 
         case (.pendingStop, .cancelRequested(let reason)):
             state = .idle
@@ -389,7 +403,10 @@ public struct DictationFlowStateMachine: Sendable, Equatable {
         case (.processing, .transcriptionFailedNoSpeech(let gen)):
             guard gen == generation else { return [] }
             state = .finishing(outcome: .noSpeech)
-            return [.showNoSpeech, .updateMenuBar(.idle), .startDisplayDismissTimer(seconds: DictationFlowTiming.noSpeechDismissSeconds)]
+            return [
+                .showNoSpeech, .updateMenuBar(.idle),
+                .startDisplayDismissTimer(seconds: DictationFlowTiming.noSpeechDismissSeconds),
+            ]
 
         case (.processing, .transcriptionFailed(let gen, let message)):
             guard gen == generation else { return [] }

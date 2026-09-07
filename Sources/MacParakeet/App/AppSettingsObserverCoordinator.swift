@@ -29,7 +29,10 @@ final class AppSettingsObserverCoordinator {
             (.macParakeetPushToTalkHotkeyTriggerDidChange, { $0.onPushToTalkHotkeyTriggerChanged() }),
             (.macParakeetMeetingHotkeyTriggerDidChange, { $0.onMeetingHotkeyTriggerChanged() }),
             (.macParakeetFileTranscriptionHotkeyTriggerDidChange, { $0.onFileTranscriptionHotkeyTriggerChanged() }),
-            (.macParakeetYouTubeTranscriptionHotkeyTriggerDidChange, { $0.onYouTubeTranscriptionHotkeyTriggerChanged() }),
+            (
+                .macParakeetYouTubeTranscriptionHotkeyTriggerDidChange,
+                { $0.onYouTubeTranscriptionHotkeyTriggerChanged() }
+            ),
             (.macParakeetAppearanceModeDidChange, { $0.onAppearanceModeChanged() }),
             (.macParakeetMenuBarOnlyModeDidChange, { $0.onMenuBarOnlyModeChanged() }),
             (.macParakeetShowIdlePillDidChange, { $0.onShowIdlePillChanged() }),
@@ -76,18 +79,20 @@ final class AppSettingsObserverCoordinator {
     func startObserving() {
         stopObserving()
 
-        observerTokens.append(notificationCenter.addObserver(
-            forName: .macParakeetOpenOnboarding, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.onOpenOnboarding() }
-        })
+        observerTokens.append(
+            notificationCenter.addObserver(
+                forName: .macParakeetOpenOnboarding, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.onOpenOnboarding() }
+            })
 
-        observerTokens.append(notificationCenter.addObserver(
-            forName: .macParakeetOpenSettings, object: nil, queue: .main
-        ) { [weak self] notification in
-            let tab = Self.settingsTab(from: notification)
-            Task { @MainActor in self?.onOpenSettings(tab) }
-        })
+        observerTokens.append(
+            notificationCenter.addObserver(
+                forName: .macParakeetOpenSettings, object: nil, queue: .main
+            ) { [weak self] notification in
+                let tab = Self.settingsTab(from: notification)
+                Task { @MainActor in self?.onOpenSettings(tab) }
+            })
 
         for (name, invoke) in Self.plainChannels {
             let token = notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in

@@ -58,10 +58,6 @@ public actor MockAudioProcessor: AudioProcessorProtocol {
         _isRecording
     }
 
-    public var recordingDeviceInfo: RecordingDeviceInfo? {
-        nil
-    }
-
     public var lastCaptureHealth: AudioCaptureHealth? {
         captureHealth
     }

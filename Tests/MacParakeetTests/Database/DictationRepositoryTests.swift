@@ -189,10 +189,11 @@ final class DictationRepositoryTests: XCTestCase {
 
     func testFetchAllWithLimit() throws {
         for i in 0..<5 {
-            try repo.save(Dictation(
-                durationMs: i * 1000,
-                rawTranscript: "Dictation \(i)"
-            ))
+            try repo.save(
+                Dictation(
+                    durationMs: i * 1000,
+                    rawTranscript: "Dictation \(i)"
+                ))
         }
 
         let limited = try repo.fetchAll(limit: 3)
@@ -325,7 +326,8 @@ final class DictationRepositoryTests: XCTestCase {
         let afterUndo = try XCTUnwrap(repo.fetch(id: dictation.id))
         XCTAssertEqual(afterUndo.displayRawTranscript, true)
         XCTAssertEqual(afterUndo.displayText, "um hello world", "Once raw is forced, displayText returns rawTranscript")
-        XCTAssertEqual(afterUndo.cleanTranscript, "Hello, world.", "Cleaned text is preserved so the undo is reversible")
+        XCTAssertEqual(
+            afterUndo.cleanTranscript, "Hello, world.", "Cleaned text is preserved so the undo is reversible")
         XCTAssertEqual(afterUndo.hasAIEdit, true, "hasAIEdit stays true so the affordance keeps reading 'Re-apply'")
 
         let noOpUpdated = try repo.setDisplayRawTranscript(id: dictation.id, value: true)

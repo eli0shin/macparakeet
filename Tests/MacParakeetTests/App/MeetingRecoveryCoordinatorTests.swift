@@ -5,20 +5,6 @@ import MacParakeetCore
 
 @MainActor
 final class MeetingRecoveryCoordinatorTests: XCTestCase {
-    func testTelemetryPhasesAggregateByLockStateOrder() {
-        let recoveries = [
-            makeLock(state: .awaitingTranscription),
-            makeLock(state: .recording),
-            makeLock(state: .recording),
-        ]
-
-        XCTAssertEqual(
-            TelemetryMeetingRecoveryPhases.aggregate(
-                lockStates: MeetingRecoveryCoordinator.telemetryPhases(for: recoveries)
-            ),
-            "recording:2,awaitingTranscription:1"
-        )
-    }
 
     private func makeLock(state: MeetingRecordingLockState) -> MeetingRecordingLockFile {
         MeetingRecordingLockFile(

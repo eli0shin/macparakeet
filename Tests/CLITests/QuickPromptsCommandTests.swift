@@ -46,7 +46,8 @@ final class QuickPromptsCommandTests: XCTestCase {
             guard let e = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError, got \(error)")
             }
-            if case .notFound = e {} else {
+            if case .notFound = e {
+            } else {
                 XCTFail("Expected .notFound, got \(e)")
             }
         }
@@ -64,7 +65,8 @@ final class QuickPromptsCommandTests: XCTestCase {
             guard let e = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError, got \(error)")
             }
-            if case .ambiguous = e {} else {
+            if case .ambiguous = e {
+            } else {
                 XCTFail("Expected .ambiguous, got \(e)")
             }
         }
@@ -78,7 +80,8 @@ final class QuickPromptsCommandTests: XCTestCase {
             guard let e = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError, got \(error)")
             }
-            if case .emptyID = e {} else {
+            if case .emptyID = e {
+            } else {
                 XCTFail("Expected .emptyID, got \(e)")
             }
         }
@@ -124,7 +127,7 @@ final class QuickPromptsCommandTests: XCTestCase {
     func testAddRejectsPromptAndFromFileTogether() {
         XCTAssertThrowsError(
             try QuickPromptsCommand.AddSubcommand.parse([
-                "--label", "X", "--prompt", "body", "--from-file", "/tmp/x.txt"
+                "--label", "X", "--prompt", "body", "--from-file", "/tmp/x.txt",
             ])
         )
     }
@@ -132,7 +135,7 @@ final class QuickPromptsCommandTests: XCTestCase {
     func testAddAcceptsGroupOnAnyPrompt() {
         XCTAssertNoThrow(
             try QuickPromptsCommand.AddSubcommand.parse([
-                "--label", "X", "--prompt", "y", "--group", "REFINE"
+                "--label", "X", "--prompt", "y", "--group", "REFINE",
             ])
         )
     }
@@ -140,7 +143,7 @@ final class QuickPromptsCommandTests: XCTestCase {
     func testAddRejectsEmptyLabel() {
         XCTAssertThrowsError(
             try QuickPromptsCommand.AddSubcommand.parse([
-                "--label", "   ", "--prompt", "y"
+                "--label", "   ", "--prompt", "y",
             ])
         )
     }
@@ -309,7 +312,7 @@ final class QuickPromptsCommandTests: XCTestCase {
         // quick-prompts has no --kind flag; only --id scopes restore-defaults.
         XCTAssertThrowsError(
             try QuickPromptsCommand.RestoreDefaultsSubcommand.parse([
-                "--kind", "starter"
+                "--kind", "starter",
             ])
         )
     }

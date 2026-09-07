@@ -254,7 +254,9 @@ final class MeetingNotesViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.isSlashMenuActive)
 
         viewModel.notesBinding.wrappedValue = "/act "
-        XCTAssertFalse(viewModel.isSlashMenuActive, "Space after the slash token closes the menu — typed-out commit, not a menu select")
+        XCTAssertFalse(
+            viewModel.isSlashMenuActive,
+            "Space after the slash token closes the menu — typed-out commit, not a menu select")
     }
 
     func testMoveSelectionClampsToBounds() {
@@ -266,7 +268,9 @@ final class MeetingNotesViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.slashSelection, 0, "Selection clamps at top boundary")
 
         viewModel.moveSlashSelection(by: 100)
-        XCTAssertEqual(viewModel.slashSelection, MeetingNotesViewModel.allCommands.count - 1, "Selection clamps at bottom boundary")
+        XCTAssertEqual(
+            viewModel.slashSelection, MeetingNotesViewModel.allCommands.count - 1, "Selection clamps at bottom boundary"
+        )
     }
 
     func testAcceptCommandReplacesTokenWithLiteralInsertion() {
@@ -396,8 +400,11 @@ final class MeetingNotesViewModelTests: XCTestCase {
 
         let first = await firstTarget.snapshots
         let second = await secondTarget.snapshots
-        XCTAssertTrue(first.isEmpty, "First persist target must not receive a write after rebind cancels its scheduled debounce")
-        XCTAssertTrue(second.isEmpty, "Second target should not receive the cancelled write either — only fresh edits should reach it")
+        XCTAssertTrue(
+            first.isEmpty, "First persist target must not receive a write after rebind cancels its scheduled debounce")
+        XCTAssertTrue(
+            second.isEmpty,
+            "Second target should not receive the cancelled write either — only fresh edits should reach it")
     }
 }
 

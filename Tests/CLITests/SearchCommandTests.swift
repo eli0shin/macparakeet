@@ -169,7 +169,8 @@ final class SearchCommandTests: XCTestCase {
         for explicitValue in explicitValues {
             let explicit = try parseSearchDate(explicitValue, boundary: .since, timeZone: timeZone)
             let expectedExplicit = try XCTUnwrap(ISO8601DateFormatter().date(from: explicitValue))
-            XCTAssertEqual(explicit, expectedExplicit, "explicit timestamp zones must not be converted to local midnight")
+            XCTAssertEqual(
+                explicit, expectedExplicit, "explicit timestamp zones must not be converted to local midnight")
         }
     }
 

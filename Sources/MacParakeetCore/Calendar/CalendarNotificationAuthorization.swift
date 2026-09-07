@@ -41,7 +41,8 @@ public enum CalendarNotificationAuthorization {
                 logger.info("Notification authorization request \(granted ? "granted" : "denied", privacy: .public)")
                 return granted
             } catch {
-                logger.error("Notification authorization request failed: \(error.localizedDescription, privacy: .public)")
+                logger.error(
+                    "Notification authorization request failed: \(error.localizedDescription, privacy: .public)")
                 return false
             }
         }

@@ -48,7 +48,9 @@ final class MediaPlatformTests: XCTestCase {
     }
 
     func testRecognizesApplePodcasts() {
-        XCTAssertEqual(MediaPlatform.recognize("https://podcasts.apple.com/us/podcast/show/id1234567?i=1000654321"), .applePodcasts)
+        XCTAssertEqual(
+            MediaPlatform.recognize("https://podcasts.apple.com/us/podcast/show/id1234567?i=1000654321"), .applePodcasts
+        )
         XCTAssertEqual(MediaPlatform.recognize("https://podcast.apple.com/us/podcast/show/id1234567"), .applePodcasts)
     }
 
@@ -183,19 +185,20 @@ final class MediaPlatformTests: XCTestCase {
     /// explicit scheme), starting a transcription that then errored.
     func testGateAcceptedURLsSurviveDownloaderGateAfterNormalization() {
         let inputs = [
-            "vimeo.com/76979871",                       // scheme-less recognized
+            "vimeo.com/76979871",  // scheme-less recognized
             "x.com/jack/status/20",
             "tiktok.com/@a/video/123",
             "instagram.com/reel/Cs0bC4iLxkr/",
-            "https://vimeo.com/76979871",               // already schemed
-            "https://example.com/talk.mp4",             // unrecognized but downloadable
+            "https://vimeo.com/76979871",  // already schemed
+            "https://example.com/talk.mp4",  // unrecognized but downloadable
         ]
         for input in inputs {
             XCTAssertTrue(MediaPlatform.isTranscribable(input), "GUI gate should accept \(input)")
             let normalized = MediaPlatform.normalizedURLString(input)
             // The downloader accepts a URL when it is a YouTube URL or a generic
             // http(s) media URL; normalization makes scheme-less hosts qualify.
-            let downloaderAccepts = YouTubeURLValidator.isYouTubeURL(normalized)
+            let downloaderAccepts =
+                YouTubeURLValidator.isYouTubeURL(normalized)
                 || DownloadableMediaURLValidator.isDownloadableMediaURL(normalized)
             XCTAssertTrue(downloaderAccepts, "downloader should accept normalized \(normalized)")
         }

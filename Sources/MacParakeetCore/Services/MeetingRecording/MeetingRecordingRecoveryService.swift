@@ -91,7 +91,8 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
         audioConverter: AudioFileConverting = AudioFileConverter(),
         fileManager: FileManager = .default,
         micConditionerFactory: @escaping @Sendable () -> any MicConditioning,
-        recordingDurationProvider: @escaping @Sendable ([TimeInterval], Date) -> TimeInterval = { sourceDurations, startedAt in
+        recordingDurationProvider: @escaping @Sendable ([TimeInterval], Date) -> TimeInterval = {
+            sourceDurations, startedAt in
             sourceDurations.max() ?? max(0, Date().timeIntervalSince(startedAt))
         }
     ) {
@@ -239,7 +240,9 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
                     )
                 )
             } catch {
-                logger.error("meeting_recovery_source_skipped session=\(lock.sessionId.uuidString, privacy: .public) source=\(String(describing: source), privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                logger.error(
+                    "meeting_recovery_source_skipped session=\(lock.sessionId.uuidString, privacy: .public) source=\(String(describing: source), privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                )
             }
         }
 
@@ -303,7 +306,9 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
                 )
             }
         } catch {
-            logger.error("meeting_recovery_playback_failed session=\(lock.sessionId.uuidString, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            logger.error(
+                "meeting_recovery_playback_failed session=\(lock.sessionId.uuidString, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
             throw MeetingRecordingRecoveryError.mixFailed(error.localizedDescription)
         }
 
@@ -383,7 +388,9 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
             shouldRestoreOwnership = false
             return completed
         } catch {
-            logger.error("meeting_recovery_transcription_failed session=\(lock.sessionId.uuidString, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            logger.error(
+                "meeting_recovery_transcription_failed session=\(lock.sessionId.uuidString, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
             throw error
         }
     }
@@ -397,7 +404,9 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
                     transcriptionID: completed.id,
                     sessionID: lock.sessionId
                 )
-                logger.info("meeting_recovery_discard_cleaned_completed_session session=\(lock.sessionId.uuidString, privacy: .public)")
+                logger.info(
+                    "meeting_recovery_discard_cleaned_completed_session session=\(lock.sessionId.uuidString, privacy: .public)"
+                )
                 return
             }
             try fileManager.removeItem(at: folderURL)
@@ -417,9 +426,11 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
     ) -> MeetingCleanedMicrophoneReadiness {
         let outputURL = folderURL.appendingPathComponent(
             MeetingCleanedMicRenderer.cleanedMicrophoneFileName)
-        guard MeetingCleanedMicrophoneReadinessPolicy.production.shouldAttemptRender(
-            for: recordingDuration
-        ) else {
+        guard
+            MeetingCleanedMicrophoneReadinessPolicy.production.shouldAttemptRender(
+                for: recordingDuration
+            )
+        else {
             return MeetingCleanedMicrophoneRenderScheduler.skipPredictedRenderTimeout(
                 outputURL: outputURL,
                 sessionID: sessionID,
@@ -452,8 +463,9 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
                 (recoveredSource.duration * recoveredSource.sampleRate).rounded())
             let writtenDuration: TimeInterval
             if let existingTrack,
-               existingTrack.sampleRate.isFinite,
-               existingTrack.sampleRate > 0 {
+                existingTrack.sampleRate.isFinite,
+                existingTrack.sampleRate > 0
+            {
                 writtenDuration = min(
                     recoveredSource.duration,
                     Double(max(0, existingTrack.writtenFrameCount)) / existingTrack.sampleRate
@@ -503,7 +515,9 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
                 fileManager: MeetingNotesFile.SendableFileManager(fileManager)
             )
         } catch {
-            logger.warning("meeting_notes_file_write_failed session=\(lock.sessionId.uuidString, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            logger.warning(
+                "meeting_notes_file_write_failed session=\(lock.sessionId.uuidString, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -581,7 +595,8 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
                 transcriptionID: transcription.id,
                 sessionID: lock.sessionId
             )
-            logger.info("meeting_recovery_cleaned_completed_session session=\(lock.sessionId.uuidString, privacy: .public)")
+            logger.info(
+                "meeting_recovery_cleaned_completed_session session=\(lock.sessionId.uuidString, privacy: .public)")
             return transcription
         }
         return try await completeRecovery(transcription, folderURL: folderURL, lock: lock)
@@ -622,10 +637,12 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
             .appendingPathComponent("\(url.deletingPathExtension().lastPathComponent)-repaired.m4a")
         try? fileManager.removeItem(at: repairedURL)
 
-        guard let exportSession = AVAssetExportSession(
-            asset: AVURLAsset(url: url),
-            presetName: AVAssetExportPresetAppleM4A
-        ) else {
+        guard
+            let exportSession = AVAssetExportSession(
+                asset: AVURLAsset(url: url),
+                presetName: AVAssetExportPresetAppleM4A
+            )
+        else {
             throw MeetingRecordingRecoveryError.audioRepairFailed("Unable to create export session.")
         }
         exportSession.outputURL = repairedURL
@@ -636,8 +653,8 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
             throw MeetingRecordingRecoveryError.audioRepairFailed(error.localizedDescription)
         }
         guard exportSession.status == .completed,
-              let info = try? await loadAudioInfo(repairedURL),
-              info.duration > 0
+            let info = try? await loadAudioInfo(repairedURL),
+            info.duration > 0
         else {
             throw MeetingRecordingRecoveryError.audioRepairFailed("Export did not produce playable audio.")
         }

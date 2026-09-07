@@ -72,7 +72,8 @@ public enum SpeechEnginePreference: String, CaseIterable, Codable, Sendable {
 
     public static func current(defaults: UserDefaults = .standard) -> SpeechEnginePreference {
         guard let rawValue = defaults.string(forKey: defaultsKey),
-              let preference = SpeechEnginePreference(rawValue: rawValue) else {
+            let preference = SpeechEnginePreference(rawValue: rawValue)
+        else {
             return .parakeet
         }
         return preference
@@ -189,7 +190,8 @@ public enum SpeechEnginePreference: String, CaseIterable, Codable, Sendable {
         guard let language else { return nil }
         let trimmed = language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty, trimmed != "auto" else { return nil }
-        let primary = trimmed.replacingOccurrences(of: "_", with: "-")
+        let primary =
+            trimmed.replacingOccurrences(of: "_", with: "-")
             .split(separator: "-").first.map(String.init) ?? trimmed
         guard primary.allSatisfy(\.isLetter) else { return nil }
         // `supportedLanguages` (from `CohereAsrConfig.Language`) is the sole
@@ -232,7 +234,8 @@ public enum SpeechEnginePreference: String, CaseIterable, Codable, Sendable {
     /// unsupported model id.
     public static func parakeetModelVariant(defaults: UserDefaults = .standard) -> ParakeetModelVariant {
         guard let raw = defaults.string(forKey: parakeetModelVariantKey),
-              let variant = ParakeetModelVariant(rawValue: raw) else {
+            let variant = ParakeetModelVariant(rawValue: raw)
+        else {
             return defaultParakeetModelVariant
         }
         return variant
@@ -247,7 +250,8 @@ public enum SpeechEnginePreference: String, CaseIterable, Codable, Sendable {
     /// an unsupported model id.
     public static func nemotronModelVariant(defaults: UserDefaults = .standard) -> NemotronModelVariant {
         guard let raw = defaults.string(forKey: nemotronModelVariantKey),
-              let variant = NemotronModelVariant(rawValue: raw) else {
+            let variant = NemotronModelVariant(rawValue: raw)
+        else {
             return defaultNemotronModelVariant
         }
         return variant
@@ -301,7 +305,8 @@ public enum SpeechEnginePreference: String, CaseIterable, Codable, Sendable {
 
     public static func normalizeKnownLanguage(_ language: String?) -> String? {
         guard let normalized = normalizeLanguage(language),
-              WhisperLanguageCatalog.language(forCode: normalized) != nil else {
+            WhisperLanguageCatalog.language(forCode: normalized) != nil
+        else {
             return nil
         }
         return normalized
@@ -313,16 +318,18 @@ public enum SpeechEnginePreference: String, CaseIterable, Codable, Sendable {
         guard !trimmed.isEmpty, trimmed.lowercased() != "auto" else { return nil }
         let parts = trimmed.replacingOccurrences(of: "_", with: "-").split(separator: "-").map(String.init)
         guard let primary = parts.first,
-              (2...3).contains(primary.count),
-              primary.allSatisfy(\.isLetter) else {
+            (2...3).contains(primary.count),
+            primary.allSatisfy(\.isLetter)
+        else {
             return nil
         }
 
         var canonicalParts = [primary.lowercased()]
         var index = 1
         if parts.indices.contains(index),
-           parts[index].count == 4,
-           parts[index].allSatisfy(\.isLetter) {
+            parts[index].count == 4,
+            parts[index].allSatisfy(\.isLetter)
+        {
             let script = parts[index].lowercased()
             canonicalParts.append(script.prefix(1).uppercased() + String(script.dropFirst()))
             index += 1
@@ -379,7 +386,7 @@ public enum SpeechEnginePreference: String, CaseIterable, Codable, Sendable {
             ("medium", "Medium"),
             ("small", "Small"),
             ("base", "Base"),
-            ("tiny", "Tiny")
+            ("tiny", "Tiny"),
         ]
         let size = sizeOrder.first { variantPrefixMatches(lowered, token: $0.token) }?.label
 
@@ -400,7 +407,8 @@ public enum SpeechEnginePreference: String, CaseIterable, Codable, Sendable {
         if !token.contains("-v"), separator == "-" {
             let suffix = remainder.dropFirst()
             if suffix.first == "v",
-               suffix.dropFirst().first?.isNumber == true {
+                suffix.dropFirst().first?.isNumber == true
+            {
                 return false
             }
         }
@@ -447,7 +455,8 @@ public enum WhisperModelVariant: String, CaseIterable, Codable, Sendable {
         guard !trimmed.isEmpty else { return nil }
 
         let lowered = trimmed.lowercased()
-        let withoutPrefix = lowered.hasPrefix("whisper-")
+        let withoutPrefix =
+            lowered.hasPrefix("whisper-")
             ? String(lowered.dropFirst("whisper-".count))
             : lowered
         let canonical = SpeechEnginePreference.canonicalizeTurboSuffix(withoutPrefix)
@@ -614,18 +623,19 @@ public struct SpeechEngineSelection: Codable, Equatable, Sendable {
 
     public init(engine: SpeechEnginePreference, language: String? = nil) {
         self.engine = engine
-        self.language = switch engine {
-        case .parakeet:
-            nil
-        case .nemotron:
-            SpeechEnginePreference.normalizeNemotronLanguage(language)
-        case .whisper:
-            SpeechEnginePreference.normalizeLanguage(language)
-        case .cohere:
-            // Cohere uses simple language subtags ("en", "fr", …); the engine
-            // maps the primary subtag to a supported language (English default).
-            SpeechEnginePreference.normalizeCohereLanguage(language)
-        }
+        self.language =
+            switch engine {
+            case .parakeet:
+                nil
+            case .nemotron:
+                SpeechEnginePreference.normalizeNemotronLanguage(language)
+            case .whisper:
+                SpeechEnginePreference.normalizeLanguage(language)
+            case .cohere:
+                // Cohere uses simple language subtags ("en", "fr", …); the engine
+                // maps the primary subtag to a supported language (English default).
+                SpeechEnginePreference.normalizeCohereLanguage(language)
+            }
     }
 
     public static func current(defaults: UserDefaults = .standard) -> SpeechEngineSelection {
@@ -653,16 +663,17 @@ public struct SpeechEngineSelection: Codable, Equatable, Sendable {
         for engine: SpeechEnginePreference,
         defaults: UserDefaults
     ) -> SpeechEngineSelection {
-        let language: String? = switch engine {
-        case .parakeet:
-            nil
-        case .nemotron:
-            SpeechEnginePreference.nemotronDefaultLanguage(defaults: defaults)
-        case .whisper:
-            SpeechEnginePreference.whisperDefaultLanguage(defaults: defaults)
-        case .cohere:
-            SpeechEnginePreference.cohereDefaultLanguage(defaults: defaults)
-        }
+        let language: String? =
+            switch engine {
+            case .parakeet:
+                nil
+            case .nemotron:
+                SpeechEnginePreference.nemotronDefaultLanguage(defaults: defaults)
+            case .whisper:
+                SpeechEnginePreference.whisperDefaultLanguage(defaults: defaults)
+            case .cohere:
+                SpeechEnginePreference.cohereDefaultLanguage(defaults: defaults)
+            }
         return SpeechEngineSelection(engine: engine, language: language)
     }
 }

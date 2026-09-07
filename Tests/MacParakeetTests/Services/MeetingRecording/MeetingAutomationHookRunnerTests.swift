@@ -40,9 +40,10 @@ final class MeetingAutomationHookRunnerTests: XCTestCase {
             .runCompletedMeetingHook(transcription: transcription, artifact: artifact)
 
         XCTAssertEqual(result.status, .skipped)
-        XCTAssertFalse(FileManager.default.fileExists(
-            atPath: folderURL.appendingPathComponent(MeetingAutomationHookRunner.resultFileName).path
-        ))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: folderURL.appendingPathComponent(MeetingAutomationHookRunner.resultFileName).path
+            ))
     }
 
     func testEnabledHookReceivesJSONEventAndWritesResult() async throws {
@@ -108,9 +109,10 @@ final class MeetingAutomationHookRunnerTests: XCTestCase {
 
         XCTAssertEqual(result.status, .failed)
         XCTAssertTrue(result.error?.contains("not executable") == true)
-        XCTAssertTrue(FileManager.default.fileExists(
-            atPath: folderURL.appendingPathComponent(MeetingAutomationHookRunner.resultFileName).path
-        ))
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: folderURL.appendingPathComponent(MeetingAutomationHookRunner.resultFileName).path
+            ))
     }
 
     private func makeMeeting() -> Transcription {

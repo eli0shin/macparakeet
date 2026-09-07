@@ -76,9 +76,10 @@ final class DatabaseManagerTests: XCTestCase {
         try manager.dbQueue.read { db in
             XCTAssertTrue(try db.tableExists("segments"))
             XCTAssertTrue(try db.tableExists("segments_fts"))
-            XCTAssertTrue(try db.indexes(on: "segments").contains {
-                $0.name == "idx_segments_transcription"
-            })
+            XCTAssertTrue(
+                try db.indexes(on: "segments").contains {
+                    $0.name == "idx_segments_transcription"
+                })
             let triggerNames = try String.fetchAll(
                 db,
                 sql: "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'segments'"
@@ -396,7 +397,8 @@ final class DatabaseManagerTests: XCTestCase {
             XCTAssertTrue(columns.contains("videoDescription"), "transcriptions should have videoDescription column")
             XCTAssertTrue(columns.contains("isFavorite"), "transcriptions should have isFavorite column")
             XCTAssertTrue(columns.contains("sourceType"), "transcriptions should have sourceType column")
-            XCTAssertTrue(columns.contains("recoveredFromCrash"), "transcriptions should have recoveredFromCrash column")
+            XCTAssertTrue(
+                columns.contains("recoveredFromCrash"), "transcriptions should have recoveredFromCrash column")
         }
     }
 
@@ -549,11 +551,12 @@ final class DatabaseManagerTests: XCTestCase {
             let columns = try db.columns(in: "transcriptions").map(\.name)
             XCTAssertTrue(columns.contains("meetingStartContext"))
 
-            let migrationRecorded = try Bool.fetchOne(
-                db,
-                sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = ?)",
-                arguments: ["v0.24-meeting-start-context"]
-            ) ?? false
+            let migrationRecorded =
+                try Bool.fetchOne(
+                    db,
+                    sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = ?)",
+                    arguments: ["v0.24-meeting-start-context"]
+                ) ?? false
             XCTAssertTrue(migrationRecorded)
         }
     }
@@ -577,11 +580,12 @@ final class DatabaseManagerTests: XCTestCase {
             let columns = try db.columns(in: "transcriptions").map(\.name)
             XCTAssertTrue(columns.contains("calendarEventSnapshot"))
 
-            let migrationRecorded = try Bool.fetchOne(
-                db,
-                sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = ?)",
-                arguments: ["v0.25-meeting-calendar-event-snapshot"]
-            ) ?? false
+            let migrationRecorded =
+                try Bool.fetchOne(
+                    db,
+                    sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = ?)",
+                    arguments: ["v0.25-meeting-calendar-event-snapshot"]
+                ) ?? false
             XCTAssertTrue(migrationRecorded)
         }
     }
@@ -590,7 +594,8 @@ final class DatabaseManagerTests: XCTestCase {
         let manager = try DatabaseManager()
         try manager.dbQueue.read { db in
             let columns = try db.columns(in: "summaries").map(\.name)
-            XCTAssertTrue(columns.contains("userNotesSnapshot"), "summaries should have userNotesSnapshot column (ADR-020 §6)")
+            XCTAssertTrue(
+                columns.contains("userNotesSnapshot"), "summaries should have userNotesSnapshot column (ADR-020 §6)")
         }
     }
 
@@ -663,100 +668,108 @@ final class DatabaseManagerTests: XCTestCase {
 
         let seedQueue = try DatabaseQueue(path: dbPath)
         try seedQueue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE grdb_migrations (
-                    identifier TEXT NOT NULL PRIMARY KEY
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE grdb_migrations (
+                            identifier TEXT NOT NULL PRIMARY KEY
+                        )
+                    """)
             for migrationID in prePromptLibraryMigrationIDs {
                 try db.execute(
                     sql: "INSERT INTO grdb_migrations (identifier) VALUES (?)",
                     arguments: [migrationID]
                 )
             }
-            try db.execute(sql: """
-                CREATE TABLE text_snippets (
-                    id TEXT PRIMARY KEY,
-                    trigger TEXT NOT NULL,
-                    expansion TEXT NOT NULL,
-                    isEnabled INTEGER NOT NULL DEFAULT 1,
-                    useCount INTEGER NOT NULL DEFAULT 0,
-                    createdAt TEXT NOT NULL,
-                    updatedAt TEXT NOT NULL,
-                    action TEXT
-                )
-            """)
-            try db.execute(sql: """
-                CREATE TABLE transcriptions (
-                    id TEXT PRIMARY KEY,
-                    createdAt TEXT NOT NULL,
-                    fileName TEXT NOT NULL,
-                    filePath TEXT,
-                    fileSizeBytes INTEGER,
-                    durationMs INTEGER,
-                    rawTranscript TEXT,
-                    cleanTranscript TEXT,
-                    wordTimestamps TEXT,
-                    language TEXT DEFAULT 'en',
-                    speakerCount INTEGER,
-                    speakers TEXT,
-                    status TEXT NOT NULL DEFAULT 'processing',
-                    errorMessage TEXT,
-                    exportPath TEXT,
-                    updatedAt TEXT NOT NULL,
-                    sourceURL TEXT,
-                    diarizationSegments TEXT,
-                    summary TEXT,
-                    chatMessages TEXT,
-                    thumbnailURL TEXT,
-                    channelName TEXT,
-                    videoDescription TEXT,
-                    isFavorite INTEGER NOT NULL DEFAULT 0,
-                    sourceType TEXT NOT NULL DEFAULT 'file'
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE text_snippets (
+                            id TEXT PRIMARY KEY,
+                            trigger TEXT NOT NULL,
+                            expansion TEXT NOT NULL,
+                            isEnabled INTEGER NOT NULL DEFAULT 1,
+                            useCount INTEGER NOT NULL DEFAULT 0,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT NOT NULL,
+                            action TEXT
+                        )
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE transcriptions (
+                            id TEXT PRIMARY KEY,
+                            createdAt TEXT NOT NULL,
+                            fileName TEXT NOT NULL,
+                            filePath TEXT,
+                            fileSizeBytes INTEGER,
+                            durationMs INTEGER,
+                            rawTranscript TEXT,
+                            cleanTranscript TEXT,
+                            wordTimestamps TEXT,
+                            language TEXT DEFAULT 'en',
+                            speakerCount INTEGER,
+                            speakers TEXT,
+                            status TEXT NOT NULL DEFAULT 'processing',
+                            errorMessage TEXT,
+                            exportPath TEXT,
+                            updatedAt TEXT NOT NULL,
+                            sourceURL TEXT,
+                            diarizationSegments TEXT,
+                            summary TEXT,
+                            chatMessages TEXT,
+                            thumbnailURL TEXT,
+                            channelName TEXT,
+                            videoDescription TEXT,
+                            isFavorite INTEGER NOT NULL DEFAULT 0,
+                            sourceType TEXT NOT NULL DEFAULT 'file'
+                        )
+                    """)
             try Self.createV05DictationsTable(db: db)
             try Self.createV05ChatConversationsTable(db: db)
             // Pre-seed prompts table with all auto-run flags off — simulating
             // a user who has explicitly disabled every auto-run prompt.
-            try db.execute(sql: """
-                CREATE TABLE prompts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    category TEXT NOT NULL DEFAULT 'summary',
-                    isBuiltIn INTEGER NOT NULL DEFAULT 0,
-                    isVisible INTEGER NOT NULL DEFAULT 1,
-                    isAutoRun INTEGER NOT NULL DEFAULT 0,
-                    sortOrder INTEGER NOT NULL DEFAULT 0,
-                    createdAt TEXT NOT NULL,
-                    updatedAt TEXT NOT NULL
-                )
-            """)
-            try db.execute(sql: """
-                CREATE UNIQUE INDEX idx_prompts_name ON prompts(name COLLATE NOCASE)
-            """)
-            try db.execute(sql: """
-                CREATE TABLE summaries (
-                    id TEXT PRIMARY KEY,
-                    transcriptionId TEXT NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
-                    promptName TEXT NOT NULL,
-                    promptContent TEXT NOT NULL,
-                    extraInstructions TEXT,
-                    content TEXT NOT NULL,
-                    createdAt TEXT NOT NULL,
-                    updatedAt TEXT NOT NULL
-                )
-            """)
-            try db.execute(sql: """
-                CREATE INDEX idx_summaries_transcription_id ON summaries(transcriptionId)
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE prompts (
+                            id TEXT PRIMARY KEY,
+                            name TEXT NOT NULL,
+                            content TEXT NOT NULL,
+                            category TEXT NOT NULL DEFAULT 'summary',
+                            isBuiltIn INTEGER NOT NULL DEFAULT 0,
+                            isVisible INTEGER NOT NULL DEFAULT 1,
+                            isAutoRun INTEGER NOT NULL DEFAULT 0,
+                            sortOrder INTEGER NOT NULL DEFAULT 0,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT NOT NULL
+                        )
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE UNIQUE INDEX idx_prompts_name ON prompts(name COLLATE NOCASE)
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE summaries (
+                            id TEXT PRIMARY KEY,
+                            transcriptionId TEXT NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
+                            promptName TEXT NOT NULL,
+                            promptContent TEXT NOT NULL,
+                            extraInstructions TEXT,
+                            content TEXT NOT NULL,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT NOT NULL
+                        )
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE INDEX idx_summaries_transcription_id ON summaries(transcriptionId)
+                    """)
             // Insert a single dummy prompt with isAutoRun = 0 so the table is
             // non-empty but no row qualifies as auto-run. (The reconciler
             // would NOT touch this row's isAutoRun on UPDATE.)
             let now = Date()
             try db.execute(
-                sql: "INSERT INTO prompts (id, name, content, category, isBuiltIn, isVisible, isAutoRun, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, 0, 1, 0, 0, ?, ?)",
+                sql:
+                    "INSERT INTO prompts (id, name, content, category, isBuiltIn, isVisible, isAutoRun, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, 0, 1, 0, 0, ?, ?)",
                 arguments: [UUID(), "User's Custom Prompt", "do stuff", "summary", now, now]
             )
             // Also mark the prior autorun-related migrations as already run
@@ -803,11 +816,12 @@ final class DatabaseManagerTests: XCTestCase {
 
         let seedQueue = try DatabaseQueue(path: dbPath)
         try seedQueue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE grdb_migrations (
-                    identifier TEXT NOT NULL PRIMARY KEY
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE grdb_migrations (
+                            identifier TEXT NOT NULL PRIMARY KEY
+                        )
+                    """)
             for migrationID in prePromptLibraryMigrationIDs + [
                 "v0.7-prompts-and-summaries",
                 "v0.7.1-prompt-default",
@@ -821,86 +835,93 @@ final class DatabaseManagerTests: XCTestCase {
                     arguments: [migrationID]
                 )
             }
-            try db.execute(sql: """
-                CREATE TABLE text_snippets (
-                    id TEXT PRIMARY KEY,
-                    trigger TEXT NOT NULL,
-                    expansion TEXT NOT NULL,
-                    isEnabled INTEGER NOT NULL DEFAULT 1,
-                    useCount INTEGER NOT NULL DEFAULT 0,
-                    createdAt TEXT NOT NULL,
-                    updatedAt TEXT NOT NULL,
-                    action TEXT
-                )
-            """)
-            try db.execute(sql: """
-                CREATE TABLE transcriptions (
-                    id TEXT PRIMARY KEY,
-                    createdAt TEXT NOT NULL,
-                    fileName TEXT NOT NULL,
-                    filePath TEXT,
-                    fileSizeBytes INTEGER,
-                    durationMs INTEGER,
-                    rawTranscript TEXT,
-                    cleanTranscript TEXT,
-                    wordTimestamps TEXT,
-                    language TEXT DEFAULT 'en',
-                    speakerCount INTEGER,
-                    speakers TEXT,
-                    status TEXT NOT NULL DEFAULT 'processing',
-                    errorMessage TEXT,
-                    exportPath TEXT,
-                    updatedAt TEXT NOT NULL,
-                    sourceURL TEXT,
-                    diarizationSegments TEXT,
-                    summary TEXT,
-                    chatMessages TEXT,
-                    thumbnailURL TEXT,
-                    channelName TEXT,
-                    videoDescription TEXT,
-                    isFavorite INTEGER NOT NULL DEFAULT 0,
-                    sourceType TEXT NOT NULL DEFAULT 'file',
-                    recoveredFromCrash INTEGER NOT NULL DEFAULT 0
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE text_snippets (
+                            id TEXT PRIMARY KEY,
+                            trigger TEXT NOT NULL,
+                            expansion TEXT NOT NULL,
+                            isEnabled INTEGER NOT NULL DEFAULT 1,
+                            useCount INTEGER NOT NULL DEFAULT 0,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT NOT NULL,
+                            action TEXT
+                        )
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE transcriptions (
+                            id TEXT PRIMARY KEY,
+                            createdAt TEXT NOT NULL,
+                            fileName TEXT NOT NULL,
+                            filePath TEXT,
+                            fileSizeBytes INTEGER,
+                            durationMs INTEGER,
+                            rawTranscript TEXT,
+                            cleanTranscript TEXT,
+                            wordTimestamps TEXT,
+                            language TEXT DEFAULT 'en',
+                            speakerCount INTEGER,
+                            speakers TEXT,
+                            status TEXT NOT NULL DEFAULT 'processing',
+                            errorMessage TEXT,
+                            exportPath TEXT,
+                            updatedAt TEXT NOT NULL,
+                            sourceURL TEXT,
+                            diarizationSegments TEXT,
+                            summary TEXT,
+                            chatMessages TEXT,
+                            thumbnailURL TEXT,
+                            channelName TEXT,
+                            videoDescription TEXT,
+                            isFavorite INTEGER NOT NULL DEFAULT 0,
+                            sourceType TEXT NOT NULL DEFAULT 'file',
+                            recoveredFromCrash INTEGER NOT NULL DEFAULT 0
+                        )
+                    """)
             try Self.createV05DictationsTable(db: db)
             try Self.createV05ChatConversationsTable(db: db)
-            try db.execute(sql: """
-                CREATE TABLE prompts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    category TEXT NOT NULL DEFAULT 'summary',
-                    isBuiltIn INTEGER NOT NULL DEFAULT 0,
-                    isVisible INTEGER NOT NULL DEFAULT 1,
-                    isAutoRun INTEGER NOT NULL DEFAULT 0,
-                    sortOrder INTEGER NOT NULL DEFAULT 0,
-                    createdAt TEXT NOT NULL,
-                    updatedAt TEXT NOT NULL
-                )
-            """)
-            try db.execute(sql: """
-                CREATE UNIQUE INDEX idx_prompts_name ON prompts(name COLLATE NOCASE)
-            """)
-            try db.execute(sql: """
-                CREATE TABLE summaries (
-                    id TEXT PRIMARY KEY,
-                    transcriptionId TEXT NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
-                    promptName TEXT NOT NULL,
-                    promptContent TEXT NOT NULL,
-                    extraInstructions TEXT,
-                    content TEXT NOT NULL,
-                    createdAt TEXT NOT NULL,
-                    updatedAt TEXT NOT NULL
-                )
-            """)
-            try db.execute(sql: """
-                CREATE INDEX idx_summaries_transcription_id ON summaries(transcriptionId)
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE prompts (
+                            id TEXT PRIMARY KEY,
+                            name TEXT NOT NULL,
+                            content TEXT NOT NULL,
+                            category TEXT NOT NULL DEFAULT 'summary',
+                            isBuiltIn INTEGER NOT NULL DEFAULT 0,
+                            isVisible INTEGER NOT NULL DEFAULT 1,
+                            isAutoRun INTEGER NOT NULL DEFAULT 0,
+                            sortOrder INTEGER NOT NULL DEFAULT 0,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT NOT NULL
+                        )
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE UNIQUE INDEX idx_prompts_name ON prompts(name COLLATE NOCASE)
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE summaries (
+                            id TEXT PRIMARY KEY,
+                            transcriptionId TEXT NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
+                            promptName TEXT NOT NULL,
+                            promptContent TEXT NOT NULL,
+                            extraInstructions TEXT,
+                            content TEXT NOT NULL,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT NOT NULL
+                        )
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE INDEX idx_summaries_transcription_id ON summaries(transcriptionId)
+                    """)
             // Insert one auto-run prompt — guard is satisfied.
             let now = Date()
             try db.execute(
-                sql: "INSERT INTO prompts (id, name, content, category, isBuiltIn, isVisible, isAutoRun, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, 0, 1, 1, 0, ?, ?)",
+                sql:
+                    "INSERT INTO prompts (id, name, content, category, isBuiltIn, isVisible, isAutoRun, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, 0, 1, 1, 0, ?, ?)",
                 arguments: [UUID(), "User's Auto Prompt", "do stuff", "summary", now, now]
             )
         }
@@ -913,7 +934,8 @@ final class DatabaseManagerTests: XCTestCase {
             )
             XCTAssertNotNil(row, "Summary should have been inserted by reconcile")
             let isAutoRun = (row?["isAutoRun"] as Int?) ?? 0
-            XCTAssertEqual(isAutoRun, 1, "Auto-run guard satisfied; new built-in honors canonical isAutoRun=true (ADR-020 §5)")
+            XCTAssertEqual(
+                isAutoRun, 1, "Auto-run guard satisfied; new built-in honors canonical isAutoRun=true (ADR-020 §5)")
         }
 
         try? FileManager.default.removeItem(atPath: dbPath)
@@ -932,11 +954,12 @@ final class DatabaseManagerTests: XCTestCase {
 
         let seedQueue = try DatabaseQueue(path: dbPath)
         try seedQueue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE grdb_migrations (
-                    identifier TEXT NOT NULL PRIMARY KEY
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE grdb_migrations (
+                            identifier TEXT NOT NULL PRIMARY KEY
+                        )
+                    """)
             for migrationID in prePromptLibraryMigrationIDs + [
                 "v0.7-prompts-and-summaries",
                 "v0.7.1-prompt-default",
@@ -950,88 +973,95 @@ final class DatabaseManagerTests: XCTestCase {
                     arguments: [migrationID]
                 )
             }
-            try db.execute(sql: """
-                CREATE TABLE text_snippets (
-                    id TEXT PRIMARY KEY,
-                    trigger TEXT NOT NULL,
-                    expansion TEXT NOT NULL,
-                    isEnabled INTEGER NOT NULL DEFAULT 1,
-                    useCount INTEGER NOT NULL DEFAULT 0,
-                    createdAt TEXT NOT NULL,
-                    updatedAt TEXT NOT NULL,
-                    action TEXT
-                )
-            """)
-            try db.execute(sql: """
-                CREATE TABLE transcriptions (
-                    id TEXT PRIMARY KEY,
-                    createdAt TEXT NOT NULL,
-                    fileName TEXT NOT NULL,
-                    filePath TEXT,
-                    fileSizeBytes INTEGER,
-                    durationMs INTEGER,
-                    rawTranscript TEXT,
-                    cleanTranscript TEXT,
-                    wordTimestamps TEXT,
-                    language TEXT DEFAULT 'en',
-                    speakerCount INTEGER,
-                    speakers TEXT,
-                    status TEXT NOT NULL DEFAULT 'processing',
-                    errorMessage TEXT,
-                    exportPath TEXT,
-                    updatedAt TEXT NOT NULL,
-                    sourceURL TEXT,
-                    diarizationSegments TEXT,
-                    summary TEXT,
-                    chatMessages TEXT,
-                    thumbnailURL TEXT,
-                    channelName TEXT,
-                    videoDescription TEXT,
-                    isFavorite INTEGER NOT NULL DEFAULT 0,
-                    sourceType TEXT NOT NULL DEFAULT 'file',
-                    recoveredFromCrash INTEGER NOT NULL DEFAULT 0
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE text_snippets (
+                            id TEXT PRIMARY KEY,
+                            trigger TEXT NOT NULL,
+                            expansion TEXT NOT NULL,
+                            isEnabled INTEGER NOT NULL DEFAULT 1,
+                            useCount INTEGER NOT NULL DEFAULT 0,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT NOT NULL,
+                            action TEXT
+                        )
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE transcriptions (
+                            id TEXT PRIMARY KEY,
+                            createdAt TEXT NOT NULL,
+                            fileName TEXT NOT NULL,
+                            filePath TEXT,
+                            fileSizeBytes INTEGER,
+                            durationMs INTEGER,
+                            rawTranscript TEXT,
+                            cleanTranscript TEXT,
+                            wordTimestamps TEXT,
+                            language TEXT DEFAULT 'en',
+                            speakerCount INTEGER,
+                            speakers TEXT,
+                            status TEXT NOT NULL DEFAULT 'processing',
+                            errorMessage TEXT,
+                            exportPath TEXT,
+                            updatedAt TEXT NOT NULL,
+                            sourceURL TEXT,
+                            diarizationSegments TEXT,
+                            summary TEXT,
+                            chatMessages TEXT,
+                            thumbnailURL TEXT,
+                            channelName TEXT,
+                            videoDescription TEXT,
+                            isFavorite INTEGER NOT NULL DEFAULT 0,
+                            sourceType TEXT NOT NULL DEFAULT 'file',
+                            recoveredFromCrash INTEGER NOT NULL DEFAULT 0
+                        )
+                    """)
             try Self.createV05DictationsTable(db: db)
             try Self.createV05ChatConversationsTable(db: db)
-            try db.execute(sql: """
-                CREATE TABLE prompts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    category TEXT NOT NULL DEFAULT 'summary',
-                    isBuiltIn INTEGER NOT NULL DEFAULT 0,
-                    isVisible INTEGER NOT NULL DEFAULT 1,
-                    isAutoRun INTEGER NOT NULL DEFAULT 0,
-                    sortOrder INTEGER NOT NULL DEFAULT 0,
-                    createdAt TEXT NOT NULL,
-                    updatedAt TEXT NOT NULL
-                )
-            """)
-            try db.execute(sql: """
-                CREATE UNIQUE INDEX idx_prompts_name ON prompts(name COLLATE NOCASE)
-            """)
-            try db.execute(sql: """
-                CREATE TABLE summaries (
-                    id TEXT PRIMARY KEY,
-                    transcriptionId TEXT NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
-                    promptName TEXT NOT NULL,
-                    promptContent TEXT NOT NULL,
-                    extraInstructions TEXT,
-                    content TEXT NOT NULL,
-                    createdAt TEXT NOT NULL,
-                    updatedAt TEXT NOT NULL
-                )
-            """)
-            try db.execute(sql: """
-                CREATE INDEX idx_summaries_transcription_id ON summaries(transcriptionId)
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE prompts (
+                            id TEXT PRIMARY KEY,
+                            name TEXT NOT NULL,
+                            content TEXT NOT NULL,
+                            category TEXT NOT NULL DEFAULT 'summary',
+                            isBuiltIn INTEGER NOT NULL DEFAULT 0,
+                            isVisible INTEGER NOT NULL DEFAULT 1,
+                            isAutoRun INTEGER NOT NULL DEFAULT 0,
+                            sortOrder INTEGER NOT NULL DEFAULT 0,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT NOT NULL
+                        )
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE UNIQUE INDEX idx_prompts_name ON prompts(name COLLATE NOCASE)
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE summaries (
+                            id TEXT PRIMARY KEY,
+                            transcriptionId TEXT NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
+                            promptName TEXT NOT NULL,
+                            promptContent TEXT NOT NULL,
+                            extraInstructions TEXT,
+                            content TEXT NOT NULL,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT NOT NULL
+                        )
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE INDEX idx_summaries_transcription_id ON summaries(transcriptionId)
+                    """)
             // Pre-seed the Memo-Steered Notes row exactly as a 2026-04-25
             // build would have written it: canonical UUID, isBuiltIn=1,
             // isAutoRun=1, sortOrder=0.
             let now = Date()
             try db.execute(
-                sql: "INSERT INTO prompts (id, name, content, category, isBuiltIn, isVisible, isAutoRun, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, 1, 1, 1, 0, ?, ?)",
+                sql:
+                    "INSERT INTO prompts (id, name, content, category, isBuiltIn, isVisible, isAutoRun, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, 1, 1, 1, 0, ?, ?)",
                 arguments: [memoSteeredID, "Memo-Steered Notes", "old prompt body", "summary", now, now]
             )
         }
@@ -1070,11 +1100,12 @@ final class DatabaseManagerTests: XCTestCase {
 
         let seedQueue = try DatabaseQueue(path: dbPath)
         try seedQueue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE grdb_migrations (
-                    identifier TEXT NOT NULL PRIMARY KEY
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE grdb_migrations (
+                            identifier TEXT NOT NULL PRIMARY KEY
+                        )
+                    """)
             for migrationID in [
                 "v0.1-dictations",
                 "v0.1-transcriptions",
@@ -1094,57 +1125,59 @@ final class DatabaseManagerTests: XCTestCase {
                 )
             }
 
-            try db.execute(sql: """
-                CREATE TABLE transcriptions (
-                    id TEXT PRIMARY KEY,
-                    createdAt TEXT NOT NULL,
-                    fileName TEXT NOT NULL,
-                    filePath TEXT,
-                    fileSizeBytes INTEGER,
-                    durationMs INTEGER,
-                    rawTranscript TEXT,
-                    cleanTranscript TEXT,
-                    wordTimestamps TEXT,
-                    language TEXT DEFAULT 'en',
-                    speakerCount INTEGER,
-                    speakers TEXT,
-                    status TEXT NOT NULL DEFAULT 'processing',
-                    errorMessage TEXT,
-                    exportPath TEXT,
-                    updatedAt TEXT NOT NULL,
-                    sourceURL TEXT,
-                    diarizationSegments TEXT,
-                    summary TEXT,
-                    chatMessages TEXT,
-                    thumbnailURL TEXT,
-                    channelName TEXT,
-                    videoDescription TEXT,
-                    isFavorite INTEGER NOT NULL DEFAULT 0
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE transcriptions (
+                            id TEXT PRIMARY KEY,
+                            createdAt TEXT NOT NULL,
+                            fileName TEXT NOT NULL,
+                            filePath TEXT,
+                            fileSizeBytes INTEGER,
+                            durationMs INTEGER,
+                            rawTranscript TEXT,
+                            cleanTranscript TEXT,
+                            wordTimestamps TEXT,
+                            language TEXT DEFAULT 'en',
+                            speakerCount INTEGER,
+                            speakers TEXT,
+                            status TEXT NOT NULL DEFAULT 'processing',
+                            errorMessage TEXT,
+                            exportPath TEXT,
+                            updatedAt TEXT NOT NULL,
+                            sourceURL TEXT,
+                            diarizationSegments TEXT,
+                            summary TEXT,
+                            chatMessages TEXT,
+                            thumbnailURL TEXT,
+                            channelName TEXT,
+                            videoDescription TEXT,
+                            isFavorite INTEGER NOT NULL DEFAULT 0
+                        )
+                    """)
 
             // dictations table is required by the v0.7.4 lifetime stats backfill.
             try Self.createV05DictationsTable(db: db)
             try Self.createV05ChatConversationsTable(db: db)
 
-            try db.execute(sql: """
-                CREATE TABLE text_snippets (
-                    id TEXT PRIMARY KEY,
-                    trigger TEXT NOT NULL,
-                    expansion TEXT NOT NULL,
-                    isEnabled INTEGER NOT NULL DEFAULT 1,
-                    useCount INTEGER NOT NULL DEFAULT 0,
-                    createdAt TEXT NOT NULL,
-                    updatedAt TEXT NOT NULL
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE text_snippets (
+                            id TEXT PRIMARY KEY,
+                            trigger TEXT NOT NULL,
+                            expansion TEXT NOT NULL,
+                            isEnabled INTEGER NOT NULL DEFAULT 1,
+                            useCount INTEGER NOT NULL DEFAULT 0,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT NOT NULL
+                        )
+                    """)
 
             let now = Date()
             try db.execute(
                 sql: """
-                    INSERT INTO transcriptions (id, createdAt, fileName, updatedAt, sourceURL)
-                    VALUES (?, ?, ?, ?, ?)
-                """,
+                        INSERT INTO transcriptions (id, createdAt, fileName, updatedAt, sourceURL)
+                        VALUES (?, ?, ?, ?, ?)
+                    """,
                 arguments: [UUID(), now, "youtube.mp3", now, "https://youtube.com/watch?v=test"]
             )
         }
@@ -1175,11 +1208,12 @@ final class DatabaseManagerTests: XCTestCase {
 
         let seedQueue = try DatabaseQueue(path: dbPath)
         try seedQueue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE grdb_migrations (
-                    identifier TEXT NOT NULL PRIMARY KEY
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE grdb_migrations (
+                            identifier TEXT NOT NULL PRIMARY KEY
+                        )
+                    """)
             for migrationID in prePromptLibraryMigrationIDs {
                 try db.execute(
                     sql: "INSERT INTO grdb_migrations (identifier) VALUES (?)",
@@ -1187,48 +1221,50 @@ final class DatabaseManagerTests: XCTestCase {
                 )
             }
 
-            try db.execute(sql: """
-                CREATE TABLE text_snippets (
-                    id TEXT PRIMARY KEY,
-                    trigger TEXT NOT NULL,
-                    expansion TEXT NOT NULL,
-                    isEnabled INTEGER NOT NULL DEFAULT 1,
-                    useCount INTEGER NOT NULL DEFAULT 0,
-                    createdAt TEXT NOT NULL,
-                    updatedAt TEXT NOT NULL,
-                    action TEXT
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE text_snippets (
+                            id TEXT PRIMARY KEY,
+                            trigger TEXT NOT NULL,
+                            expansion TEXT NOT NULL,
+                            isEnabled INTEGER NOT NULL DEFAULT 1,
+                            useCount INTEGER NOT NULL DEFAULT 0,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT NOT NULL,
+                            action TEXT
+                        )
+                    """)
 
-            try db.execute(sql: """
-                CREATE TABLE transcriptions (
-                    id TEXT PRIMARY KEY,
-                    createdAt TEXT NOT NULL,
-                    fileName TEXT NOT NULL,
-                    filePath TEXT,
-                    fileSizeBytes INTEGER,
-                    durationMs INTEGER,
-                    rawTranscript TEXT,
-                    cleanTranscript TEXT,
-                    wordTimestamps TEXT,
-                    language TEXT DEFAULT 'en',
-                    speakerCount INTEGER,
-                    speakers TEXT,
-                    status TEXT NOT NULL DEFAULT 'processing',
-                    errorMessage TEXT,
-                    exportPath TEXT,
-                    updatedAt TEXT NOT NULL,
-                    sourceURL TEXT,
-                    diarizationSegments TEXT,
-                    summary TEXT,
-                    chatMessages TEXT,
-                    thumbnailURL TEXT,
-                    channelName TEXT,
-                    videoDescription TEXT,
-                    isFavorite INTEGER NOT NULL DEFAULT 0,
-                    sourceType TEXT NOT NULL DEFAULT 'file'
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE transcriptions (
+                            id TEXT PRIMARY KEY,
+                            createdAt TEXT NOT NULL,
+                            fileName TEXT NOT NULL,
+                            filePath TEXT,
+                            fileSizeBytes INTEGER,
+                            durationMs INTEGER,
+                            rawTranscript TEXT,
+                            cleanTranscript TEXT,
+                            wordTimestamps TEXT,
+                            language TEXT DEFAULT 'en',
+                            speakerCount INTEGER,
+                            speakers TEXT,
+                            status TEXT NOT NULL DEFAULT 'processing',
+                            errorMessage TEXT,
+                            exportPath TEXT,
+                            updatedAt TEXT NOT NULL,
+                            sourceURL TEXT,
+                            diarizationSegments TEXT,
+                            summary TEXT,
+                            chatMessages TEXT,
+                            thumbnailURL TEXT,
+                            channelName TEXT,
+                            videoDescription TEXT,
+                            isFavorite INTEGER NOT NULL DEFAULT 0,
+                            sourceType TEXT NOT NULL DEFAULT 'file'
+                        )
+                    """)
 
             // dictations table is required by the v0.7.4 lifetime stats backfill.
             try Self.createV05DictationsTable(db: db)
@@ -1236,10 +1272,10 @@ final class DatabaseManagerTests: XCTestCase {
 
             try db.execute(
                 sql: """
-                    INSERT INTO transcriptions (
-                        id, createdAt, fileName, updatedAt, summary
-                    ) VALUES (?, ?, ?, ?, ?)
-                """,
+                        INSERT INTO transcriptions (
+                            id, createdAt, fileName, updatedAt, summary
+                        ) VALUES (?, ?, ?, ?, ?)
+                    """,
                 arguments: [transcriptionID, createdAt, "fixture.wav", createdAt, legacySummary]
             )
         }
@@ -1310,25 +1346,28 @@ final class DatabaseManagerTests: XCTestCase {
         do {
             let manager = try DatabaseManager(path: dbPath)
             try manager.dbQueue.write { db in
-                try db.execute(sql: """
-                    CREATE TABLE IF NOT EXISTS transform_history (
-                        id TEXT PRIMARY KEY,
-                        inputText TEXT NOT NULL,
-                        outputText TEXT NOT NULL
-                    )
-                """)
-                try db.execute(sql: """
-                    CREATE TABLE IF NOT EXISTS transform_profiles (
-                        promptId TEXT PRIMARY KEY,
-                        customInstructions TEXT
-                    )
-                """)
-                try db.execute(sql: """
-                    CREATE TABLE IF NOT EXISTS writing_samples (
-                        id TEXT PRIMARY KEY,
-                        text TEXT NOT NULL
-                    )
-                """)
+                try db.execute(
+                    sql: """
+                            CREATE TABLE IF NOT EXISTS transform_history (
+                                id TEXT PRIMARY KEY,
+                                inputText TEXT NOT NULL,
+                                outputText TEXT NOT NULL
+                            )
+                        """)
+                try db.execute(
+                    sql: """
+                            CREATE TABLE IF NOT EXISTS transform_profiles (
+                                promptId TEXT PRIMARY KEY,
+                                customInstructions TEXT
+                            )
+                        """)
+                try db.execute(
+                    sql: """
+                            CREATE TABLE IF NOT EXISTS writing_samples (
+                                id TEXT PRIMARY KEY,
+                                text TEXT NOT NULL
+                            )
+                        """)
                 try db.execute(
                     sql: "DELETE FROM grdb_migrations WHERE identifier = ?",
                     arguments: ["v0.16-drop-transform-workbench-tables"]
@@ -1350,9 +1389,9 @@ final class DatabaseManagerTests: XCTestCase {
             let appliedMigrationIDs = try String.fetchAll(
                 db,
                 sql: """
-                    SELECT identifier FROM grdb_migrations
-                    WHERE identifier IN (?, ?, ?, ?)
-                """,
+                        SELECT identifier FROM grdb_migrations
+                        WHERE identifier IN (?, ?, ?, ?)
+                    """,
                 arguments: [
                     "v0.14-transform-history",
                     "v0.15-transform-workbench",
@@ -1394,11 +1433,12 @@ final class DatabaseManagerTests: XCTestCase {
             XCTAssertTrue(dictationColumns.contains("engine"))
             XCTAssertTrue(dictationColumns.contains("engineVariant"))
 
-            let migrationRecorded = try Bool.fetchOne(
-                db,
-                sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = ?)",
-                arguments: ["v0.8-engine-attribution"]
-            ) ?? false
+            let migrationRecorded =
+                try Bool.fetchOne(
+                    db,
+                    sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = ?)",
+                    arguments: ["v0.8-engine-attribution"]
+                ) ?? false
             XCTAssertTrue(migrationRecorded)
         }
     }
@@ -1421,40 +1461,14 @@ final class DatabaseManagerTests: XCTestCase {
             let dictationColumns = try db.columns(in: "dictations").map(\.name)
             XCTAssertTrue(dictationColumns.contains("language"))
 
-            let migrationRecorded = try Bool.fetchOne(
-                db,
-                sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = ?)",
-                arguments: ["v0.19-dictation-language"]
-            ) ?? false
+            let migrationRecorded =
+                try Bool.fetchOne(
+                    db,
+                    sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = ?)",
+                    arguments: ["v0.19-dictation-language"]
+                ) ?? false
             XCTAssertTrue(migrationRecorded)
         }
-    }
-
-    func testAIFormatterCategoryCheckAcceptsEveryTelemetryAppCategory() throws {
-        // Drift guard: the v0.21 migration freezes the category list inside a
-        // table CHECK, while the Settings picker enumerates
-        // `TelemetryAppCategory.allCases`. If the enum grows without a
-        // follow-up migration, the picker offers a category whose save fails
-        // at the SQLite layer — this test fails first, with a clear message.
-        let manager = try DatabaseManager()
-        let repo = AIFormatterProfileRepository(dbQueue: manager.dbQueue)
-
-        for (index, category) in TelemetryAppCategory.allCases.enumerated() {
-            XCTAssertNoThrow(
-                try repo.save(
-                    AIFormatterProfile.category(
-                        name: "Profile \(category.rawValue)",
-                        appCategory: category,
-                        promptTemplate: "Prompt \(AIFormatter.transcriptPlaceholder)",
-                        sortOrder: index
-                    )
-                ),
-                "Category \(category.rawValue) is not in the frozen v0.21 CHECK list — add a follow-up migration extending it before exposing the new case."
-            )
-        }
-
-        let savedCategories = Set(try repo.fetchAll().compactMap(\.appCategory))
-        XCTAssertEqual(savedCategories, Set(TelemetryAppCategory.allCases))
     }
 
     func testAIFormatterProfilesMigrationToleratesExistingSchemaWhenMigrationMarkerIsMissing() throws {
@@ -1485,11 +1499,12 @@ final class DatabaseManagerTests: XCTestCase {
             XCTAssertTrue(dictationColumns.contains("aiFormatterProfileName"))
             XCTAssertTrue(dictationColumns.contains("aiFormatterProfileMatchKind"))
 
-            let migrationRecorded = try Bool.fetchOne(
-                db,
-                sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = ?)",
-                arguments: ["v0.21-ai-formatter-profiles"]
-            ) ?? false
+            let migrationRecorded =
+                try Bool.fetchOne(
+                    db,
+                    sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = ?)",
+                    arguments: ["v0.21-ai-formatter-profiles"]
+                ) ?? false
             XCTAssertTrue(migrationRecorded)
         }
         let survivingProfiles = try AIFormatterProfileRepository(dbQueue: manager2.dbQueue).fetchAll()
@@ -1510,12 +1525,15 @@ final class DatabaseManagerTests: XCTestCase {
         let visibleID = UUID().uuidString
         let seedQueue = try DatabaseQueue(path: dbPath)
         try seedQueue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE grdb_migrations (
-                    identifier TEXT NOT NULL PRIMARY KEY
-                )
-            """)
-            for migrationID in prePromptLibraryMigrationIDs.filter({ $0 != "v0.6-transcription-source-type" && $0 != "v0.7-snippet-key-action" }) {
+            try db.execute(
+                sql: """
+                        CREATE TABLE grdb_migrations (
+                            identifier TEXT NOT NULL PRIMARY KEY
+                        )
+                    """)
+            for migrationID in prePromptLibraryMigrationIDs.filter({
+                $0 != "v0.6-transcription-source-type" && $0 != "v0.7-snippet-key-action"
+            }) {
                 try db.execute(
                     sql: "INSERT INTO grdb_migrations (identifier) VALUES (?)",
                     arguments: [migrationID]
@@ -1524,62 +1542,70 @@ final class DatabaseManagerTests: XCTestCase {
 
             try Self.createV05DictationsTable(db: db)
             try Self.createV05ChatConversationsTable(db: db)
-            try db.execute(sql: """
-                CREATE TABLE transcriptions (
-                    id TEXT PRIMARY KEY,
-                    createdAt TEXT NOT NULL,
-                    fileName TEXT NOT NULL,
-                    filePath TEXT,
-                    fileSizeBytes INTEGER,
-                    durationMs INTEGER,
-                    rawTranscript TEXT,
-                    cleanTranscript TEXT,
-                    wordTimestamps TEXT,
-                    language TEXT DEFAULT 'en',
-                    speakerCount INTEGER,
-                    speakers TEXT,
-                    status TEXT NOT NULL DEFAULT 'processing',
-                    errorMessage TEXT,
-                    exportPath TEXT,
-                    updatedAt TEXT NOT NULL,
-                    sourceURL TEXT,
-                    diarizationSegments TEXT,
-                    summary TEXT,
-                    chatMessages TEXT,
-                    thumbnailURL TEXT,
-                    channelName TEXT,
-                    videoDescription TEXT,
-                    isFavorite INTEGER NOT NULL DEFAULT 0
-                )
-            """)
-            try db.execute(sql: """
-                CREATE TABLE text_snippets (
-                    id TEXT PRIMARY KEY,
-                    trigger TEXT NOT NULL,
-                    expansion TEXT NOT NULL,
-                    isEnabled INTEGER NOT NULL DEFAULT 1,
-                    useCount INTEGER NOT NULL DEFAULT 0,
-                    createdAt TEXT NOT NULL,
-                    updatedAt TEXT NOT NULL
-                )
-            """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE transcriptions (
+                            id TEXT PRIMARY KEY,
+                            createdAt TEXT NOT NULL,
+                            fileName TEXT NOT NULL,
+                            filePath TEXT,
+                            fileSizeBytes INTEGER,
+                            durationMs INTEGER,
+                            rawTranscript TEXT,
+                            cleanTranscript TEXT,
+                            wordTimestamps TEXT,
+                            language TEXT DEFAULT 'en',
+                            speakerCount INTEGER,
+                            speakers TEXT,
+                            status TEXT NOT NULL DEFAULT 'processing',
+                            errorMessage TEXT,
+                            exportPath TEXT,
+                            updatedAt TEXT NOT NULL,
+                            sourceURL TEXT,
+                            diarizationSegments TEXT,
+                            summary TEXT,
+                            chatMessages TEXT,
+                            thumbnailURL TEXT,
+                            channelName TEXT,
+                            videoDescription TEXT,
+                            isFavorite INTEGER NOT NULL DEFAULT 0
+                        )
+                    """)
+            try db.execute(
+                sql: """
+                        CREATE TABLE text_snippets (
+                            id TEXT PRIMARY KEY,
+                            trigger TEXT NOT NULL,
+                            expansion TEXT NOT NULL,
+                            isEnabled INTEGER NOT NULL DEFAULT 1,
+                            useCount INTEGER NOT NULL DEFAULT 0,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT NOT NULL
+                        )
+                    """)
 
             let now = Date()
             try db.execute(
                 sql: """
-                    INSERT INTO dictations
-                        (id, createdAt, durationMs, rawTranscript, cleanTranscript, audioPath, pastedToApp, updatedAt, hidden)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                arguments: [hiddenID, now, 1200, "leaked secret", "leaked clean", "/tmp/leaked.wav", "com.example.private", now, 1]
+                        INSERT INTO dictations
+                            (id, createdAt, durationMs, rawTranscript, cleanTranscript, audioPath, pastedToApp, updatedAt, hidden)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    hiddenID, now, 1200, "leaked secret", "leaked clean", "/tmp/leaked.wav", "com.example.private", now,
+                    1,
+                ]
             )
             try db.execute(
                 sql: """
-                    INSERT INTO dictations
-                        (id, createdAt, durationMs, rawTranscript, cleanTranscript, audioPath, pastedToApp, updatedAt, hidden)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                arguments: [visibleID, now, 900, "visible transcript", "visible clean", "/tmp/kept.wav", "com.example.app", now, 0]
+                        INSERT INTO dictations
+                            (id, createdAt, durationMs, rawTranscript, cleanTranscript, audioPath, pastedToApp, updatedAt, hidden)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    visibleID, now, 900, "visible transcript", "visible clean", "/tmp/kept.wav", "com.example.app", now,
+                    0,
+                ]
             )
         }
 
@@ -1611,40 +1637,43 @@ final class DatabaseManagerTests: XCTestCase {
     /// added `hidden` and `wordCount`). Used by partial-migration test fixtures so the
     /// v0.7.4 lifetime-stats backfill has a real table to read from.
     static func createV05DictationsTable(db: Database) throws {
-        try db.execute(sql: """
-            CREATE TABLE dictations (
-                id TEXT PRIMARY KEY,
-                createdAt TEXT NOT NULL,
-                durationMs INTEGER NOT NULL,
-                rawTranscript TEXT NOT NULL,
-                cleanTranscript TEXT,
-                audioPath TEXT,
-                pastedToApp TEXT,
-                processingMode TEXT NOT NULL DEFAULT 'raw',
-                status TEXT NOT NULL DEFAULT 'completed',
-                errorMessage TEXT,
-                updatedAt TEXT NOT NULL,
-                hidden INTEGER NOT NULL DEFAULT 0,
-                wordCount INTEGER NOT NULL DEFAULT 0
-            )
-        """)
+        try db.execute(
+            sql: """
+                    CREATE TABLE dictations (
+                        id TEXT PRIMARY KEY,
+                        createdAt TEXT NOT NULL,
+                        durationMs INTEGER NOT NULL,
+                        rawTranscript TEXT NOT NULL,
+                        cleanTranscript TEXT,
+                        audioPath TEXT,
+                        pastedToApp TEXT,
+                        processingMode TEXT NOT NULL DEFAULT 'raw',
+                        status TEXT NOT NULL DEFAULT 'completed',
+                        errorMessage TEXT,
+                        updatedAt TEXT NOT NULL,
+                        hidden INTEGER NOT NULL DEFAULT 0,
+                        wordCount INTEGER NOT NULL DEFAULT 0
+                    )
+                """)
     }
 
     static func createV05ChatConversationsTable(db: Database) throws {
-        try db.execute(sql: """
-            CREATE TABLE chat_conversations (
-                id TEXT PRIMARY KEY,
-                transcriptionId TEXT NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
-                title TEXT NOT NULL DEFAULT '',
-                messages TEXT,
-                createdAt TEXT NOT NULL,
-                updatedAt TEXT NOT NULL
-            )
-        """)
-        try db.execute(sql: """
-            CREATE INDEX idx_chat_conversations_transcription_id
-            ON chat_conversations(transcriptionId)
-        """)
+        try db.execute(
+            sql: """
+                    CREATE TABLE chat_conversations (
+                        id TEXT PRIMARY KEY,
+                        transcriptionId TEXT NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
+                        title TEXT NOT NULL DEFAULT '',
+                        messages TEXT,
+                        createdAt TEXT NOT NULL,
+                        updatedAt TEXT NOT NULL
+                    )
+                """)
+        try db.execute(
+            sql: """
+                    CREATE INDEX idx_chat_conversations_transcription_id
+                    ON chat_conversations(transcriptionId)
+                """)
     }
 
     private func cleanupDatabaseFiles(atPath path: String) {

@@ -277,22 +277,25 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
 
         let windowMenuItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
-        windowMenu.addItem(NSMenuItem(
-            title: "Close Window",
-            action: #selector(NSWindow.performClose(_:)),
-            keyEquivalent: "w"
-        ))
+        windowMenu.addItem(
+            NSMenuItem(
+                title: "Close Window",
+                action: #selector(NSWindow.performClose(_:)),
+                keyEquivalent: "w"
+            ))
         windowMenu.addItem(NSMenuItem.separator())
-        windowMenu.addItem(NSMenuItem(
-            title: "Minimize",
-            action: #selector(NSWindow.performMiniaturize(_:)),
-            keyEquivalent: "m"
-        ))
-        windowMenu.addItem(NSMenuItem(
-            title: "Zoom",
-            action: #selector(NSWindow.performZoom(_:)),
-            keyEquivalent: ""
-        ))
+        windowMenu.addItem(
+            NSMenuItem(
+                title: "Minimize",
+                action: #selector(NSWindow.performMiniaturize(_:)),
+                keyEquivalent: "m"
+            ))
+        windowMenu.addItem(
+            NSMenuItem(
+                title: "Zoom",
+                action: #selector(NSWindow.performZoom(_:)),
+                keyEquivalent: ""
+            ))
         windowMenu.addItem(NSMenuItem.separator())
         windowMenu.addItem(makeMenuItem(title: "Show \(appName)", action: #selector(openMainWindow), key: ""))
         windowMenuItem.submenu = windowMenu
@@ -314,7 +317,8 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         guard let statusItem,
-              let button = statusItem.button else { return }
+            let button = statusItem.button
+        else { return }
 
         button.image = BreathWaveIcon.menuBarIcon(pointSize: 18)
 
@@ -509,7 +513,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     @objc private func selectCohereLanguage(_ sender: NSMenuItem) {
         guard let code = sender.representedObject as? String else { return }
         SpeechEnginePreference.saveCohereDefaultLanguage(code)
-        Telemetry.send(.settingChanged(setting: .cohereLanguage))
         updateCohereLanguageMenu()
     }
 
@@ -628,7 +631,8 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
 
     @objc private func pasteRecentDictation(_ sender: NSMenuItem) {
         guard let env = environmentProvider(),
-              let id = sender.representedObject as? UUID else { return }
+            let id = sender.representedObject as? UUID
+        else { return }
         Task {
             guard let dictation = try? env.dictationRepo.fetch(id: id) else { return }
             let text = dictation.displayText
@@ -646,7 +650,8 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
 
     @objc private func pasteRecentTransform(_ sender: NSMenuItem) {
         guard let env = environmentProvider(),
-              let id = sender.representedObject as? UUID else { return }
+            let id = sender.representedObject as? UUID
+        else { return }
         Task {
             guard let entry = try? env.transformHistoryRepo.fetch(id: id) else { return }
             await pasteFromMenu(text: entry.outputText, clipboardService: env.clipboardService)

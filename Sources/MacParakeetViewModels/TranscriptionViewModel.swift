@@ -128,7 +128,7 @@ public final class TranscriptionViewModel {
     /// Rich, copyable diagnostic for the most recent URL-download failure: the
     /// terse `errorMessage` headline plus the source link and environment. Only
     /// ever shown/copied on explicit user action (the banner's copy button), so —
-    /// unlike `errorMessage`, which telemetry classifies — it can safely carry the
+    /// unlike `errorMessage`, it can safely carry the
     /// URL. `nil` for non-URL failures, where the copy button falls back to
     /// `errorMessage`.
     public private(set) var errorDetail: String?
@@ -176,7 +176,7 @@ public final class TranscriptionViewModel {
     public private(set) var batchCompletedCount = 0
     public private(set) var batchFailedCount = 0
     private var batchQueue: [URL] = []
-    private var batchSource: TelemetryTranscriptionSource = .file
+    private var batchSource: TranscriptionSource = .file
     private var batchAudioTrackOrdinal: Int?
     private var batchMultiTrackFilePaths: Set<String> = []
     private var batchAudioTrackPreflightFailedPaths: Set<String> = []
@@ -226,7 +226,7 @@ public final class TranscriptionViewModel {
     private var activeTranscriptionTaskID: UUID?
     private var audioTrackPreflightID: UUID?
     private var pendingAudioTrackFiles: [URL] = []
-    private var pendingAudioTrackSource: TelemetryTranscriptionSource = .file
+    private var pendingAudioTrackSource: TranscriptionSource = .file
     private var pendingAudioTrackExpansion: AudioFileEnumerator.Result?
     private var pendingMultiTrackFilePaths: Set<String> = []
     private var pendingAudioTrackPreflightFailedPaths: Set<String> = []
@@ -259,20 +259,23 @@ public final class TranscriptionViewModel {
     ) {
         self.defaults = defaults
         self.meetingArtifactStore = meetingArtifactStore
-        self.isWhisperModelDownloaded = isWhisperModelDownloaded ?? {
-            WhisperEngine.isModelDownloaded(
-                model: SpeechEnginePreference.whisperModelVariant(defaults: defaults)
-            )
-        }
-        self.isNemotronModelDownloaded = isNemotronModelDownloaded ?? {
-            STTClient.isNemotronModelCached(
-                modelVariant: SpeechEnginePreference.nemotronModelVariant(defaults: defaults),
-                language: SpeechEnginePreference.nemotronDefaultLanguage(defaults: defaults)
-            )
-        }
-        self.isCohereModelDownloaded = isCohereModelDownloaded ?? {
-            CohereTranscribeEngine.isModelCached()
-        }
+        self.isWhisperModelDownloaded =
+            isWhisperModelDownloaded ?? {
+                WhisperEngine.isModelDownloaded(
+                    model: SpeechEnginePreference.whisperModelVariant(defaults: defaults)
+                )
+            }
+        self.isNemotronModelDownloaded =
+            isNemotronModelDownloaded ?? {
+                STTClient.isNemotronModelCached(
+                    modelVariant: SpeechEnginePreference.nemotronModelVariant(defaults: defaults),
+                    language: SpeechEnginePreference.nemotronDefaultLanguage(defaults: defaults)
+                )
+            }
+        self.isCohereModelDownloaded =
+            isCohereModelDownloaded ?? {
+                CohereTranscribeEngine.isModelCached()
+            }
     }
 
     private func meetingReadingConfiguration() -> CompletedMeetingReadingConfiguration {
@@ -300,7 +303,8 @@ public final class TranscriptionViewModel {
         promptResultsViewModel: PromptResultsViewModel? = nil
     ) {
         self.transcriptionService = transcriptionService
-        self.audioTrackService = audioTrackService
+        self.audioTrackService =
+            audioTrackService
             ?? (transcriptionService as? any AudioTrackSelectingTranscriptionService)
         self.transcriptionRepo = transcriptionRepo
         self.customWordRepo = customWordRepo
@@ -324,12 +328,14 @@ public final class TranscriptionViewModel {
         do {
             transcriptions = try repo.fetchAll(limit: 50)
         } catch {
-            logger.error("Failed to load transcriptions error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+            logger.error(
+                "Failed to load transcriptions error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public)"
+            )
             transcriptions = []
         }
     }
 
-    public func transcribeFile(url: URL, source: TelemetryTranscriptionSource = .file) {
+    public func transcribeFile(url: URL, source: TranscriptionSource = .file) {
         guard transcriptionService != nil else {
             reportMissingConfiguration("transcriptionService", action: "transcribeFile")
             return
@@ -347,7 +353,7 @@ public final class TranscriptionViewModel {
 
     private func startTranscribingFile(
         url: URL,
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         audioTrackOrdinal: Int?
     ) {
         guard let service = transcriptionService else {
@@ -399,15 +405,16 @@ public final class TranscriptionViewModel {
     /// `true` when at least one supported file was accepted (so the drop handler
     /// knows whether to dismiss the drop UI).
     @discardableResult
-    public func transcribeFiles(urls: [URL], source: TelemetryTranscriptionSource = .file) -> Bool {
+    public func transcribeFiles(urls: [URL], source: TranscriptionSource = .file) -> Bool {
         guard transcriptionService != nil else {
             reportMissingConfiguration("transcriptionService", action: "transcribeFiles")
             return false
         }
         guard !isTranscribing,
-              !isBatchActive,
-              !isInspectingAudioTracks,
-              pendingAudioTrackSelection == nil else { return false }
+            !isBatchActive,
+            !isInspectingAudioTracks,
+            pendingAudioTrackSelection == nil
+        else { return false }
         let expansion = AudioFileEnumerator.expand(urls: urls)
         let files = expansion.files
         guard !files.isEmpty else {
@@ -431,8 +438,9 @@ public final class TranscriptionViewModel {
 
     public func selectAudioTrack(ordinal: Int) {
         guard let request = pendingAudioTrackSelection,
-              request.tracks.contains(where: { $0.ordinal == ordinal }),
-              !pendingAudioTrackFiles.isEmpty else {
+            request.tracks.contains(where: { $0.ordinal == ordinal }),
+            !pendingAudioTrackFiles.isEmpty
+        else {
             return
         }
 
@@ -458,7 +466,7 @@ public final class TranscriptionViewModel {
 
     private func startAudioTrackPreflight(
         files: [URL],
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         expansion: AudioFileEnumerator.Result
     ) {
         guard let audioTrackService else {
@@ -506,7 +514,7 @@ public final class TranscriptionViewModel {
                         guard files.count > 1 else { throw error }
                         preflightFailedFilePaths.insert(file.standardizedFileURL.path)
                         logger.error(
-                            "Batch audio-track discovery failed error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)"
+                            "Batch audio-track discovery failed error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public)"
                         )
                     }
                 }
@@ -555,14 +563,15 @@ public final class TranscriptionViewModel {
 
     private func startResolvedFiles(
         _ files: [URL],
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         audioTrackOrdinal: Int?,
         multiTrackFilePaths: Set<String>,
         preflightFailedFilePaths: Set<String> = [],
         expansion: AudioFileEnumerator.Result?
     ) {
         guard let first = files.first else { return }
-        let firstAudioTrackOrdinal = multiTrackFilePaths.contains(first.standardizedFileURL.path)
+        let firstAudioTrackOrdinal =
+            multiTrackFilePaths.contains(first.standardizedFileURL.path)
             ? audioTrackOrdinal
             : nil
 
@@ -582,12 +591,14 @@ public final class TranscriptionViewModel {
         }
 
         if let expansion, expansion.truncated {
-            let dropped = expansion.stoppedEarly
+            let dropped =
+                expansion.stoppedEarly
                 ? "at least \(expansion.droppedCount)"
                 : "\(expansion.droppedCount)"
-            setError(message: "Queued the first \(files.count) files; "
-                + "\(dropped) more were skipped "
-                + "(\(AudioFileEnumerator.defaultMaxFiles)-file limit).")
+            setError(
+                message: "Queued the first \(files.count) files; "
+                    + "\(dropped) more were skipped "
+                    + "(\(AudioFileEnumerator.defaultMaxFiles)-file limit).")
         }
     }
 
@@ -634,7 +645,8 @@ public final class TranscriptionViewModel {
             guard MediaPlatform.isTranscribable(url) else { return }
             source = .youtubeURL
             if let platform = MediaPlatform.recognize(url) {
-                placeholderName = platform.isAudioFirst ? "\(platform.displayName) audio" : "\(platform.displayName) video"
+                placeholderName =
+                    platform.isAudioFirst ? "\(platform.displayName) audio" : "\(platform.displayName) video"
             } else {
                 placeholderName = "Video"
             }
@@ -710,7 +722,8 @@ public final class TranscriptionViewModel {
 
     public func retranscriptionEngineOption(for original: Transcription) -> RetranscriptionEngineOption? {
         guard let filePath = original.filePath,
-              FileManager.default.fileExists(atPath: filePath) else {
+            FileManager.default.fileExists(atPath: filePath)
+        else {
             return nil
         }
 
@@ -723,12 +736,13 @@ public final class TranscriptionViewModel {
         let primaryEngine: SpeechEngineSelection
         let primaryReflectsTranscriptEngine: Bool
         if original.sourceType == .meeting,
-           let archivedRecording = archivedMeetingRecording(
-               for: original,
-               mixedAudioURL: URL(fileURLWithPath: filePath),
-               logFailure: false
-           ),
-           archivedRecording.speechEngineWasCaptured {
+            let archivedRecording = archivedMeetingRecording(
+                for: original,
+                mixedAudioURL: URL(fileURLWithPath: filePath),
+                logFailure: false
+            ),
+            archivedRecording.speechEngineWasCaptured
+        {
             primaryEngine = archivedRecording.speechEngine
             primaryReflectsTranscriptEngine = true
         } else if let recordedEngine = original.engine.flatMap(SpeechEnginePreference.init(rawValue:)) {
@@ -748,12 +762,14 @@ public final class TranscriptionViewModel {
                 engine: engine,
                 language: Self.retranscriptionLanguage(for: engine, defaults: defaults)
             )
-            guard let capabilities = SpeechEngineCapabilityRegistry.capabilities(
-                for: engine,
-                parakeetModelVariant: parakeetVariant,
-                nemotronModelVariant: nemotronVariant,
-                whisperModelVariant: whisperVariant
-            ) else {
+            guard
+                let capabilities = SpeechEngineCapabilityRegistry.capabilities(
+                    for: engine,
+                    parakeetModelVariant: parakeetVariant,
+                    nemotronModelVariant: nemotronVariant,
+                    whisperModelVariant: whisperVariant
+                )
+            else {
                 preconditionFailure("Missing SpeechEngineCapabilities row for \(engine.rawValue)")
             }
             let unavailableReason = retranscriptionUnavailableReason(for: engine)
@@ -780,7 +796,8 @@ public final class TranscriptionViewModel {
         // Gate Cohere on its feature flag, consistent with the settings engine
         // picker — when the flag is off, Cohere must not leak in as a
         // retranscription choice.
-        let defaultOrder: [SpeechEnginePreference] = AppFeatures.cohereEngineEnabled
+        let defaultOrder: [SpeechEnginePreference] =
+            AppFeatures.cohereEngineEnabled
             ? [.parakeet, .nemotron, .whisper, .cohere]
             : [.parakeet, .nemotron, .whisper]
         return [primary] + defaultOrder.filter { $0 != primary }
@@ -810,8 +827,9 @@ public final class TranscriptionViewModel {
         unavailableReason: String?
     ) -> String? {
         guard engine == .whisper,
-              unavailableReason == nil,
-              SpeechEnginePreference.isColdSwitch(to: .whisper, defaults: defaults) else {
+            unavailableReason == nil,
+            SpeechEnginePreference.isColdSwitch(to: .whisper, defaults: defaults)
+        else {
             return nil
         }
         return "First run may spend a few minutes preparing this Whisper model."
@@ -842,7 +860,8 @@ public final class TranscriptionViewModel {
             return
         }
         guard let filePath = original.filePath,
-              FileManager.default.fileExists(atPath: filePath) else { return }
+            FileManager.default.fileExists(atPath: filePath)
+        else { return }
 
         let url = URL(fileURLWithPath: filePath)
         let taskID = beginNewTranscription(
@@ -851,16 +870,17 @@ public final class TranscriptionViewModel {
             clearCurrent: true,
             speechEngine: speechEngineOverride
         )
-        let retranscriptionSource: TelemetryTranscriptionSource = switch original.sourceType {
-        case .file:
-            .file
-        case .youtube:
-            .youtube
-        case .podcast:
-            .podcast
-        case .meeting:
-            .meeting
-        }
+        let retranscriptionSource: TranscriptionSource =
+            switch original.sourceType {
+            case .file:
+                .file
+            case .youtube:
+                .youtube
+            case .podcast:
+                .podcast
+            case .meeting:
+                .meeting
+            }
 
         transcriptionTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -872,7 +892,8 @@ public final class TranscriptionViewModel {
                 }
                 let result: Transcription
                 if original.sourceType == .meeting,
-                   let meetingRecording = archivedMeetingRecording(for: original, mixedAudioURL: url) {
+                    let meetingRecording = archivedMeetingRecording(for: original, mixedAudioURL: url)
+                {
                     result = try await service.retranscribeMeeting(
                         existing: original,
                         recording: meetingRecording,
@@ -912,7 +933,9 @@ public final class TranscriptionViewModel {
                     // Skip auto-run prompts on retranscribe — they would duplicate the existing tabs.
                     completeSuccessfulTranscription(taskID: taskID, result: updatedResult, runAutoPrompts: false)
                 } catch {
-                    logger.error("Failed to save transcription result error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+                    logger.error(
+                        "Failed to save transcription result error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public)"
+                    )
                     completeFailedTranscription(taskID: taskID, error: error)
                 }
             } catch is CancellationError {
@@ -925,13 +948,16 @@ public final class TranscriptionViewModel {
 
     public func correctMeetingSpeakerAttribution(_ original: Transcription, selection: MeetingSpeakerCountSelection) {
         guard let service = transcriptionService as? any MeetingSpeakerAttributionCorrectingTranscriptionService else {
-            speakerAttributionCorrectionState = .failed(message: MeetingSpeakerCountCorrectionError.unsupportedService.localizedDescription)
+            speakerAttributionCorrectionState = .failed(
+                message: MeetingSpeakerCountCorrectionError.unsupportedService.localizedDescription)
             return
         }
         guard let filePath = original.filePath,
-              FileManager.default.fileExists(atPath: filePath),
-              let recording = archivedMeetingRecording(for: original, mixedAudioURL: URL(fileURLWithPath: filePath)) else {
-            speakerAttributionCorrectionState = .failed(message: MeetingSpeakerCountCorrectionError.retainedAudioUnavailable.localizedDescription)
+            FileManager.default.fileExists(atPath: filePath),
+            let recording = archivedMeetingRecording(for: original, mixedAudioURL: URL(fileURLWithPath: filePath))
+        else {
+            speakerAttributionCorrectionState = .failed(
+                message: MeetingSpeakerCountCorrectionError.retainedAudioUnavailable.localizedDescription)
             return
         }
         do {
@@ -951,16 +977,20 @@ public final class TranscriptionViewModel {
                 let progressHandler: @Sendable (TranscriptionProgress) -> Void = { [weak self] progress in
                     Task { @MainActor [weak self] in
                         guard self?.activeSpeakerAttributionTaskID == taskID else { return }
-                        self?.speakerAttributionCorrectionState = .running(message: Self.speakerAttributionProgressMessage(progress))
+                        self?.speakerAttributionCorrectionState = .running(
+                            message: Self.speakerAttributionProgressMessage(progress))
                     }
                 }
-                let result = try await service.correctMeetingSpeakerAttribution(existing: original, recording: recording, selection: selection, onProgress: progressHandler)
+                let result = try await service.correctMeetingSpeakerAttribution(
+                    existing: original, recording: recording, selection: selection, onProgress: progressHandler)
                 guard activeSpeakerAttributionTaskID == taskID else { return }
                 let latest: Transcription
                 do {
                     latest = try transcriptionRepo?.fetch(id: result.id) ?? result
                 } catch {
-                    logger.error("Speaker correction committed but latest-row refresh failed error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+                    logger.error(
+                        "Speaker correction committed but latest-row refresh failed error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public)"
+                    )
                     latest = result
                 }
                 speakerAttributionTask = nil
@@ -1130,7 +1160,6 @@ public final class TranscriptionViewModel {
             try TranscriptionDeletionCleanup.removeOwnedAssets(for: transcription)
             let deleted = try repo.delete(id: transcription.id)
             guard deleted else { return }
-            Telemetry.send(.transcriptionDeleted)
             if currentTranscription?.id == transcription.id {
                 currentTranscription = nil
             }
@@ -1168,7 +1197,8 @@ public final class TranscriptionViewModel {
                 currentTranscription = updated
             }
             if let index = transcriptions.firstIndex(where: { $0.id == transcription.id }) {
-                transcriptions[index].meetingArtifactFolderPath = transcriptions[index].meetingArtifactFolderPath
+                transcriptions[index].meetingArtifactFolderPath =
+                    transcriptions[index].meetingArtifactFolderPath
                     ?? artifactFolderPath
                 transcriptions[index].filePath = nil
             }
@@ -1197,10 +1227,12 @@ public final class TranscriptionViewModel {
         activeTranscriptionTaskID = taskID
         let progressSpeechEngine = speechEngine ?? SpeechEngineSelection.finalTranscription(defaults: defaults)
         activeProgressSpeechEngine = progressSpeechEngine
-        activeProgressWhisperVariant = progressSpeechEngine.engine == .whisper
+        activeProgressWhisperVariant =
+            progressSpeechEngine.engine == .whisper
             ? SpeechEnginePreference.whisperModelVariant(defaults: defaults)
             : nil
-        activeProgressNemotronVariant = progressSpeechEngine.engine == .nemotron
+        activeProgressNemotronVariant =
+            progressSpeechEngine.engine == .nemotron
             ? SpeechEnginePreference.nemotronModelVariant(defaults: defaults)
             : nil
         transcribingFileName = fileName
@@ -1312,7 +1344,9 @@ public final class TranscriptionViewModel {
         do {
             try repo.updateFilePath(id: transcriptionID, filePath: newFilePath)
         } catch {
-            logger.error("transcription_file_path_update_failed id=\(transcriptionID, privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
+            logger.error(
+                "transcription_file_path_update_failed id=\(transcriptionID, privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+            )
             throw error
         }
         if let sourceFileToCleanup, sourceFileToCleanup != newFilePath {
@@ -1385,14 +1419,18 @@ public final class TranscriptionViewModel {
             // A failed file never aborts the batch — it bumps the failure count
             // (surfaced in the status line + completion banner) and advances.
             batchFailedCount += 1
-            logger.error("Batch file transcription failed error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+            logger.error(
+                "Batch file transcription failed error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public)"
+            )
             loadTranscriptions()
             advanceBatch()
         } else {
             let message = error.localizedDescription
-            setError(message: message, detail: failedURL.map {
-                Self.urlFailureDiagnostic(message: message, url: $0, platform: MediaPlatform.recognize($0))
-            })
+            setError(
+                message: message,
+                detail: failedURL.map {
+                    Self.urlFailureDiagnostic(message: message, url: $0, platform: MediaPlatform.recognize($0))
+                })
             loadTranscriptions()
         }
     }
@@ -1400,7 +1438,7 @@ public final class TranscriptionViewModel {
     /// Builds the rich, copyable diagnostic for a failed URL transcription: the
     /// headline plus the source link and environment — exactly the context a
     /// yt-dlp/site bug report needs. Kept separate from `errorMessage` (which
-    /// telemetry classifies) so the URL never reaches telemetry; this string is
+    /// the UI classifies) so the URL does not enter user-facing error text; this string is
     /// only surfaced when the user clicks the banner's copy button.
     static func urlFailureDiagnostic(
         message: String,
@@ -1467,11 +1505,14 @@ public final class TranscriptionViewModel {
         self.transcriptionProgress = progress.fraction
         self.progressPhase = phase
         self.progressHeadline = Self.headline(for: phase)
-        let speechEngine = activeProgressSpeechEngine
+        let speechEngine =
+            activeProgressSpeechEngine
             ?? SpeechEngineSelection.finalTranscription(defaults: defaults)
-        let whisperVariant = activeProgressWhisperVariant
+        let whisperVariant =
+            activeProgressWhisperVariant
             ?? SpeechEnginePreference.whisperModelVariant(defaults: defaults)
-        let nemotronVariant = activeProgressNemotronVariant
+        let nemotronVariant =
+            activeProgressNemotronVariant
             ?? SpeechEnginePreference.nemotronModelVariant(defaults: defaults)
         self.progressSubline = Self.subline(
             for: phase,
@@ -1568,7 +1609,8 @@ public final class TranscriptionViewModel {
                 return "Cohere Transcribe \u{00B7} Local Core ML"
             }
         case .identifyingSpeakers:
-            return "May take several minutes per hour of audio. Speaker labels are approximate \u{2014} click to rename."
+            return
+                "May take several minutes per hour of audio. Speaker labels are approximate \u{2014} click to rename."
         default:
             return nil
         }
@@ -1576,7 +1618,8 @@ public final class TranscriptionViewModel {
 
     public func loadPersistedContent() {
         if let id = currentTranscription?.id,
-           let fresh = try? transcriptionRepo?.fetch(id: id) {
+            let fresh = try? transcriptionRepo?.fetch(id: id)
+        {
             currentTranscription = fresh
         }
         refreshPromptResultStatus()
@@ -1584,7 +1627,8 @@ public final class TranscriptionViewModel {
 
     public func refreshCurrentTranscriptionIfMatching(id: UUID) {
         guard currentTranscription?.id == id,
-              let fresh = try? transcriptionRepo?.fetch(id: id) else {
+            let fresh = try? transcriptionRepo?.fetch(id: id)
+        else {
             return
         }
         currentTranscription = fresh
@@ -1616,18 +1660,22 @@ public final class TranscriptionViewModel {
         let cleanTranscript = trimmed == transcription.rawTranscript ? nil : trimmed
 
         do {
-            guard let persisted = try repo.updateTranscriptText(
-                id: transcription.id,
-                cleanTranscript: cleanTranscript,
-                isTranscriptEdited: cleanTranscript != nil
-            ) else { return false }
+            guard
+                let persisted = try repo.updateTranscriptText(
+                    id: transcription.id,
+                    cleanTranscript: cleanTranscript,
+                    isTranscriptEdited: cleanTranscript != nil
+                )
+            else { return false }
             currentTranscription = persisted
             if let index = transcriptions.firstIndex(where: { $0.id == transcription.id }) {
                 transcriptions[index] = persisted
             }
             return true
         } catch {
-            logger.error("Failed to persist transcript edit error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+            logger.error(
+                "Failed to persist transcript edit error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public)"
+            )
             return false
         }
     }
@@ -1635,7 +1683,7 @@ public final class TranscriptionViewModel {
     @discardableResult
     public func revertCurrentTranscriptToOriginal() -> Bool {
         guard let transcription = currentTranscription,
-              transcription.cleanTranscript != nil
+            transcription.cleanTranscript != nil
         else { return false }
         guard let repo = transcriptionRepo else {
             reportMissingConfiguration("transcriptionRepo", action: "revertCurrentTranscriptToOriginal")
@@ -1643,18 +1691,22 @@ public final class TranscriptionViewModel {
         }
 
         do {
-            guard let persisted = try repo.updateTranscriptText(
-                id: transcription.id,
-                cleanTranscript: nil,
-                isTranscriptEdited: false
-            ) else { return false }
+            guard
+                let persisted = try repo.updateTranscriptText(
+                    id: transcription.id,
+                    cleanTranscript: nil,
+                    isTranscriptEdited: false
+                )
+            else { return false }
             currentTranscription = persisted
             if let index = transcriptions.firstIndex(where: { $0.id == transcription.id }) {
                 transcriptions[index] = persisted
             }
             return true
         } catch {
-            logger.error("Failed to persist transcript revert error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+            logger.error(
+                "Failed to persist transcript revert error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public)"
+            )
             return false
         }
     }
@@ -1663,7 +1715,8 @@ public final class TranscriptionViewModel {
 
     public func renameSpeaker(id speakerId: String, to newLabel: String) {
         guard var transcription = currentTranscription,
-              var speakers = transcription.speakers else { return }
+            var speakers = transcription.speakers
+        else { return }
         guard let index = speakers.firstIndex(where: { $0.id == speakerId }) else { return }
         let trimmed = newLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, speakers[index].label != trimmed else { return }
@@ -1691,20 +1744,21 @@ public final class TranscriptionViewModel {
         }
         guard let transcriptionRepo else { return }
         let transcriptionID = transcription.id
-        Task { [
-            weak self,
-            transcriptionRepo,
-            transcriptionID,
-            speakerId,
-            trimmed,
-            previousCurrentSpeakers,
-            previousCurrentSegments,
-            previousCurrentUpdatedAt,
-            previousListSpeakers,
-            previousListSegments,
-            previousListUpdatedAt,
-            renameGeneration
-        ] in
+        Task {
+            [
+                weak self,
+                transcriptionRepo,
+                transcriptionID,
+                speakerId,
+                trimmed,
+                previousCurrentSpeakers,
+                previousCurrentSegments,
+                previousCurrentUpdatedAt,
+                previousListSpeakers,
+                previousListSegments,
+                previousListUpdatedAt,
+                renameGeneration
+            ] in
             do {
                 let persisted = try await Task.detached(priority: .utility) {
                     try transcriptionRepo.updateSpeakerLabel(
@@ -1723,7 +1777,7 @@ public final class TranscriptionViewModel {
                     generation: renameGeneration
                 )
             } catch {
-                let errorType = TelemetryErrorClassifier.classify(error)
+                let errorType = DiagnosticErrorClassifier.classify(error)
                 self?.handleSpeakerRenamePersistenceFailure(
                     transcriptionID: transcriptionID,
                     generation: renameGeneration,
@@ -1790,8 +1844,8 @@ public final class TranscriptionViewModel {
 
     private func enqueueMeetingArtifactRefresh(transcriptionID: UUID, generation: Int) {
         guard speakerRenameGenerations[transcriptionID] == generation,
-              let transcriptionRepo,
-              let promptResultRepo
+            let transcriptionRepo,
+            let promptResultRepo
         else {
             return
         }
@@ -1806,7 +1860,8 @@ public final class TranscriptionViewModel {
 
         let artifactStore = meetingArtifactStore
         let logger = logger
-        let task = Task.detached(priority: .utility) { [weak self, previousTask, transcriptionRepo, promptResultRepo, artifactStore, logger] in
+        let task = Task.detached(priority: .utility) {
+            [weak self, previousTask, transcriptionRepo, promptResultRepo, artifactStore, logger] in
             await previousTask?.value
             let shouldMaterialize = await MainActor.run { [weak self] in
                 guard let self else { return false }
@@ -1825,8 +1880,8 @@ public final class TranscriptionViewModel {
             while true {
                 do {
                     guard let persisted = try transcriptionRepo.fetch(id: transcriptionID),
-                          persisted.sourceType == .meeting,
-                          MeetingArtifactStore.sessionFolderURL(for: persisted) != nil
+                        persisted.sourceType == .meeting,
+                        MeetingArtifactStore.sessionFolderURL(for: persisted) != nil
                     else {
                         break
                     }
@@ -1836,7 +1891,7 @@ public final class TranscriptionViewModel {
                         promptResults: promptResults
                     )
                 } catch {
-                    let errorType = TelemetryErrorClassifier.classify(error)
+                    let errorType = DiagnosticErrorClassifier.classify(error)
                     logger.error("speaker_rename_artifact_refresh_failed error_type=\(errorType, privacy: .public)")
                     break
                 }
@@ -1844,12 +1899,15 @@ public final class TranscriptionViewModel {
                 let completedTargetGeneration = materializedGeneration
                 let nextGeneration = await MainActor.run { [weak self] () -> Int? in
                     guard let self else { return nil }
-                    let completedGeneration = self.speakerRenameArtifactRefreshCompletedGenerations[transcriptionID] ?? 0
+                    let completedGeneration =
+                        self.speakerRenameArtifactRefreshCompletedGenerations[transcriptionID] ?? 0
                     self.speakerRenameArtifactRefreshCompletedGenerations[transcriptionID] = max(
                         completedGeneration,
                         completedTargetGeneration
                     )
-                    let requestedGeneration = self.speakerRenameArtifactRefreshRequestedGenerations[transcriptionID] ?? completedTargetGeneration
+                    let requestedGeneration =
+                        self.speakerRenameArtifactRefreshRequestedGenerations[transcriptionID]
+                        ?? completedTargetGeneration
                     return requestedGeneration > completedTargetGeneration ? requestedGeneration : nil
                 }
                 guard let nextGeneration else { break }
@@ -1890,7 +1948,9 @@ public final class TranscriptionViewModel {
                 await self?.refreshMeetingArtifacts(transcription: persistedTranscription)
             }
         } catch {
-            logger.error("Failed to persist transcription rename error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+            logger.error(
+                "Failed to persist transcription rename error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public)"
+            )
         }
     }
 
@@ -1899,7 +1959,8 @@ public final class TranscriptionViewModel {
         guard transcription.sourceType == .file else { return }
         guard let transcriptionRepo else { return }
         guard let normalizedTitle = Transcription.normalizedTitleOverride(from: newTitle),
-              normalizedTitle != transcription.effectiveDisplayTitle else {
+            normalizedTitle != transcription.effectiveDisplayTitle
+        else {
             return
         }
 
@@ -1912,7 +1973,9 @@ public final class TranscriptionViewModel {
                 transcriptions[index] = updatedTranscription
             }
         } catch {
-            logger.error("Failed to persist transcription title rename error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+            logger.error(
+                "Failed to persist transcription title rename error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public)"
+            )
             setError(message: "Failed to rename transcription: \(error.localizedDescription)")
         }
     }
@@ -1926,7 +1989,9 @@ public final class TranscriptionViewModel {
         do {
             hasPromptResultTabs = try promptResultRepo?.hasPromptResults(transcriptionId: transcriptionID) ?? false
         } catch {
-            logger.error("Failed to query prompt results error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+            logger.error(
+                "Failed to query prompt results error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public)"
+            )
             hasPromptResultTabs = false
         }
     }
@@ -1934,7 +1999,7 @@ public final class TranscriptionViewModel {
     /// Refreshes meeting artifacts; failures are logged and never surfaced or thrown, and refresh never blocks or fails the triggering user action.
     private func refreshMeetingArtifacts(transcription: Transcription) async {
         guard let promptResultRepo,
-              transcription.sourceType == .meeting
+            transcription.sourceType == .meeting
         else { return }
 
         do {
@@ -1947,7 +2012,9 @@ public final class TranscriptionViewModel {
                 )
             }.value
         } catch {
-            logger.warning("Failed to refresh meeting artifact for transcription \(transcription.id.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.warning(
+                "Failed to refresh meeting artifact for transcription \(transcription.id.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 }

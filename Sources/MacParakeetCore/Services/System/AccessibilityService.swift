@@ -61,10 +61,12 @@ struct SystemAccessibilityBackend: AccessibilityBackend {
 
     func focusedElement() -> AXUIElement? {
         let systemElement = AXUIElementCreateSystemWide()
-        guard let value = copyAttributeValue(
-            element: systemElement,
-            attribute: kAXFocusedUIElementAttribute as CFString
-        ) else {
+        guard
+            let value = copyAttributeValue(
+                element: systemElement,
+                attribute: kAXFocusedUIElementAttribute as CFString
+            )
+        else {
             return nil
         }
 
@@ -75,20 +77,24 @@ struct SystemAccessibilityBackend: AccessibilityBackend {
     }
 
     func selectedText(of element: AXUIElement) -> String? {
-        guard let value = copyAttributeValue(
-            element: element,
-            attribute: kAXSelectedTextAttribute as CFString
-        ) else {
+        guard
+            let value = copyAttributeValue(
+                element: element,
+                attribute: kAXSelectedTextAttribute as CFString
+            )
+        else {
             return nil
         }
         return value as? String
     }
 
     func selectedRange(of element: AXUIElement) -> CFRange? {
-        guard let value = copyAttributeValue(
-            element: element,
-            attribute: kAXSelectedTextRangeAttribute as CFString
-        ) else {
+        guard
+            let value = copyAttributeValue(
+                element: element,
+                attribute: kAXSelectedTextRangeAttribute as CFString
+            )
+        else {
             return nil
         }
 
@@ -109,10 +115,12 @@ struct SystemAccessibilityBackend: AccessibilityBackend {
     }
 
     func fullValue(of element: AXUIElement) -> String? {
-        guard let value = copyAttributeValue(
-            element: element,
-            attribute: kAXValueAttribute as CFString
-        ) else {
+        guard
+            let value = copyAttributeValue(
+                element: element,
+                attribute: kAXValueAttribute as CFString
+            )
+        else {
             return nil
         }
         return value as? String
@@ -199,8 +207,9 @@ public final class AccessibilityService: AccessibilityServiceProtocol, @unchecke
         let ns = value as NSString
         let nsRange = NSRange(location: range.location, length: range.length)
         guard nsRange.location >= 0,
-              nsRange.length >= 0,
-              nsRange.location + nsRange.length <= ns.length else {
+            nsRange.length >= 0,
+            nsRange.location + nsRange.length <= ns.length
+        else {
             throw AccessibilityServiceError.unsupportedElement
         }
 

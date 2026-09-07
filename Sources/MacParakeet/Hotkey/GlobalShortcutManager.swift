@@ -42,26 +42,29 @@ public final class GlobalShortcutManager {
             stop()
         }
 
-        let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
+        let eventMask: CGEventMask =
+            (1 << CGEventType.flagsChanged.rawValue)
             | (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
 
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: eventMask,
-            callback: { _, type, event, refcon -> Unmanaged<CGEvent>? in
-                guard let refcon else { return Unmanaged.passUnretained(event) }
-                let manager = Unmanaged<GlobalShortcutManager>.fromOpaque(refcon).takeUnretainedValue()
-                return manager.handleEvent(type: type, event: event)
-            },
-            userInfo: {
-                let retained = Unmanaged.passRetained(self)
-                self.retainedSelf = retained
-                return retained.toOpaque()
-            }()
-        ) else {
+        guard
+            let tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: eventMask,
+                callback: { _, type, event, refcon -> Unmanaged<CGEvent>? in
+                    guard let refcon else { return Unmanaged.passUnretained(event) }
+                    let manager = Unmanaged<GlobalShortcutManager>.fromOpaque(refcon).takeUnretainedValue()
+                    return manager.handleEvent(type: type, event: event)
+                },
+                userInfo: {
+                    let retained = Unmanaged.passRetained(self)
+                    self.retainedSelf = retained
+                    return retained.toOpaque()
+                }()
+            )
+        else {
             retainedSelf?.release()
             retainedSelf = nil
             return false
@@ -209,8 +212,9 @@ public final class GlobalShortcutManager {
         }
 
         guard exactPressed,
-              !modifierChordBlockedUntilRelease,
-              !modifierChordTriggeredDuringPress else {
+            !modifierChordBlockedUntilRelease,
+            !modifierChordTriggeredDuringPress
+        else {
             return
         }
         modifierChordTriggeredDuringPress = true
@@ -266,7 +270,8 @@ public final class GlobalShortcutManager {
 
     private func currentPhysicalTriggerKeyIsPressed() -> Bool {
         guard trigger.kind == .keyCode || trigger.kind == .chord,
-              let keyCode = trigger.keyCode else {
+            let keyCode = trigger.keyCode
+        else {
             return false
         }
         return CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(keyCode))
@@ -303,7 +308,8 @@ public final class GlobalShortcutManager {
             flags: currentFlags
         )
         let exactPressed = ModifierKeyMatcher.modifierChordMatches(trigger: trigger, flags: currentFlags)
-        modifierChordBlockedUntilRelease = modifierChordRequiredWasPressed
+        modifierChordBlockedUntilRelease =
+            modifierChordRequiredWasPressed
             && !exactPressed
         modifierChordTriggeredDuringPress = exactPressed
     }

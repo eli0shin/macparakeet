@@ -119,11 +119,15 @@ struct LiveNotesPaneView: View {
                     // Honor System Settings → Accessibility → Display →
                     // Reduce Motion: opacity-only transition with no slide
                     // and no easing curve.
-                    .transition(reduceMotion
-                        ? .opacity
-                        : .opacity.combined(with: .move(edge: .bottom)))
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.15),
-                               value: viewModel.matchingCommands)
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .opacity.combined(with: .move(edge: .bottom))
+                    )
+                    .animation(
+                        reduceMotion ? nil : .easeOut(duration: 0.15),
+                        value: viewModel.matchingCommands
+                    )
                     .allowsHitTesting(true)
             }
         }
@@ -193,9 +197,10 @@ struct LiveNotesPaneView: View {
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     Text(command.trigger)
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundStyle(isHighlighted
-                            ? DesignSystem.Colors.accent
-                            : DesignSystem.Colors.textSecondary)
+                        .foregroundStyle(
+                            isHighlighted
+                                ? DesignSystem.Colors.accent
+                                : DesignSystem.Colors.textSecondary)
                     Text(command.label)
                         .font(.system(size: 12))
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -209,9 +214,10 @@ struct LiveNotesPaneView: View {
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isHighlighted
-                            ? DesignSystem.Colors.accent.opacity(0.12)
-                            : (isHovered ? DesignSystem.Colors.background.opacity(0.5) : .clear))
+                        .fill(
+                            isHighlighted
+                                ? DesignSystem.Colors.accent.opacity(0.12)
+                                : (isHovered ? DesignSystem.Colors.background.opacity(0.5) : .clear))
                 )
                 .padding(.horizontal, 4)
                 .contentShape(Rectangle())
@@ -245,6 +251,7 @@ struct LiveNotesPaneView: View {
         // count are announced together when the footer appears (otherwise
         // VoiceOver users get no signal that the soft cap is active).
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Notes approaching soft cap: \(viewModel.wordCount) words. Summary will start trimming past 8,000 words.")
+        .accessibilityLabel(
+            "Notes approaching soft cap: \(viewModel.wordCount) words. Summary will start trimming past 8,000 words.")
     }
 }

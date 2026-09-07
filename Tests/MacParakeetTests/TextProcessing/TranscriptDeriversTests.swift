@@ -10,9 +10,9 @@ final class TitleDeriverTests: XCTestCase {
 
     func testPicksFirstSubstantiveSentence() {
         let transcript = """
-        So um okay. Yeah. The new dress structure looks great for tomorrow's runway show.
-        We should review the lighting cues with the production team this afternoon.
-        """
+            So um okay. Yeah. The new dress structure looks great for tomorrow's runway show.
+            We should review the lighting cues with the production team this afternoon.
+            """
         let title = TitleDeriver.derive(from: transcript)
         XCTAssertEqual(title, "The new dress structure looks great for tomorrow's runway show")
     }
@@ -28,7 +28,8 @@ final class TitleDeriverTests: XCTestCase {
     }
 
     func testTruncatesLongSentence() {
-        let long = "The quarterly business review covers revenue growth across all five product lines, marketing investment ROI, customer acquisition costs by channel, and the new hiring plan for engineering."
+        let long =
+            "The quarterly business review covers revenue growth across all five product lines, marketing investment ROI, customer acquisition costs by channel, and the new hiring plan for engineering."
         let title = TitleDeriver.derive(from: long)
         XCTAssertNotNil(title)
         XCTAssertLessThanOrEqual(title!.count, TitleDeriver.maxLength + 1)
@@ -48,7 +49,8 @@ final class TitleDeriverTests: XCTestCase {
     }
 
     func testPreservesEllipsisFromTruncation() {
-        let long = "The quarterly business review covers revenue growth across all five product lines, marketing investment ROI, customer acquisition costs by channel, and the new hiring plan for engineering."
+        let long =
+            "The quarterly business review covers revenue growth across all five product lines, marketing investment ROI, customer acquisition costs by channel, and the new hiring plan for engineering."
         let title = TitleDeriver.derive(from: long)
         XCTAssertNotNil(title)
         // Truncation marker should survive `clean()` even though `clean`
@@ -79,9 +81,9 @@ final class SnippetDeriverTests: XCTestCase {
 
     func testPicksLongerSentenceForSnippet() {
         let transcript = """
-        Hi. The dress structure looks great. We have concerns about the bodice fit on Anya's gown — \
-        it needs to be re-pinned before the runway show tomorrow morning at eight a.m.
-        """
+            Hi. The dress structure looks great. We have concerns about the bodice fit on Anya's gown — \
+            it needs to be re-pinned before the runway show tomorrow morning at eight a.m.
+            """
         let snippet = SnippetDeriver.derive(from: transcript)
         XCTAssertNotNil(snippet)
         XCTAssertTrue(snippet!.contains("bodice"))
@@ -89,9 +91,9 @@ final class SnippetDeriverTests: XCTestCase {
 
     func testExcludesTitleSentence() {
         let transcript = """
-        The new dress structure looks great. We have concerns about the bodice fit on Anya's gown — \
-        it needs to be re-pinned before tomorrow morning's show.
-        """
+            The new dress structure looks great. We have concerns about the bodice fit on Anya's gown — \
+            it needs to be re-pinned before tomorrow morning's show.
+            """
         let title = "The new dress structure looks great"
         let snippet = SnippetDeriver.derive(from: transcript, excluding: title)
         XCTAssertNotNil(snippet)

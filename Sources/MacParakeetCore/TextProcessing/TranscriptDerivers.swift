@@ -110,7 +110,7 @@ enum TranscriptScanner {
     static let leadingFillers: Set<String> = [
         "so", "yeah", "yep", "yes", "no", "okay", "ok", "and", "but",
         "um", "uh", "like", "well", "right", "sure", "alright",
-        "anyway", "hey", "hi", "hello", "look", "listen"
+        "anyway", "hey", "hi", "hello", "look", "listen",
     ]
 
     static func headSentences(_ text: String, scanFraction: Double, minScan: Int) -> [String] {
@@ -139,7 +139,8 @@ enum TranscriptScanner {
     static func stripLeadingFillers(_ sentence: String) -> String {
         var words = sentence.split(whereSeparator: \.isWhitespace).map(String.init)
         while let first = words.first {
-            let normalized = first
+            let normalized =
+                first
                 .lowercased()
                 .trimmingCharacters(in: .punctuationCharacters)
             if leadingFillers.contains(normalized) {

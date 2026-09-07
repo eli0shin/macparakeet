@@ -10,7 +10,11 @@ struct LLMTestCommand: AsyncParsableCommand {
 
     @OptionGroup var llm: LLMInlineOptions
 
-    @Flag(name: .long, help: "Emit a structured JSON envelope on success ({ok:true,…}) or failure ({ok:false,error,errorType}). Exit code is the source of truth for branching.")
+    @Flag(
+        name: .long,
+        help:
+            "Emit a structured JSON envelope on success ({ok:true,…}) or failure ({ok:false,error,errorType}). Exit code is the source of truth for branching."
+    )
     var json: Bool = false
 
     func run() async throws {
@@ -27,12 +31,13 @@ struct LLMTestCommand: AsyncParsableCommand {
                 try await execution.client.testConnection(context: execution.context)
                 let latencyMs = Int((Date().timeIntervalSince(startedAt) * 1000).rounded())
                 if json {
-                    try printJSON(LLMTestConnectionResult(
-                        ok: true,
-                        provider: config.id.rawValue,
-                        model: config.modelName,
-                        latencyMs: latencyMs
-                    ))
+                    try printJSON(
+                        LLMTestConnectionResult(
+                            ok: true,
+                            provider: config.id.rawValue,
+                            model: config.modelName,
+                            latencyMs: latencyMs
+                        ))
                 } else {
                     print("Connection successful.")
                 }

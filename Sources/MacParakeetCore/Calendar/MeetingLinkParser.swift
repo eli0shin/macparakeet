@@ -11,7 +11,8 @@ public struct MeetingLinkParser: Sendable {
     // Zoom: join (`/j/`), webinar (`/w/`), and personal-room (`/my/`) links,
     // on both zoom.us and the government tenant zoomgov.com. The old pattern
     // only matched `/j/<digits>`, silently missing `/w/`, `/my/`, and gov.
-    private static let zoomPattern = #"https?://(?:[\w-]+\.)?(?:zoom\.us|zoomgov\.com)/(?:j|w|my)/[\w.@-]+(?:\?[^\s]*)?"#
+    private static let zoomPattern =
+        #"https?://(?:[\w-]+\.)?(?:zoom\.us|zoomgov\.com)/(?:j|w|my)/[\w.@-]+(?:\?[^\s]*)?"#
     private static let meetPattern = #"https?://meet\.google\.com/[\w-]+"#
     private static let teamsPattern = #"https?://teams\.microsoft\.com/[\w/.%-]+"#
     private static let webexPattern = #"https?://[\w-]+\.webex\.com/[\w/.%-]+"#

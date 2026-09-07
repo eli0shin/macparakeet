@@ -64,11 +64,6 @@ final class ConfigCommandTests: XCTestCase {
         XCTAssertEqual(try ConfigCommand.read(key: "vocabulary-hints", defaults: defaults), "off")
     }
 
-    func testRemovedTelemetryPreferenceIsRejected() {
-        XCTAssertThrowsError(try ConfigCommand.read(key: "telemetry", defaults: defaults))
-        XCTAssertThrowsError(try ConfigCommand.write(key: "telemetry", value: "on", defaults: defaults))
-    }
-
     func testReadSpeakerDetectionReflectsExplicitFalse() throws {
         defaults.set(false, forKey: UserDefaultsAppRuntimePreferences.speakerDiarizationKey)
         XCTAssertEqual(try ConfigCommand.read(key: "speaker-detection", defaults: defaults), "off")
@@ -602,7 +597,8 @@ final class ConfigCommandTests: XCTestCase {
     }
 
     func testWriteRejectsInvalidValueAsValidationError() {
-        XCTAssertThrowsError(try ConfigCommand.write(key: "speaker-detection", value: "maybe", defaults: defaults)) { error in
+        XCTAssertThrowsError(try ConfigCommand.write(key: "speaker-detection", value: "maybe", defaults: defaults)) {
+            error in
             XCTAssertTrue(error is ValidationError, "Expected ValidationError, got \(type(of: error))")
             XCTAssertTrue("\(error)".contains("maybe"))
         }

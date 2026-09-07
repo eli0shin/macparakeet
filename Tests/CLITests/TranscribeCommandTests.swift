@@ -115,7 +115,8 @@ final class TranscribeCommandTests: XCTestCase {
     }
 
     func testResolveProcessingModeUsesStoredModeForAppDefaultWhenValid() {
-        let mode = TranscribeCommand.resolveProcessingMode(.appDefault, storedMode: Dictation.ProcessingMode.clean.rawValue)
+        let mode = TranscribeCommand.resolveProcessingMode(
+            .appDefault, storedMode: Dictation.ProcessingMode.clean.rawValue)
         XCTAssertEqual(mode, .clean)
     }
 
@@ -375,9 +376,11 @@ final class TranscribeCommandTests: XCTestCase {
             physicalMemoryBytes: 32 * 1024 * 1024 * 1024
         )
 
-        XCTAssertThrowsError(try TranscribeCommand.validateCohereLanguageOverride("auto", speechEngine: selection)) { error in
+        XCTAssertThrowsError(try TranscribeCommand.validateCohereLanguageOverride("auto", speechEngine: selection)) {
+            error in
             let message = String(describing: error)
-            let supportedCodes = SpeechEngineCapabilityRegistry.capabilities(for: .cohere)
+            let supportedCodes =
+                SpeechEngineCapabilityRegistry.capabilities(for: .cohere)
                 .supportedLanguages.supportedLanguageCodes ?? []
             let supported = supportedCodes.joined(separator: ", ")
             XCTAssertTrue(message.contains("Cohere has no auto-detect"), message)
@@ -558,60 +561,74 @@ final class TranscribeCommandTests: XCTestCase {
     }
 
     func testSpeakerConstraintFlagsRejectExplicitDisable() throws {
-        XCTAssertThrowsError(try TranscribeCommand.parse([
-            "sample.wav",
-            "--speaker-detection", "off",
-            "--speaker-count", "2",
-        ])) { error in
+        XCTAssertThrowsError(
+            try TranscribeCommand.parse([
+                "sample.wav",
+                "--speaker-detection", "off",
+                "--speaker-count", "2",
+            ])
+        ) { error in
             XCTAssertTrue(String(describing: error).contains("--speaker-detection off cannot be combined"))
         }
 
-        XCTAssertThrowsError(try TranscribeCommand.parse([
-            "sample.wav",
-            "--no-diarize",
-            "--speaker-min", "2",
-        ])) { error in
+        XCTAssertThrowsError(
+            try TranscribeCommand.parse([
+                "sample.wav",
+                "--no-diarize",
+                "--speaker-min", "2",
+            ])
+        ) { error in
             XCTAssertTrue(String(describing: error).contains("--no-diarize cannot be combined"))
         }
     }
 
     func testSpeakerConstraintFlagsValidateRangeShape() throws {
-        XCTAssertThrowsError(try TranscribeCommand.parse([
-            "sample.wav",
-            "--speaker-count", "2",
-            "--speaker-max", "4",
-        ])) { error in
+        XCTAssertThrowsError(
+            try TranscribeCommand.parse([
+                "sample.wav",
+                "--speaker-count", "2",
+                "--speaker-max", "4",
+            ])
+        ) { error in
             XCTAssertTrue(String(describing: error).contains("--speaker-count cannot be combined"))
         }
 
-        XCTAssertThrowsError(try TranscribeCommand.parse([
-            "sample.wav",
-            "--speaker-min", "5",
-            "--speaker-max", "4",
-        ])) { error in
+        XCTAssertThrowsError(
+            try TranscribeCommand.parse([
+                "sample.wav",
+                "--speaker-min", "5",
+                "--speaker-max", "4",
+            ])
+        ) { error in
             XCTAssertTrue(String(describing: error).contains("--speaker-min cannot be greater"))
         }
     }
 
     func testSpeakerConstraintFlagsRejectNonpositiveValues() throws {
-        XCTAssertThrowsError(try TranscribeCommand.parse([
-            "sample.wav",
-            "--speaker-count", "0",
-        ])) { error in
+        XCTAssertThrowsError(
+            try TranscribeCommand.parse([
+                "sample.wav",
+                "--speaker-count", "0",
+            ])
+        ) { error in
             XCTAssertTrue(String(describing: error).contains("--speaker-count must be at least 1"))
         }
 
-        XCTAssertThrowsError(try TranscribeCommand.parse([
-            "sample.wav",
-            "--speaker-min=-1",
-        ])) { error in
+        XCTAssertThrowsError(
+            try TranscribeCommand.parse([
+                "sample.wav",
+                "--speaker-min=-1",
+            ])
+        ) { error in
             XCTAssertTrue(String(describing: error).contains("--speaker-min must be at least 1"))
         }
 
-        XCTAssertThrowsError(try TranscribeCommand.parse([
-            "sample.wav",
-            "--speaker-max", "0",
-        ])) { error in
+        XCTAssertThrowsError(
+            try TranscribeCommand.parse([
+                "sample.wav",
+                "--speaker-max", "0",
+            ])
+        ) { error in
             XCTAssertTrue(String(describing: error).contains("--speaker-max must be at least 1"))
         }
     }
@@ -644,11 +661,13 @@ final class TranscribeCommandTests: XCTestCase {
     }
 
     func testRejectsMediaAndLegacyAudioQualityTogether() throws {
-        XCTAssertThrowsError(try TranscribeCommand.parse([
-            "https://www.youtube.com/watch?v=abc",
-            "--media-audio-quality", "m4a",
-            "--youtube-audio-quality", "best-available",
-        ])) { error in
+        XCTAssertThrowsError(
+            try TranscribeCommand.parse([
+                "https://www.youtube.com/watch?v=abc",
+                "--media-audio-quality", "m4a",
+                "--youtube-audio-quality", "best-available",
+            ])
+        ) { error in
             XCTAssertTrue(String(describing: error).contains("cannot be combined"))
         }
     }
@@ -665,11 +684,13 @@ final class TranscribeCommandTests: XCTestCase {
     }
 
     func testNoHistoryRejectsRetainedDownloadedAudio() throws {
-        XCTAssertThrowsError(try TranscribeCommand.parse([
-            "sample.wav",
-            "--no-history",
-            "--downloaded-audio", "keep",
-        ])) { error in
+        XCTAssertThrowsError(
+            try TranscribeCommand.parse([
+                "sample.wav",
+                "--no-history",
+                "--downloaded-audio", "keep",
+            ])
+        ) { error in
             XCTAssertTrue(String(describing: error).contains("--no-history cannot be combined"))
         }
     }
@@ -700,9 +721,10 @@ final class TranscribeCommandTests: XCTestCase {
     }
 
     func testDownloadableURLInputAcceptsGenericHTTPURL() {
-        XCTAssertTrue(TranscribeCommand.isDownloadableURLInput(
-            "https://www.facebook.com/reel/1998924354042801"
-        ))
+        XCTAssertTrue(
+            TranscribeCommand.isDownloadableURLInput(
+                "https://www.facebook.com/reel/1998924354042801"
+            ))
         XCTAssertFalse(TranscribeCommand.isDownloadableURLInput("/tmp/video.mp4"))
     }
 
@@ -803,7 +825,9 @@ final class TranscribeCommandTests: XCTestCase {
         let facebook = "https://www.facebook.com/reel/1998924354042801"
         let podcast = "https://podcasts.apple.com/us/podcast/the-daily/id1200361736?i=1000654321987"
 
-        let resolved = TranscribeCommand.expandInputs([dir.path, youtube, facebook, podcast, facebook, podcast, youtube])
+        let resolved = TranscribeCommand.expandInputs([
+            dir.path, youtube, facebook, podcast, facebook, podcast, youtube,
+        ])
 
         // Folder expands to its supported files (name-sorted), txt excluded,
         // media URLs pass through once.

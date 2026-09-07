@@ -19,9 +19,11 @@ struct AIStreamingIndicator: View {
                     .opacity(breathing ? 1.0 : 0.3)
                     .shadow(color: DesignSystem.Colors.accent.opacity(breathing ? 0.4 : 0.12), radius: 4)
                     .animation(
-                        reduceMotion ? nil : .easeInOut(duration: 1.0 / 1.3)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(i) * 0.10),
+                        reduceMotion
+                            ? nil
+                            : .easeInOut(duration: 1.0 / 1.3)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(i) * 0.10),
                         value: breathing
                     )
             }

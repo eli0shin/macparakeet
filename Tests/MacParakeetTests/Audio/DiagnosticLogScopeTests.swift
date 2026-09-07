@@ -62,10 +62,11 @@ final class DiagnosticLogScopeTests: XCTestCase {
     func testRecentHandlesCRLFLineEndings() {
         // CRLF must split into lines (not collapse into one) so the window
         // filter still works. Output is normalized to LF.
-        let raw = [
-            line(hoursAgo: 400, "old_crlf_event"),
-            line(hoursAgo: 1, "recent_crlf_event"),
-        ].joined(separator: "\r\n") + "\r\n"
+        let raw =
+            [
+                line(hoursAgo: 400, "old_crlf_event"),
+                line(hoursAgo: 1, "recent_crlf_event"),
+            ].joined(separator: "\r\n") + "\r\n"
 
         let scoped = AudioCaptureDiagnostics.scopedLogForUpload(raw, scope: .recent, now: now)
 

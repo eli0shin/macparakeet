@@ -24,7 +24,7 @@ public struct AIFormatterProfile: Codable, Identifiable, Sendable, Equatable {
     public var targetKind: AIFormatterProfileTargetKind
     public var bundleIdentifier: String?
     public var appDisplayName: String?
-    public var appCategory: TelemetryAppCategory?
+    public var appCategory: AppCategory?
     public var promptTemplate: String
     public var origin: AIFormatterProfileOrigin
     public var sortOrder: Int
@@ -38,7 +38,7 @@ public struct AIFormatterProfile: Codable, Identifiable, Sendable, Equatable {
         targetKind: AIFormatterProfileTargetKind,
         bundleIdentifier: String? = nil,
         appDisplayName: String? = nil,
-        appCategory: TelemetryAppCategory? = nil,
+        appCategory: AppCategory? = nil,
         promptTemplate: String,
         origin: AIFormatterProfileOrigin = .custom,
         sortOrder: Int = 0,
@@ -86,7 +86,7 @@ public struct AIFormatterProfile: Codable, Identifiable, Sendable, Equatable {
 
     public static func category(
         name: String,
-        appCategory: TelemetryAppCategory,
+        appCategory: AppCategory,
         promptTemplate: String,
         isEnabled: Bool = true,
         origin: AIFormatterProfileOrigin = .custom,

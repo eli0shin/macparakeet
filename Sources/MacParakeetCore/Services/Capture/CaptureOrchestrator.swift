@@ -105,7 +105,8 @@ actor CaptureOrchestrator {
                 // samples it is holding first so they cannot land behind
                 // this pair's zeros out of order.
                 let heldSamples = micConditioner.flush()
-                micSamples = heldSamples.isEmpty
+                micSamples =
+                    heldSamples.isEmpty
                     ? pair.microphoneSamples
                     : heldSamples + pair.microphoneSamples
             }

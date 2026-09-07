@@ -54,12 +54,6 @@ public final class TranscriptChatViewModel {
     private var conversationRepo: ChatConversationRepositoryProtocol?
     private var transcriptionId: UUID?
     private var transcriptText: String = ""
-    /// Identifies which chat surface this VM instance is driving — meeting
-    /// Ask or post-transcription transcript chat — so `llm_chat_used`
-    /// telemetry can separate the two. Defaults to `.transcriptChat`;
-    /// `MeetingRecordingPanelViewModel` flips it via
-    /// `markAsMeetingAskSurface()` at construction.
-    private var chatSource: TelemetryChatSource = .transcriptChat
     /// Optional provider closure that returns the user's typed meeting notes
     /// at chat-send time. Returning nil/empty omits the notes block from the
     /// chat system prompt, leaving chat behavior byte-identical to a chat
@@ -122,7 +116,8 @@ public final class TranscriptChatViewModel {
         }
         currentProviderID = config.id
         if config.id == .localCLI {
-            let displayName = cliConfigStore
+            let displayName =
+                cliConfigStore
                 .flatMap { $0.load() }
                 .map { LocalCLITemplate.displayName(for: $0.commandTemplate) }
                 ?? "Custom CLI"
@@ -231,8 +226,9 @@ public final class TranscriptChatViewModel {
     public func regenerateLastResponse() {
         guard !isStreaming, llmService != nil else { return }
         guard let last = messages.last,
-              last.role == .assistant,
-              !last.isStreaming else { return }
+            last.role == .assistant,
+            !last.isStreaming
+        else { return }
         guard chatHistory.last?.role == .assistant else { return }
 
         // Pop the assistant turn from both the visible thread and persisted
@@ -244,9 +240,10 @@ public final class TranscriptChatViewModel {
         errorMessage = nil
 
         guard let trailingUser = chatHistory.last,
-              trailingUser.role == .user,
-              let visibleUser = messages.last,
-              visibleUser.role == .user else { return }
+            trailingUser.role == .user,
+            let visibleUser = messages.last,
+            visibleUser.role == .user
+        else { return }
         let userPrompt = trailingUser.modelPromptOverride ?? visibleUser.modelPromptOverride ?? trailingUser.content
         let historyForRequest = Array(chatHistory.dropLast())
 
@@ -281,8 +278,7 @@ public final class TranscriptChatViewModel {
                     question: question,
                     transcript: transcript,
                     userNotes: userNotes,
-                    history: historyForRequest,
-                    source: chatSource
+                    history: historyForRequest
                 )
                 for try await token in stream {
                     accumulated += token
@@ -376,24 +372,6 @@ public final class TranscriptChatViewModel {
     ///   to the moment the user hits Send.
     public func bindUserNotesProvider(_ provider: (@MainActor () -> String?)?) {
         self.userNotesProvider = provider
-    }
-
-    /// Marks this VM as driving the live in-meeting Ask surface so
-    /// `llm_chat_used` telemetry attributes the chat to `meeting_ask` rather
-    /// than the default `transcript_chat`. Callable once at construction —
-    /// `MeetingRecordingPanelViewModel.init()` flips this immediately and
-    /// the VM keeps the meeting-Ask attribution for its entire lifetime,
-    /// including post-meeting "Continue chat" persistence.
-    public func markAsMeetingAskSurface() {
-        // Contract: call once at construction, before any chat activity. A later
-        // call would silently reclassify subsequent `llm_chat_used` telemetry.
-        // Debug-only assert so misuse surfaces in tests/dev without ever crashing
-        // a user's session over a telemetry-attribution slip.
-        assert(
-            chatSource == .transcriptChat && messages.isEmpty && chatHistory.isEmpty,
-            "markAsMeetingAskSurface() must be called once at construction, before any messages are sent"
-        )
-        self.chatSource = .meetingAsk
     }
 
     /// Promotes an in-memory live chat (no transcriptionId, no conversationRepo)
@@ -495,7 +473,6 @@ public final class TranscriptChatViewModel {
         inputText = ""
         currentConversation = nil
 
-        Telemetry.send(.chatConversationCreated)
         notifyConversationsChanged()
     }
 
@@ -601,7 +578,8 @@ public final class TranscriptChatViewModel {
 
     private func discardEmptyCurrentConversation() {
         guard let current = currentConversation,
-              current.messages == nil || current.messages?.isEmpty == true else { return }
+            current.messages == nil || current.messages?.isEmpty == true
+        else { return }
 
         guard let conversationRepo else {
             logger.error("Missing conversationRepo in discardEmptyCurrentConversation")

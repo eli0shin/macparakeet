@@ -64,10 +64,12 @@ public final class LemonSqueezyLicenseAPI: LicenseAPI {
 
     public func deactivate(licenseKey: String, instanceID: String) async throws {
         let url = baseURL.appendingPathComponent("licenses/deactivate")
-        let data = try await post(url: url, body: form([
-            "license_key": licenseKey,
-            "instance_id": instanceID,
-        ]))
+        let data = try await post(
+            url: url,
+            body: form([
+                "license_key": licenseKey,
+                "instance_id": instanceID,
+            ]))
         let resp = try JSONDecoder().decode(DeactivateResponse.self, from: data)
         guard resp.deactivated == true else {
             throw EntitlementsError.activationFailed(resp.error ?? "Deactivation failed.")
@@ -93,7 +95,8 @@ public final class LemonSqueezyLicenseAPI: LicenseAPI {
     }
 
     private func form(_ fields: [String: String]) -> Data {
-        let pairs = fields
+        let pairs =
+            fields
             .sorted(by: { $0.key < $1.key })
             .map { key, value in
                 "\(escape(key))=\(escape(value))"

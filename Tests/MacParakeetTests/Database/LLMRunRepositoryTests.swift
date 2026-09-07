@@ -102,14 +102,15 @@ final class LLMRunRepositoryTests: XCTestCase {
     func testDeletingDictationCascadesRuns() async throws {
         let dictation = Dictation(durationMs: 1000, rawTranscript: "hello")
         try dictationRepo.save(dictation)
-        try await repo.save(LLMRun(
-            feature: .formatterDictation,
-            status: .succeeded,
-            source: LLMRunSource(dictationId: dictation.id),
-            provider: "ollama",
-            model: "qwen",
-            inputChars: 5
-        ))
+        try await repo.save(
+            LLMRun(
+                feature: .formatterDictation,
+                status: .succeeded,
+                source: LLMRunSource(dictationId: dictation.id),
+                provider: "ollama",
+                model: "qwen",
+                inputChars: 5
+            ))
 
         XCTAssertEqual(try repo.count(), 1)
         _ = try dictationRepo.delete(id: dictation.id)
@@ -120,14 +121,15 @@ final class LLMRunRepositoryTests: XCTestCase {
     func testDeletingTranscriptionCascadesRuns() async throws {
         let transcription = Transcription(fileName: "sample.wav", status: .completed)
         try transcriptionRepo.save(transcription)
-        try await repo.save(LLMRun(
-            feature: .formatterTranscription,
-            status: .succeeded,
-            source: LLMRunSource(transcriptionId: transcription.id),
-            provider: "ollama",
-            model: "qwen",
-            inputChars: 5
-        ))
+        try await repo.save(
+            LLMRun(
+                feature: .formatterTranscription,
+                status: .succeeded,
+                source: LLMRunSource(transcriptionId: transcription.id),
+                provider: "ollama",
+                model: "qwen",
+                inputChars: 5
+            ))
 
         XCTAssertEqual(try repo.count(), 1)
         _ = try transcriptionRepo.delete(id: transcription.id)

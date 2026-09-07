@@ -99,7 +99,8 @@ final class STTRuntimeInferenceGatingTests: XCTestCase {
         }
 
         let peak = await tracker.peak
-        XCTAssertEqual(peak, 1, "STTRuntime must serialize Parakeet inference through the gate when serialization is required")
+        XCTAssertEqual(
+            peak, 1, "STTRuntime must serialize Parakeet inference through the gate when serialization is required")
     }
 
     /// On macOS 15+ (`serializationRequired: false`) the gate is a pass-through,

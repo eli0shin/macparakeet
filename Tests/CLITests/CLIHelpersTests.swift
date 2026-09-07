@@ -120,7 +120,8 @@ final class CLIHelpersTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError, got \(error)")
             }
-            if case .notFound = lookupError {} else {
+            if case .notFound = lookupError {
+            } else {
                 XCTFail("Expected .notFound, got \(lookupError)")
             }
         }
@@ -134,7 +135,8 @@ final class CLIHelpersTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError")
             }
-            if case .emptyID = lookupError {} else {
+            if case .emptyID = lookupError {
+            } else {
                 XCTFail("Expected .emptyID, got \(lookupError)")
             }
         }
@@ -148,7 +150,8 @@ final class CLIHelpersTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError")
             }
-            if case .emptyID = lookupError {} else {
+            if case .emptyID = lookupError {
+            } else {
                 XCTFail("Expected .emptyID, got \(lookupError)")
             }
         }
@@ -203,7 +206,8 @@ final class CLIHelpersTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError, got \(error)")
             }
-            if case .notFound = lookupError {} else {
+            if case .notFound = lookupError {
+            } else {
                 XCTFail("Expected .notFound, got \(lookupError)")
             }
         }
@@ -217,7 +221,8 @@ final class CLIHelpersTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError")
             }
-            if case .emptyID = lookupError {} else {
+            if case .emptyID = lookupError {
+            } else {
                 XCTFail("Expected .emptyID, got \(lookupError)")
             }
         }
@@ -231,7 +236,8 @@ final class CLIHelpersTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError")
             }
-            if case .emptyID = lookupError {} else {
+            if case .emptyID = lookupError {
+            } else {
                 XCTFail("Expected .emptyID, got \(lookupError)")
             }
         }
@@ -256,7 +262,8 @@ final class CLIHelpersTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError, got \(error)")
             }
-            if case .ambiguous = lookupError {} else {
+            if case .ambiguous = lookupError {
+            } else {
                 XCTFail("Expected .ambiguous, got \(lookupError)")
             }
         }
@@ -288,7 +295,8 @@ final class CLIHelpersTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError")
             }
-            if case .notFound = lookupError {} else {
+            if case .notFound = lookupError {
+            } else {
                 XCTFail("Expected .notFound, got \(lookupError)")
             }
         }
@@ -333,7 +341,8 @@ final class CLIHelpersTests: XCTestCase {
             guard let lookupError = error as? CLILookupError else {
                 return XCTFail("Expected CLILookupError, got \(error)")
             }
-            if case .ambiguous = lookupError {} else {
+            if case .ambiguous = lookupError {
+            } else {
                 XCTFail("Expected .ambiguous, got \(lookupError)")
             }
         }

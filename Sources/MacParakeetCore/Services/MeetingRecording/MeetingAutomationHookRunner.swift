@@ -171,10 +171,14 @@ public final class MeetingAutomationHookRunner: MeetingAutomationHookRunning, @u
                 timeoutSeconds: configuration.timeoutSeconds,
                 fileManager: fileManager
             )
-            logger.info("meeting_automation_hook_completed id=\(transcription.id.uuidString, privacy: .public) status=\(result.status.rawValue, privacy: .public) exit_code=\(String(describing: result.exitCode), privacy: .public)")
+            logger.info(
+                "meeting_automation_hook_completed id=\(transcription.id.uuidString, privacy: .public) status=\(result.status.rawValue, privacy: .public) exit_code=\(String(describing: result.exitCode), privacy: .public)"
+            )
             return await writeResult(result, artifact: artifact)
         } catch {
-            logger.error("meeting_automation_hook_failed id=\(transcription.id.uuidString, privacy: .public) error=\(error.localizedDescription, privacy: .private)")
+            logger.error(
+                "meeting_automation_hook_failed id=\(transcription.id.uuidString, privacy: .public) error=\(error.localizedDescription, privacy: .private)"
+            )
             return await writeResult(
                 MeetingAutomationHookResult(
                     status: .failed,
@@ -198,7 +202,9 @@ public final class MeetingAutomationHookRunner: MeetingAutomationHookRunning, @u
                 .appendingPathComponent(Self.resultFileName)
             try data.write(to: url, options: .atomic)
         } catch {
-            logger.warning("meeting_automation_result_write_failed id=\(result.meetingID.uuidString, privacy: .public) error=\(error.localizedDescription, privacy: .private)")
+            logger.warning(
+                "meeting_automation_result_write_failed id=\(result.meetingID.uuidString, privacy: .public) error=\(error.localizedDescription, privacy: .private)"
+            )
         }
         return result
     }

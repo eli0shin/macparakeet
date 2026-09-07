@@ -117,7 +117,8 @@ final class AppHotkeyCoordinator {
             return "Dictation: Hold \(pushToTalk.displayName) / Double-tap \(handsFree.displayName)"
         }
         if handsFree.overlaps(with: pushToTalk) {
-            let conflictName = handsFree == pushToTalk
+            let conflictName =
+                handsFree == pushToTalk
                 ? handsFree.displayName
                 : "\(handsFree.displayName) / \(pushToTalk.displayName)"
             return "Dictation Shortcuts: Conflict on \(conflictName)"
@@ -149,7 +150,7 @@ final class AppHotkeyCoordinator {
                         trigger: handsFreeTrigger,
                         gestureMode: .doubleTapAndHold,
                         holdToTalkStopTailMs: holdToTalkStopTailMs
-                    ),
+                    )
                 ],
                 conflict: nil
             )
@@ -162,7 +163,7 @@ final class AppHotkeyCoordinator {
                         DictationHotkeyPlan.Spec(
                             trigger: handsFreeTrigger,
                             gestureMode: .singleTapToggle
-                        ),
+                        )
                     ],
                     conflict: DictationHotkeyPlan.Conflict(
                         trigger: pushToTalkTrigger,
@@ -202,9 +203,10 @@ final class AppHotkeyCoordinator {
         pushToTalk pushToTalkTrigger: HotkeyTrigger
     ) -> Int {
         guard pushToTalkTrigger.kind == .modifier,
-              pushToTalkTrigger.modifierName == "fn",
-              handsFreeTrigger.kind == .chord,
-              handsFreeTrigger.chordModifiers?.contains("fn") == true else {
+            pushToTalkTrigger.modifierName == "fn",
+            handsFreeTrigger.kind == .chord,
+            handsFreeTrigger.chordModifiers?.contains("fn") == true
+        else {
             return FnKeyStateMachine.defaultStartupDebounceMs
         }
         return FnKeyStateMachine.defaultTapThresholdMs

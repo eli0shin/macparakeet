@@ -93,7 +93,7 @@ final class MeetingEchoSuppressionRuntimeTests: XCTestCase {
     func testConfigurationParsesUnescapedFileURLWithSpaces() {
         let configuration = MeetingEchoSuppressionConfiguration.fromEnvironment([
             MeetingEchoSuppressionConfiguration.modelPathEnvironmentKey:
-                "file:///tmp/meeting echo/local model.gguf",
+                "file:///tmp/meeting echo/local model.gguf"
         ])
 
         XCTAssertEqual(configuration.modelURL?.path, "/tmp/meeting echo/local model.gguf")
@@ -171,7 +171,8 @@ final class MeetingEchoSuppressionRuntimeTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let bundleURL = root.appendingPathComponent("EchoAssets.bundle", isDirectory: true)
         let resourcesURL = bundleURL.appendingPathComponent("Contents/Resources", isDirectory: true)
-        let modelDirectory = resourcesURL
+        let modelDirectory =
+            resourcesURL
             .appendingPathComponent(
                 MeetingEchoSuppressionFactory.defaultModelDirectoryName,
                 isDirectory: true
@@ -271,7 +272,7 @@ final class MeetingEchoSuppressionRuntimeTests: XCTestCase {
     func testRealLocalVQERuntimeLoadsWhenTestAssetsAreProvided() throws {
         let environment = ProcessInfo.processInfo.environment
         guard let libraryPath = environment["MACPARAKEET_TEST_LOCALVQE_LIBRARY"],
-              let modelPath = environment["MACPARAKEET_TEST_LOCALVQE_MODEL"]
+            let modelPath = environment["MACPARAKEET_TEST_LOCALVQE_MODEL"]
         else {
             throw XCTSkip(
                 "Set MACPARAKEET_TEST_LOCALVQE_LIBRARY and MACPARAKEET_TEST_LOCALVQE_MODEL to run real LocalVQE load verification."
@@ -336,8 +337,7 @@ final class MeetingEchoSuppressionRuntimeTests: XCTestCase {
         )
         defer { try? FileManager.default.removeItem(at: appURL.deletingLastPathComponent()) }
         let modelURL = appURL.appendingPathComponent(
-            "Contents/Resources/MeetingEchoSuppression/" +
-                MeetingEchoSuppressionFactory.defaultModelName
+            "Contents/Resources/MeetingEchoSuppression/" + MeetingEchoSuppressionFactory.defaultModelName
         )
 
         let result = try Self.runVerifier(
@@ -390,8 +390,7 @@ final class MeetingEchoSuppressionRuntimeTests: XCTestCase {
         )
         defer { try? FileManager.default.removeItem(at: appURL.deletingLastPathComponent()) }
         let secondModelURL = appURL.appendingPathComponent(
-            "Contents/Resources/MeetingEchoSuppression/" +
-                MeetingEchoSuppressionFactory.legacyJointModelName
+            "Contents/Resources/MeetingEchoSuppression/" + MeetingEchoSuppressionFactory.legacyJointModelName
         )
         try Data("second model".utf8).write(to: secondModelURL)
 
@@ -570,22 +569,22 @@ final class MeetingEchoSuppressionRuntimeTests: XCTestCase {
         let source: String
         if includeRequiredSymbols {
             source = """
-            #include <stdint.h>
-            uintptr_t localvqe_new(const char *path) { return path ? 1 : 0; }
-            int32_t localvqe_process_frame_f32(
-              uintptr_t ctx,
-              const float *mic,
-              const float *ref,
-              int32_t n,
-              float *out
-            ) {
-              if (!ctx || !mic || !ref || !out) { return -1; }
-              for (int32_t i = 0; i < n; i++) { out[i] = mic[i] - ref[i]; }
-              return 0;
-            }
-            void localvqe_reset(uintptr_t ctx) { (void)ctx; }
-            void localvqe_free(uintptr_t ctx) { (void)ctx; }
-            """
+                #include <stdint.h>
+                uintptr_t localvqe_new(const char *path) { return path ? 1 : 0; }
+                int32_t localvqe_process_frame_f32(
+                  uintptr_t ctx,
+                  const float *mic,
+                  const float *ref,
+                  int32_t n,
+                  float *out
+                ) {
+                  if (!ctx || !mic || !ref || !out) { return -1; }
+                  for (int32_t i = 0; i < n; i++) { out[i] = mic[i] - ref[i]; }
+                  return 0;
+                }
+                void localvqe_reset(uintptr_t ctx) { (void)ctx; }
+                void localvqe_free(uintptr_t ctx) { (void)ctx; }
+                """
         } else {
             source = "int localvqe_unrelated_symbol(void) { return 1; }\n"
         }
@@ -604,10 +603,11 @@ final class MeetingEchoSuppressionRuntimeTests: XCTestCase {
         process.standardError = pipe
         try process.run()
         process.waitUntilExit()
-        let output = String(
-            data: pipe.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        ) ?? ""
+        let output =
+            String(
+                data: pipe.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
         if universal && process.terminationStatus != 0 {
             throw XCTSkip("Universal (arm64+x86_64) cross-compile unavailable: \(output)")
         }
@@ -635,10 +635,11 @@ final class MeetingEchoSuppressionRuntimeTests: XCTestCase {
         process.standardError = pipe
         try process.run()
         process.waitUntilExit()
-        let output = String(
-            data: pipe.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        ) ?? ""
+        let output =
+            String(
+                data: pipe.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
         return (process.terminationStatus, output)
     }
 

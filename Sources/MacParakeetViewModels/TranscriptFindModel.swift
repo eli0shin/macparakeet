@@ -125,11 +125,13 @@ public final class TranscriptFindModel {
         for (blockIndex, text) in blocks.enumerated() where !text.isEmpty {
             var searchStart = text.startIndex
             while searchStart < text.endIndex,
-                  let found = text.range(of: needle, options: options, range: searchStart..<text.endIndex) {
+                let found = text.range(of: needle, options: options, range: searchStart..<text.endIndex)
+            {
                 result.append(Match(blockIndex: blockIndex, range: NSRange(found, in: text)))
                 // Advance past this match; never less than one character so a
                 // degenerate zero-width match can't spin forever.
-                searchStart = found.upperBound > found.lowerBound
+                searchStart =
+                    found.upperBound > found.lowerBound
                     ? found.upperBound
                     : text.index(after: found.lowerBound)
             }
@@ -141,7 +143,8 @@ public final class TranscriptFindModel {
             return
         }
         if let previousCurrent,
-           let retainedIndex = result.firstIndex(of: previousCurrent) {
+            let retainedIndex = result.firstIndex(of: previousCurrent)
+        {
             currentMatchIndex = retainedIndex
         } else if let preferredIndex {
             currentMatchIndex = min(max(preferredIndex, 0), result.count - 1)

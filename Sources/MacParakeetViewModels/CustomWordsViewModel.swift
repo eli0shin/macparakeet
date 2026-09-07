@@ -127,7 +127,6 @@ public final class CustomWordsViewModel {
             {
                 needsRecognitionConsent = true
             }
-            Telemetry.send(.customWordAdded)
             newWord = ""
             newReplacement = ""
             errorMessage = nil
@@ -161,7 +160,6 @@ public final class CustomWordsViewModel {
         guard let repo else { return }
         do {
             _ = try repo.delete(id: word.id)
-            Telemetry.send(.customWordDeleted)
             loadWords()
         } catch {
             errorMessage = error.localizedDescription

@@ -55,31 +55,37 @@ final class TranscriptFindModelTests: XCTestCase {
 
     func testMultipleMatchesWithinOneBlockAreOrdered() {
         let m = model(["hello Hello HELLO"], query: "hello")
-        XCTAssertEqual(m.matches.map(\.range), [
-            NSRange(location: 0, length: 5),
-            NSRange(location: 6, length: 5),
-            NSRange(location: 12, length: 5)
-        ])
+        XCTAssertEqual(
+            m.matches.map(\.range),
+            [
+                NSRange(location: 0, length: 5),
+                NSRange(location: 6, length: 5),
+                NSRange(location: 12, length: 5),
+            ])
         XCTAssertTrue(m.matches.allSatisfy { $0.blockIndex == 0 })
         XCTAssertEqual(m.matchCount, 3)
     }
 
     func testMatchesAcrossBlocksAreGloballyOrdered() {
         let m = model(["alpha match", "no hit here", "match beta match"], query: "match")
-        XCTAssertEqual(m.matches, [
-            .init(blockIndex: 0, range: NSRange(location: 6, length: 5)),
-            .init(blockIndex: 2, range: NSRange(location: 0, length: 5)),
-            .init(blockIndex: 2, range: NSRange(location: 11, length: 5))
-        ])
+        XCTAssertEqual(
+            m.matches,
+            [
+                .init(blockIndex: 0, range: NSRange(location: 6, length: 5)),
+                .init(blockIndex: 2, range: NSRange(location: 0, length: 5)),
+                .init(blockIndex: 2, range: NSRange(location: 11, length: 5)),
+            ])
     }
 
     func testOverlappingCandidatesDoNotDoubleCount() {
         // "aa" inside "aaaa" yields non-overlapping matches at 0 and 2.
         let m = model(["aaaa"], query: "aa")
-        XCTAssertEqual(m.matches.map(\.range), [
-            NSRange(location: 0, length: 2),
-            NSRange(location: 2, length: 2)
-        ])
+        XCTAssertEqual(
+            m.matches.map(\.range),
+            [
+                NSRange(location: 0, length: 2),
+                NSRange(location: 2, length: 2),
+            ])
     }
 
     // MARK: - Insensitivity

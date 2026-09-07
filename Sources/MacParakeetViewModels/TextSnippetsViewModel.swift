@@ -76,7 +76,6 @@ public final class TextSnippetsViewModel {
 
         do {
             try repo.save(snippet)
-            Telemetry.send(.snippetAdded)
             newTrigger = ""
             newExpansion = ""
             errorMessage = nil
@@ -149,7 +148,6 @@ public final class TextSnippetsViewModel {
             snippet.expansion = processedExpansion
             snippet.updatedAt = Date()
             try repo.save(snippet)
-            Telemetry.send(.snippetEdited)
             cancelEditing()
             loadSnippets()
         } catch {
@@ -167,7 +165,6 @@ public final class TextSnippetsViewModel {
         guard let repo else { return }
         do {
             _ = try repo.delete(id: snippet.id)
-            Telemetry.send(.snippetDeleted)
             if editingSnippetID == snippet.id {
                 cancelEditing()
             }

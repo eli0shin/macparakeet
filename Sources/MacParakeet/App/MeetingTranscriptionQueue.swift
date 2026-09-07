@@ -7,27 +7,15 @@ final class MeetingTranscriptionQueue {
     struct Item: Equatable {
         let recording: MeetingRecordingOutput
         let transcriptionID: UUID
-        let operationContext: ObservabilityOperationContext
-        let trigger: TelemetryMeetingOperationTrigger?
-        let liveWordCount: Int
-        let liveTranscriptLagged: Bool
         let finalizationOwnershipLease: MeetingFinalizationOwnershipLease?
 
         init(
             recording: MeetingRecordingOutput,
             transcriptionID: UUID,
-            operationContext: ObservabilityOperationContext,
-            trigger: TelemetryMeetingOperationTrigger?,
-            liveWordCount: Int,
-            liveTranscriptLagged: Bool,
             finalizationOwnershipLease: MeetingFinalizationOwnershipLease? = nil
         ) {
             self.recording = recording
             self.transcriptionID = transcriptionID
-            self.operationContext = operationContext
-            self.trigger = trigger
-            self.liveWordCount = liveWordCount
-            self.liveTranscriptLagged = liveTranscriptLagged
             self.finalizationOwnershipLease = finalizationOwnershipLease
         }
 
@@ -35,10 +23,6 @@ final class MeetingTranscriptionQueue {
             Item(
                 recording: recording,
                 transcriptionID: transcriptionID,
-                operationContext: operationContext,
-                trigger: trigger,
-                liveWordCount: liveWordCount,
-                liveTranscriptLagged: liveTranscriptLagged,
                 finalizationOwnershipLease: finalizationOwnershipLease
             )
         }
@@ -49,10 +33,6 @@ final class MeetingTranscriptionQueue {
             Item(
                 recording: recording,
                 transcriptionID: transcriptionID,
-                operationContext: operationContext,
-                trigger: trigger,
-                liveWordCount: liveWordCount,
-                liveTranscriptLagged: liveTranscriptLagged,
                 finalizationOwnershipLease: lease
             )
         }
@@ -180,7 +160,7 @@ final class MeetingTranscriptionQueue {
             }
         } catch {
             logger.error(
-                "queued_meeting_transcription_prepare_failed session=\(originalItem.recording.sessionID.uuidString, privacy: .public) error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+                "queued_meeting_transcription_prepare_failed session=\(originalItem.recording.sessionID.uuidString, privacy: .public) error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
             )
             await restoreFinalizationOwnershipIfNeeded(for: originalItem)
             finishActiveItem(.failure(item: originalItem, error: error))
@@ -189,16 +169,16 @@ final class MeetingTranscriptionQueue {
 
         let transcription: Transcription
         do {
-            transcription = try await Observability.withOperationContext(item.operationContext) {
+            transcription = try await {
                 try await transcriptionService.finalizeMeetingTranscription(
                     recording: item.recording,
                     updating: item.transcriptionID,
                     onProgress: nil
                 )
-            }
+            }()
         } catch {
             logger.error(
-                "queued_meeting_transcription_failed session=\(item.recording.sessionID.uuidString, privacy: .public) error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+                "queued_meeting_transcription_failed session=\(item.recording.sessionID.uuidString, privacy: .public) error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
             )
             await markFailed(item, error: error)
             await restoreFinalizationOwnershipIfNeeded(for: item)
@@ -214,7 +194,7 @@ final class MeetingTranscriptionQueue {
             )
         } catch {
             logger.error(
-                "queued_meeting_settlement_failed_lock_retained_for_recovery session=\(item.recording.sessionID.uuidString, privacy: .public) error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+                "queued_meeting_settlement_failed_lock_retained_for_recovery session=\(item.recording.sessionID.uuidString, privacy: .public) error_type=\(DiagnosticErrorClassifier.classify(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
             )
             await restoreFinalizationOwnershipIfNeeded(for: item)
         }

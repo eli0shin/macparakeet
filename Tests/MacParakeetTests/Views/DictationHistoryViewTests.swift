@@ -10,8 +10,10 @@ final class DictationHistoryViewTests: XCTestCase {
     }
 
     func testLongDictationTextCollapsesToPreviewLineLimit() {
-        let text = Array(repeating: "This is a longer dictated note that should stay compact in the history list.", count: 5)
-            .joined(separator: " ")
+        let text = Array(
+            repeating: "This is a longer dictated note that should stay compact in the history list.", count: 5
+        )
+        .joined(separator: " ")
 
         XCTAssertTrue(DictationTranscriptPresentation.isExpandable(text))
         XCTAssertEqual(
@@ -44,11 +46,11 @@ final class DictationHistoryViewTests: XCTestCase {
 
     func testMultiParagraphDictationTextIsExpandableEvenWhenBrief() {
         let text = """
-        First thought.
-        Second thought.
-        Third thought.
-        Fourth thought.
-        """
+            First thought.
+            Second thought.
+            Third thought.
+            Fourth thought.
+            """
 
         XCTAssertTrue(DictationTranscriptPresentation.isExpandable(text))
         XCTAssertEqual(
@@ -91,7 +93,8 @@ final class DictationHistoryViewTests: XCTestCase {
     }
 
     func testExpandedTextChangesStayCappedWhileRemeasuring() {
-        let pendingHeight = DictationTranscriptPresentation
+        let pendingHeight =
+            DictationTranscriptPresentation
             .resetMeasuredExpandedContentHeight(isCurrentlyExpanded: true)
 
         XCTAssertEqual(

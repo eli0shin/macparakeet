@@ -162,56 +162,56 @@ struct SystemMediaSnapshot: Sendable, Equatable {
 enum OsaScriptNowPlayingSnapshotReader {
     private static let osascriptPath = "/usr/bin/osascript"
     private static let script = """
-    function run() {
-      ObjC.import('Foundation');
+        function run() {
+          ObjC.import('Foundation');
 
-      const mediaRemote = $.NSBundle.bundleWithPath('/System/Library/PrivateFrameworks/MediaRemote.framework/');
-      if (!mediaRemote) return JSON.stringify({ "available": false });
-      mediaRemote.load;
+          const mediaRemote = $.NSBundle.bundleWithPath('/System/Library/PrivateFrameworks/MediaRemote.framework/');
+          if (!mediaRemote) return JSON.stringify({ "available": false });
+          mediaRemote.load;
 
-      const request = $.NSClassFromString('MRNowPlayingRequest');
-      if (!request) return JSON.stringify({ "available": false });
+          const request = $.NSClassFromString('MRNowPlayingRequest');
+          if (!request) return JSON.stringify({ "available": false });
 
-      const item = request.localNowPlayingItem;
-      const playerPath = request.localNowPlayingPlayerPath;
-      const info = item ? item.nowPlayingInfo : null;
-      const client = playerPath ? playerPath.client : null;
+          const item = request.localNowPlayingItem;
+          const playerPath = request.localNowPlayingPlayerPath;
+          const info = item ? item.nowPlayingInfo : null;
+          const client = playerPath ? playerPath.client : null;
 
-      function unwrap(value) {
-        if (value === null || value === undefined) return null;
-        try {
-          const result = ObjC.unwrap(value);
-          return result === undefined ? null : result;
-        } catch (e) {
-          return null;
+          function unwrap(value) {
+            if (value === null || value === undefined) return null;
+            try {
+              const result = ObjC.unwrap(value);
+              return result === undefined ? null : result;
+            } catch (e) {
+              return null;
+            }
+          }
+
+          function infoValue(key) {
+            if (!info) return null;
+            try { return unwrap(info.valueForKey(key)); } catch (e) { return null; }
+          }
+
+          function clientValue(key) {
+            if (!client) return null;
+            try { return unwrap(client.valueForKey(key)); } catch (e) { return null; }
+          }
+
+          const playbackRateValue = infoValue('kMRMediaRemoteNowPlayingInfoPlaybackRate');
+          const playbackRate = playbackRateValue === null ? 0 : Number(playbackRateValue);
+          const processIdentifierValue = clientValue('processIdentifier');
+          const processIdentifier = processIdentifierValue === null ? null : Number(processIdentifierValue);
+          const bundleIdentifier = clientValue('bundleIdentifier');
+
+          return JSON.stringify({
+            "available": true,
+            "playing": playbackRate > 0.01,
+            "playbackRate": playbackRate,
+            "processIdentifier": processIdentifier && processIdentifier > 0 ? processIdentifier : null,
+            "bundleIdentifier": bundleIdentifier || null
+          });
         }
-      }
-
-      function infoValue(key) {
-        if (!info) return null;
-        try { return unwrap(info.valueForKey(key)); } catch (e) { return null; }
-      }
-
-      function clientValue(key) {
-        if (!client) return null;
-        try { return unwrap(client.valueForKey(key)); } catch (e) { return null; }
-      }
-
-      const playbackRateValue = infoValue('kMRMediaRemoteNowPlayingInfoPlaybackRate');
-      const playbackRate = playbackRateValue === null ? 0 : Number(playbackRateValue);
-      const processIdentifierValue = clientValue('processIdentifier');
-      const processIdentifier = processIdentifierValue === null ? null : Number(processIdentifierValue);
-      const bundleIdentifier = clientValue('bundleIdentifier');
-
-      return JSON.stringify({
-        "available": true,
-        "playing": playbackRate > 0.01,
-        "playbackRate": playbackRate,
-        "processIdentifier": processIdentifier && processIdentifier > 0 ? processIdentifier : null,
-        "bundleIdentifier": bundleIdentifier || null
-      });
-    }
-    """
+        """
 
     static func snapshot(timeout: TimeInterval) async -> SystemMediaSnapshot? {
         let process = Process()
@@ -241,7 +241,8 @@ enum OsaScriptNowPlayingSnapshotReader {
 
     static func decode(_ data: Data) -> SystemMediaSnapshot? {
         guard let payload = try? JSONDecoder().decode(HelperPayload.self, from: data),
-              payload.available != false else {
+            payload.available != false
+        else {
             return nil
         }
 

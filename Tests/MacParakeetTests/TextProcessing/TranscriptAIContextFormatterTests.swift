@@ -10,11 +10,11 @@ final class TranscriptAIContextFormatterTests: XCTestCase {
             wordTimestamps: [
                 WordTimestamp(word: "Hello", startMs: 0, endMs: 400, confidence: 0.99, speakerId: "microphone"),
                 WordTimestamp(word: "there.", startMs: 450, endMs: 900, confidence: 0.98, speakerId: "microphone"),
-                WordTimestamp(word: "Thanks.", startMs: 2_000, endMs: 2_400, confidence: 0.97, speakerId: "system")
+                WordTimestamp(word: "Thanks.", startMs: 2_000, endMs: 2_400, confidence: 0.97, speakerId: "system"),
             ],
             speakers: [
                 SpeakerInfo(id: "microphone", label: "Me"),
-                SpeakerInfo(id: "system", label: "Others")
+                SpeakerInfo(id: "system", label: "Others"),
             ],
             status: .completed,
             sourceType: .meeting
@@ -46,7 +46,7 @@ final class TranscriptAIContextFormatterTests: XCTestCase {
             cleanTranscript: "Hello there.",
             wordTimestamps: [
                 WordTimestamp(word: "Hello", startMs: 0, endMs: 400, confidence: 0.99, speakerId: "microphone"),
-                WordTimestamp(word: "there.", startMs: 450, endMs: 900, confidence: 0.98, speakerId: "microphone")
+                WordTimestamp(word: "there.", startMs: 450, endMs: 900, confidence: 0.98, speakerId: "microphone"),
             ],
             speakers: nil,
             status: .completed,

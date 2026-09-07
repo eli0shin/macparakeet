@@ -443,7 +443,7 @@ actor MockTranscriptionService: SpeechEngineOverrideTranscriptionService {
     var meetingFinalizationError: Error?
     var transcribeCallCount = 0
     var lastFileURL: URL?
-    var lastSource: TelemetryTranscriptionSource?
+    var lastSource: TranscriptionSource?
     var lastMeetingRecording: MeetingRecordingOutput?
     var lastSpeechEngineOverride: SpeechEngineSelection?
     var transcribeProgressPhases: [TranscriptionProgress] = []
@@ -527,7 +527,7 @@ actor MockTranscriptionService: SpeechEngineOverrideTranscriptionService {
 
     func transcribe(
         fileURL: URL,
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil
     ) async throws -> Transcription {
         transcribeCallCount += 1
@@ -564,7 +564,7 @@ actor MockTranscriptionService: SpeechEngineOverrideTranscriptionService {
 
     func transcribeTransient(
         fileURL: URL,
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil
     ) async throws -> Transcription {
         try await transcribe(fileURL: fileURL, source: source, onProgress: onProgress)
@@ -674,7 +674,7 @@ actor MockTranscriptionService: SpeechEngineOverrideTranscriptionService {
     func retranscribe(
         existing transcription: Transcription,
         fileURL: URL,
-        source: TelemetryTranscriptionSource,
+        source: TranscriptionSource,
         speechEngineOverride: SpeechEngineSelection?,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)?
     ) async throws -> Transcription {
@@ -835,12 +835,11 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
     var lastChatTranscript: String?
     var lastChatHistory: [ChatMessage]?
     var lastChatUserNotes: String?
-    var lastChatSource: TelemetryChatSource?
     var lastSummarySystemPrompt: String?
     var lastFormattedTranscript: String?
     var formattedTranscripts: [String] = []
     var lastFormatterPromptTemplate: String?
-    var lastFormatterSource: TelemetryFormatterSource?
+    var lastFormatterSource: FormatterSource?
     var lastFormatterDefaultPromptUsed: Bool?
 
     func generatePromptResult(transcript: String, systemPrompt: String?) async throws -> String {
@@ -852,14 +851,13 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
     }
 
     func chat(
-        question: String, transcript: String, userNotes: String?, history: [ChatMessage], source: TelemetryChatSource
+        question: String, transcript: String, userNotes: String?, history: [ChatMessage]
     ) async throws -> String {
         chatCallCount += 1
         lastChatQuestion = question
         lastChatTranscript = transcript
         lastChatHistory = history
         lastChatUserNotes = userNotes
-        lastChatSource = source
         if let error = errorToThrow { throw error }
         return chatResult
     }
@@ -875,10 +873,10 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
     }
 
     func chatDetailed(
-        question: String, transcript: String, userNotes: String?, history: [ChatMessage], source: TelemetryChatSource
+        question: String, transcript: String, userNotes: String?, history: [ChatMessage]
     ) async throws -> LLMResult {
         let output = try await chat(
-            question: question, transcript: transcript, userNotes: userNotes, history: history, source: source)
+            question: question, transcript: transcript, userNotes: userNotes, history: history)
         return LLMResult(output: output, provider: "mock", model: "mock-model", latencyMs: 0)
     }
 
@@ -890,7 +888,7 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
     func formatTranscript(
         transcript: String,
         promptTemplate: String,
-        source: TelemetryFormatterSource,
+        source: FormatterSource,
         defaultPromptUsed: Bool
     ) async throws -> String {
         try await formatTranscriptDetailed(
@@ -904,7 +902,7 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
     func formatTranscriptDetailed(
         transcript: String,
         promptTemplate: String,
-        source: TelemetryFormatterSource,
+        source: FormatterSource,
         defaultPromptUsed: Bool
     ) async throws -> LLMFormatterResult {
         formatTranscriptCallCount += 1
@@ -965,14 +963,13 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
     }
 
     func chatStream(
-        question: String, transcript: String, userNotes: String?, history: [ChatMessage], source: TelemetryChatSource
+        question: String, transcript: String, userNotes: String?, history: [ChatMessage]
     ) -> AsyncThrowingStream<String, Error> {
         chatCallCount += 1
         lastChatQuestion = question
         lastChatTranscript = transcript
         lastChatHistory = history
         lastChatUserNotes = userNotes
-        lastChatSource = source
         let tokens = streamTokens
         let error = errorToThrow
         let delay = streamDelayNs

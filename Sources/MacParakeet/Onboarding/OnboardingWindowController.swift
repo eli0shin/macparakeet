@@ -27,7 +27,6 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         if let window {
             if restartExistingRun {
                 viewModel?.startNewCurrentRun()
-                viewModel?.markOnboardingShown()
             }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -59,10 +58,11 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         )
 
         let hosting = NSHostingView(rootView: view)
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740, height: 500),
-                         styleMask: [.titled, .closable, .miniaturizable],
-                         backing: .buffered,
-                         defer: false)
+        let w = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 740, height: 500),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false)
         w.title = "Welcome to MacParakeet"
         w.isReleasedWhenClosed = false
         w.center()
@@ -78,13 +78,14 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.messageText = "Setup is not finished"
-            alert.informativeText = "MacParakeet needs permissions and speech model setup (Parakeet) before core features are reliable."
+            alert.informativeText =
+                "MacParakeet needs permissions and speech model setup (Parakeet) before core features are reliable."
             alert.addButton(withTitle: "Continue Setup")
             alert.addButton(withTitle: "Exit Setup")
 
             let response = alert.runModal()
             if response == .alertSecondButtonReturn {
-                vm.markOnboardingDismissed()
+                vm.handleOnboardingDismissed()
                 onIncompleteDismiss()
                 allowCloseWithoutCompletion = true
                 close()

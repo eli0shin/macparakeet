@@ -124,15 +124,17 @@ final class TransformSpikeProgressPanelController {
         panel = nil
         host = nil
         viewModel = nil
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.22
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            panelRef.animator().alphaValue = 0
-        }, completionHandler: {
-            MainActor.assumeIsolated {
-                panelRef.orderOut(nil)
-            }
-        })
+        NSAnimationContext.runAnimationGroup(
+            { context in
+                context.duration = 0.22
+                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                panelRef.animator().alphaValue = 0
+            },
+            completionHandler: {
+                MainActor.assumeIsolated {
+                    panelRef.orderOut(nil)
+                }
+            })
     }
 
     private func resetPanelToBaseline(animated: Bool) {
@@ -221,10 +223,12 @@ private struct TransformSpikeProgressView: View {
         let horizontalPadding: CGFloat = isIconOnly ? 10 : 14
         let verticalPadding: CGFloat = isIconOnly ? 10 : 11
         let spacing: CGFloat = isIconOnly ? 0 : 11
-        let contentAnimation: Animation? = reduceMotion
+        let contentAnimation: Animation? =
+            reduceMotion
             ? nil
             : .spring(response: 0.42, dampingFraction: 0.88, blendDuration: 0.04)
-        let phaseAnimation: Animation? = reduceMotion
+        let phaseAnimation: Animation? =
+            reduceMotion
             ? nil
             : .easeInOut(duration: 0.24)
 

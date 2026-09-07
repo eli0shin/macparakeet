@@ -39,7 +39,8 @@ public final class VocabularyImportExportService: @unchecked Sendable {
             case .invalidSchema:
                 return "This file isn't a MacParakeet vocabulary backup."
             case let .unsupportedVersion(found, supported):
-                return "This file was created by a newer MacParakeet (format v\(found); this build understands v\(supported)). Update MacParakeet to import it."
+                return
+                    "This file was created by a newer MacParakeet (format v\(found); this build understands v\(supported)). Update MacParakeet to import it."
             case let .decodingFailed(detail):
                 return "Couldn't read the backup file: \(detail)"
             case let .invalidEntry(detail):

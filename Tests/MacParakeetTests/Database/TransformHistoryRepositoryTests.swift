@@ -138,16 +138,17 @@ final class TransformHistoryRepositoryTests: XCTestCase {
 
     func testDeleteHandlesLegacyTextUUIDRowsResolvedByPrefixLookup() throws {
         let id = UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
-        try repo.save(TransformHistoryEntry(
-            id: id,
-            transformName: "Legacy",
-            inputText: "old",
-            outputText: "new",
-            capturePath: "ax",
-            replacementPath: "ax",
-            llmElapsedMs: 1,
-            totalElapsedMs: 2
-        ))
+        try repo.save(
+            TransformHistoryEntry(
+                id: id,
+                transformName: "Legacy",
+                inputText: "old",
+                outputText: "new",
+                capturePath: "ax",
+                replacementPath: "ax",
+                llmElapsedMs: 1,
+                totalElapsedMs: 2
+            ))
         try manager.dbQueue.write { db in
             try db.execute(
                 sql: """

@@ -286,8 +286,9 @@ final class MediaPlayerViewModelTests: XCTestCase {
         await fulfillment(of: [persistExpectation], timeout: 2.0)
         XCTAssertEqual(captured.id, transcription.id)
         XCTAssertEqual(captured.path, dir.appendingPathComponent("video.m4a").path)
-        XCTAssertEqual(captured.source, webm.path,
-                       "Persist callback must receive the source path for cleanup-after-DB-write")
+        XCTAssertEqual(
+            captured.source, webm.path,
+            "Persist callback must receive the source path for cleanup-after-DB-write")
         let metadata = await stubConverter.lastMetadataSnapshot()
         XCTAssertEqual(metadata?.title, "Talk")
         XCTAssertEqual(metadata?.artist, "Talk Channel")
@@ -367,8 +368,9 @@ final class MediaPlayerViewModelTests: XCTestCase {
         )
         await vm.prepare(for: transcription)
 
-        XCTAssertEqual(vm.playerState, .loading,
-                       "Player should be `.loading` while the lazy m4a transcode is in flight")
+        XCTAssertEqual(
+            vm.playerState, .loading,
+            "Player should be `.loading` while the lazy m4a transcode is in flight")
         XCTAssertNil(vm.player)
         XCTAssertFalse(vm.isPlaying)
         XCTAssertEqual(vm.currentTimeMs, 0)
@@ -421,8 +423,9 @@ final class MediaPlayerViewModelTests: XCTestCase {
         // Give the cancelled task a runloop hop to settle.
         try? await Task.sleep(nanoseconds: 50_000_000)
 
-        XCTAssertEqual(invocationCounter.value, 0,
-                       "Cancelled conversion must not invoke the persist callback")
+        XCTAssertEqual(
+            invocationCounter.value, 0,
+            "Cancelled conversion must not invoke the persist callback")
     }
 }
 

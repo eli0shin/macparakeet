@@ -84,7 +84,8 @@ public final class ChatConversationRepository: ChatConversationRepositoryProtoco
 
     public func hasConversations(transcriptionId: UUID) throws -> Bool {
         try dbQueue.read { db in
-            try !ChatConversation
+            try
+                !ChatConversation
                 .filter(ChatConversation.Columns.transcriptionId == transcriptionId)
                 .isEmpty(db)
         }

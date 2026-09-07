@@ -5,20 +5,6 @@ import XCTest
 
 @MainActor
 final class MeetingRecordingFlowCoordinatorTests: XCTestCase {
-    private var telemetry: FlowTelemetrySpy!
-
-    override func setUp() {
-        super.setUp()
-        telemetry = FlowTelemetrySpy()
-        Telemetry.configure(telemetry)
-    }
-
-    override func tearDown() {
-        Telemetry.configure(NoOpTelemetryService())
-        telemetry = nil
-        super.tearDown()
-    }
-
     func testLivePreviewUsesReadingParagraphs() {
         let sentenceWords = [
             ("First", 0, 100), ("sentence", 120, 220), ("ends.", 240, 340),
@@ -42,10 +28,12 @@ final class MeetingRecordingFlowCoordinatorTests: XCTestCase {
 
         let lines = MeetingRecordingFlowCoordinator.testHook_makePreviewLines(from: update)
 
-        XCTAssertEqual(lines.map(\.text), [
-            "First sentence ends. Second sentence ends. Third sentence ends.",
-            "Fourth sentence ends.",
-        ])
+        XCTAssertEqual(
+            lines.map(\.text),
+            [
+                "First sentence ends. Second sentence ends. Third sentence ends.",
+                "Fourth sentence ends.",
+            ])
         XCTAssertEqual(lines.map(\.timestamp), ["0:00", "0:01"])
     }
 
@@ -88,7 +76,7 @@ final class MeetingRecordingFlowCoordinatorTests: XCTestCase {
         )
         coordinator.testHook_enterRecording()
 
-        XCTAssertTrue(coordinator.stopRecording(operationTrigger: .autoStop))
+        XCTAssertTrue(coordinator.stopRecording())
         await coordinator.testHook_waitForActionTask()
         try await waitForMeetingFinalizeCall(on: transcriptionService)
 
@@ -112,13 +100,6 @@ final class MeetingRecordingFlowCoordinatorTests: XCTestCase {
         XCTAssertEqual(readyTranscriptions.map(\.filePath), [completedTranscription.filePath])
         XCTAssertEqual(readySelections, [true])
         XCTAssertEqual(settlementHarness.lockStore.deletes, [output.folderURL])
-
-        let operation = try XCTUnwrap(telemetry.snapshot().compactMap(\.meetingOperationPayload).last)
-        XCTAssertEqual(operation.outcome, .success)
-        XCTAssertEqual(operation.trigger, .autoStop)
-        XCTAssertEqual(operation.durationSeconds, output.durationSeconds)
-        XCTAssertEqual(operation.microphoneTrackPresent, true)
-        XCTAssertEqual(operation.systemTrackPresent, true)
     }
 
     func testQueuedFinalizationFailurePersistsRetryableRowAndPostsOneNotification() async throws {
@@ -150,7 +131,7 @@ final class MeetingRecordingFlowCoordinatorTests: XCTestCase {
         )
         coordinator.testHook_enterRecording()
 
-        XCTAssertTrue(coordinator.stopRecording(operationTrigger: .manual))
+        XCTAssertTrue(coordinator.stopRecording())
         await coordinator.testHook_waitForActionTask()
         await coordinator.testHook_waitForMeetingTranscriptionQueue()
 
@@ -338,16 +319,12 @@ final class MeetingRecordingFlowCoordinatorTests: XCTestCase {
         await recordingService.waitUntilStartCalled()
         XCTAssertEqual(coordinator.testHook_state, .starting)
 
-        XCTAssertTrue(coordinator.stopRecording(operationTrigger: .manual))
+        XCTAssertTrue(coordinator.stopRecording())
         try await waitForStopCall(on: recordingService, coordinator: coordinator)
         XCTAssertEqual(coordinator.testHook_state, .idle)
 
         await recordingService.releaseStart()
         try await Task.sleep(for: .milliseconds(50))
-
-        let eventNames = telemetry.snapshot().map(\.name)
-        XCTAssertFalse(eventNames.contains(.meetingRecordingStarted))
-        XCTAssertFalse(eventNames.contains(.meetingRecordingFailed))
         XCTAssertEqual(coordinator.testHook_state, .idle)
     }
 
@@ -442,7 +419,7 @@ final class MeetingRecordingFlowCoordinatorTests: XCTestCase {
         )
         coordinator.testHook_enterRecording()
 
-        XCTAssertTrue(coordinator.stopRecording(operationTrigger: .manual))
+        XCTAssertTrue(coordinator.stopRecording())
         await coordinator.testHook_waitForActionTask()
         XCTAssertEqual(coordinator.testHook_state, .idle)
 
@@ -617,7 +594,7 @@ final class MeetingRecordingFlowCoordinatorTests: XCTestCase {
         }
         XCTAssertFalse(chatViewModel.isStreaming)
 
-        XCTAssertTrue(coordinator.stopRecording(operationTrigger: .manual))
+        XCTAssertTrue(coordinator.stopRecording())
         await coordinator.testHook_waitForActionTask()
 
         XCTAssertEqual(coordinator.testHook_state, .idle)
@@ -1511,78 +1488,6 @@ private extension MockTranscriptionService {
             preparedMeetingRecordings: preparedMeetingRecordings,
             finalizedMeetingRecordings: finalizedMeetingRecordings,
             finalizedMeetingTranscriptionIDs: finalizedMeetingTranscriptionIDs
-        )
-    }
-}
-
-private final class FlowTelemetrySpy: TelemetryServiceProtocol, @unchecked Sendable {
-    private let lock = NSLock()
-    private var events: [TelemetryEventSpec] = []
-
-    func send(_ event: TelemetryEventSpec) {
-        lock.lock()
-        events.append(event)
-        lock.unlock()
-    }
-
-    func sendAndFlush(_ event: TelemetryEventSpec) async -> Bool {
-        send(event)
-        return true
-    }
-
-    func flush() async {}
-
-    func clearQueue() {
-        lock.lock()
-        events.removeAll()
-        lock.unlock()
-    }
-
-    func flushForTermination() {}
-
-    func snapshot() -> [TelemetryEventSpec] {
-        lock.lock()
-        defer { lock.unlock() }
-        return events
-    }
-}
-
-private struct MeetingOperationPayload: Equatable {
-    let outcome: ObservabilityOutcome
-    let trigger: TelemetryMeetingOperationTrigger?
-    let durationSeconds: Double?
-    let microphoneTrackPresent: Bool?
-    let systemTrackPresent: Bool?
-}
-
-private extension TelemetryEventSpec {
-    var meetingOperationPayload: MeetingOperationPayload? {
-        guard
-            case .meetingOperation(
-                _,
-                _,
-                let outcome,
-                let trigger,
-                _,
-                let durationSeconds,
-                _,
-                _,
-                let microphoneTrackPresent,
-                let systemTrackPresent,
-                _,
-                _,
-                _
-            ) = self
-        else {
-            return nil
-        }
-
-        return MeetingOperationPayload(
-            outcome: outcome,
-            trigger: trigger,
-            durationSeconds: durationSeconds,
-            microphoneTrackPresent: microphoneTrackPresent,
-            systemTrackPresent: systemTrackPresent
         )
     }
 }

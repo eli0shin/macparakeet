@@ -193,13 +193,15 @@ extension Transcription {
     /// that produced no word timings — so the speaker count alone is not enough.
     public var hasSpeakerLabeledWords: Bool {
         guard let speakers, !speakers.isEmpty,
-              let wordTimestamps else { return false }
+            let wordTimestamps
+        else { return false }
         return wordTimestamps.contains { $0.speakerId != nil }
     }
 
     public static func normalizedTitleOverride(from title: String?) -> String? {
         guard let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty else {
+            !trimmed.isEmpty
+        else {
             return nil
         }
         return trimmed
@@ -221,7 +223,8 @@ extension Transcription {
             return fileName
         }
         if let derived = derivedTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !derived.isEmpty {
+            !derived.isEmpty
+        {
             return derived
         }
         return fileName
@@ -308,9 +311,9 @@ public struct TranscriptSegmentRecord: Codable, Sendable, Equatable, Identifiabl
         using speakers: [SpeakerInfo]?
     ) -> [TranscriptSegmentRecord]? {
         guard var segments,
-              !segments.isEmpty,
-              let speakers,
-              !speakers.isEmpty
+            !segments.isEmpty,
+            let speakers,
+            !speakers.isEmpty
         else {
             return segments
         }
@@ -322,7 +325,7 @@ public struct TranscriptSegmentRecord: Codable, Sendable, Equatable, Identifiabl
 
         for index in segments.indices {
             guard let speakerId = segments[index].speakerId,
-                  let label = labelsBySpeakerID[speakerId]
+                let label = labelsBySpeakerID[speakerId]
             else { continue }
             segments[index].speakerLabel = label
         }
@@ -338,7 +341,9 @@ extension Transcription: FetchableRecord, PersistableRecord {
         case rawTranscript, cleanTranscript, wordTimestamps, language
         case speakerCount, speakers, diarizationSegments, transcriptSegments, meetingReadingTurnFormatting, chatMessages
         case status, errorMessage, exportPath, sourceURL
-        case thumbnailURL, channelName, videoDescription, isFavorite, sourceType, recoveredFromCrash, isTranscriptEdited, userNotes, meetingStartContext, meetingCaptureReport, engine, engineVariant, titleOverride, derivedTitle, derivedSnippet, updatedAt
+        case thumbnailURL, channelName, videoDescription, isFavorite, sourceType, recoveredFromCrash,
+            isTranscriptEdited, userNotes, meetingStartContext, meetingCaptureReport, engine, engineVariant,
+            titleOverride, derivedTitle, derivedSnippet, updatedAt
         case calendarEventSnapshot
     }
 
@@ -382,7 +387,8 @@ extension Transcription: FetchableRecord, PersistableRecord {
             }
         }
 
-        diarizationSegments = try container.decodeIfPresent([DiarizationSegmentRecord].self, forKey: .diarizationSegments)
+        diarizationSegments = try container.decodeIfPresent(
+            [DiarizationSegmentRecord].self, forKey: .diarizationSegments)
         transcriptSegments = try container.decodeIfPresent([TranscriptSegmentRecord].self, forKey: .transcriptSegments)
         meetingReadingTurnFormatting = try container.decodeIfPresent(
             [MeetingReadingTurnFormatting].self,
@@ -407,18 +413,22 @@ extension Transcription: FetchableRecord, PersistableRecord {
         recoveredFromCrash = try container.decodeIfPresent(Bool.self, forKey: .recoveredFromCrash) ?? false
         isTranscriptEdited = try container.decodeIfPresent(Bool.self, forKey: .isTranscriptEdited) ?? false
         userNotes = try container.decodeIfPresent(String.self, forKey: .userNotes)
-        meetingStartContext = (try? container.decodeIfPresent(MeetingStartContext.self, forKey: .meetingStartContext)) ?? nil
-        meetingCaptureReport = (try? container.decodeIfPresent(
-            MeetingCaptureReport.self,
-            forKey: .meetingCaptureReport
-        )) ?? nil
+        meetingStartContext =
+            (try? container.decodeIfPresent(MeetingStartContext.self, forKey: .meetingStartContext)) ?? nil
+        meetingCaptureReport =
+            (try? container.decodeIfPresent(
+                MeetingCaptureReport.self,
+                forKey: .meetingCaptureReport
+            )) ?? nil
         engine = try container.decodeIfPresent(String.self, forKey: .engine)
         engineVariant = try container.decodeIfPresent(String.self, forKey: .engineVariant)
-        calendarEventSnapshot = (try? container.decodeIfPresent(
-            MeetingCalendarSnapshot.self,
-            forKey: .calendarEventSnapshot
-        )) ?? nil
-        titleOverride = Self.normalizedTitleOverride(from: try container.decodeIfPresent(String.self, forKey: .titleOverride))
+        calendarEventSnapshot =
+            (try? container.decodeIfPresent(
+                MeetingCalendarSnapshot.self,
+                forKey: .calendarEventSnapshot
+            )) ?? nil
+        titleOverride = Self.normalizedTitleOverride(
+            from: try container.decodeIfPresent(String.self, forKey: .titleOverride))
         derivedTitle = try container.decodeIfPresent(String.self, forKey: .derivedTitle)
         derivedSnippet = try container.decodeIfPresent(String.self, forKey: .derivedSnippet)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)

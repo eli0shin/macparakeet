@@ -22,13 +22,14 @@ public actor PodcastQueryResolver: PodcastSearchResolving {
         feedFetcher: FeedFetcher? = nil
     ) {
         self.directory = directory
-        self.feedFetcher = feedFetcher ?? { url in
-            let (data, response) = try await URLSession.shared.data(from: url)
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                throw PodcastFeedError.parseFailed("HTTP \(http.statusCode)")
+        self.feedFetcher =
+            feedFetcher ?? { url in
+                let (data, response) = try await URLSession.shared.data(from: url)
+                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                    throw PodcastFeedError.parseFailed("HTTP \(http.statusCode)")
+                }
+                return data
             }
-            return data
-        }
     }
 
     public func resolve(query: String) async throws -> ResolvedPodcastEpisode {
@@ -37,8 +38,8 @@ public actor PodcastQueryResolver: PodcastSearchResolving {
 
         let shows = try await directory.searchShows(query: effectiveShowQuery)
         guard let show = shows.first(where: { ($0.feedURL?.isEmpty == false) }),
-              let feedURLString = show.feedURL,
-              let feedURL = URL(string: feedURLString)
+            let feedURLString = show.feedURL,
+            let feedURL = URL(string: feedURLString)
         else {
             throw PodcastSearchError.noResults
         }

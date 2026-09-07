@@ -67,7 +67,8 @@ public struct HotkeyTrigger: Sendable {
             return "Disabled"
         case .modifier:
             if let mkc = modifierKeyCode, let info = Self.modifierKeyCodeInfo[mkc],
-               let base = Self.modifierDisplayNames[info.modifier] {
+                let base = Self.modifierDisplayNames[info.modifier]
+            {
                 return "\(info.side) \(base.displayName)"
             }
             return Self.modifierDisplayNames[modifierName ?? ""]?.displayName ?? modifierName ?? "Unknown"
@@ -121,7 +122,8 @@ public struct HotkeyTrigger: Sendable {
             return "—"
         case .modifier:
             if let mkc = modifierKeyCode, let info = Self.modifierKeyCodeInfo[mkc],
-               let base = Self.modifierDisplayNames[info.modifier] {
+                let base = Self.modifierDisplayNames[info.modifier]
+            {
                 return "\(info.sideShort)\(base.shortSymbol)"
             }
             return Self.modifierDisplayNames[modifierName ?? ""]?.shortSymbol ?? modifierName ?? "?"
@@ -200,8 +202,9 @@ public struct HotkeyTrigger: Sendable {
     private static func sortedModifierComponentDisplayNames(_ components: [ModifierComponent]?) -> [String] {
         (components ?? []).compactMap { component in
             if let keyCode = component.keyCode,
-               let info = modifierKeyCodeInfo[keyCode],
-               let base = modifierDisplayNames[info.modifier] {
+                let info = modifierKeyCodeInfo[keyCode],
+                let base = modifierDisplayNames[info.modifier]
+            {
                 return "\(info.side) \(base.displayName)"
             }
             return modifierDisplayNames[component.modifierName]?.displayName
@@ -211,8 +214,9 @@ public struct HotkeyTrigger: Sendable {
     private static func sortedModifierComponentSymbols(_ components: [ModifierComponent]?) -> String {
         (components ?? []).compactMap { component in
             if let keyCode = component.keyCode,
-               let info = modifierKeyCodeInfo[keyCode],
-               let base = modifierDisplayNames[info.modifier] {
+                let info = modifierKeyCodeInfo[keyCode],
+                let base = modifierDisplayNames[info.modifier]
+            {
                 return "\(info.sideShort)\(base.shortSymbol)"
             }
             return modifierDisplayNames[component.modifierName]?.shortSymbol
@@ -221,14 +225,15 @@ public struct HotkeyTrigger: Sendable {
     }
 
     // CGEventFlags raw values (avoids CoreGraphics import in MacParakeetCore)
-    private static let maskCommand: UInt64   = 0x00100000  // NX_COMMANDMASK
-    private static let maskShift: UInt64     = 0x00020000  // NX_SHIFTMASK
-    private static let maskControl: UInt64   = 0x00040000  // NX_CONTROLMASK
+    private static let maskCommand: UInt64 = 0x00100000  // NX_COMMANDMASK
+    private static let maskShift: UInt64 = 0x00020000  // NX_SHIFTMASK
+    private static let maskControl: UInt64 = 0x00040000  // NX_CONTROLMASK
     private static let maskAlternate: UInt64 = 0x00080000  // NX_ALTERNATEMASK
-    private static let maskSecondaryFn: UInt64 = 0x00800000 // NX_SECONDARYFNMASK
+    private static let maskSecondaryFn: UInt64 = 0x00800000  // NX_SECONDARYFNMASK
 
     /// All relevant modifier bits OR'd together.
-    public static let relevantModifierBits: UInt64 = maskCommand | maskShift | maskControl | maskAlternate | maskSecondaryFn
+    public static let relevantModifierBits: UInt64 =
+        maskCommand | maskShift | maskControl | maskAlternate | maskSecondaryFn
 
     /// CGEventFlags raw value for chord modifiers, computed at runtime.
     /// Maps modifier names to their CGEventFlags mask bits and OR's them together.
@@ -244,9 +249,10 @@ public struct HotkeyTrigger: Sendable {
     /// themselves require fn, the bit is noise, not a held modifier.
     public var ignoredChordEventFlags: UInt64 {
         guard kind == .chord,
-              let code = keyCode,
-              KeyCodeNames.isFunctionFamilyKeyCode(code),
-              !(chordModifiers?.contains("fn") ?? false) else {
+            let code = keyCode,
+            KeyCodeNames.isFunctionFamilyKeyCode(code),
+            !(chordModifiers?.contains("fn") ?? false)
+        else {
             return 0
         }
         return Self.maskSecondaryFn
@@ -284,10 +290,12 @@ public struct HotkeyTrigger: Sendable {
         flags: UInt64,
         sideSpecificPressed: (UInt16) -> Bool
     ) -> Bool {
-        guard modifierChordRequiredComponentsArePressed(
-            flags: flags,
-            sideSpecificPressed: sideSpecificPressed
-        ) else {
+        guard
+            modifierChordRequiredComponentsArePressed(
+                flags: flags,
+                sideSpecificPressed: sideSpecificPressed
+            )
+        else {
             return false
         }
         guard flags & Self.relevantModifierBits == modifierChordEventFlags else { return false }
@@ -295,7 +303,8 @@ public struct HotkeyTrigger: Sendable {
         let requiredKeyCodes = Set(modifierChordKeyCodes)
         for keyCode in requiredKeyCodes {
             guard let opposite = Self.oppositeModifierKeyCode(for: keyCode),
-                  !requiredKeyCodes.contains(opposite) else {
+                !requiredKeyCodes.contains(opposite)
+            else {
                 continue
             }
             if sideSpecificPressed(opposite) {
@@ -331,7 +340,8 @@ public struct HotkeyTrigger: Sendable {
 
     public static func modifierComponent(forKeyCode keyCode: UInt16) -> ModifierComponent? {
         guard !isFnKeyCode(keyCode),
-              let name = modifierName(forKeyCode: keyCode) else { return nil }
+            let name = modifierName(forKeyCode: keyCode)
+        else { return nil }
         return ModifierComponent(modifierName: name, keyCode: keyCode)
     }
 
@@ -426,7 +436,8 @@ public struct HotkeyTrigger: Sendable {
         var seen: Set<String> = []
         let canonical = components.compactMap { component -> ModifierComponent? in
             if let keyCode = component.keyCode,
-               let modifierName = modifierKeyCodeInfo[keyCode]?.modifier {
+                let modifierName = modifierKeyCodeInfo[keyCode]?.modifier
+            {
                 return ModifierComponent(modifierName: modifierName, keyCode: keyCode)
             }
             guard modifierOrder.contains(component.modifierName) else { return nil }
@@ -524,7 +535,7 @@ public struct HotkeyTrigger: Sendable {
         let destructiveCmdKeys: Set<UInt16> = [
             12,  // Q
             13,  // W
-            4,   // H
+            4,  // H
             46,  // M
         ]
         if hasCommand && destructiveCmdKeys.contains(code) {
@@ -610,11 +621,13 @@ public struct HotkeyTrigger: Sendable {
     ) -> Bool {
         guard overlaps(with: other) else { return false }
         if selfMode == .bareModifierDictation,
-           Self.bareModifierDictationCanShare(self, with: other) {
+            Self.bareModifierDictationCanShare(self, with: other)
+        {
             return false
         }
         if otherMode == .bareModifierDictation,
-           Self.bareModifierDictationCanShare(other, with: self) {
+            Self.bareModifierDictationCanShare(other, with: self)
+        {
             return false
         }
         return true
@@ -625,7 +638,8 @@ public struct HotkeyTrigger: Sendable {
         with other: HotkeyTrigger
     ) -> Bool {
         guard dictationTrigger.kind == .modifier,
-              let lhs = modifierRequirement(for: dictationTrigger) else {
+            let lhs = modifierRequirement(for: dictationTrigger)
+        else {
             return false
         }
 
@@ -646,7 +660,8 @@ public struct HotkeyTrigger: Sendable {
     private static func modifierRequirement(for trigger: HotkeyTrigger) -> ModifierComponent? {
         guard trigger.kind == .modifier, let name = trigger.modifierName else { return nil }
         if let keyCode = trigger.modifierKeyCode,
-           let component = modifierComponent(forKeyCode: keyCode) {
+            let component = modifierComponent(forKeyCode: keyCode)
+        {
             return component
         }
         guard name != "fn", modifierOrder.contains(name) else { return nil }
@@ -718,7 +733,8 @@ public struct HotkeyTrigger: Sendable {
 
         // Try JSON data first (new format)
         if let data = defaults.data(forKey: defaultsKey),
-           let trigger = try? JSONDecoder().decode(HotkeyTrigger.self, from: data) {
+            let trigger = try? JSONDecoder().decode(HotkeyTrigger.self, from: data)
+        {
             return trigger
         }
 
@@ -743,33 +759,6 @@ public struct HotkeyTrigger: Sendable {
         if let data = try? JSONEncoder().encode(self) {
             defaults.set(data, forKey: defaultsKey)
         }
-    }
-}
-
-// MARK: - Telemetry payload
-
-extension HotkeyTrigger {
-    /// Maps `kind` to its telemetry counterpart. Kept inline here so callers
-    /// don't have to translate by hand at every emit site.
-    ///
-    /// We deliberately stop at the kind boundary — `docs/telemetry.md`
-    /// item 10 commits to "track boolean, not which key." Reading the
-    /// specific modifier name or keyCode out of `self` for telemetry
-    /// would cross that line.
-    public var telemetryKind: TelemetryHotkeyKind {
-        switch kind {
-        case .disabled: return .disabled
-        case .modifier: return .modifier
-        case .keyCode:  return .keyCode
-        case .chord:    return .chord
-        case .modifierChord: return .chord
-        }
-    }
-
-    /// Builds the `.hotkeyCustomized` event spec for this trigger. Pulled
-    /// into a single helper so each settings call site stays a one-liner.
-    public func customizedEvent(surface: TelemetryHotkeySurface) -> TelemetryEventSpec {
-        .hotkeyCustomized(surface: surface, kind: telemetryKind)
     }
 }
 

@@ -11,30 +11,10 @@ public enum DictationState: Sendable {
     case error(String)
 }
 
-public struct DictationTelemetryContext: Sendable, Equatable {
-    public var trigger: TelemetryDictationTrigger?
-    public var mode: TelemetryDictationMode?
-    /// Coarse category of the app expected to receive the dictation paste.
-    /// The app layer refreshes this near stop/undo time so the value follows
-    /// the finish-target paste model instead of locking to the app active at
-    /// recording start. See `TelemetryAppCategory` for the privacy contract.
-    public var appCategory: TelemetryAppCategory?
-
-    public init(
-        trigger: TelemetryDictationTrigger? = nil,
-        mode: TelemetryDictationMode? = nil,
-        appCategory: TelemetryAppCategory? = nil
-    ) {
-        self.trigger = trigger
-        self.mode = mode
-        self.appCategory = appCategory
-    }
-}
-
 public protocol DictationServiceProtocol: Sendable {
-    func startRecording(context: DictationTelemetryContext) async throws
+    func startRecording() async throws
     func stopRecording() async throws -> DictationResult
-    func cancelRecording(reason: TelemetryDictationCancelReason?) async
+    func cancelRecording() async
     /// Confirm cancel immediately (discard any pending audio and reset to idle).
     func confirmCancel() async
     /// Undo a soft-cancel: transcribe the cancelled recording and return a DictationResult.
@@ -87,16 +67,6 @@ public enum AIFormatterAppContextPhase: Sendable {
     case finish
 }
 
-extension DictationServiceProtocol {
-    public func startRecording() async throws {
-        try await startRecording(context: DictationTelemetryContext())
-    }
-
-    public func cancelRecording() async {
-        await cancelRecording(reason: nil)
-    }
-}
-
 public actor DictationService: DictationServiceProtocol {
     private let logger = Logger(subsystem: "com.macparakeet.core", category: "DictationService")
     private let audioProcessor: AudioProcessorProtocol
@@ -129,12 +99,7 @@ public actor DictationService: DictationServiceProtocol {
     private var cancelGeneration: Int = 0
     private var pendingCancelledAudioURL: URL?
     private var pendingCancelledDurationMs: Int?
-    private var currentTelemetryContext = DictationTelemetryContext()
     private var recordingStartedAt: Date?
-    private var currentOperationID: String?
-    private var currentOperationTelemetryContext = DictationTelemetryContext()
-    private var currentOperationSpeechEngineAttribution: SpeechEngineTelemetryAttribution?
-    private var currentObservabilityOperationContext: ObservabilityOperationContext?
     private var currentAIFormatterStartContext: AppPromptContext?
     private var currentAIFormatterFinishContext: AppPromptContext?
     private var liveTranscriptionState: LiveDictationTranscriptionState?
@@ -145,7 +110,6 @@ public actor DictationService: DictationServiceProtocol {
     private var liveTranscriptStabilizer = LiveTranscriptStabilizer()
     private var activeSessionID: Int = 0
     private var cancellationRequestedDuringStartSessionID: Int?
-    private var pendingCancelReason: TelemetryDictationCancelReason?
 
     public var state: DictationState {
         _state
@@ -211,7 +175,8 @@ public actor DictationService: DictationServiceProtocol {
         self.llmRunRecorder = LLMRunRecorder(repository: llmRunRepo)
         self.shouldUseAIFormatter = shouldUseAIFormatter ?? { false }
         let promptTemplate = aiFormatterPromptTemplate ?? { AIFormatter.defaultPromptTemplate }
-        self.aiFormatterPromptResolver = aiFormatterPromptResolver
+        self.aiFormatterPromptResolver =
+            aiFormatterPromptResolver
             ?? AIFormatterGlobalPromptResolver(promptTemplate: promptTemplate)
         self.shouldAttemptLiveDictationTranscription = shouldAttemptLiveDictationTranscription ?? { false }
         self.shouldShowDictationPreview = shouldShowDictationPreview ?? { true }
@@ -223,23 +188,8 @@ public actor DictationService: DictationServiceProtocol {
         self.dictationPreviewWindowSampleCount = max(1, Int((dictationPreviewWindowSeconds * 16_000).rounded()))
     }
 
-    public func startRecording(context: DictationTelemetryContext = DictationTelemetryContext()) async throws {
-        try await startRecording(context: context, sessionID: nil)
-    }
-
-    public func updateTelemetryAppCategory(
-        _ appCategory: TelemetryAppCategory?,
-        sessionID: Int? = nil
-    ) {
-        if let sessionID, sessionID != activeSessionID { return }
-        switch _state {
-        case .recording, .cancelled, .processing:
-            let sampledCategory = appCategory ?? .other
-            currentTelemetryContext.appCategory = sampledCategory
-            currentOperationTelemetryContext.appCategory = sampledCategory
-        case .idle, .success, .error:
-            return
-        }
+    public func startRecording() async throws {
+        try await startRecording(sessionID: nil)
     }
 
     public func updateAIFormatterAppContext(
@@ -261,27 +211,12 @@ public actor DictationService: DictationServiceProtocol {
         }
     }
 
-    public func startRecording(
-        context: DictationTelemetryContext = DictationTelemetryContext(),
-        sessionID: Int?
-    ) async throws {
+    public func startRecording(sessionID: Int?) async throws {
         logger.debug("dictation_start_requested state=\(self.debugStateLabel(self._state), privacy: .public)")
-        let operationContext = ObservabilityOperationContext()
         if let entitlements {
             do {
                 try await entitlements.assertCanTranscribe(now: Date())
             } catch {
-                let device = await audioProcessor.recordingDeviceInfo
-                let speechEngineAttribution = await currentSpeechEngineTelemetryAttribution()
-                sendDictationOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    telemetryContext: context,
-                    speechEngineAttribution: speechEngineAttribution,
-                    outcome: .unavailable,
-                    errorType: Self.errorType(for: error),
-                    device: device
-                )
                 throw error
             }
         }
@@ -298,11 +233,12 @@ public actor DictationService: DictationServiceProtocol {
             await cancelLiveDictationTranscription(sessionID: activeSessionID)
             await cancelDisplayPreview(sessionID: activeSessionID, clearText: true)
             if await audioProcessor.isRecording,
-               let url = try? await audioProcessor.stopCapture() {
+                let url = try? await audioProcessor.stopCapture()
+            {
                 try? FileManager.default.removeItem(at: url)
             }
         case .processing where sessionID != nil && sessionID != activeSessionID,
-             .success where sessionID != nil && sessionID != activeSessionID:
+            .success where sessionID != nil && sessionID != activeSessionID:
             // Previous transcription still in flight. The reentrancy guards in
             // stopRecording prevent the old call from overwriting this session's state.
             logger.notice(
@@ -320,22 +256,15 @@ public actor DictationService: DictationServiceProtocol {
         let requestedSessionID = sessionID ?? activeSessionID + 1
         activeSessionID = requestedSessionID
         cancellationRequestedDuringStartSessionID = nil
-        pendingCancelReason = nil
         currentAIFormatterStartContext = nil
         currentAIFormatterFinishContext = nil
         clearLiveTranscript()
-        currentOperationID = operationContext.operationID
-        currentOperationTelemetryContext = context
-        currentOperationSpeechEngineAttribution = nil
-        currentObservabilityOperationContext = operationContext
         _state = .recording
         let liveSampleSink = await beginLiveDictationTranscriptionIfAvailable(
             sessionID: requestedSessionID
         )
         let previewSampleSink = beginDisplayPreviewIfAvailable(sessionID: requestedSessionID)
         let sampleSink = Self.combinedSampleSink(liveSampleSink, previewSampleSink)
-        let speechEngineAttribution = await currentSpeechEngineTelemetryAttribution()
-        currentOperationSpeechEngineAttribution = speechEngineAttribution
         do {
             try await audioProcessor.startCapture(sampleSink: sampleSink)
             // Guard against reentrancy: cancel or replacement may have run during the await above.
@@ -351,8 +280,9 @@ public actor DictationService: DictationServiceProtocol {
                     processorIsRecording = false
                 }
                 if activeSessionID == requestedSessionID,
-                   processorIsRecording,
-                   let audioURL = try? await audioProcessor.stopCapture() {
+                    processorIsRecording,
+                    let audioURL = try? await audioProcessor.stopCapture()
+                {
                     try? FileManager.default.removeItem(at: audioURL)
                 }
                 if activeSessionID == requestedSessionID {
@@ -365,9 +295,7 @@ public actor DictationService: DictationServiceProtocol {
                 )
                 return
             }
-            currentTelemetryContext = context
             recordingStartedAt = Date()
-            Telemetry.send(.dictationStarted(trigger: context.trigger, mode: context.mode))
             logger.debug("dictation_capture_started session=\(requestedSessionID, privacy: .public)")
         } catch {
             let activeAtFailure = activeSessionID
@@ -395,30 +323,15 @@ public actor DictationService: DictationServiceProtocol {
                 )
                 return
             }
-            let device = await audioProcessor.recordingDeviceInfo
             guard activeSessionID == requestedSessionID else {
                 logger.notice(
                     "startRecording stale failure ignored session=\(requestedSessionID) active=\(self.activeSessionID) error=\(error.localizedDescription, privacy: .public)"
                 )
                 throw error
             }
-            let operationID = currentOperationID
-            let telemetryContext = currentOperationTelemetryContext
-            let speechEngineAttribution = currentOperationSpeechEngineAttribution
-            let observabilityOperationContext = currentObservabilityOperationContext
             _state = .idle
             recordingStartedAt = nil
-            sendDictationOperation(
-                operationID: operationID,
-                operationContext: observabilityOperationContext,
-                telemetryContext: telemetryContext,
-                speechEngineAttribution: speechEngineAttribution,
-                outcome: .failure,
-                errorType: Self.errorType(for: error),
-                device: device
-            )
             clearCurrentOperation()
-            Telemetry.send(.dictationFailed(errorType: Self.errorType(for: error), errorDetail: TelemetryErrorClassifier.errorDetail(error), device: device))
             logger.error(
                 "startRecording failed session=\(requestedSessionID) error=\(error.localizedDescription, privacy: .public)"
             )
@@ -450,15 +363,13 @@ public actor DictationService: DictationServiceProtocol {
         logger.debug("dictation_stop_processing_started session=\(currentSession, privacy: .public)")
 
         // Sample recording length at the stop request, before stopCapture()'s
-        // WAV finalization, so the no-timestamp duration fallback and any
-        // failure/empty telemetry report capture length rather than length plus
-        // finalization/STT latency. Mirrors cancelRecording's capture point.
+        // WAV finalization, so the no-timestamp duration fallback excludes
+        // finalization and STT latency. Mirrors cancelRecording's capture point.
         let capturedDurationMs = currentRecordingDurationMs()
         do {
             let audioURL = try await audioProcessor.stopCapture()
             let captureHealth = await audioProcessor.lastCaptureHealth
             try rejectUnavailableCaptureIfNeeded(captureHealth, audioURL: audioURL)
-            let device = await audioProcessor.recordingDeviceInfo
             await cancelDisplayPreview(sessionID: currentSession, clearText: false)
             _ = await finishLiveDictationTranscription(sessionID: currentSession)
             logger.debug(
@@ -480,25 +391,6 @@ public actor DictationService: DictationServiceProtocol {
                 return result
             }
             _state = .success(result.dictation)
-            sendDictationOperation(
-                outcome: .success,
-                durationSeconds: Double(result.dictation.durationMs) / 1000.0,
-                wordCount: result.dictation.wordCount,
-                speechEngine: result.dictation.engine,
-                engineVariant: result.dictation.engineVariant,
-                language: result.dictation.language,
-                device: device
-            )
-            Telemetry.send(.dictationCompleted(
-                durationSeconds: Double(result.dictation.durationMs) / 1000.0,
-                wordCount: result.dictation.wordCount,
-                mode: currentTelemetryContext.mode,
-                speechEngine: result.dictation.engine,
-                engineVariant: result.dictation.engineVariant,
-                language: result.dictation.language,
-                appCategory: currentTelemetryContext.appCategory,
-                device: device
-            ))
             logger.debug(
                 "stopRecording success session=\(currentSession) rawChars=\(result.dictation.rawTranscript.count) cleanChars=\(result.dictation.cleanTranscript?.count ?? 0)"
             )
@@ -513,7 +405,6 @@ public actor DictationService: DictationServiceProtocol {
             await cancelLiveDictationTranscription(sessionID: currentSession)
             // Snapshot device before setting state to .idle — prevents reentrancy
             // window where a new startRecording() could overwrite the device info.
-            let device = await audioProcessor.recordingDeviceInfo
             guard activeSessionID == currentSession else {
                 logger.notice(
                     "stopRecording error discarded session=\(currentSession) replaced by=\(self.activeSessionID)"
@@ -521,26 +412,6 @@ public actor DictationService: DictationServiceProtocol {
                 throw error
             }
             _state = .idle
-            if Self.isNoSpeechError(error) {
-                sendDictationOperation(
-                    outcome: .empty,
-                    durationSeconds: resolvedDurationSeconds(capturedMs: capturedDurationMs),
-                    errorType: Self.errorType(for: error),
-                    device: device
-                )
-                Telemetry.send(.dictationEmpty(
-                    durationSeconds: resolvedDurationSeconds(capturedMs: capturedDurationMs),
-                    device: device
-                ))
-            } else {
-                sendDictationOperation(
-                    outcome: .failure,
-                    durationSeconds: resolvedDurationSeconds(capturedMs: capturedDurationMs),
-                    errorType: Self.errorType(for: error),
-                    device: device
-                )
-                Telemetry.send(.dictationFailed(errorType: Self.errorType(for: error), errorDetail: TelemetryErrorClassifier.errorDetail(error), device: device))
-            }
             recordingStartedAt = nil
             clearCurrentOperation()
             logger.error(
@@ -579,14 +450,11 @@ public actor DictationService: DictationServiceProtocol {
         await audioProcessor.discardPreRollForActiveCapture()
     }
 
-    public func cancelRecording(reason: TelemetryDictationCancelReason? = nil) async {
-        await cancelRecording(reason: reason, sessionID: nil)
+    public func cancelRecording() async {
+        await cancelRecording(sessionID: nil)
     }
 
-    public func cancelRecording(
-        reason: TelemetryDictationCancelReason? = nil,
-        sessionID: Int?
-    ) async {
+    public func cancelRecording(sessionID: Int?) async {
         if let sessionID, sessionID != activeSessionID {
             logger.notice(
                 "cancelRecording ignored stale session requested=\(sessionID) active=\(self.activeSessionID)"
@@ -598,21 +466,14 @@ public actor DictationService: DictationServiceProtocol {
         cancelGeneration += 1
         let generation = cancelGeneration
 
-        pendingCancelReason = reason
         cancellationRequestedDuringStartSessionID = activeSessionID
         await cancelLiveDictationTranscription(sessionID: activeSessionID)
         await cancelDisplayPreview(sessionID: activeSessionID, clearText: true)
         let capturedDurationMs = currentRecordingDurationMs()
         let audioURL = try? await audioProcessor.stopCapture()
-        let device = await audioProcessor.recordingDeviceInfo
         pendingCancelledAudioURL = audioURL
         pendingCancelledDurationMs = capturedDurationMs
         _state = .cancelled
-        Telemetry.send(.dictationCancelled(
-            durationSeconds: resolvedDurationSeconds(capturedMs: capturedDurationMs),
-            reason: reason,
-            device: device
-        ))
 
         cancelResetTask?.cancel()
         cancelResetTask = Task { [generation] in
@@ -635,7 +496,6 @@ public actor DictationService: DictationServiceProtocol {
         cancelGeneration += 1
         cancelResetTask?.cancel()
         cancelResetTask = nil
-        let cancelledDurationSeconds = resolvedDurationSeconds(capturedMs: pendingCancelledDurationMs)
         discardPendingCancelledAudio()
 
         if case .recording = _state {
@@ -647,13 +507,6 @@ public actor DictationService: DictationServiceProtocol {
             }
         }
 
-        let device = await audioProcessor.recordingDeviceInfo
-        sendDictationOperation(
-            outcome: .cancelled,
-            durationSeconds: cancelledDurationSeconds,
-            cancelReason: pendingCancelReason,
-            device: device
-        )
         recordingStartedAt = nil
         clearCurrentOperation()
         _state = .idle
@@ -689,7 +542,6 @@ public actor DictationService: DictationServiceProtocol {
                     formatterContext: formatterContext
                 )
             }
-            let device = await audioProcessor.recordingDeviceInfo
             // Guard against reentrancy: a new session may have started while we
             // transcribed the undone audio, replacing this one. Don't overwrite
             // its state. Mirrors stopRecording(sessionID:).
@@ -700,25 +552,6 @@ public actor DictationService: DictationServiceProtocol {
                 return result
             }
             _state = .success(result.dictation)
-            sendDictationOperation(
-                outcome: .success,
-                durationSeconds: Double(result.dictation.durationMs) / 1000.0,
-                wordCount: result.dictation.wordCount,
-                speechEngine: result.dictation.engine,
-                engineVariant: result.dictation.engineVariant,
-                language: result.dictation.language,
-                device: device
-            )
-            Telemetry.send(.dictationCompleted(
-                durationSeconds: Double(result.dictation.durationMs) / 1000.0,
-                wordCount: result.dictation.wordCount,
-                mode: currentTelemetryContext.mode,
-                speechEngine: result.dictation.engine,
-                engineVariant: result.dictation.engineVariant,
-                language: result.dictation.language,
-                appCategory: currentTelemetryContext.appCategory,
-                device: device
-            ))
             try? await Task.sleep(for: .milliseconds(500))
             guard activeSessionID == currentSession else { return result }
             _state = .idle
@@ -726,7 +559,6 @@ public actor DictationService: DictationServiceProtocol {
             clearCurrentOperation()
             return result
         } catch {
-            let device = await audioProcessor.recordingDeviceInfo
             guard activeSessionID == currentSession else {
                 logger.notice(
                     "undoCancel error discarded session=\(currentSession) replaced by=\(self.activeSessionID)"
@@ -734,26 +566,6 @@ public actor DictationService: DictationServiceProtocol {
                 throw error
             }
             _state = .idle
-            if Self.isNoSpeechError(error) {
-                sendDictationOperation(
-                    outcome: .empty,
-                    durationSeconds: resolvedDurationSeconds(capturedMs: capturedDurationMs),
-                    errorType: Self.errorType(for: error),
-                    device: device
-                )
-                Telemetry.send(.dictationEmpty(
-                    durationSeconds: resolvedDurationSeconds(capturedMs: capturedDurationMs),
-                    device: device
-                ))
-            } else {
-                sendDictationOperation(
-                    outcome: .failure,
-                    durationSeconds: resolvedDurationSeconds(capturedMs: capturedDurationMs),
-                    errorType: Self.errorType(for: error),
-                    device: device
-                )
-                Telemetry.send(.dictationFailed(errorType: Self.errorType(for: error), errorDetail: TelemetryErrorClassifier.errorDetail(error), device: device))
-            }
             recordingStartedAt = nil
             clearCurrentOperation()
             throw error
@@ -763,15 +575,11 @@ public actor DictationService: DictationServiceProtocol {
     // MARK: - Private
 
     /// Whether the error represents "no speech" (empty transcript or recording too short).
-    private static func isNoSpeechError(_ error: Error) -> Bool {
-        if let e = error as? DictationServiceError, e == .emptyTranscript { return true }
-        if let e = error as? AudioProcessorError, case .insufficientSamples = e { return true }
-        return false
-    }
 
     private static func isInterruptedDuringSubscribe(_ error: Error) -> Bool {
         guard let e = error as? AudioProcessorError,
-              case .recordingFailed(let reason) = e else {
+            case .recordingFailed(let reason) = e
+        else {
             return false
         }
         return reason == "interrupted during subscribe"
@@ -788,12 +596,7 @@ public actor DictationService: DictationServiceProtocol {
     private func withCurrentObservabilityContextIfAny<T: Sendable>(
         _ operation: () async throws -> T
     ) async rethrows -> T {
-        guard let operationContext = currentObservabilityOperationContext else {
-            return try await operation()
-        }
-        return try await Observability.withOperationContext(operationContext) {
-            try await operation()
-        }
+        try await operation()
     }
 
     private func rejectUnavailableCaptureIfNeeded(
@@ -1025,10 +828,11 @@ public actor DictationService: DictationServiceProtocol {
         return DictationAudioSampleSink(
             onSamples: { samples in
                 guard !samples.isEmpty else { return }
-                sampleContinuation.yield(DictationDisplayPreviewSamples(
-                    samples: samples,
-                    generation: resetGeneration.withLock { $0 }
-                ))
+                sampleContinuation.yield(
+                    DictationDisplayPreviewSamples(
+                        samples: samples,
+                        generation: resetGeneration.withLock { $0 }
+                    ))
             },
             onFinish: {
                 sampleContinuation.finish()
@@ -1042,7 +846,8 @@ public actor DictationService: DictationServiceProtocol {
 
     private func updateLiveTranscript(_ partial: String, sessionID: Int) {
         guard liveTranscriptionState?.dictationSessionID == sessionID,
-              case .recording = _state else {
+            case .recording = _state
+        else {
             return
         }
         guard shouldShowDictationPreview() else {
@@ -1059,11 +864,12 @@ public actor DictationService: DictationServiceProtocol {
         generation: Int
     ) {
         guard let state = displayPreviewState,
-              state.dictationSessionID == sessionID,
-              state.previewSessionID == previewSessionID,
-              // Reject a pre-reset pass that completed after Pause Media.
-              state.resetGeneration.withLock({ $0 }) == generation,
-              case .recording = _state else {
+            state.dictationSessionID == sessionID,
+            state.previewSessionID == previewSessionID,
+            // Reject a pre-reset pass that completed after Pause Media.
+            state.resetGeneration.withLock({ $0 }) == generation,
+            case .recording = _state
+        else {
             return
         }
         setLiveTranscript(raw: preview)
@@ -1071,7 +877,8 @@ public actor DictationService: DictationServiceProtocol {
 
     private func resetDisplayPreview(sessionID: Int) {
         guard let state = displayPreviewState,
-              state.dictationSessionID == sessionID else {
+            state.dictationSessionID == sessionID
+        else {
             return
         }
         state.resetGeneration.withLock { $0 += 1 }
@@ -1094,7 +901,8 @@ public actor DictationService: DictationServiceProtocol {
 
     private func cancelDisplayPreview(sessionID: Int, clearText: Bool) async {
         guard let state = displayPreviewState,
-              state.dictationSessionID == sessionID else {
+            state.dictationSessionID == sessionID
+        else {
             return
         }
         displayPreviewState = nil
@@ -1126,7 +934,8 @@ public actor DictationService: DictationServiceProtocol {
 
     private func finishLiveDictationTranscription(sessionID: Int) async -> STTResult? {
         guard let state = liveTranscriptionState,
-              state.dictationSessionID == sessionID else {
+            state.dictationSessionID == sessionID
+        else {
             return nil
         }
         liveTranscriptionState = nil
@@ -1174,7 +983,8 @@ public actor DictationService: DictationServiceProtocol {
 
     private func cancelLiveDictationTranscription(sessionID: Int) async {
         guard let state = liveTranscriptionState,
-              state.dictationSessionID == sessionID else {
+            state.dictationSessionID == sessionID
+        else {
             return
         }
         liveTranscriptionState = nil
@@ -1235,7 +1045,8 @@ public actor DictationService: DictationServiceProtocol {
         )
         let result = try await sttTranscriber.transcribe(audioPath: audioURL.path, job: .dictation)
         logger.debug("dictation_transcription_complete chars=\(result.text.count, privacy: .public)")
-        let transcriptWordCount = result.words.isEmpty
+        let transcriptWordCount =
+            result.words.isEmpty
             ? Observability.wordCount(result.text)
             : result.words.count
         AudioCaptureDiagnostics.append(
@@ -1255,20 +1066,27 @@ public actor DictationService: DictationServiceProtocol {
         var words: [CustomWord] = []
         var snippets: [TextSnippet] = []
         if mode.usesDeterministicPipeline {
-            do { words = try customWordRepo?.fetchEnabled() ?? [] }
-            catch { logger.error("dictation_custom_words_fetch_failed error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)") }
-            do { snippets = try snippetRepo?.fetchEnabled() ?? [] }
-            catch { logger.error("dictation_snippets_fetch_failed error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)") }
+            do { words = try customWordRepo?.fetchEnabled() ?? [] } catch {
+                logger.error(
+                    "dictation_custom_words_fetch_failed error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+                )
+            }
+            do { snippets = try snippetRepo?.fetchEnabled() ?? [] } catch {
+                logger.error(
+                    "dictation_snippets_fetch_failed error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+                )
+            }
         }
 
         // Voice Return: inject synthetic action snippet regardless of mode
         // (raw mode extracts trailing action without running the full pipeline)
         for trigger in VoiceReturnTriggerPhrases.normalized(voiceReturnTriggers()) {
-            snippets.append(TextSnippet(
-                trigger: trigger,
-                expansion: KeyAction.returnKey.label,
-                action: .returnKey
-            ))
+            snippets.append(
+                TextSnippet(
+                    trigger: trigger,
+                    expansion: KeyAction.returnKey.label,
+                    action: .returnKey
+                ))
         }
         let refinement = await textRefinementService.refine(
             rawText: result.text,
@@ -1335,8 +1153,11 @@ public actor DictationService: DictationServiceProtocol {
         }
 
         if saveHistory, shouldSaveAudio?() ?? false {
-            do { try AppPaths.ensureDirectories() }
-            catch { logger.error("dictation_directory_create_failed error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)") }
+            do { try AppPaths.ensureDirectories() } catch {
+                logger.error(
+                    "dictation_directory_create_failed error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+                )
+            }
             let destURL = URL(fileURLWithPath: AppPaths.dictationsDir, isDirectory: true)
                 .appendingPathComponent("\(dictation.id.uuidString).wav")
 
@@ -1383,11 +1204,6 @@ public actor DictationService: DictationServiceProtocol {
     private func resetAfterCancelIfStillCurrent(generation: Int) {
         guard generation == cancelGeneration else { return }
         if case .cancelled = _state {
-            sendDictationOperation(
-                outcome: .cancelled,
-                durationSeconds: resolvedDurationSeconds(capturedMs: pendingCancelledDurationMs),
-                cancelReason: pendingCancelReason
-            )
             discardPendingCancelledAudio()
             recordingStartedAt = nil
             clearCurrentOperation()
@@ -1406,23 +1222,10 @@ public actor DictationService: DictationServiceProtocol {
         return max(1, Int((seconds * 1000).rounded()))
     }
 
-    /// Duration to report in telemetry, in seconds, preferring the snapshot
-    /// taken at stop/cancel time. The live-clock fallback is only a safety net
-    /// for the rare path that never captured a snapshot; by the time these
-    /// telemetry calls fire `recordingStartedAt` has usually drifted past the
-    /// real capture length, which is exactly why the snapshot wins.
-    private func resolvedDurationSeconds(capturedMs: Int?) -> Double? {
-        durationSeconds(fromMilliseconds: capturedMs) ?? currentRecordingDurationSeconds()
-    }
-
-    private func durationSeconds(fromMilliseconds milliseconds: Int?) -> Double? {
-        guard let milliseconds, milliseconds > 0 else { return nil }
-        return Double(milliseconds) / 1000.0
-    }
-
     private static func fileSizeBytes(at url: URL) -> UInt64? {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = attributes[.size] as? UInt64 else {
+            let size = attributes[.size] as? UInt64
+        else {
             return nil
         }
         return size
@@ -1446,7 +1249,7 @@ public actor DictationService: DictationServiceProtocol {
     }
 
     private static func errorType(for error: Error) -> String {
-        TelemetryErrorClassifier.classify(error)
+        DiagnosticErrorClassifier.classify(error)
     }
 
     private nonisolated static func milliseconds(_ duration: Duration) -> Int {
@@ -1454,59 +1257,11 @@ public actor DictationService: DictationServiceProtocol {
     }
 
     private func clearCurrentOperation() {
-        currentOperationID = nil
-        currentOperationTelemetryContext = DictationTelemetryContext()
-        currentOperationSpeechEngineAttribution = nil
-        currentObservabilityOperationContext = nil
         currentAIFormatterStartContext = nil
         currentAIFormatterFinishContext = nil
         clearLiveTranscript()
-        pendingCancelReason = nil
     }
 
-    private func sendDictationOperation(
-        operationID: String? = nil,
-        operationContext: ObservabilityOperationContext? = nil,
-        telemetryContext: DictationTelemetryContext? = nil,
-        speechEngineAttribution: SpeechEngineTelemetryAttribution? = nil,
-        outcome: ObservabilityOutcome,
-        durationSeconds: Double? = nil,
-        wordCount: Int? = nil,
-        errorType: String? = nil,
-        cancelReason: TelemetryDictationCancelReason? = nil,
-        speechEngine: String? = nil,
-        engineVariant: String? = nil,
-        language: String? = nil,
-        device: RecordingDeviceInfo? = nil
-    ) {
-        guard let id = operationID ?? currentOperationID else { return }
-        let context = telemetryContext ?? currentOperationTelemetryContext
-        let attribution = speechEngineAttribution ?? currentOperationSpeechEngineAttribution
-        let observabilityContext = operationContext ?? currentObservabilityOperationContext
-        Telemetry.send(.dictationOperation(
-            operationID: id,
-            operationContext: observabilityContext,
-            outcome: outcome,
-            trigger: context.trigger,
-            mode: context.mode,
-            durationSeconds: durationSeconds,
-            wordCount: wordCount,
-            errorType: errorType,
-            cancelReason: cancelReason,
-            speechEngine: speechEngine ?? attribution?.speechEngine.rawValue,
-            engineVariant: engineVariant ?? attribution?.engineVariant,
-            language: language ?? attribution?.language,
-            appCategory: context.appCategory,
-            device: device
-        ))
-    }
-
-    private func currentSpeechEngineTelemetryAttribution() async -> SpeechEngineTelemetryAttribution? {
-        guard let attributor = sttTranscriber as? SpeechEngineTelemetryAttributing else {
-            return nil
-        }
-        return await attributor.currentSpeechEngineTelemetryAttribution()
-    }
 }
 
 public enum DictationServiceError: Error, LocalizedError {

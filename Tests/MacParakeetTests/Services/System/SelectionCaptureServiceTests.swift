@@ -136,8 +136,8 @@ final class SelectionCaptureServiceTests: XCTestCase {
             selectedText: nil,
             initialChangeCount: 4,
             snapshotItems: [placeholder],
-            pasteboardAfterCmdC: nil,           // image/file → no text
-            changeCountAfterCmdC: 5             // but Cmd+C did write something
+            pasteboardAfterCmdC: nil,  // image/file → no text
+            changeCountAfterCmdC: 5  // but Cmd+C did write something
         )
         let service = SelectionCaptureService(
             backend: backend,
@@ -153,7 +153,9 @@ final class SelectionCaptureServiceTests: XCTestCase {
         default:
             XCTFail("Expected .empty, got \(result.pathTag)")
         }
-        XCTAssertEqual(backend.restoreCount(), 1, "Snapshot must be restored — user's pre-hijack clipboard had non-text content we'd otherwise have lost")
+        XCTAssertEqual(
+            backend.restoreCount(), 1,
+            "Snapshot must be restored — user's pre-hijack clipboard had non-text content we'd otherwise have lost")
     }
 
     func testAbandonedClipboardCaptureSkipsRestoreWhenUserCopiedAfterCapture() async {
@@ -175,7 +177,9 @@ final class SelectionCaptureServiceTests: XCTestCase {
         backend.setChangeCountForTesting(6)
         await service.restoreClipboardCaptureIfCurrent(result)
 
-        XCTAssertEqual(backend.restoreCount(), 0, "User clipboard writes after capture must not be clobbered by abandoned-transform cleanup")
+        XCTAssertEqual(
+            backend.restoreCount(), 0,
+            "User clipboard writes after capture must not be clobbered by abandoned-transform cleanup")
     }
 }
 

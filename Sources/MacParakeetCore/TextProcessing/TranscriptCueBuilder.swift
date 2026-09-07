@@ -29,12 +29,13 @@ public enum TranscriptCueBuilder {
         for (index, word) in words.enumerated() {
             let speakerChanged = !currentWords.isEmpty && word.speakerId != cueSpeakerId
             if speakerChanged {
-                cues.append(TranscriptCue(
-                    startMs: cueStartMs,
-                    endMs: cueEndMs,
-                    text: currentWords.joined(separator: " "),
-                    speakerId: cueSpeakerId
-                ))
+                cues.append(
+                    TranscriptCue(
+                        startMs: cueStartMs,
+                        endMs: cueEndMs,
+                        text: currentWords.joined(separator: " "),
+                        speakerId: cueSpeakerId
+                    ))
                 currentWords = []
                 cueStartMs = word.startMs
                 cueSpeakerId = word.speakerId
@@ -50,12 +51,13 @@ public enum TranscriptCueBuilder {
             let tooLong = (cueEndMs - cueStartMs) > 7000
 
             if isLast || (endsWithPunctuation && currentWords.count >= 2) || hasLongGap || tooManyWords || tooLong {
-                cues.append(TranscriptCue(
-                    startMs: cueStartMs,
-                    endMs: cueEndMs,
-                    text: currentWords.joined(separator: " "),
-                    speakerId: cueSpeakerId
-                ))
+                cues.append(
+                    TranscriptCue(
+                        startMs: cueStartMs,
+                        endMs: cueEndMs,
+                        text: currentWords.joined(separator: " "),
+                        speakerId: cueSpeakerId
+                    ))
                 currentWords = []
                 if !isLast {
                     cueStartMs = words[index + 1].startMs

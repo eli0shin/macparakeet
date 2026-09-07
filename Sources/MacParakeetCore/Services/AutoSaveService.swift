@@ -98,16 +98,8 @@ public final class AutoSaveService {
         guard defaults.bool(forKey: scope.enabledKey) else { return .disabled }
         let format = AutoSaveFormat(rawValue: defaults.string(forKey: scope.formatKey) ?? "md") ?? .md
         let textOptions = transcriptExportOptions(for: scope)
-        let operationContext = Observability.childOperationContext()
         guard let folderURL = resolveFolder(scope: scope) else {
             logger.warning("Auto-save enabled but no valid folder configured for \(scope.rawValue).")
-            sendAutoSaveOperation(
-                operationContext: operationContext,
-                scope: scope,
-                format: format,
-                outcome: .unavailable,
-                errorType: "folder_unavailable"
-            )
             return .folderUnavailable
         }
 
@@ -136,23 +128,14 @@ public final class AutoSaveService {
             case .json: try exportService.exportToJSON(transcription: transcription, url: fileURL)
             }
 
-            logger.info("auto_save_completed scope=\(scope.rawValue, privacy: .public) format=\(format.rawValue, privacy: .public) outcome=success")
-            sendAutoSaveOperation(
-                operationContext: operationContext,
-                scope: scope,
-                format: format,
-                outcome: .success
+            logger.info(
+                "auto_save_completed scope=\(scope.rawValue, privacy: .public) format=\(format.rawValue, privacy: .public) outcome=success"
             )
             return .saved
         } catch {
             let errorType = Observability.errorType(for: error)
-            logger.error("auto_save_failed scope=\(scope.rawValue, privacy: .public) format=\(format.rawValue, privacy: .public) outcome=failure error_type=\(errorType, privacy: .public)")
-            sendAutoSaveOperation(
-                operationContext: operationContext,
-                scope: scope,
-                format: format,
-                outcome: .failure,
-                errorType: errorType
+            logger.error(
+                "auto_save_failed scope=\(scope.rawValue, privacy: .public) format=\(format.rawValue, privacy: .public) outcome=failure error_type=\(errorType, privacy: .public)"
             )
             return .failed
         }
@@ -174,10 +157,12 @@ public final class AutoSaveService {
     ) -> URL? {
         guard let bookmarkData = defaults.data(forKey: scope.folderBookmarkKey) else { return nil }
         var isStale = false
-        guard let url = try? URL(
-            resolvingBookmarkData: bookmarkData,
-            bookmarkDataIsStale: &isStale
-        ) else { return nil }
+        guard
+            let url = try? URL(
+                resolvingBookmarkData: bookmarkData,
+                bookmarkDataIsStale: &isStale
+            )
+        else { return nil }
 
         if isStale {
             if let refreshed = try? url.bookmarkData() {
@@ -204,7 +189,7 @@ public final class AutoSaveService {
         await Task.detached(priority: .utility) {
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
-                  isDirectory.boolValue
+                isDirectory.boolValue
             else {
                 return false
             }
@@ -223,7 +208,7 @@ public final class AutoSaveService {
 
     private static func copyIfMissing(from sourceKey: String, to destinationKey: String, defaults: UserDefaults) {
         guard defaults.object(forKey: destinationKey) == nil,
-              let value = defaults.object(forKey: sourceKey)
+            let value = defaults.object(forKey: sourceKey)
         else { return }
         defaults.set(value, forKey: destinationKey)
     }
@@ -241,27 +226,11 @@ public final class AutoSaveService {
         defaults.object(forKey: key) as? Bool ?? true
     }
 
-    private func sendAutoSaveOperation(
-        operationContext: ObservabilityOperationContext,
-        scope: AutoSaveScope,
-        format: AutoSaveFormat,
-        outcome: ObservabilityOutcome,
-        errorType: String? = nil
-    ) {
-        Telemetry.send(.autoSaveOperation(
-            operationID: operationContext.operationID,
-            operationContext: operationContext,
-            scope: scope,
-            format: format,
-            outcome: outcome,
-            durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-            errorType: errorType
-        ))
-    }
-
     /// Store a folder URL as bookmark data. Returns the display path on success.
     @discardableResult
-    public static func storeFolder(_ url: URL, scope: AutoSaveScope = .transcription, defaults: UserDefaults = .standard) -> String? {
+    public static func storeFolder(
+        _ url: URL, scope: AutoSaveScope = .transcription, defaults: UserDefaults = .standard
+    ) -> String? {
         guard let data = try? url.bookmarkData() else { return nil }
         defaults.set(data, forKey: scope.folderBookmarkKey)
         return url.path
@@ -277,7 +246,8 @@ public final class AutoSaveService {
     /// so the user can find their output via Finder / Spotlight without
     /// digging into `~/Library`.
     public static func defaultFolder(for scope: AutoSaveScope) -> URL {
-        let docs = FileManager.default
+        let docs =
+            FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)
             .first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Documents")
@@ -324,7 +294,9 @@ public final class AutoSaveService {
     /// the user can deliberately revert to default after picking a custom
     /// destination.
     @discardableResult
-    public static func resetFolderToDefault(scope: AutoSaveScope = .transcription, defaults: UserDefaults = .standard) -> URL? {
+    public static func resetFolderToDefault(scope: AutoSaveScope = .transcription, defaults: UserDefaults = .standard)
+        -> URL?
+    {
         let defaultURL = defaultFolder(for: scope)
         do {
             try FileManager.default.createDirectory(at: defaultURL, withIntermediateDirectories: true)

@@ -463,7 +463,7 @@ struct RetranscribeCommand: AsyncParsableCommand {
         let updated = try await service.retranscribe(
             existing: original,
             fileURL: sourceURL,
-            source: Self.telemetrySource(for: original.sourceType),
+            source: Self.source(for: original.sourceType),
             speechEngineOverride: speechEngine,
             onProgress: Self.progressHandler(prefix: "Retranscribing").transcriptionProgress
         )
@@ -664,7 +664,7 @@ struct RetranscribeCommand: AsyncParsableCommand {
         return updated
     }
 
-    private static func telemetrySource(for sourceType: Transcription.SourceType) -> TelemetryTranscriptionSource {
+    private static func source(for sourceType: Transcription.SourceType) -> TranscriptionSource {
         switch sourceType {
         case .file:
             return .file

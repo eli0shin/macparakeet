@@ -23,7 +23,8 @@ struct SettingsSearchResultsList: View {
                     SettingsEmptyState(
                         icon: "magnifyingglass",
                         title: "No matches",
-                        message: "Try a different keyword. Search covers titles, descriptions, and synonyms across every tab."
+                        message:
+                            "Try a different keyword. Search covers titles, descriptions, and synonyms across every tab."
                     )
                     .padding(.top, DesignSystem.Spacing.xl)
                 } else {
@@ -123,8 +124,8 @@ private struct SettingsSearchResultRow: View {
     SettingsSearchResultsList(
         results: SettingsSearchIndex.matches("microphone")
     ) { _ in }
-        .background(DesignSystem.Colors.background)
-        .preferredColorScheme(.light)
+    .background(DesignSystem.Colors.background)
+    .preferredColorScheme(.light)
 }
 
 #Preview("No matches — dark", traits: .fixedLayout(width: 720, height: 540)) {

@@ -136,7 +136,7 @@ public enum WhisperLanguageCatalog {
     /// layers occasionally fall back to the language NAME token instead of
     /// the code when the model emits an unfamiliar token; without this map
     /// `normalizeKnownLanguage("english")` returns nil and the language
-    /// attribution silently disappears from telemetry.
+    /// language attribution silently disappears.
     // English names are not guaranteed unique the way ISO codes are, so use the
     // collision-tolerant initializer rather than `uniqueKeysWithValues:` (which
     // traps at static-init time on a duplicate). Keep the first/canonical entry.
@@ -164,7 +164,8 @@ public enum WhisperLanguageCatalog {
 
     public static func canonicalCode(for rawCode: String?) -> String? {
         guard let rawCode else { return nil }
-        let normalized = rawCode
+        let normalized =
+            rawCode
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "_", with: "-")
             .lowercased()
@@ -176,13 +177,14 @@ public enum WhisperLanguageCatalog {
         }
 
         if let primarySubtag = normalized.split(separator: "-", maxSplits: 1).first.map(String.init),
-           byCode[primarySubtag] != nil {
+            byCode[primarySubtag] != nil
+        {
             return primarySubtag
         }
 
         // Engine attributions sometimes arrive as the English language name
         // ("english", "korean", "japanese") instead of the ISO-2 code. Resolve
-        // those back to the catalog code so downstream telemetry and UI work
+        // those back to the catalog code so downstream UI works
         // unchanged.
         if let byName = byEnglishName[normalized] {
             return byName.code
@@ -243,7 +245,8 @@ public enum WhisperLanguageCatalog {
             results.append((rank, language))
         }
 
-        return results
+        return
+            results
             .sorted { lhs, rhs in
                 if lhs.rank != rhs.rank { return lhs.rank < rhs.rank }
                 return lhs.language.englishName < rhs.language.englishName

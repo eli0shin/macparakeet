@@ -119,9 +119,11 @@ final class MeetingAudioRetentionSweepCoordinator {
     }
 
     private func shouldRunSweep(now: Date) -> Bool {
-        guard let lastSweepAt = defaults.object(
-            forKey: UserDefaultsAppRuntimePreferences.lastMeetingAudioRetentionSweepAtKey
-        ) as? Date else {
+        guard
+            let lastSweepAt = defaults.object(
+                forKey: UserDefaultsAppRuntimePreferences.lastMeetingAudioRetentionSweepAtKey
+            ) as? Date
+        else {
             return true
         }
         return now.timeIntervalSince(lastSweepAt) >= minimumSweepInterval

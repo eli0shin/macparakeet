@@ -86,8 +86,9 @@ enum ModifierKeyMatcher {
             return sideSpecificModifierIsPressed(flags: flags, keyCode: keyCode)
         }
         guard changedKeyCode == keyCode,
-              let modifierName = HotkeyTrigger.modifierName(forKeyCode: keyCode),
-              let mask = mask(for: modifierName) else {
+            let modifierName = HotkeyTrigger.modifierName(forKeyCode: keyCode),
+            let mask = mask(for: modifierName)
+        else {
             return previouslyPressed
         }
         return flags.contains(mask)
@@ -114,8 +115,9 @@ enum ModifierKeyMatcher {
         // which physical modifier changed; it cannot prove the opposite side
         // was already held from an earlier event.
         guard changedKeyCode == oppositeKeyCode,
-              let modifierName = HotkeyTrigger.modifierName(forKeyCode: oppositeKeyCode),
-              let mask = mask(for: modifierName) else {
+            let modifierName = HotkeyTrigger.modifierName(forKeyCode: oppositeKeyCode),
+            let mask = mask(for: modifierName)
+        else {
             return false
         }
         return flags.contains(mask)
@@ -138,8 +140,9 @@ enum ModifierKeyMatcher {
 
     private static func sideSpecificModifierSideIsPressed(flags: CGEventFlags, keyCode: UInt16) -> Bool {
         guard let oppositeKeyCode = HotkeyTrigger.oppositeModifierKeyCode(for: keyCode),
-              let mask = sideSpecificModifierMasks[keyCode],
-              let oppositeMask = sideSpecificModifierMasks[oppositeKeyCode] else {
+            let mask = sideSpecificModifierMasks[keyCode],
+            let oppositeMask = sideSpecificModifierMasks[oppositeKeyCode]
+        else {
             return false
         }
         return (flags.rawValue & (mask | oppositeMask)) != 0

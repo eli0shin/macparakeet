@@ -91,7 +91,8 @@ struct MeetingRecordingPillView: View {
             iconPill {
                 MeetingCompletionCheckmarkView()
             }
-            .transition(.scale(scale: 0.8).combined(with: .opacity).animation(.spring(response: 0.35, dampingFraction: 0.7)))
+            .transition(
+                .scale(scale: 0.8).combined(with: .opacity).animation(.spring(response: 0.35, dampingFraction: 0.7)))
         case .error(let message):
             statusPill(
                 icon: AnyView(
@@ -188,11 +189,15 @@ struct MeetingRecordingPillView: View {
         .padding(.vertical, 6)
         .background(
             Capsule()
-                .fill(isHovered ? DesignSystem.Colors.meetingPillBackgroundHover : DesignSystem.Colors.meetingPillBackground)
+                .fill(
+                    isHovered
+                        ? DesignSystem.Colors.meetingPillBackgroundHover : DesignSystem.Colors.meetingPillBackground
+                )
                 .overlay(
                     Capsule()
                         .stroke(
-                            isHovered ? DesignSystem.Colors.meetingPillStrokeHover : DesignSystem.Colors.meetingPillStroke,
+                            isHovered
+                                ? DesignSystem.Colors.meetingPillStrokeHover : DesignSystem.Colors.meetingPillStroke,
                             lineWidth: 0.5
                         )
                 )

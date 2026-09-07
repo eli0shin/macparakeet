@@ -79,7 +79,7 @@ final class PromptTemplateRendererTests: XCTestCase {
             "Notes:\n{{userNotes}}\nTranscript:\n{{transcript}}",
             substitutions: [
                 .userNotes: userNotesContainingLiteral,
-                .transcript: "REAL_TRANSCRIPT_TEXT"
+                .transcript: "REAL_TRANSCRIPT_TEXT",
             ]
         )
         XCTAssertEqual(

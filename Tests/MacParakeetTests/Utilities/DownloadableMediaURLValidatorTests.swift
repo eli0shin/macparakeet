@@ -3,27 +3,31 @@ import XCTest
 
 final class DownloadableMediaURLValidatorTests: XCTestCase {
     func testAcceptsHTTPSMediaURL() {
-        XCTAssertTrue(DownloadableMediaURLValidator.isDownloadableMediaURL(
-            "https://www.facebook.com/reel/1998924354042801"
-        ))
+        XCTAssertTrue(
+            DownloadableMediaURLValidator.isDownloadableMediaURL(
+                "https://www.facebook.com/reel/1998924354042801"
+            ))
     }
 
     func testAcceptsHTTPMediaURL() {
-        XCTAssertTrue(DownloadableMediaURLValidator.isDownloadableMediaURL(
-            "http://example.com/video.mp4"
-        ))
+        XCTAssertTrue(
+            DownloadableMediaURLValidator.isDownloadableMediaURL(
+                "http://example.com/video.mp4"
+            ))
     }
 
     func testAcceptsLenientHTTPURLWithUnencodedQueryCharacters() {
-        XCTAssertTrue(DownloadableMediaURLValidator.isDownloadableMediaURL(
-            "https://example.com/watch?metadata={abc}"
-        ))
+        XCTAssertTrue(
+            DownloadableMediaURLValidator.isDownloadableMediaURL(
+                "https://example.com/watch?metadata={abc}"
+            ))
     }
 
     func testTrimsOuterWhitespace() {
-        XCTAssertTrue(DownloadableMediaURLValidator.isDownloadableMediaURL(
-            "  https://example.com/video.mp4\n"
-        ))
+        XCTAssertTrue(
+            DownloadableMediaURLValidator.isDownloadableMediaURL(
+                "  https://example.com/video.mp4\n"
+            ))
     }
 
     func testRejectsLocalFilesAndUnsupportedSchemes() {
@@ -36,8 +40,9 @@ final class DownloadableMediaURLValidatorTests: XCTestCase {
     }
 
     func testRejectsWhitespaceBearingInput() {
-        XCTAssertFalse(DownloadableMediaURLValidator.isDownloadableMediaURL(
-            "https://example.com/video one.mp4"
-        ))
+        XCTAssertFalse(
+            DownloadableMediaURLValidator.isDownloadableMediaURL(
+                "https://example.com/video one.mp4"
+            ))
     }
 }

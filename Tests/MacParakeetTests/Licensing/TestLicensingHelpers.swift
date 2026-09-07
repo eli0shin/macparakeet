@@ -29,7 +29,8 @@ struct StubLicenseAPI: LicenseAPI {
 
     func activate(licenseKey: String, instanceName: String) async throws -> LicenseActivation {
         if shouldThrow { throw EntitlementsError.network("offline") }
-        return LicenseActivation(licenseKey: licenseKey, instanceID: activateResult.instanceID, variantID: activateResult.variantID)
+        return LicenseActivation(
+            licenseKey: licenseKey, instanceID: activateResult.instanceID, variantID: activateResult.variantID)
     }
 
     func validate(licenseKey: String, instanceID: String?) async throws -> LicenseValidation {
@@ -41,4 +42,3 @@ struct StubLicenseAPI: LicenseAPI {
         if shouldThrow { throw EntitlementsError.network("offline") }
     }
 }
-

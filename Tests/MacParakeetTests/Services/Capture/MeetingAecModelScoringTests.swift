@@ -73,8 +73,8 @@ final class MeetingAecModelScoringTests: XCTestCase {
     }
 
     private struct ModelScore {
-        let label: String      // display name (filename)
-        let modelKey: String   // full path — dedup key so same-named models don't merge
+        let label: String  // display name (filename)
+        let modelKey: String  // full path — dedup key so same-named models don't merge
         let echoLabel: String
         /// Far-end-only steady-state ERLE (dB). Higher = more echo removed.
         let farEndERLE: Double
@@ -125,8 +125,10 @@ final class MeetingAecModelScoringTests: XCTestCase {
 
     func testLocalVQEModelDecisionGate() throws {
         let env = ProcessInfo.processInfo.environment
-        guard let libraryPath = env[Self.libraryKey]?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !libraryPath.isEmpty else {
+        guard
+            let libraryPath = env[Self.libraryKey]?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !libraryPath.isEmpty
+        else {
             throw XCTSkip("Set \(Self.libraryKey) and \(Self.modelsKey) to score real LocalVQE models.")
         }
         guard let modelsRaw = env[Self.modelsKey], !modelsRaw.isEmpty else {
@@ -138,7 +140,8 @@ final class MeetingAecModelScoringTests: XCTestCase {
             FileManager.default.fileExists(atPath: libraryURL.path),
             "LocalVQE library not found: \(libraryURL.path)")
 
-        let modelURLs = modelsRaw
+        let modelURLs =
+            modelsRaw
             .split(whereSeparator: { $0 == ":" || $0 == "\n" })
             .map { URL(fileURLWithPath: $0.trimmingCharacters(in: .whitespaces)) }
             .filter { url in
@@ -163,19 +166,22 @@ final class MeetingAecModelScoringTests: XCTestCase {
             // one crisp message rather than scoring a bogus passthrough as the model.
             let preflight = makeCandidateConditioner()
             guard preflight.diagnostics.loaded,
-                  preflight.diagnostics.processorName == MeetingEchoSuppressionFactory.processorName else {
-                XCTFail("\(modelURL.lastPathComponent): not a loadable LocalVQE model — the runtime "
-                    + "fell back to passthrough. Exclude it from \(Self.modelsKey) or rebuild the asset.")
+                preflight.diagnostics.processorName == MeetingEchoSuppressionFactory.processorName
+            else {
+                XCTFail(
+                    "\(modelURL.lastPathComponent): not a loadable LocalVQE model — the runtime "
+                        + "fell back to passthrough. Exclude it from \(Self.modelsKey) or rebuild the asset.")
                 continue
             }
             for (echoLabel, echoPath) in echoPaths {
                 let conditioner = makeCandidateConditioner()
-                scores.append(scoreModel(
-                    label: modelURL.lastPathComponent,
-                    modelKey: modelURL.path,
-                    echoLabel: echoLabel,
-                    conditioner: conditioner,
-                    echoPath: echoPath))
+                scores.append(
+                    scoreModel(
+                        label: modelURL.lastPathComponent,
+                        modelKey: modelURL.path,
+                        echoLabel: echoLabel,
+                        conditioner: conditioner,
+                        echoPath: echoPath))
             }
         }
         try XCTSkipIf(scores.isEmpty, "No candidate models loaded successfully.")
@@ -190,10 +196,12 @@ final class MeetingAecModelScoringTests: XCTestCase {
         // back to raw mic, which inflates retention and pollutes ERLE/near-end. And
         // every model must actually process frames, not sit at passthrough.
         for s in scores {
-            XCTAssertEqual(s.processingFailures, 0,
+            XCTAssertEqual(
+                s.processingFailures, 0,
                 "\(s.label)/\(s.echoLabel): \(s.processingFailures) processing failures — "
-                + "scores include raw-fallback frames and cannot be trusted")
-            XCTAssertGreaterThan(s.processedFrames, 0,
+                    + "scores include raw-fallback frames and cannot be trusted")
+            XCTAssertGreaterThan(
+                s.processedFrames, 0,
                 "\(s.label)/\(s.echoLabel): no frames processed — asset failed to load")
         }
 
@@ -209,13 +217,15 @@ final class MeetingAecModelScoringTests: XCTestCase {
         // prefer echo-only v1.4, then higher ERLE. Synthetic double-talk error is
         // reported, not selected on, because tone reshaping cannot certify fidelity.
         guard let chosen = viable.sorted(by: Self.prefersReleaseDefault).first else {
-            XCTFail("No candidate both removed far-end echo (>\(Self.minFarEndERLE) dB ERLE) and "
-                + "preserved the near-end voice (retain "
-                + "\(Self.minRetention)–\(Self.maxRetention)). Re-plan / consider WebRTC AEC3 (plan U6).")
+            XCTFail(
+                "No candidate both removed far-end echo (>\(Self.minFarEndERLE) dB ERLE) and "
+                    + "preserved the near-end voice (retain "
+                    + "\(Self.minRetention)–\(Self.maxRetention)). Re-plan / consider WebRTC AEC3 (plan U6).")
             return
         }
-        print("[AEC-SCORE] recommended release default: \(chosen.label) — removes echo, preserves the "
-            + "local voice. Double-talk fidelity pending real-speech QA (plan U9).")
+        print(
+            "[AEC-SCORE] recommended release default: \(chosen.label) — removes echo, preserves the "
+                + "local voice. Double-talk fidelity pending real-speech QA (plan U9).")
     }
 
     // MARK: Scoring
@@ -342,16 +352,17 @@ final class MeetingAecModelScoringTests: XCTestCase {
                 over: echoWindow
             )
 
-            rows.append(DoubleTalkSegmentScore(
-                signalToInterferenceDB: sir,
-                cleanErrorDB: cleanError,
-                rawErrorDB: rawError,
-                cleanRetentionRatio: cleanRetention,
-                rawRetentionRatio: rawRetention,
-                echoOnlyCleanResidualDB: echoCleanResidual,
-                echoOnlyRawResidualDB: echoRawResidual,
-                echoOnlyERLE: echoERLE
-            ))
+            rows.append(
+                DoubleTalkSegmentScore(
+                    signalToInterferenceDB: sir,
+                    cleanErrorDB: cleanError,
+                    rawErrorDB: rawError,
+                    cleanRetentionRatio: cleanRetention,
+                    rawRetentionRatio: rawRetention,
+                    echoOnlyCleanResidualDB: echoCleanResidual,
+                    echoOnlyRawResidualDB: echoRawResidual,
+                    echoOnlyERLE: echoERLE
+                ))
         }
         return OverlapSweepResult(scores: rows, diagnostics: diagnostics)
     }
@@ -406,51 +417,58 @@ final class MeetingAecModelScoringTests: XCTestCase {
 
     private func printScoreTable(_ scores: [ModelScore]) {
         print("[AEC-SCORE] LocalVQE model decision gate — synthetic harness")
-        print("[AEC-SCORE] GATED: ERLE higher better, retain in 0.8–1.5 | REPORTED only:"
-            + " nearErr/dtErr/dtImpr (synthetic tones can't certify fidelity)")
-        print(String(
-            format: "  %-34@ %-11@ %9@ %10@ %10@ %10@ %9@ %7@ %6@ %5@",
-            "model" as CVarArg, "echo" as CVarArg, "ERLE" as CVarArg,
-            "nearErr" as CVarArg, "dtErr" as CVarArg, "dtRaw" as CVarArg,
-            "dtImpr" as CVarArg, "retain" as CVarArg, "delay" as CVarArg, "fail" as CVarArg))
+        print(
+            "[AEC-SCORE] GATED: ERLE higher better, retain in 0.8–1.5 | REPORTED only:"
+                + " nearErr/dtErr/dtImpr (synthetic tones can't certify fidelity)")
+        print(
+            String(
+                format: "  %-34@ %-11@ %9@ %10@ %10@ %10@ %9@ %7@ %6@ %5@",
+                "model" as CVarArg, "echo" as CVarArg, "ERLE" as CVarArg,
+                "nearErr" as CVarArg, "dtErr" as CVarArg, "dtRaw" as CVarArg,
+                "dtImpr" as CVarArg, "retain" as CVarArg, "delay" as CVarArg, "fail" as CVarArg))
         for s in scores {
-            print(String(
-                format: "  %-34@ %-11@ %8.1f %9.1f %9.1f %9.1f %8.1f %6.2f %5ld %4ld",
-                s.label as CVarArg, s.echoLabel as CVarArg,
-                s.farEndERLE, s.nearEndErrorDB, s.doubleTalkErrorDB,
-                s.doubleTalkPassthroughErrorDB, s.doubleTalkImprovement,
-                Double(s.nearEndRetentionRatio), s.delaySamples, s.processingFailures))
+            print(
+                String(
+                    format: "  %-34@ %-11@ %8.1f %9.1f %9.1f %9.1f %8.1f %6.2f %5ld %4ld",
+                    s.label as CVarArg, s.echoLabel as CVarArg,
+                    s.farEndERLE, s.nearEndErrorDB, s.doubleTalkErrorDB,
+                    s.doubleTalkPassthroughErrorDB, s.doubleTalkImprovement,
+                    Double(s.nearEndRetentionRatio), s.delaySamples, s.processingFailures))
         }
-        print("[AEC-SCORE] (dtImpr = passthrough dtErr − model dtErr; positive = model helped"
-            + " under double-talk. fail = frames that fell back to raw mic.)")
+        print(
+            "[AEC-SCORE] (dtImpr = passthrough dtErr − model dtErr; positive = model helped"
+                + " under double-talk. fail = frames that fell back to raw mic.)")
     }
 
     private func printDoubleTalkSegmentTable(_ scores: [ModelScore]) {
         print("[AEC-SCORE] double-talk segment sweep (existing harness accuracy metric, not real-speech WER)")
-        print("[AEC-SCORE] SIR is local-user speech vs reference bleed. echoResid is echo-only output"
-            + " power relative to nominal local speech; lower should approach silence.")
-        print(String(
-            format: "  %-34@ %-11@ %4@ %8@ %9@ %8@ %8@ %8@ %9@ %10@ %8@",
-            "model" as CVarArg, "echo" as CVarArg, "SIR" as CVarArg,
-            "dtRaw" as CVarArg, "dtClean" as CVarArg, "dtImpr" as CVarArg,
-            "rawRet" as CVarArg, "clnRet" as CVarArg,
-            "echoRaw" as CVarArg, "echoClean" as CVarArg, "echoERLE" as CVarArg))
+        print(
+            "[AEC-SCORE] SIR is local-user speech vs reference bleed. echoResid is echo-only output"
+                + " power relative to nominal local speech; lower should approach silence.")
+        print(
+            String(
+                format: "  %-34@ %-11@ %4@ %8@ %9@ %8@ %8@ %8@ %9@ %10@ %8@",
+                "model" as CVarArg, "echo" as CVarArg, "SIR" as CVarArg,
+                "dtRaw" as CVarArg, "dtClean" as CVarArg, "dtImpr" as CVarArg,
+                "rawRet" as CVarArg, "clnRet" as CVarArg,
+                "echoRaw" as CVarArg, "echoClean" as CVarArg, "echoERLE" as CVarArg))
         for s in scores {
             for row in s.doubleTalkSegmentScores {
-                print(String(
-                    format: "  %-34@ %-11@ %+4.0f %8.1f %9.1f %8.1f %8.2f %8.2f %9.1f %10.1f %8.1f",
-                    s.label as CVarArg,
-                    s.echoLabel as CVarArg,
-                    row.signalToInterferenceDB,
-                    row.rawErrorDB,
-                    row.cleanErrorDB,
-                    row.improvementDB,
-                    Double(row.rawRetentionRatio),
-                    Double(row.cleanRetentionRatio),
-                    row.echoOnlyRawResidualDB,
-                    row.echoOnlyCleanResidualDB,
-                    row.echoOnlyERLE
-                ))
+                print(
+                    String(
+                        format: "  %-34@ %-11@ %+4.0f %8.1f %9.1f %8.1f %8.2f %8.2f %9.1f %10.1f %8.1f",
+                        s.label as CVarArg,
+                        s.echoLabel as CVarArg,
+                        row.signalToInterferenceDB,
+                        row.rawErrorDB,
+                        row.cleanErrorDB,
+                        row.improvementDB,
+                        Double(row.rawRetentionRatio),
+                        Double(row.cleanRetentionRatio),
+                        row.echoOnlyRawResidualDB,
+                        row.echoOnlyCleanResidualDB,
+                        row.echoOnlyERLE
+                    ))
             }
         }
     }
@@ -489,30 +507,34 @@ final class MeetingAecModelScoringTests: XCTestCase {
             let echoERLE = group.reduce(0.0) { $0 + $1.row.echoOnlyERLE } / n
             let rawRetention = group.reduce(0.0) { $0 + Double($1.row.rawRetentionRatio) } / n
             let cleanRetention = group.reduce(0.0) { $0 + Double($1.row.cleanRetentionRatio) } / n
-            print(String(
-                format: "  %-34@ SIR %+4.0f  dtRaw %6.1f  dtClean %6.1f  dtImpr %6.1f  rawRet %.2f  clnRet %.2f  echoRaw %6.1f  echoClean %6.1f  echoERLE %6.1f",
-                first.score.label as CVarArg,
-                first.row.signalToInterferenceDB,
-                rawError,
-                cleanError,
-                improvement,
-                rawRetention,
-                cleanRetention,
-                echoRaw,
-                echoClean,
-                echoERLE
-            ))
+            print(
+                String(
+                    format:
+                        "  %-34@ SIR %+4.0f  dtRaw %6.1f  dtClean %6.1f  dtImpr %6.1f  rawRet %.2f  clnRet %.2f  echoRaw %6.1f  echoClean %6.1f  echoERLE %6.1f",
+                    first.score.label as CVarArg,
+                    first.row.signalToInterferenceDB,
+                    rawError,
+                    cleanError,
+                    improvement,
+                    rawRetention,
+                    cleanRetention,
+                    echoRaw,
+                    echoClean,
+                    echoERLE
+                ))
         }
     }
 
     private func printAggregates(_ aggregates: [ModelAggregate]) {
         print("[AEC-SCORE] per-model aggregate (mean across echo paths):")
         for a in aggregates.sorted(by: { $0.meanFarERLE > $1.meanFarERLE }) {
-            print(String(
-                format: "  %-34@ farERLE %5.1f  dtErr %5.1f  dtImpr %5.1f  nearErr %5.1f  retain %.2f–%.2f  fails %ld",
-                a.label as CVarArg, a.meanFarERLE, a.meanDoubleTalkError,
-                a.meanDoubleTalkImprovement, a.meanNearError,
-                Double(a.minRetention), Double(a.maxRetention), a.totalProcessingFailures))
+            print(
+                String(
+                    format:
+                        "  %-34@ farERLE %5.1f  dtErr %5.1f  dtImpr %5.1f  nearErr %5.1f  retain %.2f–%.2f  fails %ld",
+                    a.label as CVarArg, a.meanFarERLE, a.meanDoubleTalkError,
+                    a.meanDoubleTalkImprovement, a.meanNearError,
+                    Double(a.minRetention), Double(a.maxRetention), a.totalProcessingFailures))
         }
     }
 }

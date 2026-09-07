@@ -243,11 +243,13 @@ struct FeedbackView: View {
                         }
                     }
 
-                    Text(viewModel.screenshotAttachments.isEmpty
-                         ? "or drop images here"
-                         : "PNG, JPEG, TIFF, or HEIC. Up to 5.")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(.secondary)
+                    Text(
+                        viewModel.screenshotAttachments.isEmpty
+                            ? "or drop images here"
+                            : "PNG, JPEG, TIFF, or HEIC. Up to 5."
+                    )
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
                 .onDrop(of: [.image], isTargeted: $isDraggingScreenshot) { providers in
@@ -259,7 +261,8 @@ struct FeedbackView: View {
                                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
                             let tmp = tmpDirectory.appendingPathComponent(url.lastPathComponent)
                             do {
-                                try FileManager.default.createDirectory(at: tmpDirectory, withIntermediateDirectories: true)
+                                try FileManager.default.createDirectory(
+                                    at: tmpDirectory, withIntermediateDirectories: true)
                                 try FileManager.default.copyItem(at: url, to: tmp)
                             } catch {
                                 try? FileManager.default.removeItem(at: tmpDirectory)
@@ -359,10 +362,12 @@ struct FeedbackView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("It contains no audio or transcript text. You can also give this log to Claude Code, Codex, or another coding agent for debugging.")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(
+                        "It contains no audio or transcript text. You can also give this log to Claude Code, Codex, or another coding agent for debugging."
+                    )
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                     Button {
                         guard isAvailable else { return }
@@ -371,10 +376,13 @@ struct FeedbackView: View {
                         HStack(spacing: DesignSystem.Spacing.xs) {
                             Image(systemName: isAvailable ? "checkmark.circle.fill" : "exclamationmark.circle")
                                 .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(isAvailable ? DesignSystem.Colors.successGreen : DesignSystem.Colors.warningAmber)
+                                .foregroundStyle(
+                                    isAvailable ? DesignSystem.Colors.successGreen : DesignSystem.Colors.warningAmber)
                             Text(viewModel.diagnosticLogAvailabilityDescription)
                                 .font(DesignSystem.Typography.micro)
-                                .foregroundStyle(isAvailable && isLogRowHovered ? DesignSystem.Colors.accent : .secondary)
+                                .foregroundStyle(
+                                    isAvailable && isLogRowHovered ? DesignSystem.Colors.accent : .secondary
+                                )
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             if isAvailable {
@@ -389,7 +397,11 @@ struct FeedbackView: View {
                     .buttonStyle(.plain)
                     .disabled(!isAvailable)
                     .help(isAvailable ? "Reveal \(viewModel.diagnosticLogFilename) in Finder" : "")
-                    .accessibilityLabel(isAvailable ? "Reveal \(viewModel.diagnosticLogFilename) in Finder" : viewModel.diagnosticLogAvailabilityDescription)
+                    .accessibilityLabel(
+                        isAvailable
+                            ? "Reveal \(viewModel.diagnosticLogFilename) in Finder"
+                            : viewModel.diagnosticLogAvailabilityDescription
+                    )
                     .onHover { hovering in
                         guard isAvailable else { return }
                         withAnimation(DesignSystem.Animation.hoverTransition) {
@@ -444,10 +456,12 @@ struct FeedbackView: View {
     /// Lead copy for the attach control — accurately reflects how far back the
     /// upload reaches so users know what they are sharing.
     private var diagnosticLogScopeDescription: String {
-        let attached = viewModel.includeFullDiagnosticHistory
+        let attached =
+            viewModel.includeFullDiagnosticHistory
             ? "It attaches your full local history"
             : "It attaches the last 7 days"
-        return "Use this for dictation or meeting recording issues. \(attached) to the public report so we can inspect capture timing, buffers, silence, and device errors."
+        return
+            "Use this for dictation or meeting recording issues. \(attached) to the public report so we can inspect capture timing, buffers, silence, and device errors."
     }
 
     /// Advanced opt-in to send the entire local log instead of only the recent
@@ -458,10 +472,12 @@ struct FeedbackView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Include full history")
                     .font(DesignSystem.Typography.caption.weight(.medium))
-                Text("Off attaches only the last 7 days. Turn on to include older entries — useful for issues that are hard to reproduce.")
-                    .font(DesignSystem.Typography.micro)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "Off attaches only the last 7 days. Turn on to include older entries — useful for issues that are hard to reproduce."
+                )
+                .font(DesignSystem.Typography.micro)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .toggleStyle(.checkbox)
@@ -507,11 +523,13 @@ struct FeedbackView: View {
                         .textSelection(.enabled)
                 }
 
-                Text("Every entry is a count or a device state. `words=9` means you spoke nine words — never which words. No audio and no transcript text is ever written to this file.")
-                    .font(DesignSystem.Typography.micro)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+                Text(
+                    "Every entry is a count or a device state. `words=9` means you spoke nine words — never which words. No audio and no transcript text is ever written to this file."
+                )
+                .font(DesignSystem.Typography.micro)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(DesignSystem.Spacing.sm)
@@ -571,7 +589,9 @@ struct FeedbackView: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                    .fill(isDraggingScreenshot ? DesignSystem.Colors.accent.opacity(0.06) : DesignSystem.Colors.surfaceElevated)
+                    .fill(
+                        isDraggingScreenshot
+                            ? DesignSystem.Colors.accent.opacity(0.06) : DesignSystem.Colors.surfaceElevated)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
@@ -665,7 +685,7 @@ struct FeedbackView: View {
                         LinearGradient(
                             colors: [
                                 DesignSystem.Colors.cardBackground,
-                                DesignSystem.Colors.surfaceElevated.opacity(0.45)
+                                DesignSystem.Colors.surfaceElevated.opacity(0.45),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -679,7 +699,7 @@ struct FeedbackView: View {
                         LinearGradient(
                             colors: [
                                 DesignSystem.Colors.accent.opacity(isCommunityHovered ? 0.35 : 0.18),
-                                Color.primary.opacity(0.04)
+                                Color.primary.opacity(0.04),
                             ],
                             startPoint: .top,
                             endPoint: .bottom

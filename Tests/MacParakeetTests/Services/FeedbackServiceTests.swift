@@ -101,8 +101,7 @@ final class FeedbackServiceTests: XCTestCase {
                 var collected = Data()
                 while stream.hasBytesAvailable {
                     let count = stream.read(&buffer, maxLength: buffer.count)
-                    if count > 0 { collected.append(buffer, count: count) }
-                    else { break }
+                    if count > 0 { collected.append(buffer, count: count) } else { break }
                 }
                 stream.close()
                 bodyData = collected
@@ -162,8 +161,7 @@ final class FeedbackServiceTests: XCTestCase {
                 var collected = Data()
                 while stream.hasBytesAvailable {
                     let count = stream.read(&buffer, maxLength: buffer.count)
-                    if count > 0 { collected.append(buffer, count: count) }
-                    else { break }
+                    if count > 0 { collected.append(buffer, count: count) } else { break }
                 }
                 stream.close()
                 bodyData = collected
@@ -223,8 +221,7 @@ final class FeedbackServiceTests: XCTestCase {
                 var collected = Data()
                 while stream.hasBytesAvailable {
                     let count = stream.read(&buffer, maxLength: buffer.count)
-                    if count > 0 { collected.append(buffer, count: count) }
-                    else { break }
+                    if count > 0 { collected.append(buffer, count: count) } else { break }
                 }
                 stream.close()
                 bodyData = collected
@@ -305,8 +302,7 @@ final class FeedbackServiceTests: XCTestCase {
                 var collected = Data()
                 while stream.hasBytesAvailable {
                     let count = stream.read(&buffer, maxLength: buffer.count)
-                    if count > 0 { collected.append(buffer, count: count) }
-                    else { break }
+                    if count > 0 { collected.append(buffer, count: count) } else { break }
                 }
                 stream.close()
                 bodyData = collected

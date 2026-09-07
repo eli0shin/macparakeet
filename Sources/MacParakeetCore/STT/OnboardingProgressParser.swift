@@ -9,11 +9,12 @@ public enum OnboardingProgressParser {
     public static func parseProgressFraction(from message: String) -> Double? {
         let range = NSRange(message.startIndex..., in: message)
         guard let match = progressPercentRegex.firstMatch(in: message, options: [], range: range),
-              match.numberOfRanges >= 2,
-              let numberRange = Range(match.range(at: 1), in: message),
-              let percent = Double(message[numberRange]),
-              percent >= 0,
-              percent <= 100 else {
+            match.numberOfRanges >= 2,
+            let numberRange = Range(match.range(at: 1), in: message),
+            let percent = Double(message[numberRange]),
+            percent >= 0,
+            percent <= 100
+        else {
             return nil
         }
         return percent / 100

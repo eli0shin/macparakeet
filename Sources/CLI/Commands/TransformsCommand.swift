@@ -47,7 +47,8 @@ extension TransformsCommand {
                 try AppPaths.ensureDirectories()
                 let db = try DatabaseManager(path: resolvedDatabasePath(database))
                 let repo = PromptRepository(dbQueue: db.dbQueue)
-                let transforms = try repo
+                let transforms =
+                    try repo
                     .fetchVisible(category: .transform)
                     .sorted(by: { $0.sortOrder < $1.sortOrder })
 
@@ -64,7 +65,9 @@ extension TransformsCommand {
                 for t in transforms {
                     let badge = t.isBuiltIn ? " [built-in]" : ""
                     let shortcut = t.shortcut?.displayString ?? "—"
-                    print("\(t.id.uuidString.prefix(8))  \(shortcut.padding(toLength: 12, withPad: " ", startingAt: 0))  \(t.name)\(badge)")
+                    print(
+                        "\(t.id.uuidString.prefix(8))  \(shortcut.padding(toLength: 12, withPad: " ", startingAt: 0))  \(t.name)\(badge)"
+                    )
                 }
                 print()
                 print("\(transforms.count) Transform(s)")
@@ -142,7 +145,9 @@ extension TransformsCommand {
 
         func validate() throws {
             if json && stream {
-                throw ValidationError("--json with --stream is not yet supported. Run without --stream for the envelope, or omit --json for token streaming.")
+                throw ValidationError(
+                    "--json with --stream is not yet supported. Run without --stream for the envelope, or omit --json for token streaming."
+                )
             }
         }
 
@@ -387,7 +392,11 @@ extension TransformsCommand {
             abstract: "Restore built-in Transform defaults."
         )
 
-        @Option(name: .long, help: "Reset one built-in Transform by ID, ID prefix, or name. Omit to re-show hidden built-ins and re-seed missing built-ins without overwriting edits.")
+        @Option(
+            name: .long,
+            help:
+                "Reset one built-in Transform by ID, ID prefix, or name. Omit to re-show hidden built-ins and re-seed missing built-ins without overwriting edits."
+        )
         var transform: String?
 
         @Flag(name: .long, help: "Emit JSON instead of human-readable output.")
@@ -432,7 +441,9 @@ extension TransformsCommand {
                     } else {
                         print("Restored \(result.restoredCount) missing or hidden built-in Transform(s).")
                         if !result.clearedShortcuts.isEmpty {
-                            print("Cleared conflicting default shortcut(s): \(result.clearedShortcuts.joined(separator: ", "))")
+                            print(
+                                "Cleared conflicting default shortcut(s): \(result.clearedShortcuts.joined(separator: ", "))"
+                            )
                         }
                     }
                 }
@@ -495,7 +506,9 @@ extension TransformsCommand {
 
                     let formatter = ISO8601DateFormatter()
                     for entry in entries {
-                        print("\(entry.id.uuidString.prefix(8))  \(formatter.string(from: entry.createdAt))  \(entry.transformName)  \(entry.sourceAppDisplayName)")
+                        print(
+                            "\(entry.id.uuidString.prefix(8))  \(formatter.string(from: entry.createdAt))  \(entry.transformName)  \(entry.sourceAppDisplayName)"
+                        )
                         print("  \(singleLineHistoryPreview(entry.outputText, maxLength: 140))")
                     }
                     print()
@@ -631,17 +644,18 @@ private func saveCLITransformHistory(
     llmElapsedMs: Int,
     totalElapsedMs: Int
 ) throws {
-    try repo.save(TransformHistoryEntry(
-        transformId: transform.id,
-        transformName: transform.name,
-        inputText: inputText,
-        outputText: outputText,
-        sourceAppName: "macparakeet-cli",
-        capturePath: inputPath == "-" ? "stdin" : "file",
-        replacementPath: "stdout",
-        llmElapsedMs: llmElapsedMs,
-        totalElapsedMs: totalElapsedMs
-    ))
+    try repo.save(
+        TransformHistoryEntry(
+            transformId: transform.id,
+            transformName: transform.name,
+            inputText: inputText,
+            outputText: outputText,
+            sourceAppName: "macparakeet-cli",
+            capturePath: inputPath == "-" ? "stdin" : "file",
+            replacementPath: "stdout",
+            llmElapsedMs: llmElapsedMs,
+            totalElapsedMs: totalElapsedMs
+        ))
 }
 
 private func elapsedMilliseconds(since startedAt: Date) -> Int {
@@ -693,7 +707,8 @@ private func findTransformHistoryEntry(
 }
 
 private func singleLineHistoryPreview(_ text: String, maxLength: Int) -> String {
-    let collapsed = text
+    let collapsed =
+        text
         .replacingOccurrences(of: "\n", with: " ")
         .replacingOccurrences(of: "\t", with: " ")
         .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -779,8 +794,9 @@ struct TransformRestoreResult: Encodable {
 }
 
 private func restoreBuiltInTransform(_ transform: Prompt, repo: PromptRepository) throws -> Prompt {
-    guard var canonical = Prompt.builtInPrompts()
-        .first(where: { $0.id == transform.id && $0.category == .transform })
+    guard
+        var canonical = Prompt.builtInPrompts()
+            .first(where: { $0.id == transform.id && $0.category == .transform })
     else {
         throw CLITransformsError.notFound(transform.name)
     }
@@ -872,9 +888,9 @@ private func transformShortcutConflict(
 ) -> Prompt? {
     prompts.first { candidate in
         guard candidate.id != promptID,
-              candidate.category == .transform,
-              candidate.isVisible,
-              let existing = candidate.shortcut
+            candidate.category == .transform,
+            candidate.isVisible,
+            let existing = candidate.shortcut
         else { return false }
         return shortcutsMatch(existing, shortcut)
     }
@@ -902,7 +918,8 @@ enum CLITransformHistoryError: Error, CustomStringConvertible, LocalizedError {
             case .tooShort:
                 return "Transform history ID prefix '\(provided)' is too short. Use at least \(min) hex characters."
             case .nonHex:
-                return "Transform history ID prefix '\(provided)' contains non-hex characters. Use \(min)+ hex characters (0-9, a-f), optionally with hyphens."
+                return
+                    "Transform history ID prefix '\(provided)' contains non-hex characters. Use \(min)+ hex characters (0-9, a-f), optionally with hyphens."
             }
         case .deleteFailed(let value):
             return "Failed to delete Transform history item '\(value)'"
@@ -922,11 +939,12 @@ private func findTransform(
     includeHidden: Bool = false
 ) throws -> Prompt {
     let query = idOrName.trimmingCharacters(in: .whitespacesAndNewlines)
-    let all = if includeHidden {
-        try repo.fetchAll().filter { $0.category == .transform }
-    } else {
-        try repo.fetchVisible(category: .transform)
-    }
+    let all =
+        if includeHidden {
+            try repo.fetchAll().filter { $0.category == .transform }
+        } else {
+            try repo.fetchVisible(category: .transform)
+        }
     // Exact UUID match
     if let uuid = UUID(uuidString: query), let match = all.first(where: { $0.id == uuid }) {
         return match
@@ -1041,12 +1059,12 @@ enum CLITransformsError: Error, CustomStringConvertible {
         case .notFound, .ambiguous:
             return CLIErrorType.lookup
         case .duplicateName,
-             .invalidShortcut,
-             .shortcutMissingModifier,
-             .shortcutMacOSDeadKey,
-             .duplicateShortcut,
-             .shortcutConflictsWithAppHotkey,
-             .deleteBuiltIn:
+            .invalidShortcut,
+            .shortcutMissingModifier,
+            .shortcutMacOSDeadKey,
+            .duplicateShortcut,
+            .shortcutConflictsWithAppHotkey,
+            .deleteBuiltIn:
             return CLIErrorType.validation
         }
     }
@@ -1056,12 +1074,12 @@ enum CLITransformsError: Error, CustomStringConvertible {
         case .notFound, .ambiguous:
             return false
         case .duplicateName,
-             .invalidShortcut,
-             .shortcutMissingModifier,
-             .shortcutMacOSDeadKey,
-             .duplicateShortcut,
-             .shortcutConflictsWithAppHotkey,
-             .deleteBuiltIn:
+            .invalidShortcut,
+            .shortcutMissingModifier,
+            .shortcutMacOSDeadKey,
+            .duplicateShortcut,
+            .shortcutConflictsWithAppHotkey,
+            .deleteBuiltIn:
             return true
         }
     }

@@ -111,15 +111,17 @@ struct LiveTranscriptStabilizer {
             // than collapsed. A single-word anchor is a weak, ambiguous overlap;
             // take the rightmost match so an adjacent transcriber stutter ("the
             // the") advances past both copies instead of re-appending one.
-            let matchEnd = anchor >= 2
+            let matchEnd =
+                anchor >= 2
                 ? firstContiguousMatchEnd(of: tail, in: normalizedWords)
                 : lastContiguousMatchEnd(of: tail, in: normalizedWords)
             if let matchEnd {
                 // A single-word anchor is too weak to consume an entire update
                 // unless that update is already contained in the committed body.
                 if anchor == 1,
-                   matchEnd == normalizedWords.count,
-                   !recentCommittedContains(normalizedWords, in: normalizedCommitted) {
+                    matchEnd == normalizedWords.count,
+                    !recentCommittedContains(normalizedWords, in: normalizedCommitted)
+                {
                     anchor -= 1
                     continue
                 }
