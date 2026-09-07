@@ -124,9 +124,9 @@ A pure `MeetingAutoStopPolicy.evaluate(...)` in `MacParakeetCore` (mirrors `Meet
 - Toggle in the Meeting Recording settings card; add to `SettingsSearchIndex`.
 - `AppFeatures.meetingAutoStopEnabled` flag for staged rollout.
 
-### Telemetry (new cases — must mirror to website allowlist)
+### Historical telemetry instrumentation (now inert in fork builds)
 - `meeting_auto_stop_proposed{reason}` · `meeting_auto_stop_confirmed{reason}` · `meeting_auto_stop_vetoed{reason}` · `.settingChanged(setting: .meetingAutoStop)`.
-- Per the telemetry allowlist rule, each new `TelemetryEventName` case must also be added to `ALLOWED_EVENTS` in `macparakeet-website/functions/api/telemetry.ts` (two-repo change) before any flag-on build.
+- These inherited event definitions remain as compatibility code. Fork builds do not configure a telemetry transport or send them remotely.
 
 ## Phased Rollout
 

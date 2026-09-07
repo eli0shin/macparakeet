@@ -32,7 +32,7 @@ run_clip() {
   local output="${SMOKE_DIR}/${language}.json"
   local log="${SMOKE_DIR}/${language}.log"
 
-  MACPARAKEET_TELEMETRY=0 swift run --package-path "$ROOT_DIR" macparakeet-cli \
+  swift run --package-path "$ROOT_DIR" macparakeet-cli \
     transcribe "${SMOKE_DIR}/${language}.wav" \
     --engine whisper \
     --language "$language" \

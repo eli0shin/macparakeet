@@ -506,7 +506,7 @@ public enum SettingsSearchIndex {
             id: "system.privacy",
             tab: .system,
             title: "Privacy",
-            subtitle: "Telemetry opt-out and data handling.",
+            subtitle: "No telemetry uploads and local data handling.",
             keywords: ["telemetry", "analytics", "tracking", "data collection", "privacy"],
             cardAnchor: "system.privacy"
         ),

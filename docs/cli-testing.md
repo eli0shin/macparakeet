@@ -136,13 +136,8 @@ contract change and a matching changelog entry.
 > canonical automation contract lives in
 > [`spec/contracts/cli-json-v1.md`](../spec/contracts/cli-json-v1.md).
 
-> **Telemetry convention**: CLI telemetry uses the same opt-out preference as
-> the GUI and does not change stdout/stderr contracts. After argument parsing
-> succeeds, the root runner emits one privacy-safe `cli_operation` event with
-> command, subcommand, outcome, duration, exit code, and low-cardinality error
-> type. `transcribe` also includes coarse input kind and output format. Disable
-> with `MACPARAKEET_TELEMETRY=0`, `DO_NOT_TRACK=1`, or
-> `macparakeet-cli config set telemetry off`.
+> **Privacy convention**: Fork builds do not collect or upload CLI telemetry or
+> crash reports. CLI test runs therefore need no telemetry opt-out variables.
 
 ## Core Modes
 
@@ -337,7 +332,7 @@ swift run macparakeet-cli config set voice-return-enabled on
 swift run macparakeet-cli config set voice-return-triggers "hey parakeet|okay parakeet"
 ```
 
-Supported keys: `telemetry`, `processing-mode`, `speech-engine`,
+Supported keys: `processing-mode`, `speech-engine`,
 `parakeet-model`, `nemotron-model`, `nemotron-language`, `whisper-language`,
 `cohere-language`, `speaker-detection`, `meeting-speaker-detection`,
 `auto-meeting-titles`, `save-transcription-audio`, `meeting-audio-retention`,

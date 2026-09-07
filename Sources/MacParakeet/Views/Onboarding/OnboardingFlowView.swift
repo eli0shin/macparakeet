@@ -419,7 +419,7 @@ struct OnboardingFlowView: View {
                 featureRow(
                     icon: "lock.shield.fill",
                     title: "Private by default",
-                    detail: "Audio and transcripts stay on your Mac. Setup telemetry is limited to non-identifying step and timing signals."
+                    detail: "Audio and transcripts stay on your Mac. MacParakeet does not collect or upload setup telemetry or crash reports."
                 )
             }
         }

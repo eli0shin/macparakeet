@@ -12,11 +12,8 @@ struct CLIConfigKeySpec: Encodable, Equatable {
 /// `macparakeet-cli config` — read or write app preferences from the CLI.
 ///
 /// Stores values in the same UserDefaults suite the GUI reads
-/// (`com.macparakeet.MacParakeet`). This lets users who only install the CLI
-/// (no GUI) persist preferences like opting out of telemetry — and a later GUI
-/// install picks the same values up automatically. Without this, CLI-only
-/// users would have no way to opt out of telemetry or set app-default
-/// transcription state for agent-driven smoke tests.
+/// (`com.macparakeet.MacParakeet`). This lets CLI-only users configure
+/// app-default transcription state for agent-driven workflows.
 struct ConfigCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "config",
@@ -28,7 +25,6 @@ struct ConfigCommand: ParsableCommand {
             cache some settings until relaunch or an in-app change.
 
             Supported keys:
-              telemetry                 on|off                         default: on
               processing-mode           raw|clean                       default: raw
               speech-engine             parakeet|nemotron|whisper|cohere default: parakeet
               parakeet-model            v3|v2|unified                   default: v3
@@ -59,15 +55,6 @@ struct ConfigCommand: ParsableCommand {
               meeting-hook-enabled      on|off                          default: off
               meeting-hook-path         absolute executable path|none    default: none
               meeting-hook-timeout      seconds (1-300)                 default: 20
-
-            Full event catalog:
-              https://github.com/moona3k/macparakeet/blob/main/docs/telemetry.md
-
-            Per-process overrides (env vars, do not require `config set`):
-              MACPARAKEET_TELEMETRY=0   Force-off for one invocation
-              MACPARAKEET_TELEMETRY=1   Force-on for one invocation
-              DO_NOT_TRACK=1            Force-off (industry-standard signal)
-              CI=true                   Auto-disabled in CI environments
             """,
         subcommands: [GetCommand.self, SetCommand.self, ListCommand.self]
     )
@@ -80,12 +67,6 @@ struct ConfigCommand: ParsableCommand {
             allowedValues: ["on", "off"],
             summary:
                 "Enable local Parakeet vocabulary hints. Setting on consents to an additional model download on the next supported transcription."
-        ),
-        CLIConfigKeySpec(
-            key: "telemetry",
-            valueSyntax: "on|off",
-            allowedValues: ["on", "off"],
-            summary: "Enable or disable telemetry."
         ),
         CLIConfigKeySpec(
             key: "processing-mode",
@@ -241,7 +222,7 @@ struct ConfigCommand: ParsableCommand {
         }
     }
 
-    struct SetCommand: ParsableCommand, CLITelemetryMetadataProviding {
+    struct SetCommand: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "set",
             abstract: "Write a configuration value."
@@ -256,26 +237,12 @@ struct ConfigCommand: ParsableCommand {
         @Flag(name: .long, help: "Emit JSON instead of plain text.")
         var json: Bool = false
 
-        var cliTelemetryMetadata: CLITelemetry.OperationMetadata {
-            CLITelemetry.OperationMetadata(
-                command: ConfigCommand.configuration.commandName ?? "config",
-                subcommand: Self.configuration.commandName ?? "set",
-                json: json,
-                suppressEvent: Self.suppressesTelemetryEvent(key: key, value: value)
-            )
-        }
-
         func run() throws {
             try emitJSONOrRethrow(json: json) {
                 let canonicalKey = try ConfigCommand.canonicalKey(key)
                 let written = try ConfigCommand.write(key: canonicalKey, value: value)
                 try printResult(key: canonicalKey, value: written, json: json)
             }
-        }
-
-        static func suppressesTelemetryEvent(key: String, value: String) -> Bool {
-            (try? ConfigCommand.canonicalKey(key)) == "telemetry"
-                && (try? ConfigCommand.parseBool(value, key: key)) == false
         }
     }
 
@@ -319,9 +286,6 @@ struct ConfigCommand: ParsableCommand {
         case "vocabulary-hints":
             return store.bool(forKey: UserDefaultsAppRuntimePreferences.customVocabularyRecognitionBoostingEnabledKey)
                 ? "on" : "off"
-        case "telemetry":
-            let on = AppPreferences.isTelemetryEnabled(defaults: store)
-            return on ? "on" : "off"
         case "processing-mode":
             let raw = store.string(forKey: UserDefaultsAppRuntimePreferences.processingModeKey)
             return (Dictation.ProcessingMode(rawValue: raw ?? Dictation.ProcessingMode.raw.rawValue) ?? .raw).rawValue
@@ -404,10 +368,6 @@ struct ConfigCommand: ParsableCommand {
             }
             store.set(enabled, forKey: UserDefaultsAppRuntimePreferences.customVocabularyRecognitionBoostingEnabledKey)
             return enabled ? "on" : "off"
-        case "telemetry":
-            let parsed = try parseBool(value, key: key)
-            store.set(parsed, forKey: AppPreferences.telemetryEnabledKey)
-            return parsed ? "on" : "off"
         case "processing-mode":
             let mode = try parseProcessingMode(value)
             store.set(mode.rawValue, forKey: UserDefaultsAppRuntimePreferences.processingModeKey)

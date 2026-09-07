@@ -112,7 +112,7 @@ struct RetranscribeResult: Encodable {
     }
 }
 
-struct RetranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding {
+struct RetranscribeCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "retranscribe",
         abstract: "Retranscribe retained source audio for an existing saved record in place.",
@@ -186,14 +186,6 @@ struct RetranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding 
 
     @Option(help: "Path to SQLite database file (defaults to the app database).")
     var database: String?
-
-    var cliTelemetryMetadata: CLITelemetry.OperationMetadata {
-        CLITelemetry.OperationMetadata(
-            command: Self.configuration.commandName ?? "retranscribe",
-            outputFormat: (json || envelope) ? "json" : nil,
-            json: json || envelope
-        )
-    }
 
     func validate() throws {
         guard update else {

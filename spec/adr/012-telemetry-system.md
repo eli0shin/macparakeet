@@ -1,7 +1,13 @@
 # ADR-012: Self-Hosted Telemetry via Cloudflare
 
-> Status: **Accepted**
+> Status: **Superseded in this fork**
 > Date: 2026-03-13
+> Superseded: 2026-07-24
+>
+> This ADR records the upstream telemetry design as historical context. Fork
+> builds do not include its network transport, endpoint, preference, CLI
+> controls, or automatic crash-report upload. Do not use the operational
+> instructions below for current fork development.
 
 ## Context
 

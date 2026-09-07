@@ -2,13 +2,13 @@ import Foundation
 import Darwin
 import MachO
 
-/// Lightweight crash reporter that persists crash data to disk via async-signal-safe
-/// POSIX I/O, then sends it as a telemetry event on next launch.
+/// Lightweight local crash reporter that persists crash data to disk via
+/// async-signal-safe POSIX I/O. Reports stay on the Mac for user-requested
+/// diagnosis and are never uploaded automatically.
 ///
-/// Architecture (same as Sentry/PLCrashReporter core):
+/// Architecture:
 ///   1. `install()` — registers signal handlers + ObjC exception handler at app startup
-///   2. Signal handler — writes crash report to disk using pre-allocated buffers
-///   3. `sendPendingReport(via:)` — reads crash file on next launch, sends telemetry event
+///   2. Signal handler — writes a local crash report using pre-allocated buffers
 ///
 /// Known limitations:
 /// - `backtrace()` is not strictly async-signal-safe (can deadlock on dyld lock).
@@ -391,39 +391,4 @@ public final class CrashReporter {
         )
     }
 
-    /// Send any pending crash report as a telemetry event. Delete the file only
-    /// when telemetry reports that the event was delivered or intentionally dropped.
-    /// Call after TelemetryService is initialized.
-    public static func sendPendingReport(via telemetry: TelemetryServiceProtocol) async {
-        await sendPendingReport(via: telemetry, from: crashReportPath)
-    }
-
-    /// Internal variant with injectable path for testing.
-    static func sendPendingReport(via telemetry: TelemetryServiceProtocol, from path: String) async {
-        guard let report = loadPendingReport(from: path) else { return }
-
-        let stackTraceString = report.stackTrace.joined(separator: "\n")
-
-        let delivered = await telemetry.sendAndFlush(.crashOccurred(
-            crashType: report.crashType,
-            signal: report.signal,
-            name: report.name,
-            crashTimestamp: report.timestamp,
-            crashAppVer: report.appVersion,
-            crashOsVer: report.osVersion,
-            uuid: report.uuid,
-            slide: report.slide,
-            reason: report.reason,
-            stackTrace: stackTraceString
-        ))
-
-        if delivered {
-            // Delete only after telemetry has either been flushed or intentionally dropped by opt-out.
-            deleteCrashFile(at: path)
-        }
-    }
-
-    private static func deleteCrashFile(at path: String? = nil) {
-        try? FileManager.default.removeItem(atPath: path ?? crashReportPath)
-    }
 }

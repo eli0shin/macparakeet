@@ -54,7 +54,6 @@ final class AppEnvironment {
     let entitlementsService: EntitlementsService
     let launchAtLoginService: LaunchAtLoginService
     let checkoutURL: URL?
-    let telemetryService: TelemetryService
     let llmClient: RoutingLLMClient
     let llmConfigStore: LLMConfigStore
     let llmService: LLMService
@@ -357,14 +356,6 @@ final class AppEnvironment {
                     ))
             }
         )
-
-        let telemetry = TelemetryService()
-        telemetryService = telemetry
-        Telemetry.configure(telemetry)
-        Telemetry.send(.appLaunched)
-        Task {
-            await CrashReporter.sendPendingReport(via: telemetry)
-        }
 
         transcriptionService = TranscriptionService(
             audioProcessor: audioProcessor,

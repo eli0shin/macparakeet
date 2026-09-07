@@ -200,7 +200,7 @@ Notifications are dismissed silently by macOS when the user isn't at their machi
 - Settings UI: `CalendarSettingsView` folded into the Meeting Recording settings card and rendered only when `AppFeatures.calendarEnabled` is `true`
 - No onboarding UI. Calendar permission and mode selection live in the Meeting Recording settings surface.
 
-### Telemetry (new cases, must mirror to website allowlist)
+### Historical telemetry instrumentation (now inert in fork builds)
 
 - `.calendarReminderShown(mode:leadMinutes:hasMeetUrl:)` — fired after a reminder notification is delivered
 - `.calendarAutoStartTriggered(leadSeconds:hasMeetUrl:)` — fired when the auto-start countdown is shown
@@ -209,7 +209,7 @@ Notifications are dismissed silently by macOS when the user isn't at their machi
 - `.permissionGranted(permission: .calendar)` / `.permissionDenied(permission: .calendar)`
 - `.settingChanged(setting: .calendarAutoStartMode)` etc.
 
-Per the telemetry allowlist rule, each new `TelemetryEventName` case must also be added to `ALLOWED_EVENTS` in `macparakeet-website/functions/api/telemetry.ts`.
+These inherited event definitions remain as compatibility code. Fork builds do not configure a telemetry transport or send them remotely.
 
 ## Files to Port from Oatmeal (reference)
 

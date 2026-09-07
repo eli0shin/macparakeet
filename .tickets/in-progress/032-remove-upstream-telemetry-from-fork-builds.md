@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@032-remove-upstream-telemetry-from-fork-builds
 Tags:
   - ready-for-agent
 Parent:

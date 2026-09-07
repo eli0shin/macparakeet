@@ -379,11 +379,6 @@ public final class DictationHistoryViewModel {
         let newValue = !dictation.displayRawTranscript
         do {
             _ = try repo.setDisplayRawTranscript(id: dictation.id, value: newValue)
-            // Intentionally no telemetry event: adding a `TelemetryEventName`
-            // case would require a companion update to the Cloudflare Worker
-            // allowlist (the Worker rejects the entire batch on unknown
-            // events). Keeping this PR scoped to Undo AI edit — telemetry can
-            // be added as a follow-up if usage signal is needed.
         } catch {
             logger.error("Failed to toggle displayRawTranscript for \(dictation.id): \(error.localizedDescription)")
             return

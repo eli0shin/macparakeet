@@ -95,8 +95,8 @@ with human progress/status kept off stdout.
 - `meetings show --json` and `meetings export --stdout --format json` may
   include `calendarEventSnapshot` for meeting recordings started from, or
   probably overlapping, a calendar event. The field is additive and local-only;
-  attendee and organizer names/emails are user data and must not be mirrored
-  into telemetry.
+  attendee and organizer names/emails are user data and stay local. Fork builds
+  do not collect or upload CLI telemetry.
 - `meetings show --json` and `meetings export --stdout --format json` include
   additive artifact path fields for meeting rows when the session folder can be
   resolved: `artifactMarkdownPath` points to `meeting.md`, and optional

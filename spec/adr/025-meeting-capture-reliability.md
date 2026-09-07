@@ -514,12 +514,9 @@ Propose privacy-safe events — **no audio, no transcript content**:
 Add the new `TelemetryEventName` cases in
 `Sources/MacParakeetCore/Services/Telemetry/TelemetryEvent.swift`.
 
-> **Two-repo reminder.** Each new `TelemetryEventName` case MUST also be
-> added to `ALLOWED_EVENTS` in
-> `macparakeet-website/functions/api/telemetry.ts` **before** a
-> flag-on build ships. The telemetry Worker rejects the *entire batch*
-> if any event name is unknown, silently dropping valid co-batched
-> events. Deploy the allowlist change first.
+> **Fork note.** These inherited event definitions remain as compatibility
+> code. Fork builds do not configure a telemetry transport or send them
+> remotely.
 
 ## Phased Rollout
 

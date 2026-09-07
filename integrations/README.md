@@ -67,8 +67,8 @@ sitting at a keyboard, it lives in the .app.
 - **Persistent SQLite memory layer** -- everything transcribed is queryable
   later: dictation history, transcriptions, prompt outputs.
 - **Shared app/CLI preferences** -- agents can set speech engine, processing
-  mode, speaker detection, audio retention, YouTube audio quality, and
-  telemetry without driving the GUI.
+  mode, speaker detection, audio retention, and YouTube audio quality without
+  driving the GUI.
 - **Prompt library + LLM-backed summarization** -- bring your own provider
   (OpenAI, Anthropic, Ollama, LM Studio, OpenAI-compatible local, or a
   configured CLI subprocess), or skip the LLM entirely and consume raw
@@ -600,30 +600,12 @@ OpenClaw, Hermes, or another local agent framework.
 - **Lookups:** records that take an `<id-or-name>` argument accept full UUID,
   UUID prefix (>= 4 chars), or case-insensitive name. Ambiguous prefixes
   produce a `.ambiguous` error; missing records produce `.notFound`.
-- **Privacy:** STT and database access never touch the network. Network
-  egress paths are: explicit helper repair (`health --repair-binaries`),
-  media URL downloads (yt-dlp), optional LLM provider calls (only when
-  `prompts run` or `llm` targets a hosted provider, or when a configured
-  Local CLI command contacts its own service), and a single privacy-safe
-  `cli_operation` event per successfully parsed CLI invocation, posted to the
-  self-hosted endpoint at `https://macparakeet.com/api/telemetry`. The telemetry event
-  ships only allowlisted invocation metadata (`operation_id`, `workflow_id`,
-  `parent_operation_id`, `command`, `subcommand`, `outcome`,
-  `duration_seconds`, `input_kind`, `output_format`, `json`, `exit_code`,
-  `error_type`) — never the file path, URL, transcript, language value, or any
-  user content (random per-process session UUID, no persistent identifier).
-  Disable it any of four ways:
-    - `MACPARAKEET_TELEMETRY=0` (per process)
-    - `DO_NOT_TRACK=1` (industry-standard signal, also honored)
-    - `macparakeet-cli config set telemetry off` (persists in the shared
-      UserDefaults suite the GUI reads)
-    - "Help improve MacParakeet" toggle in the GUI Settings → Privacy card
-
-  Auto-disabled in CI environments (`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`,
-  `BUILDKITE`, `CIRCLECI`, `TRAVIS`, `JENKINS_URL`, `TF_BUILD`,
-  `TEAMCITY_VERSION` — any one set to a truthy value). Override CI auto-
-  disable with `MACPARAKEET_TELEMETRY=1`. See `docs/telemetry.md` for the
-  full event catalog and the Worker-side PII redaction policy.
+- **Privacy:** STT and database access never touch the network. Fork builds do
+  not collect or upload CLI telemetry or crash reports. Network egress paths
+  are explicit helper repair (`health --repair-binaries`), media URL downloads
+  (yt-dlp), explicit feedback delivery, and optional LLM provider calls when a
+  command targets a hosted provider or a configured local CLI contacts its own
+  service.
 - **Concurrency:** the STT scheduler reserves one slot for dictation and
   shares a second slot for meeting / batch work (ADR-016). Multiple
   concurrent CLI calls share the background slot; expect serial transcription

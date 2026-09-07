@@ -1,9 +1,9 @@
 # MacParakeet Spec Index
 
 > Status: **ACTIVE** - Authoritative, current
-> Runtime Note: FluidAudio CoreML is the active architecture. Core STT is local; LLM provider use is opt-in, telemetry/crash reporting is opt-out, and a fully local setup is supported by disabling telemetry and using only local features/providers.
+> Runtime Note: FluidAudio CoreML is the active architecture. Core STT is local; LLM provider use is opt-in, and fork builds do not collect or upload telemetry or crash reports.
 
-**MacParakeet** is a voice toolkit for macOS with on-device STT, optional AI and telemetry features, and support for a fully local setup.
+**MacParakeet** is a voice toolkit for macOS with on-device STT, optional AI features, and no remote telemetry transport.
 
 ## Spec Documents
 
@@ -72,7 +72,7 @@ Current `main` feature gates in `Sources/MacParakeetCore/AppFeatures.swift`:
 | `meetingRecordingEnabled` | `true` | Shipping meeting-recording surface |
 | `calendarEnabled` | `true` | Shipping calendar reminders/auto-start; per-user auto-start defaults off |
 | `meetingAutoStopEnabled` | `true` | Shipping ADR-023 surface; per-user setting defaults off, so recordings stop manually until the user opts in |
-| `meetingCaptureReliabilityEnabled` | `true` | Default-on kill switch for ADR-025 signal-based mic-health monitoring and telemetry; direct source lifecycle recovery is independent |
+| `meetingCaptureReliabilityEnabled` | `true` | Default-on kill switch for ADR-025 signal-based mic-health monitoring; inherited event instrumentation is inert and direct source lifecycle recovery is independent |
 | `meetingSourceHealthUIEnabled` | `false` | Routine source-health chips/pill glyph/tile mirror stay hidden; actionable recovering, stalled, interrupted, or unavailable warnings bypass this presentation flag |
 | `meetingActivityDetectionEnabled` | `false` | ADR-024 collectors/detector are compiled but runtime coordinator/UI remain gated |
 | `transformsEnabled` | `true` | Productized Transforms shipping surface |
@@ -89,7 +89,7 @@ All ADRs live in `spec/adr/`. These are locked -- they record decisions already 
 | ADR | Decision |
 |-----|----------|
 | [ADR-001](adr/001-parakeet-stt.md) | Parakeet TDT 0.6B-v3 as primary/default STT engine; optional local engines by amendment |
-| [ADR-002](adr/002-local-only.md) | Local processing with optional external AI/telemetry surfaces |
+| [ADR-002](adr/002-local-only.md) | Local processing with optional external AI surfaces and no remote telemetry in fork builds |
 | [ADR-003](adr/003-one-time-purchase.md) | Historical one-time purchase pricing; paid official distribution reference |
 | [ADR-004](adr/004-deterministic-pipeline.md) | Deterministic text processing pipeline |
 | [ADR-005](adr/005-onboarding-first-run.md) | First-run onboarding flow |
@@ -99,7 +99,7 @@ All ADRs live in `spec/adr/`. These are locked -- they record decisions already 
 | [ADR-009](adr/009-custom-hotkey.md) | Custom hotkey support (any single key + chord combos) |
 | [ADR-010](adr/010-speaker-diarization.md) | Speaker diarization via FluidAudio offline pipeline |
 | [ADR-011](adr/011-llm-cloud-and-local-providers.md) | LLM via cloud API keys + optional local providers |
-| [ADR-012](adr/012-telemetry-system.md) | Self-hosted telemetry via Cloudflare (Worker + D1) |
+| [ADR-012](adr/012-telemetry-system.md) | Superseded upstream telemetry design (historical in this fork) |
 | [ADR-013](adr/013-prompt-library-multi-summary.md) | Prompt Library + multi-summary architecture |
 | [ADR-014](adr/014-meeting-recording.md) | Meeting recording via ScreenCaptureKit system audio |
 | [ADR-015](adr/015-concurrent-dictation-meeting.md) | Concurrent dictation and meeting recording |

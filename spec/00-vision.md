@@ -97,10 +97,10 @@ Fully local speech is a core product property, and the app can stay fully local 
 
 - Local STT. No cloud speech processing, no accounts, no required backend for core speech.
 - Audio never leaves your Mac for dictation or transcription.
-- No email signup. No login. Optional self-hosted telemetry can be disabled in Settings.
-- Core capture and local-file speech workflows work in airplane-mode or air-gapped environments after the required models are installed. Media imports, telemetry, and remote AI providers are separate network surfaces.
+- No email signup. No login. Fork builds do not collect or upload telemetry or crash reports.
+- Core capture and local-file speech workflows work in airplane-mode or air-gapped environments after the required models are installed. Media imports and remote AI providers are separate network surfaces.
 
-This is privacy by architecture: speech recognition has no server path. Optional transcript-AI, media-download, and telemetry surfaces remain explicit and separately documented.
+This is privacy by architecture: speech recognition has no server path. Optional transcript-AI, media-download, and explicit feedback surfaces remain separate and documented.
 
 ### 3. Simplicity Over Features
 
@@ -271,10 +271,10 @@ boundaries, automation, and avoiding a required subscription.
 People who handle sensitive notes, interviews, research, or internal material
 and want speech recognition to stay on their Mac. MacParakeet does not itself
 certify a user's regulatory compliance; users must evaluate their complete
-workflow, device controls, enabled telemetry, and configured AI providers.
+workflow, device controls, explicit network actions, and configured AI providers.
 
 **What they want:** Understandable data boundaries, no required product
-account, local core speech, and the ability to disable telemetry and avoid
+account, local core speech, no remote telemetry, and the ability to avoid
 remote AI providers.
 
 ### Tertiary: Subscription-Fatigued Users
@@ -323,7 +323,7 @@ MacParakeet optimizes the default pipeline for Parakeet while routing optional N
 
 This is not "cloud by default with a local mode." Core speech recognition runs entirely on-device. There is no cloud STT path, no account system, and no requirement to send audio anywhere.
 
-Optional network features exist, but they are explicit and separate: transcript text can be sent to user-configured LLM providers, YouTube imports download media, and self-hosted telemetry can be disabled. The privacy boundary is simple: speech stays local.
+Optional network features exist, but they are explicit and separate: transcript text can be sent to user-configured LLM providers, media imports download content, and feedback is sent only on user action. Fork builds do not upload telemetry or crash reports. The privacy boundary is simple: speech stays local.
 
 ### 3. Free and Open-Source
 
@@ -398,10 +398,10 @@ MacParakeet and Oatmeal are **separate products** that share underlying technolo
 
 | Metric | Target | How We Measure |
 |--------|--------|----------------|
-| Downloads | 10,000 | Website analytics + telemetry |
+| Downloads | 10,000 | GitHub release download counts |
 | GitHub stars | 1,000 | GitHub |
 | User satisfaction | 4.5+ stars equivalent | Community feedback + NPS |
-| Daily active users | 2,000 | Telemetry (opt-out, non-identifying) |
+| Daily active users | 2,000 | Not measured automatically in fork builds |
 | Dictation sessions/user/day | 5+ | Local metrics |
 
 ### Quality Metrics
@@ -502,7 +502,7 @@ Ship-quality polish. Direct distribution via notarized DMG.
 | **YouTube downloads** | Standalone yt-dlp | macOS binary, auto-updates via `--update`. No Python needed. |
 | **UI framework** | SwiftUI | Native Mac experience. Menu bar + window. |
 | **Database** | SQLite (GRDB) | Single file. No server. Dictation history, custom words, settings. |
-| **Cloud option** | No cloud STT; optional LLM providers | Core speech stays local. AI and media downloads are user-triggered; opt-out telemetry/crash reporting is a product-managed network surface. Retained purchase activation endpoints remain in code but current public builds are free/unlocked. |
+| **Cloud option** | No cloud STT; optional LLM providers | Core speech stays local. AI, media downloads, and feedback are explicit user actions; fork builds do not upload telemetry or crash reports. Retained purchase activation endpoints remain in code but current public builds are free/unlocked. |
 | **Pricing** | Current public build free/GPL | Zero friction today; GPL-compatible official paid distribution/support remains available later. |
 
 ---

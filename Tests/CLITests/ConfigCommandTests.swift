@@ -30,7 +30,6 @@ final class ConfigCommandTests: XCTestCase {
             ConfigCommand.supportedKeys,
             [
                 "vocabulary-hints",
-                "telemetry",
                 "processing-mode",
                 "speech-engine",
                 "parakeet-model",
@@ -65,20 +64,9 @@ final class ConfigCommandTests: XCTestCase {
         XCTAssertEqual(try ConfigCommand.read(key: "vocabulary-hints", defaults: defaults), "off")
     }
 
-    func testReadTelemetryDefaultsToOn() throws {
-        // Mirror AppPreferences.isTelemetryEnabled: missing key → on.
-        let value = try ConfigCommand.read(key: "telemetry", defaults: defaults)
-        XCTAssertEqual(value, "on")
-    }
-
-    func testReadTelemetryReflectsExplicitFalse() throws {
-        defaults.set(false, forKey: AppPreferences.telemetryEnabledKey)
-        XCTAssertEqual(try ConfigCommand.read(key: "telemetry", defaults: defaults), "off")
-    }
-
-    func testReadTelemetryReflectsExplicitTrue() throws {
-        defaults.set(true, forKey: AppPreferences.telemetryEnabledKey)
-        XCTAssertEqual(try ConfigCommand.read(key: "telemetry", defaults: defaults), "on")
+    func testRemovedTelemetryPreferenceIsRejected() {
+        XCTAssertThrowsError(try ConfigCommand.read(key: "telemetry", defaults: defaults))
+        XCTAssertThrowsError(try ConfigCommand.write(key: "telemetry", value: "on", defaults: defaults))
     }
 
     func testReadSpeakerDetectionReflectsExplicitFalse() throws {
@@ -155,19 +143,6 @@ final class ConfigCommandTests: XCTestCase {
     }
 
     // MARK: - write
-
-    func testWriteTelemetryOffPersists() throws {
-        let canonical = try ConfigCommand.write(key: "telemetry", value: "off", defaults: defaults)
-        XCTAssertEqual(canonical, "off")
-        XCTAssertEqual(defaults.object(forKey: AppPreferences.telemetryEnabledKey) as? Bool, false)
-    }
-
-    func testWriteTelemetryOnPersists() throws {
-        defaults.set(false, forKey: AppPreferences.telemetryEnabledKey)
-        let canonical = try ConfigCommand.write(key: "telemetry", value: "on", defaults: defaults)
-        XCTAssertEqual(canonical, "on")
-        XCTAssertEqual(defaults.object(forKey: AppPreferences.telemetryEnabledKey) as? Bool, true)
-    }
 
     func testWriteAgentTranscriptionDefaultsPersist() throws {
         XCTAssertEqual(try ConfigCommand.write(key: "processing-mode", value: "clean", defaults: defaults), "clean")
@@ -596,11 +571,14 @@ final class ConfigCommandTests: XCTestCase {
             ("off", false), ("OFF", false), ("false", false), ("no", false),
             ("0", false), ("disable", false), ("disabled", false),
         ] {
-            let canonical = try ConfigCommand.write(key: "telemetry", value: synonym, defaults: defaults)
+            let canonical = try ConfigCommand.write(key: "speaker-detection", value: synonym, defaults: defaults)
             XCTAssertEqual(
                 canonical, expectedBool ? "on" : "off",
                 "Synonym '\(synonym)' should canonicalize to \(expectedBool ? "on" : "off")")
-            XCTAssertEqual(defaults.object(forKey: AppPreferences.telemetryEnabledKey) as? Bool, expectedBool)
+            XCTAssertEqual(
+                defaults.object(forKey: UserDefaultsAppRuntimePreferences.speakerDiarizationKey) as? Bool,
+                expectedBool
+            )
         }
     }
 
@@ -624,12 +602,12 @@ final class ConfigCommandTests: XCTestCase {
     }
 
     func testWriteRejectsInvalidValueAsValidationError() {
-        XCTAssertThrowsError(try ConfigCommand.write(key: "telemetry", value: "maybe", defaults: defaults)) { error in
+        XCTAssertThrowsError(try ConfigCommand.write(key: "speaker-detection", value: "maybe", defaults: defaults)) { error in
             XCTAssertTrue(error is ValidationError, "Expected ValidationError, got \(type(of: error))")
             XCTAssertTrue("\(error)".contains("maybe"))
         }
         // Defaults must not have been mutated.
-        XCTAssertNil(defaults.object(forKey: AppPreferences.telemetryEnabledKey))
+        XCTAssertNil(defaults.object(forKey: UserDefaultsAppRuntimePreferences.speakerDiarizationKey))
     }
 
     func testWriteUnknownKeyThrowsValidationError() {
@@ -641,7 +619,7 @@ final class ConfigCommandTests: XCTestCase {
     // MARK: - parseBool
 
     func testParseBoolRejectsEmpty() {
-        XCTAssertThrowsError(try ConfigCommand.parseBool("", key: "telemetry")) { error in
+        XCTAssertThrowsError(try ConfigCommand.parseBool("", key: "speaker-detection")) { error in
             XCTAssertTrue(error is ValidationError)
         }
     }

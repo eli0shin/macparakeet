@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export MACPARAKEET_TELEMETRY=0
 CLI="${1:?Usage: cli_smoke.sh PATH_TO_CLI}"
 mkdir -p .ci-logs
 "$CLI" --help > .ci-logs/cli-help.txt

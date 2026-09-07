@@ -89,6 +89,12 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ## [Unreleased]
 
+### Removed
+
+- Remove CLI operation telemetry and the `config get/set telemetry` preference.
+  Fork builds no longer collect or upload CLI usage or crash data, and telemetry
+  environment variables have no effect.
+
 ### Vocabulary hints
 
 - Add `config get/set vocabulary-hints on|off`. Setting `on` consents to an

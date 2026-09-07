@@ -243,7 +243,6 @@ run_case() {
   local start_s
   start_s="$(now_seconds)"
   set +e
-  MACPARAKEET_TELEMETRY=0 DO_NOT_TRACK=1 \
     /usr/bin/time -lp "$BIN" transcribe "$sample_path" \
       --format json \
       --no-history \

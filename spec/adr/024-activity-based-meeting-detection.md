@@ -409,11 +409,9 @@ Privacy-safe, coarse, no raw app names beyond the allowlist enum:
   Not now (identity suppressed for the cooldown).
 - `.settingChanged(setting: .meetingActivityDetectionMode)`.
 
-> **Two-repo change.** Each new `TelemetryEventName` case here must *also* be
-> added to `ALLOWED_EVENTS` in `macparakeet-website/functions/api/telemetry.ts`.
-> The Worker rejects the **entire batch** if any event name is unknown — silently
-> dropping co-batched valid events. Deploy the website allowlist change *before*
-> shipping a build that emits these.
+> **Fork note.** These inherited event definitions remain as compatibility
+> code. Fork builds do not configure a telemetry transport or send them
+> remotely.
 
 ## Out of Scope (explicitly not building)
 
