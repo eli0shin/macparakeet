@@ -3400,10 +3400,12 @@ struct SettingsView: View {
             subtitle: "Your audio and transcriptions never leave your device.",
             icon: "hand.raised"
         ) {
-            rowText(
-                title: "No telemetry",
-                detail: "MacParakeet does not collect or upload usage analytics, crash reports, audio, or transcripts."
+            settingsToggleRow(
+                title: "Help improve MacParakeet",
+                detail: "Send non-identifying usage statistics like feature popularity and performance metrics. No personal data is collected.",
+                isOn: .constant(false)
             )
+            .disabled(true)
         }
     }
 

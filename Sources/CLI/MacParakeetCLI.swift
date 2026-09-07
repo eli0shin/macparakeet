@@ -1,5 +1,6 @@
 import ArgumentParser
 import Darwin
+import MacParakeetCore
 
 @main
 struct CLI: AsyncParsableCommand {
@@ -44,6 +45,7 @@ struct CLI: AsyncParsableCommand {
     }
 
     static func main(_ arguments: [String]?) async {
+        Telemetry.configure(NoOpTelemetryService())
         do {
             var command = try parseAsRoot(arguments)
             if var asyncCommand = command as? AsyncParsableCommand {
