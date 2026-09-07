@@ -112,11 +112,6 @@ This project bundles or downloads third-party software components. The following
 - License: Apache License 2.0
 - Source: <https://github.com/apple/swift-argument-parser>
 
-### Sparkle
-
-- License: MIT License
-- Source: <https://github.com/sparkle-project/Sparkle>
-
 ## Parakeet TDT Model
 
 - License: CC-BY-4.0

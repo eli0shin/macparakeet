@@ -28,19 +28,22 @@ Cohere use FluidAudio/CoreML; Whisper uses WhisperKit. No cloud STT.
 
 ## Install
 
+Install MacParakeet from the
+[latest GitHub release](https://github.com/eli0shin/macparakeet/releases/latest),
+then use its bundled CLI:
+
 ```bash
-brew install moona3k/tap/macparakeet-cli
+mkdir -p "$HOME/.local/bin"
+ln -sf /Applications/MacParakeet.app/Contents/MacOS/macparakeet-cli \
+  "$HOME/.local/bin/macparakeet-cli"
+export PATH="$HOME/.local/bin:$PATH"  # also set this in the OpenClaw environment
 macparakeet-cli --version   # confirm the installed release
 macparakeet-cli health --json
 ```
 
-Requires macOS 14.2+ on Apple Silicon. The Homebrew formula installs FFmpeg
-and yt-dlp as runtime dependencies. Parakeet, Nemotron, and Cohere CoreML
+Requires macOS 14.2+ on Apple Silicon. Parakeet, Nemotron, and Cohere CoreML
 model caches are managed by FluidAudio; WhisperKit model downloads live under
 `~/Library/Application Support/MacParakeet/models/stt/whisper/`.
-
-If MacParakeet.app is already installed, the bundled CLI is also available at
-`/Applications/MacParakeet.app/Contents/MacOS/macparakeet-cli`.
 
 Minimum CLI for the command set shown here is `2.12.0`; `spec --json` itself
 requires `macparakeet-cli >= 2.4.0`.
@@ -116,10 +119,6 @@ metadata:
     requires:
       bins:
         - macparakeet-cli
-    install:
-      - kind: brew
-        formula: moona3k/tap/macparakeet-cli
-        bins: [macparakeet-cli]
     envVars:
       - name: ANTHROPIC_API_KEY
         required: false
@@ -147,9 +146,10 @@ All speech recognition runs locally; no cloud STT.
 
 ## Install
 
-```bash
-brew install moona3k/tap/macparakeet-cli
-```
+Install MacParakeet from the
+[latest GitHub release](https://github.com/eli0shin/macparakeet/releases/latest).
+The CLI is at
+`/Applications/MacParakeet.app/Contents/MacOS/macparakeet-cli`.
 
 ## Capabilities
 
@@ -175,5 +175,4 @@ clawhub skill publish ./macparakeet-stt
 
 Pending publication to ClawHub. Tracking via
 <https://github.com/moona3k/macparakeet/issues> with the `integration`
-label. The brew tap (host binary install path) is already live at
-<https://github.com/moona3k/homebrew-tap>.
+label.

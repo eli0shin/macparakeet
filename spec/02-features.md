@@ -50,7 +50,7 @@ See [00-vision.md](./00-vision.md) for positioning and market context.
 ├─────────────────────────────────────────────────────────────────┤
 │  • Speaker diarization (auto-detect, label, name)               │
 │  • Non-blocking transcription progress (bottom bar UX)          │
-│  • Direct distribution (notarized DMG, Sparkle auto-updates)    │
+│  • Direct distribution (notarized DMG on GitHub Releases)      │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -1512,15 +1512,14 @@ are unaffected.
 
 > Status: **IMPLEMENTED**
 
-**What:** Distribute MacParakeet as a notarized DMG via macparakeet.com. Auto-updates via Sparkle.
+**What:** Distribute MacParakeet as a notarized DMG through this fork's GitHub Releases. Users update manually by downloading the latest release.
 
 **Why not App Store:** MacParakeet bundles FFmpeg and yt-dlp as standalone binaries and uses Accessibility APIs for global hotkeys. App Store sandboxing would block or complicate the core architecture.
 
 **Distribution pipeline (implemented):**
 - Notarized DMG signed with Developer ID
-- Direct download from downloads.macparakeet.com (Cloudflare R2)
+- Manual publication and download through `eli0shin/macparakeet` GitHub Releases
 - GPL-3.0 open-source distribution (historically planned as LemonSqueezy paid distribution)
-- Sparkle 2 auto-updates via EdDSA-signed appcast
 - Privacy policy live at macparakeet.com/privacy
 
 ---

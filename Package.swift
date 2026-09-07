@@ -15,8 +15,6 @@ let packageDependencies: [Package.Dependency] =
         .package(url: "https://github.com/FluidInference/FluidAudio", exact: "0.15.6"),
         // ArgumentParser for CLI
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
-        // Sparkle for auto-updates (non-App Store distribution)
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
         // FluidAudio's Swift module exposes yyjson under current Xcode/Swift.
         .package(url: "https://github.com/ibireme/yyjson.git", exact: "0.12.0"),
         // WhisperKit for multilingual STT fallback (Korean + 95 other languages).
@@ -69,7 +67,6 @@ let appDependencies: [Target.Dependency] =
     [
         "MacParakeetCore",
         "MacParakeetViewModels",
-        .product(name: "Sparkle", package: "Sparkle"),
     ]
     + (enableMLXLocalLLM
         ? [

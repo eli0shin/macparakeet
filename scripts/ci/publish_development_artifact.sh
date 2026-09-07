@@ -34,19 +34,6 @@ BUILD_NUMBER="$(date -u +%Y%m%d%H%M%S)" \
 
 # Replace linker and upstream signatures inside-out. These signatures only make
 # the bundle structurally valid. They do not establish an Apple-trusted identity.
-SPARKLE_FRAMEWORK="$APP_PATH/Contents/Frameworks/Sparkle.framework"
-if [[ -d "$SPARKLE_FRAMEWORK" ]]; then
-  while IFS= read -r -d '' code_bundle; do
-    codesign --force --sign - "$code_bundle"
-  done < <(find "$SPARKLE_FRAMEWORK" -type d \( -name '*.xpc' -o -name '*.app' \) -print0)
-
-  while IFS= read -r -d '' executable; do
-    codesign --force --sign - "$executable"
-  done < <(find "$SPARKLE_FRAMEWORK/Versions/B" -maxdepth 1 -type f -perm -111 -print0)
-
-  codesign --force --sign - "$SPARKLE_FRAMEWORK"
-fi
-
 while IFS= read -r -d '' dylib; do
   codesign --force --sign - "$dylib"
 done < <(find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -type f -name '*.dylib' -print0)

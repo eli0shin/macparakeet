@@ -37,7 +37,7 @@ After the complete CI gate passes, each `main` push and manual run publishes
 contains one compressed DMG with the complete app and Applications shortcut.
 The app and nested code have structural ad-hoc signatures, and the landing gate
 executes FFmpeg, yt-dlp, Node, and the CLI. It uses no protected credentials and
-is not Developer ID signed, notarized, Gatekeeper-ready, or part of R2/Sparkle
+is not Developer ID signed, notarized, Gatekeeper-ready, or an official release
 distribution. Installation instructions are in `docs/distribution.md`.
 
 A manual run on `main` publishes the protected artifact only when
@@ -49,7 +49,7 @@ then runs the established signing/notarization path. It mounts and verifies the
 DMG with `codesign`, Gatekeeper, and `stapler`, and executes helper version
 smokes before uploading `MacParakeet-signed-notarized-ci-test` for seven days.
 Missing credentials or any verification failure leaves no uploadable trusted
-DMG. This test artifact is not sent to R2 or Sparkle and is not an official
+DMG. This test artifact is not published to GitHub Releases and is not an official
 release. Provisioning and download instructions are in `docs/distribution.md`.
 
 Only known prose paths skip compilation: root Markdown, Markdown under docs,

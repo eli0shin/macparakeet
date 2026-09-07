@@ -97,14 +97,11 @@ if [[ ! -x "$APP_BIN" ]]; then
   exit 1
 fi
 
-# The raw xcodebuild product carries an absolute rpath into
+# The raw xcodebuild product can carry an absolute rpath into
 # $PRODUCT_DIR/PackageFrameworks. Keep that layout available before we rewrite
 # the wrapped app binary to use bundle-local Frameworks.
 PKGFW_DIR="$PRODUCT_DIR/PackageFrameworks"
 mkdir -p "$PKGFW_DIR"
-if [[ -d "$PRODUCT_DIR/Sparkle.framework" && ! -e "$PKGFW_DIR/Sparkle.framework" ]]; then
-  ln -s "$PRODUCT_DIR/Sparkle.framework" "$PKGFW_DIR/Sparkle.framework"
-fi
 
 echo "[2/5] Wrapping in .app bundle for macOS permissions…"
 # Create a minimal .app bundle so macOS TCC (Accessibility, Microphone) can
@@ -168,10 +165,8 @@ PLIST
 # Re-sign the bundle so TCC can identify the dev build consistently. Use the
 # release app entitlements so permission smoke tests exercise the same TCC
 # capability surface as the signed distribution build. Ad-hoc signatures carry
-# no Team ID, so hardened-runtime library validation would reject the
-# bundle-local Sparkle.framework at load (dyld: "code signature … not valid
-# for use in process") — disable library validation for the ad-hoc fallback
-# only; real identities keep the release entitlement surface.
+# no Team ID, so disable library validation for the ad-hoc fallback when the
+# app loads bundle-local libraries; real identities keep the release entitlement surface.
 SIGN_ENTITLEMENTS="$APP_ENTITLEMENTS"
 if [[ "$CODESIGN_IDENTITY" == "-" ]]; then
   echo "  note: no codesigning identity found; ad-hoc signing with library validation disabled"
