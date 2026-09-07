@@ -5,7 +5,7 @@ import Darwin
 struct CLI: AsyncParsableCommand {
     /// Single source of truth for the CLI's semver. Surfaced via ArgumentParser's
     /// `--version`. Bump in lockstep with `Sources/CLI/CHANGELOG.md`.
-    static let cliVersion = "3.1.0"
+    static let cliVersion = "4.0.0"
 
     static let configuration = CommandConfiguration(
         commandName: "macparakeet-cli",

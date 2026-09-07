@@ -89,12 +89,6 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ## [Unreleased]
 
-### Removed
-
-- Remove CLI operation telemetry and the `config get/set telemetry` preference.
-  Fork builds no longer collect or upload CLI usage or crash data, and telemetry
-  environment variables have no effect.
-
 ### Vocabulary hints
 
 - Add `config get/set vocabulary-hints on|off`. Setting `on` consents to an
@@ -135,6 +129,14 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
   `.dapt.xml`; stdout is supported by both commands. Aligned word timing and
   speaker labels are preserved when present, while undiarized transcripts omit
   character agents and timestampless or edited transcripts remain untimed.
+
+## [4.0.0] — 2026-09-07
+
+### Removed
+
+- Remove CLI operation telemetry and the `config get/set telemetry` preference.
+  Fork builds no longer collect or upload CLI usage or crash data, and telemetry
+  environment variables have no effect.
 
 ## [3.1.0] — 2026-07-19
 
