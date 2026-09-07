@@ -83,27 +83,31 @@ downloads, user-selected AI providers, media imports, or explicit feedback.
 
 ## Acceptance criteria
 
-- [ ] The app and CLI composition roots contain no telemetry transport and do
+- [x] The app and CLI composition roots contain no telemetry transport and do
       not start an automatic crash-report upload.
-- [ ] Production code contains no upstream telemetry endpoint and no HTTP
+- [x] Production code contains no upstream telemetry endpoint and no HTTP
       telemetry request builder.
-- [ ] `MACPARAKEET_TELEMETRY_URL`, `MACPARAKEET_TELEMETRY`, `DO_NOT_TRACK`, and
+- [x] `MACPARAKEET_TELEMETRY_URL`, `MACPARAKEET_TELEMETRY`, `DO_NOT_TRACK`, and
       persisted `telemetryEnabled` state cannot enable telemetry in the app or
       CLI.
-- [ ] A pending crash report remains local or is removed locally; it is not
+- [x] A pending crash report remains local or is removed locally; it is not
       uploaded automatically on the next launch.
-- [ ] Settings and CLI help/config do not expose a telemetry switch that no
+- [x] Settings and CLI help/config do not expose a telemetry switch that no
       longer has a service behind it.
-- [ ] Active privacy and architecture documentation says that fork builds do
+- [x] Active privacy and architecture documentation says that fork builds do
       not collect or upload telemetry and does not direct contributors to the
       upstream Cloudflare Worker or D1 database.
-- [ ] Historical audit/planning documents remain intact or are clearly marked
+- [x] Historical audit/planning documents remain intact or are clearly marked
       as upstream history rather than rewritten as current fork behavior.
-- [ ] User-initiated feedback still works and does not attach crash reports or
+- [x] User-initiated feedback still works and does not attach crash reports or
       diagnostic logs without explicit user action.
-- [ ] Do not add tests or a new telemetry-specific verification script. Remove
+- [x] Do not add tests or a new telemetry-specific verification script. Remove
       or update inherited tests only as needed after the telemetry code is
       removed or disabled.
-- [ ] Review confirms that production source contains no upstream telemetry URL,
+- [x] Review confirms that production source contains no upstream telemetry URL,
       telemetry transport wiring, or automatic crash-upload call.
-- [ ] `swift build` and the existing `swift test` suite pass.
+- [x] `swift build` and the existing `swift test` suite pass.
+
+## Resolution
+
+PR #34 passed follow-up review at `3bc4ca6416955f411f0011fe3bf9a4c65bf12a4c` and merged as `baa71fed`. Landing CI and automatic release run `34140912490` passed. Direct inspection of downloaded release `v0.7.4` confirmed CLI `4.0.0` and no packaged upstream telemetry endpoint or `MACPARAKEET_TELEMETRY_URL` marker while signed app verification and isolated launch passed. Dead inert instrumentation cleanup continues separately in ticket `034`.

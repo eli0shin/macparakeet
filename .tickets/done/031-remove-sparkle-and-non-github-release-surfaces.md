@@ -83,23 +83,27 @@ Historical and non-release material; rewriting it would falsify the record:
 
 ## Acceptance criteria
 
-- [ ] No Sparkle package dependency, import, or symbol remains in `Sources/`,
+- [x] No Sparkle package dependency, import, or symbol remains in `Sources/`,
       `Tests/`, or `Package.swift`.
-- [ ] The built app bundle contains no `Sparkle.framework`, `Autoupdate`,
+- [x] The built app bundle contains no `Sparkle.framework`, `Autoupdate`,
       `Updater.app`, or Sparkle XPC services.
-- [ ] `Info.plist` no longer carries `SUFeedURL` or `SUPublicEDKey`.
-- [ ] `build_app_bundle.sh` and `sign_notarize.sh` succeed with no Sparkle
+- [x] `Info.plist` no longer carries `SUFeedURL` or `SUPublicEDKey`.
+- [x] `build_app_bundle.sh` and `sign_notarize.sh` succeed with no Sparkle
       steps, and signing/notarization still passes on the resulting DMG.
-- [ ] CI verification scripts no longer assert Sparkle's presence.
-- [ ] No "Check for Updates" menu item or update section remains in the UI.
-- [ ] The `sparkles` SF Symbol is untouched.
-- [ ] No document instructs a reader to upload to R2, deploy to Cloudflare
+- [x] CI verification scripts no longer assert Sparkle's presence.
+- [x] No "Check for Updates" menu item or update section remains in the UI.
+- [x] The `sparkles` SF Symbol is untouched.
+- [x] No document instructs a reader to upload to R2, deploy to Cloudflare
       Pages, publish an appcast, or update a Homebrew tap or cask.
-- [ ] `docs/distribution.md` describes exactly one release path.
-- [ ] `scripts/dist/homebrew-tap-scaffold/` is deleted and nothing outside
+- [x] `docs/distribution.md` describes exactly one release path.
+- [x] `scripts/dist/homebrew-tap-scaffold/` is deleted and nothing outside
       historical documents references it.
-- [ ] `README.md` and `integrations/README.md` describe installing from this
+- [x] `README.md` and `integrations/README.md` describe installing from this
       fork's GitHub Releases.
-- [ ] `THIRD_PARTY_LICENSES.md` no longer lists Sparkle.
-- [ ] `swift build` and `swift test` pass.
-- [ ] Historical documents listed above are unmodified.
+- [x] `THIRD_PARTY_LICENSES.md` no longer lists Sparkle.
+- [x] `swift build` and `swift test` pass.
+- [x] Historical documents listed above are unmodified.
+
+## Resolution
+
+PR #31 passed current-head review at `c66d9a6270dcd8d56a92976b039db5db33dd54c5` and merged as `7cb0f06d`. Release `v0.7.4` was built from the Sparkle-free package and downloaded artifact inspection confirmed no `Sparkle.framework`, `SUFeedURL`, or `SUPublicEDKey`; signing, notarization, Gatekeeper, helpers, resources, and isolated launch passed. GitHub Releases is the only active publication path.

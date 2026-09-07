@@ -80,30 +80,34 @@ surfaces.
 
 ## Acceptance criteria
 
-- [ ] A release workflow runs after CI succeeds on `main` and does not run for
+- [x] A release workflow runs after CI succeeds on `main` and does not run for
       pull requests or other untrusted events.
-- [ ] A push that changes only non-shipping paths produces no tag, no version
+- [x] A push that changes only non-shipping paths produces no tag, no version
       increment, and no release.
-- [ ] A push mixing shipping and non-shipping changes produces exactly one
+- [x] A push mixing shipping and non-shipping changes produces exactly one
       release.
-- [ ] The shipping-path classification is unit tested, including tests,
+- [x] The shipping-path classification is unit tested, including tests,
       tickets, docs, and workflow files as non-shipping.
-- [ ] The next version is derived from the most recent git tag, defaulting to a
+- [x] The next version is derived from the most recent git tag, defaulting to a
       patch bump, with `[minor]` and `[major]` commit-message overrides.
-- [ ] The workflow creates and pushes the `vX.Y.Z` tag itself.
-- [ ] Elevated `contents: write` permission is scoped to the release job only.
-- [ ] The build number remains a monotonic UTC timestamp.
-- [ ] The release job uses the protected `signed-ci-artifact` environment and
+- [x] The workflow creates and pushes the `vX.Y.Z` tag itself.
+- [x] Elevated `contents: write` permission is scoped to the release job only.
+- [x] The build number remains a monotonic UTC timestamp.
+- [x] The release job uses the protected `signed-ci-artifact` environment and
       its existing six secrets, with the same ephemeral keychain and
       cleanup-on-failure behavior as `publish_signed_artifact.sh`.
-- [ ] The DMG is verified with `verify_signed_dmg.sh` and
+- [x] The DMG is verified with `verify_signed_dmg.sh` and
       `verify_downloadable_app.sh` before publication; verification failure
       blocks the release and leaves no tag behind.
-- [ ] `gh release create` publishes on `eli0shin/macparakeet` with the DMG
+- [x] `gh release create` publishes on `eli0shin/macparakeet` with the DMG
       attached as `MacParakeet.dmg`.
-- [ ] Concurrent or re-run pushes cannot produce a duplicate or skipped version.
-- [ ] Tests cover version derivation from the previous tag, bump overrides,
+- [x] Concurrent or re-run pushes cannot produce a duplicate or skipped version.
+- [x] Tests cover version derivation from the previous tag, bump overrides,
       event gating, and fail-closed verification.
-- [ ] A real merge to `main` produces a downloadable release whose DMG passes
+- [x] A real merge to `main` produces a downloadable release whose DMG passes
       `codesign --verify --deep --strict`, `spctl --assess`, and
       `stapler validate` after download through the browser.
+
+## Resolution
+
+PR #30 implemented automatic GitHub release delivery at squash merge `4de79aa0`; PR #35 fixed intentional baseline-tag recovery at reviewed head `7d022c8abaacefd47415cf61aff12108783d365d`, squash merge `4b7688cf`. Landing CI `34138808833` passed and release run `34140912490` published `v0.7.4` for `baa71fed`. The downloaded `MacParakeet.dmg` matched SHA-256 `3f8bc66105ff75683b10f21cd54188168c940b371ab263096cde10f1009dbdff` and passed Developer ID, Gatekeeper, stapler, helper, resource, privacy, and isolated launch verification.
