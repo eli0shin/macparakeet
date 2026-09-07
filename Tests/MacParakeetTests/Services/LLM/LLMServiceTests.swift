@@ -288,7 +288,7 @@ final class LLMServiceTests: XCTestCase {
             question: "What was discussed?",
             transcript: "We talked about the release.",
             userNotes: nil,
-            history: [],
+            history: []
         )
 
         XCTAssertEqual(mockClient.capturedMessages.count, 2)
@@ -308,7 +308,7 @@ final class LLMServiceTests: XCTestCase {
             question: "What did Alice say?",
             transcript: "Alice said hello.",
             userNotes: nil,
-            history: history,
+            history: history
         )
 
         // system + 2 history + user question = 4
@@ -325,7 +325,7 @@ final class LLMServiceTests: XCTestCase {
             question: "Why did we delay?",
             transcript: "Alice: We're slipping by a week.",
             userNotes: "decision: ship Friday\nQA owns smoke tests",
-            history: [],
+            history: []
         )
 
         let systemPrompt = mockClient.capturedMessages[0].content
@@ -345,7 +345,7 @@ final class LLMServiceTests: XCTestCase {
             question: "Q",
             transcript: "T",
             userNotes: nil,
-            history: [],
+            history: []
         )
         XCTAssertFalse(
             mockClient.capturedMessages[0].content.contains("User's notes from the meeting"),
@@ -358,7 +358,7 @@ final class LLMServiceTests: XCTestCase {
             question: "Q",
             transcript: "T",
             userNotes: "",
-            history: [],
+            history: []
         )
         XCTAssertFalse(
             mockClient.capturedMessages[0].content.contains("User's notes from the meeting"),
@@ -371,7 +371,7 @@ final class LLMServiceTests: XCTestCase {
             question: "Q",
             transcript: "T",
             userNotes: "   \n\t  \n  ",
-            history: [],
+            history: []
         )
         XCTAssertFalse(
             mockClient.capturedMessages[0].content.contains("User's notes from the meeting"),
@@ -384,7 +384,7 @@ final class LLMServiceTests: XCTestCase {
             question: "Q",
             transcript: "T",
             userNotes: nil,
-            history: [],
+            history: []
         )
         let withoutNotes = mockClient.capturedMessages[0].content
 
@@ -396,7 +396,7 @@ final class LLMServiceTests: XCTestCase {
             question: "Q",
             transcript: "T",
             userNotes: "   ",
-            history: [],
+            history: []
         )
         let withWhitespace = mockClient.capturedMessages[0].content
         XCTAssertEqual(withoutNotes, withWhitespace)
@@ -444,7 +444,7 @@ final class LLMServiceTests: XCTestCase {
             question: "Who?",
             transcript: "Alice and Bob spoke.",
             userNotes: nil,
-            history: [],
+            history: []
         )
 
         XCTAssertEqual(result.output, "answer")
@@ -863,7 +863,7 @@ final class LLMServiceTests: XCTestCase {
             question: "Latest question",
             transcript: transcript,
             userNotes: nil,
-            history: history,
+            history: history
         )
 
         let messages = mockClient.capturedMessages
@@ -892,7 +892,7 @@ final class LLMServiceTests: XCTestCase {
             question: "New question",
             transcript: transcript,
             userNotes: nil,
-            history: history,
+            history: history
         )
 
         let messages = mockClient.capturedMessages
@@ -918,7 +918,7 @@ final class LLMServiceTests: XCTestCase {
             question: question,
             transcript: transcript,
             userNotes: notes,
-            history: history,
+            history: history
         )
 
         let messages = mockClient.capturedMessages
@@ -947,7 +947,7 @@ final class LLMServiceTests: XCTestCase {
             question: "What should we do next?",
             transcript: "The team discussed delivery risks.",
             userNotes: nil,
-            history: history,
+            history: history
         )
 
         let messages = mockClient.capturedMessages
@@ -975,7 +975,7 @@ final class LLMServiceTests: XCTestCase {
             question: "What happened?",
             transcript: "Something happened.",
             userNotes: nil,
-            history: [],
+            history: []
         )
 
         var tokens: [String] = []

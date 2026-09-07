@@ -333,7 +333,7 @@ final class MeetingTranscriptionQueueTests: XCTestCase {
         let output = makeRecordingOutput(displayName: name)
         return MeetingTranscriptionQueue.Item(
             recording: output,
-            transcriptionID: UUID(),
+            transcriptionID: UUID()
         )
     }
 

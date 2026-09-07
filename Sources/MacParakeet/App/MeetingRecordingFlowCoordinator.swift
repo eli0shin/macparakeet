@@ -1467,7 +1467,7 @@ final class MeetingRecordingFlowCoordinator {
             )
             return MeetingTranscriptionQueue.Item(
                 recording: recording,
-                transcriptionID: latest.id,
+                transcriptionID: latest.id
             )
         }.value
     }

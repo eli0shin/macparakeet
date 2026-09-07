@@ -220,7 +220,7 @@ final class MeetingFinalizationReconcilerTests: XCTestCase {
             ))
         let item = MeetingTranscriptionQueue.Item(
             recording: recording,
-            transcriptionID: transcriptionID,
+            transcriptionID: transcriptionID
         )
 
         await queue.enqueue(item)
