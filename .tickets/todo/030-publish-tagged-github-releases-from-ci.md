@@ -3,8 +3,7 @@ Assigned-To:
 Tags:
   - ready-for-agent
 Parent:
-Blocked-By:
-  - 031-remove-sparkle-and-non-github-release-surfaces
+Blocked-By: []
 ---
 
 ## What to build
