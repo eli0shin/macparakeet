@@ -128,7 +128,13 @@ Cohere is the most accurate on-device engine in this benchmark, but its statisti
 
 ## Get it
 
-**Download:** Grab the notarized DMG from the [latest release](https://github.com/eli0shin/macparakeet/releases/latest). Drag to Applications, done.
+**Install or update:** Run the installer on an Apple Silicon Mac. It installs the latest release in `/Applications`, configures the bundled CLI, and does not replace an equal or newer installed version.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eli0shin/macparakeet/main/install.sh | bash
+```
+
+**Download manually:** Grab the notarized DMG from the [latest release](https://github.com/eli0shin/macparakeet/releases/latest). Drag to Applications, done.
 
 On the standard path, first launch downloads the default Parakeet CoreML build (~465 MB) plus speaker-detection assets (~130 MB) as needed. Locale-aware Korean/Japanese/Chinese/Cantonese setup downloads WhisperKit instead when no preferred English language is present. Parakeet v2 and v3 cache independently if you install both. Core dictation, local-file transcription, and meeting recording can work offline after required models are installed; media imports and cloud/remote AI providers still require a network.
 
