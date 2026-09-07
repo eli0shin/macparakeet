@@ -41,7 +41,7 @@ two correctness gaps remain that ADR-019 does not touch:
 This ADR hardens both. It is framed as a **reliability/correctness
 improvement that ships default-on**, not a user-facing feature toggle.
 The mic watchdog's only user-visible surface is a gentle in-meeting
-warning plus telemetry — never a blocking error. For staged rollout it
+warning, never a blocking error. For staged rollout it
 may sit behind an `AppFeatures` kill-switch flag, but the intended
 end-state is "always on, invisible until something is wrong."
 
@@ -77,8 +77,8 @@ Raw callback cessation is now a direct source-lifecycle failure:
   meeting-consumer recovery loop.
 
 Amplitude- or cross-source-signal-inferred restarts remain deferred. The
-meeting health monitor continues to warn and instrument those signatures
-without changing the capture graph.
+meeting health monitor continues to warn and record those signatures in local
+diagnostics without changing the capture graph.
 
 ### 2026-07-20 field-evidence amendment: final recording truth
 
@@ -158,14 +158,14 @@ presenter on mute listening to a long monologue, a quiet stretch where
 only "Others" are talking. System audio being active is the precondition
 that makes "mic is silent" *meaningful*.
 
-**On trip (v1 = detect + warn + instrument):**
+**On trip (v1 = detect + warn):**
 
 - Surface a **gentle, non-blocking in-meeting warning** on the recording
   panel/pill: *"This meeting may be missing your side."* It does not
   stop the recording, does not modal-block, and does not throw — the
   meeting keeps capturing whatever it can.
-- Emit a privacy-safe `mic_stall_detected` telemetry event tagged with
-  the signature (a/b/c) and coarse timing. No audio, no transcript.
+- Record the signature and timing in local diagnostics. No audio or transcript
+  content is included.
 
 **Source-callback recovery is implemented; signal-inferred recovery remains
 deferred.** The #820 diagnostic confirmed that raw tap callbacks can stop while
@@ -422,7 +422,7 @@ without a mic, a meeting, or an STT model. The audio/STT plumbing that
   the background slot and updating the saved row in place.
 - **Threshold tuning is empirical.** The confirmation window (~3 s),
   coverage threshold, and ≥0.8 s gap floor are first guesses that will
-  need field telemetry to settle — same shape of risk as the
+  need explicit local validation or user-reported evidence to settle — the same shape of risk as the
   dictation-stall watchdog timing.
 - **Another floating-surface warning** to maintain on the meeting panel/
   pill alongside the existing levels/state surfaces.
@@ -500,9 +500,9 @@ without a mic, a meeting, or an STT model. The audio/STT plumbing that
   observe and the repair stage is skipped (the meeting finalizes exactly
   as today). The pure types and tests stay intact either way.
 
-## Telemetry
+## Removed historical telemetry proposal
 
-Propose privacy-safe events — **no audio, no transcript content**:
+The original proposal listed these privacy-safe events:
 
 - `mic_stall_detected` — props: `signature` (`mic_missing` /
   `mic_silent` / `mic_gap`), coarse `elapsed_ms` since meeting start.
@@ -511,12 +511,9 @@ Propose privacy-safe events — **no audio, no transcript content**:
   `selective` / `full`), `gap_count`. Fired once per finalized meeting
   after the repair stage resolves.
 
-Add the new `TelemetryEventName` cases in
-`Sources/MacParakeetCore/Services/Telemetry/TelemetryEvent.swift`.
-
-> **Fork note.** These inherited event definitions remain as compatibility
-> code. Fork builds do not configure a telemetry transport or send them
-> remotely.
+These event definitions, send sites, and implementation instructions were
+removed in September 2026. This list records historical design only and is not
+an implementation requirement.
 
 ## Phased Rollout
 
@@ -526,8 +523,8 @@ deliver value without later ones.
 1. **Phase A — Mic-health detection core (implemented 2026-06-14).** Pure
    `MeetingMicHealthMonitor` with the three signatures + ~3 s
    confirmation gate, table tests, and the `MeetingAudioCaptureService`
-   wiring that feeds liveness signals. Emits `mic_stall_detected`
-   telemetry. Amplitude- and cross-source-signal-inferred mic restart remains
+   wiring that feeds liveness signals and local diagnostics. Amplitude- and
+   cross-source-signal-inferred mic restart remains
    deliberately absent until field evidence can distinguish a dead graph from
    legitimate silence.
 2. **Phase B — Direct lifecycle recovery + actionable warnings (implemented
@@ -542,7 +539,7 @@ deliver value without later ones.
    `MeetingTranscriptCoverageRepair` planner + table tests; offline
    `MeetingVADService` wiring in the post-stop path; selective re-
    transcription of uncovered gaps on the `STTScheduler` background slot;
-   write-back to the saved row; `meeting_transcript_repair` telemetry.
+   write-back to the saved row.
    Reconcile the old REQ-MEET-013 framing in this ADR and the narrative
    specs; the legacy requirements index is archived and no longer updated.
 4. **Phase D — Full-fallback tier + crash-recovery integration.** Add the
@@ -567,8 +564,9 @@ deliver value without later ones.
 - **Signal-inferred recovery scope.** Raw callback cessation already uses the
   shared source's bounded fresh-engine recovery. If amplitude-only evidence
   later justifies recovery, should it use that same path or require additional
-  meeting-stream re-alignment? Defer until telemetry confirms the signature.
+  meeting-stream re-alignment? Defer until explicit local validation or user
+  reports confirm the signature.
 - **Full-file re-transcription budget.** Should `.fullReTranscribe` be
   unconditional on very-low coverage, or capped by meeting length to
-  bound background-slot time? Lean capped, with telemetry on how often
-  the cap binds.
+  bound background-slot time? Lean capped; validate the cap with explicit
+  local testing and user reports.

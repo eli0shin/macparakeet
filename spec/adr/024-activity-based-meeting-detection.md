@@ -3,7 +3,7 @@
 > Status: **PARTIAL IMPLEMENTATION** — Phases A+B ship the default-off CoreAudio
 > process attribution collector, CoreMediaIO camera activity collector, shared
 > activity snapshot types, app registry, detection mode, and pure detector tests.
-> Coordinator/UI wiring, prompt/auto-start telemetry, and ADR-023 auto-stop
+> Coordinator/UI wiring and ADR-023 auto-stop
 > attribution remain proposed until later phases flip
 > `AppFeatures.meetingActivityDetectionEnabled`.
 > Default off / opt-in.
@@ -191,9 +191,8 @@ separate, deeper opt-in (§7) gated behind its own setting.
 ### 7. Default off, opt-in, no content captured
 
 A new settings control governs the feature, mirroring the ADR-017
-`calendarAutoStartMode` pattern exactly (same `UserDefaults` namespace shape,
-same `.macParakeet…DidChange` notification, same `Telemetry.send(.settingChanged(...))`
-on mutation):
+`calendarAutoStartMode` pattern: the same `UserDefaults` namespace shape and
+`.macParakeet…DidChange` notification pattern apply.
 
 ```swift
 public enum MeetingActivityDetectionMode: String, Codable, Sendable {
@@ -368,8 +367,7 @@ maintain, consistent UX, and visual continuity (the repo's lesson —
 - Extend `SettingsViewModel` with `meetingActivityDetectionMode` (and any
   cooldown/dwell tunables we expose — likely none in v1). Persist under a
   `MeetingActivityDetection.*` `UserDefaults` namespace.
-- `didSet` posts a new `AppNotification.macParakeetMeetingActivitySettingsDidChange`
-  and fires `Telemetry.send(.settingChanged(setting: .meetingActivityDetectionMode))`.
+- `didSet` posts a new `AppNotification.macParakeetMeetingActivitySettingsDidChange`.
 
 ### App layer (MacParakeet)
 
@@ -384,9 +382,8 @@ maintain, consistent UX, and visual continuity (the repo's lesson —
   cooldown window.
 - Settings UI: a control in the Meeting Recording settings card, rendered only
   when `AppFeatures.meetingActivityDetectionEnabled` is `true`.
-- `MeetingRecordingFlowCoordinator` — add `.activityDetection` (and, for §7
-  auto-start, `.activityAutoStart`) cases to `TelemetryMeetingRecordingTrigger`,
-  threaded through `startRecording` the same way `.calendarAutoStart` is.
+- `MeetingRecordingFlowCoordinator` — thread local activity-detection start
+  context through `startRecording` the same way `.calendarAutoStart` is.
 
 ### Wiring (AppEnvironmentConfigurer)
 
@@ -395,9 +392,9 @@ maintain, consistent UX, and visual continuity (the repo's lesson —
   `meetingRecordingEnabled` is also true — detection only makes sense when the
   user can record), exactly where `MeetingAutoStartCoordinator` is wired.
 
-## Telemetry (new cases — must mirror to website allowlist)
+## Removed historical telemetry proposal
 
-Privacy-safe, coarse, no raw app names beyond the allowlist enum:
+The original proposal listed these coarse events:
 
 - `.meetingActivityDetectionShown(signalSource: SignalSource, appCategory: MeetingAppCategory)`
   — a prompt/countdown was surfaced. `signalSource` ∈ {`micCamera`, `micApp`,
@@ -409,9 +406,9 @@ Privacy-safe, coarse, no raw app names beyond the allowlist enum:
   Not now (identity suppressed for the cooldown).
 - `.settingChanged(setting: .meetingActivityDetectionMode)`.
 
-> **Fork note.** These inherited event definitions remain as compatibility
-> code. Fork builds do not configure a telemetry transport or send them
-> remotely.
+> These event definitions, allowlist requirements, and send sites were removed
+> in September 2026. This list records historical design only and is not an
+> implementation requirement.
 
 ## Out of Scope (explicitly not building)
 
@@ -454,8 +451,8 @@ Privacy-safe, coarse, no raw app names beyond the allowlist enum:
    trust tiers + self-exclusion across both signal types. More table tests.
 3. **Phase C — Prompt + settings + coordinator wiring.** The
    `MeetingActivityDetectionCoordinator`, the "Record this meeting?" prompt,
-   the `.prompt` settings mode, dwell + suppression + debounce, telemetry +
-   website allowlist mirror. First user-visible (flag-on) slice.
+   the `.prompt` settings mode, dwell + suppression + debounce. First
+   user-visible (flag-on) slice.
 4. **Phase D — `.autoStart` mode + ADR-023 auto-stop feed.** Opt-in
    auto-record-on-detect via the reused countdown toast, and expose
    `ActivitySignalSnapshot` to ADR-023's auto-stop consumer (the "meeting still
@@ -476,7 +473,7 @@ focused false-positive + idle-CPU pass clears.
 - **`.prompt` vs `.autoStart` as the recommended on-state.** Is the gentle
   prompt enough value to be the headline, with `.autoStart` as power-user depth,
   or does the prompt's interruption undercut the "I forgot" win? Lean prompt
-  for v1; revisit from telemetry.
+  for v1; revisit from explicit local validation or user feedback.
 - **Relationship to calendar auto-start when both fire.** If a calendar event
   *and* an activity signal both point at the same live meeting, which surface
   wins, and how do we de-dupe so the user sees one prompt, not two? (First-to-

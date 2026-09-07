@@ -82,7 +82,7 @@ The reference (WisprFlow) gates the entire Transforms surface behind a global *O
 
 The mental model: a Transform is "on" if and only if a hotkey is bound to it. Built-ins ship with default hotkeys bound; users can clear them. There is no second-order gate. This is consistent with how the dictation hotkey, the meeting-toggle hotkey, and the global shortcuts in other surfaces work.
 
-The product-level feature flag `AppFeatures.transformsEnabled` exists as a release gate (replaces `transformsSpikeEnabled`) — when false, the Transforms tab is hidden and the hotkey registry isn't initialized at all. It is not a user preference. It is enabled on `main` after the website telemetry allowlist deploy landed.
+The product-level feature flag `AppFeatures.transformsEnabled` exists as a release gate (replaces `transformsSpikeEnabled`) — when false, the Transforms tab is hidden and the hotkey registry isn't initialized at all. It is not a user preference. It is enabled on `main`; the original rollout also waited for a now-removed telemetry allowlist deployment.
 
 ### 6. BYO-key only (no first-party LLM)
 
@@ -106,20 +106,18 @@ transforms delete <name|id> [--json]
 
 The existing `llm transform --prompt "..." <input>` continues to exist as the raw-prompt ad-hoc primitive. `transforms run <name>` is the saved-prompt productized surface. They coexist.
 
-### 8. Historical telemetry instrumentation — inert in fork builds
+### 8. Removed historical telemetry instrumentation
 
 Two events:
 
 - `transform_executed` — `transform_name` (built-in name, or `custom`), `capture_path`, `replace_path`, `llm_ms`, `total_ms`. **No** prompt body. **No** selected text. **No** output text.
 - `transform_failed` — `transform_name` (or `custom`), `reason` (enumerated).
 
-Custom-Transform names are never transmitted (every non-built-in maps to `custom` in telemetry). This protects users who name a Transform after the company they're using it for, etc.
-
-These inherited event definitions remain as compatibility code. Fork builds do not configure a telemetry transport or send them remotely.
+The historical design mapped custom names to `custom`; it never transmitted prompt, selected-text, or output content. The events, mappings, and send sites were removed in September 2026. This list records historical behavior only and is not an implementation requirement.
 
 ### 9. Feature-flag rollout (`AppFeatures.transformsEnabled`)
 
-Replaces the spike flag `transformsSpikeEnabled`. It was introduced as release-off, then flipped to `true` after the website telemetry allowlist accepted `transform_executed` / `transform_failed`. Current `main` has `AppFeatures.transformsEnabled = true`.
+Replaces the spike flag `transformsSpikeEnabled`. It was introduced as release-off, then flipped to `true` after the original rollout gates completed. Current `main` has `AppFeatures.transformsEnabled = true`.
 
 When `false`:
 - Transforms tab is hidden from the sidebar.
@@ -131,7 +129,7 @@ When `false`:
 
 ### Positive
 
-- The Transforms feature ships on top of existing, exercised infrastructure: `Prompt` table, `LLMService.transform*`, `GlobalShortcutManager`, accessibility permission, paste-back simulation, telemetry pipeline. No new subsystem, just a new top-level surface.
+- The Transforms feature ships on top of existing, exercised infrastructure: `Prompt` table, `LLMService.transform*`, `GlobalShortcutManager`, accessibility permission, and paste-back simulation. No new subsystem, just a new top-level surface.
 - A single dispatch table means the in-flight model is clear: at most one Transform runs at a time; cancel-then-restart on re-trigger is locally enforceable.
 - CLI parity means agent operators (per `cli-as-canonical-parakeet-surface.md`) can drive Transforms headlessly — useful both for our own dogfooding and for the agent-audience growth angle.
 - The "no global toggle" decision keeps the feature consistent with the rest of the app's gesture-as-affordance model.
@@ -140,7 +138,7 @@ When `false`:
 
 - Adding nullable Transform-specific columns to the `prompts` table is mild schema clutter for `.result` rows. Accepted; the cost is a few NULL bytes per summary prompt and is dominated by the joins it avoids.
 - Clipboard hijack / restore dance is racy by definition (user copies during the ~500ms window are partially clobbered). Mitigated by PR #278's intervening-copy detection; an unrecoverable edge case is logged and the user's most-recent copy is preserved. Documented as a known limitation.
-- The feature ships free, against user-paid LLM providers. If users hammer Transforms against an expensive cloud model, that cost is theirs. The pill's patience threshold + the per-Transform telemetry helps us notice runaway-latency patterns.
+- The feature ships free, against user-paid LLM providers. If users use Transforms heavily with an expensive cloud model, that cost is theirs. The pill's patience threshold limits poor long-running UX.
 - macOS Cmd+Z is the v1 escape hatch for unwanted Transforms. No inline diff or preview. Phase 3 adds the diff viewer; until then, users accept "press it, Cmd+Z if you didn't like it."
 
 ### Non-decisions (still open, will be locked in later ADRs if needed)

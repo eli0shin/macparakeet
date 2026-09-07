@@ -1,6 +1,6 @@
 # ADR-023: Activity-Based Meeting Auto-Stop
 
-> Status: **IMPLEMENTED (Phases A+B; shipped in the v0.7 release train, per-user opt-in default off)** — App-quit fast path, sustained dual-channel silence, veto countdown, settings plumbing, telemetry, and normal finalize/transcribe stop path are implemented behind `AppFeatures.meetingAutoStopEnabled = true` (flipped on `main` 2026-06-14 and present in the v0.7.0–v0.7.2 tagged builds; the per-user `meetingAutoStopEnabled` setting still defaults off, so nothing auto-stops until a user opts in). Phase C remains deferred until ADR-024's attribution layer exists.
+> Status: **IMPLEMENTED (Phases A+B; shipped in the v0.7 release train, per-user opt-in default off)** — App-quit fast path, sustained dual-channel silence, veto countdown, settings plumbing, and the normal finalize/transcribe stop path are implemented behind `AppFeatures.meetingAutoStopEnabled = true` (flipped on `main` 2026-06-14 and present in the v0.7.0–v0.7.2 tagged builds; the per-user `meetingAutoStopEnabled` setting still defaults off, so nothing auto-stops until a user opts in). Phase C remains deferred until ADR-024's attribution layer exists.
 > Date: 2026-06-14
 > Related: ADR-014 (meeting recording), ADR-015 (concurrent dictation/meeting), ADR-016 (centralized STT scheduler), ADR-017 (calendar auto-start — its §5 amendment withdrew calendar-driven auto-stop and deferred the replacement to "its own ADR"; this is that ADR), ADR-024 (activity-based meeting detection — shares the activity-signal layer)
 > Requirement: REQ-MEET-015 (v0.7, implemented behind default-off flag)
@@ -40,7 +40,7 @@ Auto-stop calls the normal stop through `MeetingRecordingFlowCoordinator` with t
 
 ### 5. Opt-in, default off, one Settings toggle
 
-A single `meetingAutoStopEnabled` preference (default `false`), mirroring the opt-in posture of calendar auto-start. Staged behind a new `AppFeatures.meetingAutoStopEnabled` compile-time flag. The settings plumbing mirrors `calendarAutoStartMode`: persist to a namespaced key → post `.macParakeetMeetingAutoStopDidChange` → `Telemetry.send(.settingChanged(...))`. The toggle lives in the Meeting Recording settings card.
+A single `meetingAutoStopEnabled` preference (default `false`), mirroring the opt-in posture of calendar auto-start. Staged behind a new `AppFeatures.meetingAutoStopEnabled` compile-time flag. The setting persists to a namespaced key and posts `.macParakeetMeetingAutoStopDidChange`. The toggle lives in the Meeting Recording settings card.
 
 ### 6. Pure policy + thin coordinator
 
@@ -124,9 +124,9 @@ A pure `MeetingAutoStopPolicy.evaluate(...)` in `MacParakeetCore` (mirrors `Meet
 - Toggle in the Meeting Recording settings card; add to `SettingsSearchIndex`.
 - `AppFeatures.meetingAutoStopEnabled` flag for staged rollout.
 
-### Historical telemetry instrumentation (now inert in fork builds)
-- `meeting_auto_stop_proposed{reason}` · `meeting_auto_stop_confirmed{reason}` · `meeting_auto_stop_vetoed{reason}` · `.settingChanged(setting: .meetingAutoStop)`.
-- These inherited event definitions remain as compatibility code. Fork builds do not configure a telemetry transport or send them remotely.
+### Removed historical telemetry instrumentation
+- Historical events were `meeting_auto_stop_proposed{reason}`, `meeting_auto_stop_confirmed{reason}`, `meeting_auto_stop_vetoed{reason}`, and `.settingChanged(setting: .meetingAutoStop)`.
+- These events and their send sites were removed in September 2026. This list records historical behavior only and is not an implementation requirement.
 
 ## Phased Rollout
 
@@ -136,6 +136,6 @@ A pure `MeetingAutoStopPolicy.evaluate(...)` in `MacParakeetCore` (mirrors `Meet
 
 ## Open Questions
 
-- **Default grace values:** implemented at 15s after recognized-app termination and 4 min continuous quiet on both channels; tune from field telemetry before any flag-on release.
+- **Default grace values:** implemented at 15s after recognized-app termination and 4 min continuous quiet on both channels; tune only from explicit local validation or user-reported evidence.
 - **Veto countdown vs silent stop:** resolved in favor of the veto countdown; do not silently stop without a new owner decision.
 - **App-open-but-call-ended:** when a recognized app stays open after the call ends, only silence will catch it until ADR-024's attribution layer exists. Acceptable for the default-off validation build.
