@@ -17,18 +17,17 @@ from run_tests import executed_count, parse_tests, partition, run_command
 
 
 class ClassificationTests(unittest.TestCase):
-    def test_prose_only(self):
-        paths = ["README.md", "AGENTS.md", "CLAUDE.md", "docs/test.md",
-                 "plans/one.md", "spec/contracts/cli.md", "integrations/README.md",
-                 "Sources/MacParakeetCore/Audio/README.md"]
+    def test_documentation_and_tickets_only(self):
+        paths = [".tickets/todo/033-example.md", "README.md", "AGENTS.md", "CLAUDE.md",
+                 "docs/schema.json", "plans/one.md", "spec/contracts/cli.md",
+                 "integrations/README.md", "Sources/MacParakeetCore/Audio/README.md"]
         self.assertEqual(
             classify(paths), {"code": False, "release": False, "shipping": False}
         )
 
     def test_unknown_inputs_and_test_fixtures_get_code_checks(self):
         for path in ["Sources/Core.swift", "Tests/test.swift", "Tests/fixture.md",
-                     "docs/schema.json", "unknown-input", ".swift-format",
-                     "Sources/CLI/CHANGELOG.md"]:
+                     "unknown-input", ".swift-format", "Sources/CLI/CHANGELOG.md"]:
             with self.subTest(path=path):
                 self.assertTrue(classify([path])["code"])
 
@@ -63,19 +62,49 @@ class ClassificationTests(unittest.TestCase):
 
     def test_mixed_changes_do_not_skip_code_or_shipping(self):
         self.assertEqual(
-            classify(["README.md", "Sources/Core.swift"]),
+            classify([".tickets/todo/033-example.md", "Sources/Core.swift"]),
             {"code": True, "release": False, "shipping": True},
         )
 
-    def test_main_and_manual_run_all_checks(self):
-        for event in ["push", "workflow_dispatch"]:
-            with tempfile.TemporaryDirectory() as directory:
+    def test_push_classifies_complete_change_and_retains_release_validation(self):
+        for changed, expected in [
+            (
+                b".tickets/todo/033-example.md\0docs/guide.json\0",
+                "code=false\nrelease=false\nshipping=false\n",
+            ),
+            (
+                b"README.md\0Sources/Core.swift\0",
+                "code=true\nrelease=true\nshipping=true\n",
+            ),
+        ]:
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as directory:
                 output = Path(directory) / "outputs"
-                with patch.dict(os.environ, {"GITHUB_EVENT_NAME": event, "GITHUB_OUTPUT": str(output)}):
+                environment = {
+                    "GITHUB_EVENT_NAME": "push",
+                    "PUSH_BASE_SHA": "before123",
+                    "GITHUB_SHA": "head456",
+                    "GITHUB_OUTPUT": str(output),
+                }
+                with patch.dict(os.environ, environment), patch(
+                    "classify_changes.subprocess.check_output", return_value=changed
+                ) as git:
                     classify_main()
-                self.assertEqual(
-                    output.read_text(), "code=true\nrelease=true\nshipping=true\n"
-                )
+                self.assertEqual(output.read_text(), expected)
+                git.assert_called_once_with([
+                    "git", "diff", "--name-only", "--no-renames", "-z",
+                    "before123..head456",
+                ])
+
+    def test_manual_run_all_checks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "outputs"
+            with patch.dict(os.environ, {
+                "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_OUTPUT": str(output)
+            }):
+                classify_main()
+            self.assertEqual(
+                output.read_text(), "code=true\nrelease=true\nshipping=true\n"
+            )
 
     def test_pr_diff_includes_old_and_new_rename_paths(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -131,6 +160,16 @@ class WorkflowTests(unittest.TestCase):
         self.prototype_job = self.workflow.split("\n  compact-transcript-prototype:\n", 1)[1].split("\n  debug-tests:\n", 1)[0]
         self.github_release_workflow = Path(".github/workflows/release.yml").read_text()
         self.github_release_job = self.github_release_workflow.split("\n  release:\n", 1)[1]
+
+    def test_documentation_only_pushes_do_not_start_ci(self):
+        triggers = self.workflow.split("\npermissions:\n", 1)[0]
+        push = triggers.split("  push:\n", 1)[1].split("  pull_request:\n", 1)[0]
+        for path in [".tickets/**", "docs/**", "plans/**", "spec/**", "integrations/**",
+                     '"*.md"', "Sources/**/README.md"]:
+            self.assertIn(f"      - {path}\n", push)
+        self.assertIn("  pull_request:\n", triggers)
+        self.assertIn("  workflow_dispatch:\n", triggers)
+        self.assertIn("PUSH_BASE_SHA: ${{ github.event.before }}", self.workflow)
 
     def test_compact_transcript_prototype_is_self_contained_and_downloadable(self):
         self.assertIn("github.event_name == 'pull_request'", self.prototype_job)

@@ -3,6 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - .tickets/**
+      - docs/**
+      - plans/**
+      - spec/**
+      - integrations/**
+      - "*.md"
+      - Sources/**/README.md
   pull_request:
   workflow_dispatch:
     inputs:
@@ -44,6 +52,7 @@ jobs:
         id: classify
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
         run: python3 scripts/ci/classify_changes.py
 
   compact-transcript-prototype:
@@ -303,7 +312,7 @@ jobs:
           retention-days: 7
 
   # Preserve the previous check name as a stable, fail-closed merge gate.
-  # Do not use workflow-level path ignores: prose PRs also need a final status.
+  # Pull requests remain unfiltered so prose PRs also receive this final status.
   swift-test:
     needs: [changes, debug-tests, swift6, release]
     if: always()
