@@ -76,7 +76,9 @@ override it. Release runs are serialized. Verification completes before the work
 pushes its annotated tag and creates the GitHub Release. Failed publication cleanup
 removes draft releases and tags when GitHub confirms their incomplete state. The next
 run applies the same cleanup to an interrupted automation tag that has no matching
-release.
+release. A version tag with a different annotation, such as the intentional `v0.7.3`
+baseline, is preserved when it has no GitHub Release and remains available to release
+planning.
 
 Default debug/release dependencies still include WhisperKit. Tests and product
 behavior are unchanged; no regression suite has been removed.
