@@ -27,6 +27,7 @@ rm -f "$DMG_PATH"
 BUILD_SYSTEM=xcodebuild \
 BUILD_SOURCE=github-actions-owner-development \
 VERSION=0.0.0 \
+REQUIRE_MEETING_ECHO_ASSETS=1 \
 BUILD_NUMBER="$(date -u +%Y%m%d%H%M%S)" \
   bash scripts/dist/build_app_bundle.sh
 
