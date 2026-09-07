@@ -14,6 +14,16 @@ LOG_FILE="${TMPDIR:-/tmp}/macparakeet-dev.log"
 BUILD_LOG_FILE="${TMPDIR:-/tmp}/macparakeet-dev-build.log"
 APP_MACOS_BIN="$APP_BUNDLE/Contents/MacOS/MacParakeet"
 
+# Normal dev builds must exercise the same meeting echo path as releases.
+# BUNDLE_MEETING_ECHO_ASSETS=0 is an explicit development-only opt-out.
+export BUNDLE_MEETING_ECHO_ASSETS="${BUNDLE_MEETING_ECHO_ASSETS:-1}"
+if [[ "$BUNDLE_MEETING_ECHO_ASSETS" == "0" ]]; then
+  export REQUIRE_MEETING_ECHO_ASSETS="${REQUIRE_MEETING_ECHO_ASSETS:-0}"
+else
+  export REQUIRE_MEETING_ECHO_ASSETS=1
+fi
+. "$ROOT_DIR/scripts/dist/bundle_meeting_echo_assets.sh"
+
 pick_codesign_identity() {
   local preferred="${MACPARAKEET_CODESIGN_IDENTITY:-}"
   if [[ -n "$preferred" ]]; then
@@ -125,6 +135,13 @@ mkdir -p "$BUNDLE_FW_DIR"
 sync_frameworks_into_bundle "$PRODUCT_DIR" "$BUNDLE_FW_DIR"
 sync_frameworks_into_bundle "$PKGFW_DIR" "$BUNDLE_FW_DIR"
 
+bundle_meeting_echo_assets "$APP_BUNDLE" 0
+if [[ "${BUNDLE_MEETING_ECHO_ASSETS:-1}" == "0" ]]; then
+  # Remove stale derived assets from a previous normal dev build.
+  rm -rf "$APP_BUNDLE/Contents/Resources/MeetingEchoSuppression"
+  echo "WARNING: meeting echo cancellation is disabled for this dev build; microphone echo may be labeled Me." >&2
+fi
+
 # The xcodebuild-produced binary carries an absolute PackageFrameworks rpath that
 # works in-place but fails once the app is launched as a signed bundle. Rewrite
 # it to use the embedded Frameworks directory instead.
@@ -184,6 +201,12 @@ if [[ "$CODESIGN_IDENTITY" == "-" ]]; then
 fi
 codesign --force --sign "$CODESIGN_IDENTITY" --options runtime \
   --entitlements "$SIGN_ENTITLEMENTS" --deep "$APP_BUNDLE"
+
+# Check the final signed assets before stopping the working app or launching.
+VERIFY_CODE_SIGNATURES=1 VERIFY_MEETING_ECHO_RUNTIME=1 \
+  MACPARAKEET_CODESIGN_IDENTITY="$CODESIGN_IDENTITY" \
+  MACPARAKEET_ECHO_PROBE_ENTITLEMENTS="$SIGN_ENTITLEMENTS" \
+  "$ROOT_DIR/scripts/dist/verify_meeting_echo_assets.sh" "$APP_BUNDLE"
 
 echo "[3/5] Stopping existing MacParakeet processes…"
 pkill -f "/Applications/MacParakeet.app/Contents/MacOS/MacParakeet" || true

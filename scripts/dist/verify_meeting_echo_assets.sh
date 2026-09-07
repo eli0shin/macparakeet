@@ -167,4 +167,21 @@ if [[ "$VERIFY_CODE_SIGNATURES" == "1" ]]; then
   codesign --verify --strict --verbose=2 "$LIB_PATH"
 fi
 
+if [[ "${VERIFY_MEETING_ECHO_RUNTIME:-0}" == "1" ]]; then
+  # Use a signed, hardened process with the caller's identity and entitlements.
+  # File/symbol checks alone cannot detect missing transitive libraries or a
+  # model that the runtime cannot initialize.
+  probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/macparakeet-echo-probe.XXXXXX")"
+  trap 'rm -rf "$probe_dir"' EXIT
+  xcrun clang "$ROOT_DIR/scripts/dist/meeting_echo_runtime_probe.c" \
+    -Wl,-rpath,"$APP_PATH/Contents/Frameworks" -o "$probe_dir/probe"
+  probe_sign_args=(--force --sign "${MACPARAKEET_CODESIGN_IDENTITY:--}" --options runtime)
+  if [[ -n "${MACPARAKEET_ECHO_PROBE_ENTITLEMENTS:-}" ]]; then
+    probe_sign_args+=(--entitlements "$MACPARAKEET_ECHO_PROBE_ENTITLEMENTS")
+  fi
+  codesign "${probe_sign_args[@]}" "$probe_dir/probe"
+  "$probe_dir/probe" "$LIB_PATH" "$MODEL_PATH"
+  echo "Meeting echo runtime initialized and processed a frame."
+fi
+
 echo "Meeting echo assets verified: $(basename "$MODEL_PATH")"
