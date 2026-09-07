@@ -166,6 +166,8 @@ scripts/dev/run_app.sh    # build, sign, launch
 
 The dev script creates a signed `.app` bundle so macOS grants mic and accessibility permissions. It disables target-level Xcode signing, then signs the finished bundle with the best available local identity. Override with `MACPARAKEET_CODESIGN_IDENTITY="Your Identity"` if needed.
 
+Dev builds use the release echo-asset packager. The first build prepares the LocalVQE runtime and model (network access and CMake are required); later builds reuse cached assets. Before launch, the script checks the packaged assets and signatures, then loads the model and processes a frame in a signed, hardened test process with the dev app's signing identity and entitlements. A failed check stops launch before the existing app is stopped. For development that does not need meeting echo cancellation, use `BUNDLE_MEETING_ECHO_ASSETS=0 scripts/dev/run_app.sh`. This prints a warning: microphone echo can be labeled “Me.” Do not use that opt-out to test meeting transcript quality.
+
 ## Command line and agent automation
 
 `macparakeet-cli` is the public automation surface for MacParakeet: the canonical Swift-native interface to Parakeet TDT on Apple Silicon, plus the scriptable entry point for MacParakeet's local library, model cache, prompts, meetings, and JSON contracts. Use [`integrations/README.md`](integrations/README.md) for the agent-facing automation guide and [`Sources/CLI/CHANGELOG.md`](Sources/CLI/CHANGELOG.md) for compatibility notes.

@@ -116,7 +116,12 @@ Negative / accepted risks:
   by a dedicated harness metric (PR #669) rather than assumed away.
 - The bundled LocalVQE dylib + model are a permanent
   signing/notarization/asset-gate liability
-  (`REQUIRE_MEETING_ECHO_ASSETS=1` build gate).
+  (`REQUIRE_MEETING_ECHO_ASSETS=1` build gate). Dev launch also requires these
+  assets by default and uses the same packaging function as release builds.
+  After signing, dev launch verifies model initialization and frame processing
+  in a hardened test process with matching signing identity and entitlements.
+  An explicit `BUNDLE_MEETING_ECHO_ASSETS=0` development opt-out warns that
+  microphone echo can be labeled “Me”; it is not a meeting-quality test mode.
 - Render costs compute after each speakers-playback meeting; bounded by
   the deadline policy and eliminated for no-echo meetings by the probe or
   very long meetings by the duration guard.
