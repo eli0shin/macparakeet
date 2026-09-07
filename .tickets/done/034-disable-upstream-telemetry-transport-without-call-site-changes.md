@@ -41,12 +41,18 @@ Only a proven correctness or security defect inside the allowed files can block 
 
 ## Acceptance criteria
 
-- [ ] Every telemetry call site and event definition is byte-for-byte unchanged.
-- [ ] The existing telemetry UI remains present, is disabled, and cannot enable telemetry.
-- [ ] No upstream telemetry URL or environment override remains available to production composition.
-- [ ] App and CLI always use a no-op telemetry transport.
-- [ ] Automatic crash upload cannot start.
-- [ ] Preferences, UserDefaults, environment variables, CLI flags, and dependency injection cannot enable remote telemetry.
-- [ ] No ADR, spec, README, changelog, test, or unrelated file changes.
-- [ ] The diff is limited to the minimum telemetry setup, URL, enablement, and existing-control files.
-- [ ] Existing focused build and tests pass without modifying tests.
+- [x] Every telemetry call site and event definition is byte-for-byte unchanged.
+- [x] The existing telemetry UI remains present, is disabled, and cannot enable telemetry.
+- [x] No upstream telemetry URL or environment override remains available to production composition.
+- [x] App and CLI always use a no-op telemetry transport.
+- [x] Automatic crash upload cannot start.
+- [x] Preferences, UserDefaults, environment variables, CLI flags, and dependency injection cannot enable remote telemetry.
+- [x] No ADR, spec, README, changelog, test, or unrelated file changes.
+- [x] The diff is limited to the minimum telemetry setup, URL, enablement, and existing-control files.
+- [x] Existing focused build and tests pass without modifying tests.
+
+## Resolution
+
+PR #37 merged as `8290e16e`. The implementation changed three allowed composition/control files with 8 additions and 3 deletions. CI run `34154523039` passed, and release run `34155638464` published signed and notarized `v0.7.5` for the exact merge SHA.
+
+Downloaded release asset SHA-256: `f42b8bf6b20839db06360fd84a64ba12d53e0259f0d274de79b948557843763b`. Direct verification passed Developer ID identity/team checks, notarization and staples, Gatekeeper assessment, nested signatures, packaged helpers, privacy-surface checks, and isolated launch outside the checkout. Packaged executables contain no `MACPARAKEET_TELEMETRY_URL`, `MACPARAKEET_TELEMETRY_ENABLED`, or `/telemetry` transport marker. The remaining shared `https://macparakeet.com/api` string belongs to the preserved user-initiated feedback service.
