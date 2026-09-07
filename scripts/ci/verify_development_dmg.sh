@@ -3,6 +3,7 @@ set -euo pipefail
 
 DMG_PATH="${1:-dist/MacParakeet-owner-development-build.dmg}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$ROOT_DIR/scripts/dist/meeting_echo_asset_defaults.sh"
 MOUNT_DIR="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/macparakeet-development-mount.XXXXXX")"
 MOUNTED=0
 
@@ -87,6 +88,15 @@ done < <(
   find "$APP_PATH/Contents/MacOS" -maxdepth 1 -type f -perm -111 -print0
 )
 verify_adhoc_signature "$APP_PATH"
+
+REQUIRE_MEETING_ECHO_ASSETS=1 \
+STRICT_MEETING_ECHO_ASSETS=1 \
+VERIFY_CODE_SIGNATURES=1 \
+VERIFY_MEETING_ECHO_RUNTIME=1 \
+MACPARAKEET_MEETING_ECHO_MODEL_NAME="$DEFAULT_MEETING_ECHO_MODEL_NAME" \
+MACPARAKEET_CODESIGN_IDENTITY=- \
+MACPARAKEET_ECHO_PROBE_ENTITLEMENTS="$ROOT_DIR/scripts/dist/YtDlpRuntime.entitlements" \
+  bash "$ROOT_DIR/scripts/dist/verify_meeting_echo_assets.sh" "$APP_PATH"
 
 bash "$ROOT_DIR/scripts/ci/verify_downloadable_app.sh" "$APP_PATH"
 echo "Verified ad-hoc-signed owner development DMG: $DMG_PATH"

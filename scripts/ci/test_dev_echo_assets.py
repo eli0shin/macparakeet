@@ -51,6 +51,31 @@ class DevEchoAssetsTests(unittest.TestCase):
         return subprocess.run(["bash", str(self.root / "scripts/dev/run_app.sh")],
                               env=self.env, capture_output=True, text=True, timeout=30)
 
+    def run_asset_verifier(self):
+        env = self.env.copy()
+        env.update(REQUIRE_MEETING_ECHO_ASSETS="1",
+                   MACPARAKEET_MEETING_ECHO_MODEL_NAME="localvqe-v1.4-aec-200K-f32.gguf")
+        return subprocess.run(
+            ["bash", str(self.root / "scripts/dist/verify_meeting_echo_assets.sh"),
+             str(self.app)],
+            env=env, capture_output=True, text=True, timeout=30)
+
+    def test_required_asset_verification_fails_without_library(self):
+        model = self.app / "Contents/Resources/MeetingEchoSuppression/localvqe-v1.4-aec-200K-f32.gguf"
+        model.parent.mkdir(parents=True)
+        model.touch()
+        result = self.run_asset_verifier()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("assets must be bundled together", result.stderr)
+
+    def test_required_asset_verification_fails_without_model(self):
+        library = self.app / "Contents/Frameworks/liblocalvqe.dylib"
+        library.parent.mkdir(parents=True)
+        library.touch()
+        result = self.run_asset_verifier()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("assets must be bundled together", result.stderr)
+
     def test_default_launch_fails_without_assets_before_stopping_app(self):
         result = self.run_dev()
         self.assertNotEqual(result.returncode, 0)

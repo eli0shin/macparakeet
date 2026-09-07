@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@036-include-meeting-echo-assets-in-owner-development-artifact
 Tags:
   - ready-for-agent
 Parent:

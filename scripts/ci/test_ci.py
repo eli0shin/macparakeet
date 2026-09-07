@@ -645,6 +645,8 @@ class DevelopmentArtifactScriptTests(unittest.TestCase):
         self.assertNotIn("BUNDLE_YTDLP=0", self.publish)
         self.assertNotIn("BUNDLE_NODE=0", self.publish)
         self.assertNotIn("FFMPEG_PATH", self.publish)
+        self.assertIn("REQUIRE_MEETING_ECHO_ASSETS=1", self.publish)
+        self.assertNotIn("BUNDLE_MEETING_ECHO_ASSETS=0", self.publish)
         for sensitive_input in ["DEVELOPMENT_ID_CERTIFICATE", "NOTARY_APPLE_ID", "NOTARY_APP_SPECIFIC_PASSWORD"]:
             self.assertNotIn(sensitive_input, self.publish)
 
@@ -664,7 +666,10 @@ class DevelopmentArtifactScriptTests(unittest.TestCase):
             "unexpected top-level item", "absolute bundle symlink",
             "codesign --verify --deep --strict", "codesign --verify --strict",
             "Signature=adhoc", "unexpectedly has a signing authority",
-            "verify_downloadable_app.sh",
+            "verify_downloadable_app.sh", "verify_meeting_echo_assets.sh",
+            "REQUIRE_MEETING_ECHO_ASSETS=1", "VERIFY_CODE_SIGNATURES=1",
+            "VERIFY_MEETING_ECHO_RUNTIME=1", "DEFAULT_MEETING_ECHO_MODEL_NAME",
+            "YtDlpRuntime.entitlements",
         ]:
             with self.subTest(expected=expected):
                 self.assertIn(expected, self.verify)
