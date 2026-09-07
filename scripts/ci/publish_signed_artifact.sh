@@ -7,20 +7,44 @@ NOTARYTOOL_PROFILE="macparakeet-ci-${GITHUB_RUN_ID:-local}-$$"
 KEYCHAIN_PATH="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/macparakeet-signing-${GITHUB_RUN_ID:-local}-$$.keychain-db"
 CERTIFICATE_PATH="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/macparakeet-developer-id-${GITHUB_RUN_ID:-local}-$$.p12"
 KEYCHAIN_PASSWORD=""
+KEYCHAIN_SEARCH_LIST_CAPTURED=0
+PREVIOUS_USER_KEYCHAINS=()
 
 fail() {
   echo "error: $*" >&2
   exit 1
 }
 
+capture_user_keychain_search_list() {
+  local keychain_list
+  local keychain_path
+
+  keychain_list="$(security list-keychains -d user)"
+  while IFS= read -r keychain_path; do
+    keychain_path="${keychain_path#"${keychain_path%%[![:space:]]*}"}"
+    [[ -z "$keychain_path" ]] && continue
+    if [[ "$keychain_path" != \"*\" ]]; then
+      fail "Could not preserve the user keychain search list."
+    fi
+    PREVIOUS_USER_KEYCHAINS+=("${keychain_path:1:${#keychain_path}-2}")
+  done <<<"$keychain_list"
+  KEYCHAIN_SEARCH_LIST_CAPTURED=1
+}
+
 cleanup() {
   rm -f "$CERTIFICATE_PATH"
+  if [[ "$KEYCHAIN_SEARCH_LIST_CAPTURED" == "1" ]]; then
+    security list-keychains -d user -s "${PREVIOUS_USER_KEYCHAINS[@]}" >/dev/null 2>&1 || true
+    KEYCHAIN_SEARCH_LIST_CAPTURED=0
+  fi
   if [[ -n "$KEYCHAIN_PASSWORD" ]]; then
     security delete-keychain "$KEYCHAIN_PATH" >/dev/null 2>&1 || true
   fi
   rm -f "$KEYCHAIN_PATH"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 required_variables=(
   SIGNED_ARTIFACT_VERSION
@@ -53,9 +77,11 @@ fi
 
 rm -f "$TRUSTED_DMG" "$KEYCHAIN_PATH" "$CERTIFICATE_PATH"
 KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+capture_user_keychain_search_list
 security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 security set-keychain-settings -lut 7200 "$KEYCHAIN_PATH"
 security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+security list-keychains -d user -s "$KEYCHAIN_PATH" "${PREVIOUS_USER_KEYCHAINS[@]}"
 
 if ! printf '%s' "$DEVELOPMENT_ID_CERTIFICATE_BASE64" | base64 --decode >"$CERTIFICATE_PATH"; then
   fail "DEVELOPMENT_ID_CERTIFICATE_BASE64 is not valid base64."
