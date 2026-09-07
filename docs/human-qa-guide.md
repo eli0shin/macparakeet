@@ -48,8 +48,8 @@ To QA a specific PR branch, run that script from inside **that branch's checkout
 worktree** — SwiftPM pins build paths per worktree, so build from where the branch
 actually lives.
 
-**Or** QA the Sparkle release candidate DMG — closest to what users receive. Use this
-for release-gating checks (signing, notarization, first-run onboarding, auto-update).
+**Or** QA the DMG from a GitHub Release — closest to what users receive. Use this
+for release-gating checks (signing, notarization, Gatekeeper, first-run onboarding).
 
 ## First-run gotchas for the dev build
 

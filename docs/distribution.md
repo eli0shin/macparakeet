@@ -163,14 +163,14 @@ The artifact is named `MacParakeet-signed-notarized-ci-test` and contains one
 `MacParakeet-signed-notarized-ci-test.dmg`. GitHub wraps that DMG in its normal
 artifact ZIP. Retention is seven days.
 
-This is a **CI test artifact**, not an official release. The workflow does not
-upload it to R2, edit the Sparkle appcast, create a GitHub release, or update
-Homebrew. The official release procedure remains the separate process below.
+This is a **CI test artifact**, not a release. It proves the signing and
+notarization path works; it does not create a tag or a GitHub Release. Releases
+are cut automatically from `main` — see section 3.
 
 #### One-time repository-owner setup
 
 1. In the Apple Developer portal, create or use a **Developer ID Application**
-   certificate for this fork owner's team, `3ZK76CKTXW`. Import the certificate
+   certificate for this fork owner's team, `GY6L5GL2Z7`. Import the certificate
    and private key on a trusted Mac, then export both from Keychain Access as a
    password-protected `.p12`. Do not export an Apple Development certificate.
 2. Create an Apple ID app-specific password for the Apple ID that can submit
@@ -184,8 +184,8 @@ Homebrew. The official release procedure remains the separate process below.
    |---|---|
    | `DEVELOPMENT_ID_CERTIFICATE_BASE64` | Base64 of the complete Developer ID `.p12` |
    | `DEVELOPMENT_ID_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` |
-   | `DEVELOPER_ID_APPLICATION_IDENTITY` | Full identity, for example `Developer ID Application: Elimelech Oshinsky (3ZK76CKTXW)` |
-   | `APPLE_TEAM_ID` | `3ZK76CKTXW` |
+   | `DEVELOPER_ID_APPLICATION_IDENTITY` | Full identity, for example `Developer ID Application: Elimelech Oshinsky (GY6L5GL2Z7)` |
+   | `APPLE_TEAM_ID` | `GY6L5GL2Z7` |
    | `NOTARY_APPLE_ID` | Apple ID email used for notarization |
    | `NOTARY_APP_SPECIFIC_PASSWORD` | Apple ID app-specific password |
 
@@ -234,7 +234,7 @@ xcrun stapler validate /Volumes/MacParakeet/MacParakeet.app
 hdiutil detach /Volumes/MacParakeet
 ```
 
-The signature details must show `TeamIdentifier=3ZK76CKTXW`, and Gatekeeper must
+The signature details must show `TeamIdentifier=GY6L5GL2Z7`, and Gatekeeper must
 report a notarized Developer ID source. Then complete the Finder launch check on
 a normal Mac.
 
@@ -247,7 +247,7 @@ Prereqs:
 ```bash
 xcrun notarytool store-credentials "AC_PASSWORD" \
   --apple-id "developer@example.com" \
-  --team-id "3ZK76CKTXW" \
+  --team-id "GY6L5GL2Z7" \
   --password "app-specific-password"
 ```
 
@@ -269,44 +269,25 @@ Outputs:
 - `dist/MacParakeet.app` (signed + stapled)
 - `dist/MacParakeet.dmg` (signed + stapled)
 
-## 3) Upload to Cloudflare R2
+## 3) Publish
 
-The signed DMG is hosted on Cloudflare R2 at `downloads.macparakeet.com`.
+GitHub Releases on `eli0shin/macparakeet` is the only distribution channel.
+This fork does not publish to Cloudflare R2, Cloudflare Pages, a Sparkle
+appcast, or any Homebrew tap or cask.
 
-**Bucket:** `macparakeet-downloads` (Cloudflare R2)
-**Custom domain:** `downloads.macparakeet.com`
-**Public URL:** `https://downloads.macparakeet.com/MacParakeet.dmg`
+Publishing is automated and requires no manual step. Every green push to `main`
+derives the next version from the most recent git tag, pushes the tag, builds,
+signs, notarizes, verifies, and creates the release with `MacParakeet.dmg`
+attached. Users download from
+<https://github.com/eli0shin/macparakeet/releases/latest>.
 
-Upload a new release:
+The default bump is patch. Include `[minor]` or `[major]` in a commit message
+to bump further.
 
-```bash
-npx wrangler r2 object put macparakeet-downloads/MacParakeet.dmg \
-  --file dist/MacParakeet.dmg \
-  --content-type "application/x-apple-diskimage" \
-  --remote
-```
+The manual steps below exist for local verification and for diagnosing a failed
+automated run. They stop at a verified local DMG; they do not publish.
 
-Verify:
-
-```bash
-curl -sI https://downloads.macparakeet.com/MacParakeet.dmg | head -5
-```
-
-Because Cloudflare may serve a cached object briefly, also verify with a cache-busting query:
-
-```bash
-curl -sI "https://downloads.macparakeet.com/MacParakeet.dmg?ts=$(date +%s)" | head -10
-```
-
-Confirm `content-length`, `last-modified`, and `etag` match the newly uploaded DMG.
-
-## Full release workflow
-
-**IMPORTANT:** Follow these steps in exact order. Do NOT re-upload the DMG after signing for Sparkle — the file size must match the appcast signature. If another agent is running a parallel build, coordinate to avoid overwriting the R2 object.
-
-This pipeline serves **two audiences** with the same DMG:
-- **New users** download from `downloads.macparakeet.com/MacParakeet.dmg`
-- **Existing users** get prompted via Sparkle auto-update (checks `appcast.xml`)
+## Local release build
 
 ### Pre-flight
 
@@ -326,28 +307,24 @@ swift test
 # file is the expected entitlement surface for the final app.
 plutil -p scripts/dist/MacParakeet.entitlements
 
-# Check currently deployed version
-curl -s "https://macparakeet.com/appcast.xml" | grep -E "sparkle:version|sparkle:shortVersionString"
+# Check the currently published version
+gh release view --repo eli0shin/macparakeet --json tagName -q .tagName
 ```
 
-Decide on the version number (see Version bumping below).
+### Version
 
-### Version bumping
-
-The build script accepts `VERSION` and `BUILD_NUMBER` env vars:
+CI derives the version automatically. For a local build, the script accepts
+`VERSION` and `BUILD_NUMBER` env vars:
 
 ```bash
 VERSION=0.1.1 scripts/dist/build_app_bundle.sh   # set version explicitly
 scripts/dist/build_app_bundle.sh                   # local/dev only: VERSION defaults to 0.0.0
 ```
 
-- **Patch bump** (0.1.x): Bug fixes, UX improvements to existing features
-- **Minor bump** (0.x.0): New user-facing features (e.g., speaker diarization GUI, batch processing)
-- **Build number**: Auto-generated UTC timestamp — always increases, which is what Sparkle uses to detect updates
-- Both new downloads (R2 DMG) and existing users (Sparkle appcast) get the same DMG
-- **Release builds must set `VERSION=X.Y.Z` explicitly.** The script's default
-  `0.0.0` is intentionally non-release metadata so local bundles cannot be
-  mistaken for a production Sparkle update.
+- **Build number**: auto-generated UTC timestamp, always increasing.
+- The script's default `0.0.0` is intentionally non-release metadata, and
+  `verify_release_version.sh` rejects it during signing so a local bundle
+  cannot be mistaken for a release.
 
 ### Step 1: Build
 
@@ -385,128 +362,37 @@ scripts/dev/release_demo_smoke.sh \
 # Expected: local health, transcription, and export smoke passes with evidence
 ```
 
-### Step 3: Upload DMG to R2
+### Step 3: Verify the DMG
 
 ```bash
-npx wrangler r2 object put macparakeet-downloads/MacParakeet.dmg \
-  --file dist/MacParakeet.dmg \
-  --content-type "application/x-apple-diskimage" \
-  --remote
+EXPECTED_TEAM_ID=GY6L5GL2Z7 \
+EXPECTED_AUTHORITY="Developer ID Application: Elimelech Oshinsky (GY6L5GL2Z7)" \
+  bash scripts/ci/verify_signed_dmg.sh dist/MacParakeet.dmg
 ```
 
-Verify — **the file size MUST match `dist/MacParakeet.dmg` exactly:**
-```bash
-LOCAL_SIZE=$(stat -f%z dist/MacParakeet.dmg)
-REMOTE_SIZE=$(curl -sI "https://downloads.macparakeet.com/MacParakeet.dmg?ts=$(date +%s)" | grep -i content-length | awk '{print $2}' | tr -d '\r')
-echo "Local: $LOCAL_SIZE  Remote: $REMOTE_SIZE"
-# These MUST be identical. If not, re-upload — another process may have overwritten the object.
-```
-
-### Step 4: Sign DMG for Sparkle
+Then mount it and check the payload:
 
 ```bash
-.build/artifacts/sparkle/Sparkle/bin/sign_update dist/MacParakeet.dmg
+hdiutil attach dist/MacParakeet.dmg
+bash scripts/ci/verify_downloadable_app.sh /Volumes/MacParakeet/MacParakeet.app
+bash scripts/ci/verify_packaged_app_launch.sh /Volumes/MacParakeet/MacParakeet.app
+hdiutil detach /Volumes/MacParakeet
 ```
 
-This outputs two values you need for the appcast:
-```
-sparkle:edSignature="..." length="..."
-```
-
-**The `length` must match the R2 `content-length` from Step 3.** If they differ, something went wrong — do NOT proceed.
-
-### Step 5: Update appcast.xml
-
-Edit `~/code/macparakeet-website/public/appcast.xml`. **Prepend** a new `<item>` at the top of the channel and keep previous items for compatibility/fallback metadata. Sparkle 2 shows the selected newest item's `<description>` only; it does not concatenate descriptions from skipped intermediate releases. Write the newest item's release notes so they stand on their own for users upgrading from any older supported build.
-
-New item needs:
-- `sparkle:version` = build number from `dist/MacParakeet.app/Contents/Info.plist` (`CFBundleVersion`)
-- `sparkle:shortVersionString` = version from Info.plist (`CFBundleShortVersionString`)
-- `sparkle:edSignature` and `length` from Step 4
-- `pubDate` in RFC 2822 format: `date -R`
-- Release notes in `<description>` CDATA block — standalone notes for this update, including the important user-facing changes since the previous public release
-- **Enclosure URL must include a cache-busting query param:** `?v={BUILD_NUMBER}`. Cloudflare CDN caches by full URL including query params, so without this Sparkle may download a stale cached DMG and fail with "improperly signed". R2 ignores query params and serves the correct object.
-
-Keep ~10 most recent items. Prune older ones when the list gets long. Only the selected newest item's enclosure URL is used for download; older items preserve compatibility metadata and historical notes, but their descriptions are not shown to skip-version users.
-
-Get build info:
-```bash
-plutil -p dist/MacParakeet.app/Contents/Info.plist | grep -E "CFBundleVersion|CFBundleShortVersionString"
-```
-
-### Step 6: Deploy website
-
-```bash
-cd ~/code/macparakeet-website
-git add public/appcast.xml
-git commit -m "Update appcast.xml with vX.Y.Z build BUILDNUMBER"
-git push
-# Then deploy to Cloudflare Pages:
-npx astro build && npx wrangler pages deploy dist --project-name macparakeet-website --branch main
-```
-
-Verify appcast is live:
-```bash
-curl -s "https://macparakeet.com/appcast.xml?ts=$(date +%s)" | grep "sparkle:version"
-```
-
-### Step 7: Verify end-to-end
-
-1. Confirm R2 file size matches appcast `length`
-2. Confirm appcast `sparkle:version` is newer than the installed app's build number
-3. Launch the app → "Check for Updates..." from the menu bar → should find and validate the update
-4. Confirm the GitHub release `vX.Y.Z` includes an asset named **exactly**
-   `MacParakeet.dmg`. The official Homebrew cask fetches
-   `…/releases/download/v#{version}/MacParakeet.dmg` — the version lives in the
-   tag path, **not** the filename. BrewTestBot cannot autobump the cask until
-   that plain-named asset exists on the new tag. (Attaching only a
-   `MacParakeet-X.Y.Z.dmg` is not enough; v0.6.20 shipped without the plain
-   `MacParakeet.dmg` and the cask could not bump to it.)
-
-## Standalone CLI Homebrew release
-
-The app DMG/Sparkle channel and the standalone CLI Homebrew channel are
-separate releases. The CLI release ships a signed standalone
-`macparakeet-cli` binary attached to a `cli-vX.Y.Z` GitHub release, then
-updates the formula in <https://github.com/moona3k/homebrew-tap>.
-
-Use [`scripts/dist/homebrew-tap-scaffold/HOWTO.md`](../scripts/dist/homebrew-tap-scaffold/HOWTO.md)
-for the exact checklist. At minimum:
-
-1. Bump `Sources/CLI/MacParakeetCLI.swift` and
-   `Sources/CLI/CHANGELOG.md`.
-2. Build `swift build -c release --product macparakeet-cli`.
-3. Sign the binary with Developer ID, notarize the zip, and publish the
-   tarball/checksums to `cli-vX.Y.Z`.
-4. Update `Formula/macparakeet-cli.rb` in `moona3k/homebrew-tap` with the
-   release URL, version, and tarball SHA256.
-5. Verify from the tap:
-
-```bash
-brew reinstall moona3k/tap/macparakeet-cli
-macparakeet-cli --version
-macparakeet-cli health --json
-brew test moona3k/tap/macparakeet-cli
-```
-
-Do not call the CLI fully released until both the GitHub release asset and
-the tap formula are live and the fresh Homebrew install path passes.
+A local build stops here. Publishing happens only through the automated flow in
+section 3.
 
 ### Quick reference (copy-paste)
 
 ```bash
-# Full pipeline — run from macparakeet repo root
+# Local verification build — run from macparakeet repo root
 swift test                                         # pre-flight: all tests must pass
 VERSION=X.Y.Z scripts/dist/build_app_bundle.sh     # set version explicitly
 scripts/dist/sign_notarize.sh
-npx wrangler r2 object put macparakeet-downloads/MacParakeet.dmg \
-  --file dist/MacParakeet.dmg --content-type "application/x-apple-diskimage" --remote
-.build/artifacts/sparkle/Sparkle/bin/sign_update dist/MacParakeet.dmg
-# → Edit ~/code/macparakeet-website/public/appcast.xml with signature + build info
-# → cd ~/code/macparakeet-website && git add -A && git commit && git push
-# → npx astro build && npx wrangler pages deploy dist --project-name macparakeet-website --branch main
-# → Verify: curl -s "https://macparakeet.com/appcast.xml?ts=$(date +%s)" | grep sparkle:version
-# → Upload/copy the GitHub release asset as MacParakeet.dmg for Homebrew
+EXPECTED_TEAM_ID=GY6L5GL2Z7 \
+EXPECTED_AUTHORITY="Developer ID Application: Elimelech Oshinsky (GY6L5GL2Z7)" \
+  bash scripts/ci/verify_signed_dmg.sh dist/MacParakeet.dmg
+# Publishing is automated. Merging to main cuts the release; nothing to run here.
 ```
 
 ### Common pitfalls
@@ -514,11 +400,8 @@ npx wrangler r2 object put macparakeet-downloads/MacParakeet.dmg \
 | Problem | Cause | Fix |
 |---------|-------|-----|
 | App crashes at launch (dyld) | Sparkle.framework missing from bundle | Build script should catch this. If bypassed, re-run `build_app_bundle.sh` |
-| "Improperly signed" update error | R2 file doesn't match appcast signature, OR Cloudflare CDN cached an old DMG | Re-upload the **exact same DMG** you ran `sign_update` on. Verify sizes match. **Always use `?v={BUILD_NUMBER}` in the appcast enclosure URL** to bust Cloudflare's CDN cache |
-| Appcast not updating | Cloudflare Pages cache / build not triggered | Deploy manually: `npx wrangler pages deploy dist --project-name macparakeet-website` |
-| Homebrew cask stays behind appcast | GitHub release is missing `MacParakeet.dmg` on the new `vX.Y.Z` tag | Upload the exact shipped DMG to the GitHub release with the plain filename `MacParakeet.dmg`, then wait for BrewTestBot's autobump cycle |
+| Release job fails before publishing | Signing, notarization, or DMG verification failed | Read the run log; no tag or release is left behind on failure |
 | `notarytool` auth failure | Keychain profile missing | Run `xcrun notarytool store-credentials "AC_PASSWORD"` (see Step 2 above) |
-| Update found but same version | Build number in appcast ≤ installed build | Ensure `sparkle:version` (build number) is strictly greater |
 | Fresh SwiftPM dependency checkout fails with `git: 'submodule' is not a git command` | Xcode's Apple Git cannot find `git-submodule`, even though the shell Git may have it | Re-run `build_app_bundle.sh`; it now detects this mismatch and lends xcodebuild the shell Git helper path. If neither Git has the helper, repair Xcode/Command Line Tools or export `GIT_EXEC_PATH` to a directory containing `git-submodule`. |
 | `notarytool` bus error / crash | Using `--wait` flag | **Never use `xcrun notarytool submit --wait`.** Submit without `--wait`, then poll with `xcrun notarytool info <submission-id>`. See gotcha #1 below. |
 | `notarytool` stays `In Progress` beyond the normal window | Apple accepted upload but the submission is likely stale/stuck | Stop local pollers, discard release artifacts, rebuild/sign from scratch, and submit a fresh archive. Do not continue from orphaned `In Progress` submissions. See gotcha #1a below. |
@@ -570,31 +453,7 @@ Submit the newly-created archive and poll that exact fresh submission ID. Only
 staple, DMG, upload, or update Sparkle after a clean `Accepted` response for the
 artifact you are actually shipping.
 
-#### 2. Cloudflare CDN caches R2 objects — Sparkle cache-busting is mandatory
-
-Cloudflare CDN caches R2 objects with a ~4 hour TTL based on the full URL including query params. If the appcast enclosure URL is a bare `MacParakeet.dmg` without a cache-busting param, Sparkle may download a **stale cached DMG** from a previous release and reject it with "improperly signed".
-
-**The fix:** Always include `?v={BUILD_NUMBER}` in the appcast enclosure URL:
-
-```xml
-<enclosure
-  url="https://downloads.macparakeet.com/MacParakeet.dmg?v=20260329195139"
-  ...
-/>
-```
-
-R2 ignores query params and serves the current object. Cloudflare CDN treats the new URL as a cache miss and fetches fresh. Each build has a unique build number, so each release gets its own cache slot.
-
-**How to verify:** After uploading, compare local and remote file sizes:
-
-```bash
-LOCAL_SIZE=$(stat -f%z dist/MacParakeet.dmg)
-REMOTE_SIZE=$(curl -sI "https://downloads.macparakeet.com/MacParakeet.dmg?v=$(plutil -extract CFBundleVersion raw dist/MacParakeet.app/Contents/Info.plist)" | grep -i content-length | awk '{print $2}' | tr -d '\r')
-echo "Local: $LOCAL_SIZE  Remote: $REMOTE_SIZE"
-# MUST be identical. If not, wait and retry — CDN propagation can take a few seconds.
-```
-
-#### 3. DMG must include Applications symlink
+#### 2. DMG must include Applications symlink
 
 Without `ln -s /Applications` in the DMG staging folder, users run the app from `/Volumes/MacParakeet/` instead of `/Applications/`. macOS TCC will not register apps running from a mounted DMG volume — microphone permission requests silently fail, and the app never appears in System Settings > Privacy & Security > Microphone.
 
@@ -604,19 +463,7 @@ The `sign_notarize.sh` script creates this symlink during DMG creation. If build
 ln -s /Applications dist/dmg-staging/Applications
 ```
 
-#### 4. The DMG uploaded to R2 must be the exact file you signed for Sparkle
-
-The Sparkle `sign_update` tool produces an EdDSA signature over the exact bytes of the DMG file. If a different DMG (even with identical content but different creation timestamp) is uploaded to R2, Sparkle will reject the update.
-
-**Pipeline order matters:**
-1. Build → Sign + notarize → DMG created
-2. Upload **that DMG** to R2
-3. Run `sign_update` on **that same DMG**
-4. Put the signature in the appcast
-
-If another process or agent overwrites the R2 object between steps 2 and 3, the signature won't match. Always verify file sizes match after upload (Step 3 in the release workflow).
-
-#### 5. `yt-dlp_macos` is PyInstaller and needs a special signing entitlement
+#### 3. `yt-dlp_macos` is PyInstaller and needs a special signing entitlement
 
 MacParakeet bundles `yt-dlp` as a helper seed. Fresh installs copy that seed
 from `Contents/Resources/yt-dlp` into
@@ -646,13 +493,16 @@ Release requirements:
 
 ## Auto-Updates (Sparkle)
 
-MacParakeet uses [Sparkle 2](https://sparkle-project.org/) for in-app auto-updates. Users are prompted when a new version is available — no manual DMG download needed.
+The Sparkle 2 framework is embedded in the app bundle. `build_app_bundle.sh`
+requires it and the app fails to launch without it, so it stays.
 
-### How it works
+**In-app auto-update is not wired up on this fork.** It needs a hosted appcast
+feed, and this fork publishes only to GitHub Releases. Users update by
+downloading the latest DMG from
+<https://github.com/eli0shin/macparakeet/releases/latest>.
 
-1. On launch, Sparkle checks `https://macparakeet.com/appcast.xml` for new versions
-2. If a newer version exists, a native update dialog appears
-3. User clicks "Install Update" → Sparkle downloads the DMG, replaces the app, relaunches
+The keys below are documented because `build_app_bundle.sh` still writes them
+into `Info.plist`.
 
 ### EdDSA signing keys
 
@@ -663,54 +513,6 @@ To retrieve the public key or verify the Keychain entry:
 ```bash
 .build/artifacts/sparkle/Sparkle/bin/generate_keys
 ```
-
-### Appcast
-
-The appcast XML lives in the [macparakeet-website](https://github.com/moona3k/macparakeet-website) repo at `public/appcast.xml` and is served at `https://macparakeet.com/appcast.xml`.
-
-Template for a new item (prepend to existing items in `appcast.xml`):
-
-```xml
-    <item>
-      <title>Version X.Y.Z</title>
-      <link>https://macparakeet.com</link>
-      <sparkle:version>BUILD_NUMBER</sparkle:version>
-      <sparkle:shortVersionString>X.Y.Z</sparkle:shortVersionString>
-      <sparkle:minimumSystemVersion>14.2</sparkle:minimumSystemVersion>
-      <description><![CDATA[
-        <h2>What's New</h2>
-        <ul>
-          <li>Feature or fix description</li>
-        </ul>
-      ]]></description>
-      <pubDate>DATE_RFC2822</pubDate>
-      <enclosure
-        url="https://downloads.macparakeet.com/MacParakeet.dmg?v=BUILD_NUMBER"
-        sparkle:edSignature="SIGNATURE_FROM_SIGN_UPDATE"
-        length="FILE_SIZE_BYTES"
-        type="application/octet-stream" />
-    </item>
-```
-
-**Important:** Don't replace existing items — prepend the new one. Sparkle 2 shows only the selected newest item's description, so the new item's notes must stand on their own for users who skip versions. Keep ~10 items for compatibility/fallback metadata and release history.
-
-### Signing an update
-
-```bash
-# Sign the DMG and get the signature + length for appcast.xml
-.build/artifacts/sparkle/Sparkle/bin/sign_update dist/MacParakeet.dmg
-```
-
-This outputs `sparkle:edSignature="..."` and `length="..."` — paste both into the appcast `<enclosure>` element.
-
-### Auto-generate appcast from a directory of releases
-
-```bash
-# Place all versioned DMGs in a directory, then:
-.build/artifacts/sparkle/Sparkle/bin/generate_appcast /path/to/releases/
-```
-
-This generates/updates `appcast.xml` with signatures and optional delta updates.
 
 ### Info.plist keys
 
@@ -759,5 +561,3 @@ UNIVERSAL=1 scripts/dist/build_app_bundle.sh
 - `MacParakeet` requests microphone permission. The app bundle `Info.plist` includes `NSMicrophoneUsageDescription`.
 - **Users must install to /Applications before launching.** Running directly from a mounted DMG (`/Volumes/MacParakeet/`) will not register with macOS TCC — the app won't appear in System Settings > Privacy & Security > Microphone, and permission requests will silently fail. The DMG includes an Applications symlink for drag-to-install.
 - If a user's microphone permission gets stuck as "Denied", reset it with: `tccutil reset Microphone com.macparakeet.MacParakeet`
-- The Cloudflare R2 bucket uses a custom domain via `wrangler r2 bucket domain add`. The `r2.dev` public URL is also enabled as a fallback.
-- Cloudflare Pages has a 25MB file size limit, so the DMG (27MB) cannot be hosted directly in the website repo's `public/` folder.
