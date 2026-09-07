@@ -135,7 +135,8 @@ public actor ParakeetUnifiedEngine: STTTranscribing, NativeLiveDictating {
     public func processLiveDictationSamples(_ samples: [Float]) async throws {
         guard !samples.isEmpty else { return }
         guard let manager = manager(for: .interactive),
-              activeLanes.contains(.interactive) else {
+            activeLanes.contains(.interactive)
+        else {
             throw STTLiveDictationTranscriptionError.sessionNotActive
         }
         do {
@@ -153,7 +154,8 @@ public actor ParakeetUnifiedEngine: STTTranscribing, NativeLiveDictating {
     public func finishLiveDictation() async throws -> STTResult {
         let lane: ParakeetUnifiedRuntimeLane = .interactive
         guard let manager = manager(for: lane),
-              activeLanes.contains(lane) else {
+            activeLanes.contains(lane)
+        else {
             throw STTLiveDictationTranscriptionError.sessionNotActive
         }
         defer { endTranscription(on: lane) }
@@ -249,7 +251,10 @@ public actor ParakeetUnifiedEngine: STTTranscribing, NativeLiveDictating {
     }
 
     nonisolated static func requiredStreamingModelFiles() -> Set<String> {
+        // FluidAudio 0.15.6 leaves context-specific encoders out of the shared
+        // set. Cache validation and explicit downloads must include our tier.
         ModelNames.ParakeetUnified.requiredModels(variant: streamingDownloadVariant)
+            .union([ModelNames.ParakeetUnified.streamingEncoderFile(precision: encoderPrecision)])
     }
 
     nonisolated static func requiredAllModelFiles() -> Set<String> {
@@ -317,10 +322,11 @@ public actor ParakeetUnifiedEngine: STTTranscribing, NativeLiveDictating {
             FileManager.default.fileExists(atPath: cacheRoot.appendingPathComponent($0).path)
         }) {
             onProgress?("Preparing Parakeet Unified streaming model download...")
-            try await DownloadUtils.downloadRepo(
+            try await ModelHub.download(
                 .parakeetUnified,
                 to: modelsBaseDirectory(),
                 variant: streamingDownloadVariant,
+                additionalModelNames: requiredStreamingModelFiles(),
                 progressHandler: progressHandler
             )
         }
@@ -432,15 +438,18 @@ public actor ParakeetUnifiedEngine: STTTranscribing, NativeLiveDictating {
     }
 
     private nonisolated static func makePCMBuffer(samples: ArraySlice<Float>) throws -> AVAudioPCMBuffer {
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 16_000,
-            channels: 1,
-            interleaved: false
-        ), let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: AVAudioFrameCount(samples.count)
-        ), let channelData = buffer.floatChannelData else {
+        guard
+            let format = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 16_000,
+                channels: 1,
+                interleaved: false
+            ),
+            let buffer = AVAudioPCMBuffer(
+                pcmFormat: format,
+                frameCapacity: AVAudioFrameCount(samples.count)
+            ), let channelData = buffer.floatChannelData
+        else {
             throw STTError.transcriptionFailed("Failed to allocate audio buffer for Parakeet Unified streaming")
         }
         samples.withUnsafeBufferPointer { source in
@@ -453,7 +462,7 @@ public actor ParakeetUnifiedEngine: STTTranscribing, NativeLiveDictating {
 
     private nonisolated static func makeDownloadProgressHandler(
         _ onProgress: (@Sendable (String) -> Void)?
-    ) -> DownloadUtils.ProgressHandler? {
+    ) -> ProgressHandler? {
         guard let onProgress else { return nil }
         let clock = ContinuousClock()
         let lastProgressUpdate = OSAllocatedUnfairLock(initialState: clock.now - .seconds(1))
@@ -479,7 +488,7 @@ public actor ParakeetUnifiedEngine: STTTranscribing, NativeLiveDictating {
         }
     }
 
-    private nonisolated static func progressMessage(from progress: DownloadUtils.DownloadProgress) -> String? {
+    private nonisolated static func progressMessage(from progress: DownloadProgress) -> String? {
         switch progress.phase {
         case .listing:
             return "Preparing Parakeet Unified model download..."
@@ -522,7 +531,7 @@ public actor ParakeetUnifiedEngine: STTTranscribing, NativeLiveDictating {
                 return .modelNotLoaded
             case .invalidAudioData:
                 return .transcriptionFailed(asrError.localizedDescription)
-            case .modelLoadFailed, .modelCompilationFailed:
+            case .modelLoadFailed, .modelCompilationFailed, .encoderInstantiationFailed:
                 return .engineStartFailed(asrError.localizedDescription)
             case .processingFailed(let message):
                 return .transcriptionFailed(message)
@@ -535,7 +544,7 @@ public actor ParakeetUnifiedEngine: STTTranscribing, NativeLiveDictating {
         if let urlError = error as? URLError {
             switch urlError.code {
             case .notConnectedToInternet, .networkConnectionLost, .timedOut,
-                 .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
                 return .modelDownloadFailed
             default:
                 return .engineStartFailed(urlError.localizedDescription)

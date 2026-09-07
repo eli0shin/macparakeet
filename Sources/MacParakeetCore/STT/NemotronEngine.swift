@@ -116,7 +116,8 @@ public actor NemotronEngine: STTTranscribing, NativeLiveDictating {
     public func processLiveDictationSamples(_ samples: [Float]) async throws {
         guard !samples.isEmpty else { return }
         guard let manager = manager(for: .interactive),
-              activeLanes.contains(.interactive) else {
+            activeLanes.contains(.interactive)
+        else {
             throw STTLiveDictationTranscriptionError.sessionNotActive
         }
         do {
@@ -132,7 +133,8 @@ public actor NemotronEngine: STTTranscribing, NativeLiveDictating {
     public func finishLiveDictation() async throws -> STTResult {
         let lane: NemotronRuntimeLane = .interactive
         guard let manager = manager(for: lane),
-              activeLanes.contains(lane) else {
+            activeLanes.contains(lane)
+        else {
             throw STTLiveDictationTranscriptionError.sessionNotActive
         }
         let requestedLanguage = liveDictationLanguage
@@ -258,8 +260,9 @@ public actor NemotronEngine: STTTranscribing, NativeLiveDictating {
     ) -> Bool {
         let trimmedLanguage = language?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let trimmedLanguage,
-              !trimmedLanguage.isEmpty,
-              trimmedLanguage.lowercased() != "auto" else {
+            !trimmedLanguage.isEmpty,
+            trimmedLanguage.lowercased() != "auto"
+        else {
             return deleteModelCaches(modelVariant: modelVariant, cacheRoot: cacheRoot)
         }
         guard let language = SpeechEnginePreference.normalizeNemotronLanguage(trimmedLanguage) else {
@@ -281,16 +284,18 @@ public actor NemotronEngine: STTTranscribing, NativeLiveDictating {
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: cacheRoot.path) else { return false }
 
-        let languageDirectories = (try? fileManager.contentsOfDirectory(
-            at: cacheRoot,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        )) ?? []
+        let languageDirectories =
+            (try? fileManager.contentsOfDirectory(
+                at: cacheRoot,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )) ?? []
 
         var removedAny = false
         var removalFailed = false
         for languageDirectory in languageDirectories {
-            let variantDirectory = languageDirectory
+            let variantDirectory =
+                languageDirectory
                 .appendingPathComponent("\(modelVariant.chunkMilliseconds)ms", isDirectory: true)
             guard fileManager.fileExists(atPath: variantDirectory.path) else { continue }
             do {
@@ -314,7 +319,8 @@ public actor NemotronEngine: STTTranscribing, NativeLiveDictating {
     ) -> Bool {
         let languageDirectory = StreamingNemotronMultilingualAsrManager.languageDirectory(for: language)
         let fileManager = FileManager.default
-        let targetDirectory = cacheRoot
+        let targetDirectory =
+            cacheRoot
             .appendingPathComponent(languageDirectory, isDirectory: true)
             .appendingPathComponent("\(modelVariant.chunkMilliseconds)ms", isDirectory: true)
         guard fileManager.fileExists(atPath: targetDirectory.path) else { return false }
@@ -330,7 +336,8 @@ public actor NemotronEngine: STTTranscribing, NativeLiveDictating {
 
     private nonisolated static func removeIfEmpty(_ directory: URL, fileManager: FileManager) {
         guard let children = try? fileManager.contentsOfDirectory(atPath: directory.path),
-              children.isEmpty else {
+            children.isEmpty
+        else {
             return
         }
         try? fileManager.removeItem(at: directory)
@@ -410,7 +417,7 @@ public actor NemotronEngine: STTTranscribing, NativeLiveDictating {
 
     private nonisolated static func makeDownloadProgressHandler(
         _ onProgress: (@Sendable (String) -> Void)?
-    ) -> DownloadUtils.ProgressHandler? {
+    ) -> ProgressHandler? {
         guard let onProgress else { return nil }
         let clock = ContinuousClock()
         let lastProgressUpdate = OSAllocatedUnfairLock(initialState: clock.now - .seconds(1))
@@ -436,7 +443,7 @@ public actor NemotronEngine: STTTranscribing, NativeLiveDictating {
         }
     }
 
-    private nonisolated static func progressMessage(from progress: DownloadUtils.DownloadProgress) -> String? {
+    private nonisolated static func progressMessage(from progress: DownloadProgress) -> String? {
         switch progress.phase {
         case .listing:
             return "Preparing Nemotron model download..."
@@ -479,7 +486,7 @@ public actor NemotronEngine: STTTranscribing, NativeLiveDictating {
                 return .modelNotLoaded
             case .invalidAudioData:
                 return .transcriptionFailed(asrError.localizedDescription)
-            case .modelLoadFailed, .modelCompilationFailed:
+            case .modelLoadFailed, .modelCompilationFailed, .encoderInstantiationFailed:
                 return .engineStartFailed(asrError.localizedDescription)
             case .processingFailed(let message):
                 return .transcriptionFailed(message)
@@ -492,7 +499,7 @@ public actor NemotronEngine: STTTranscribing, NativeLiveDictating {
         if let urlError = error as? URLError {
             switch urlError.code {
             case .notConnectedToInternet, .networkConnectionLost, .timedOut,
-                 .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
                 return .modelDownloadFailed
             default:
                 return .engineStartFailed(urlError.localizedDescription)

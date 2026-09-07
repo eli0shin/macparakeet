@@ -4,6 +4,12 @@ import Foundation
 import os
 
 protocol STTRuntimeProtocol: Sendable {
+    func vocabularySnapshot(for job: STTJobKind) async -> CustomVocabularyBoostingVocabulary?
+    func transcribe(
+        audioPath: String, job: STTJobKind, speechEngine: SpeechEngineSelection,
+        vocabulary: CustomVocabularyBoostingVocabulary?,
+        onProgress: (@Sendable (Int, Int) -> Void)?
+    ) async throws -> STTResult
     func transcribe(
         audioPath: String,
         job: STTJobKind,
@@ -60,6 +66,15 @@ protocol STTRuntimeProtocol: Sendable {
 }
 
 extension STTRuntimeProtocol {
+    func vocabularySnapshot(for job: STTJobKind) async -> CustomVocabularyBoostingVocabulary? { nil }
+    func transcribe(
+        audioPath: String, job: STTJobKind, speechEngine: SpeechEngineSelection,
+        vocabulary: CustomVocabularyBoostingVocabulary?,
+        onProgress: (@Sendable (Int, Int) -> Void)?
+    ) async throws -> STTResult {
+        try await transcribe(audioPath: audioPath, job: job, speechEngine: speechEngine, onProgress: onProgress)
+    }
+
     func warmUp(
         speechEngine: SpeechEngineSelection,
         onProgress: (@Sendable (String) -> Void)?
@@ -78,11 +93,6 @@ extension STTRuntimeProtocol {
         onProgress?("Preparing \(preference.displayName)...")
         try await setSpeechEngine(preference)
     }
-}
-
-enum CustomVocabularyBoostingPreparationMode {
-    case awaitPreparation
-    case backgroundIfNeeded
 }
 
 /// Tracks in-flight speech work by engine while retaining a process-wide idle
@@ -123,86 +133,6 @@ struct SpeechEngineActivity {
     }
 }
 
-private final class BackgroundCustomVocabularyPreparationCancellation: @unchecked Sendable {
-    private let lock = NSLock()
-    private var task: Task<Void, Never>?
-    private var cancelled = false
-    private var startAllowed = false
-    private var startWaiter: CheckedContinuation<Void, Never>?
-
-    func setTask(_ task: Task<Void, Never>) throws {
-        lock.lock()
-        let shouldCancel = cancelled
-        if !shouldCancel {
-            self.task = task
-        }
-        lock.unlock()
-
-        if shouldCancel {
-            task.cancel()
-            throw CancellationError()
-        }
-    }
-
-    func cancel() {
-        lock.lock()
-        cancelled = true
-        let task = task
-        let startWaiter = startWaiter
-        self.startWaiter = nil
-        lock.unlock()
-
-        startWaiter?.resume()
-        task?.cancel()
-    }
-
-    func checkCancellation() throws {
-        lock.lock()
-        let shouldCancel = cancelled
-        lock.unlock()
-
-        if shouldCancel {
-            throw CancellationError()
-        }
-    }
-
-    func allowStart() throws {
-        lock.lock()
-        let shouldCancel = cancelled
-        let startWaiter = startWaiter
-        startAllowed = true
-        self.startWaiter = nil
-        lock.unlock()
-
-        startWaiter?.resume()
-
-        if shouldCancel {
-            throw CancellationError()
-        }
-    }
-
-    func waitUntilStartAllowed() async throws {
-        try checkCancellation()
-        await withCheckedContinuation { continuation in
-            var shouldResume = false
-
-            lock.lock()
-            if startAllowed || cancelled {
-                shouldResume = true
-            } else {
-                startWaiter = continuation
-            }
-            lock.unlock()
-
-            if shouldResume {
-                continuation.resume()
-            }
-        }
-        try Task.checkCancellation()
-        try checkCancellation()
-    }
-}
-
 /// Sole owner of the shared local speech-engine lifecycle.
 ///
 /// The runtime stays process-wide and singular at the app boundary, but it keeps
@@ -226,6 +156,7 @@ public actor STTRuntime: STTRuntimeProtocol {
     private let customVocabularyProvider: (any CustomVocabularyBoostingTermProviding)?
     private let customVocabularyRescorer: any CustomVocabularyRescoring
     private let customVocabularyRecognitionBoostingEnabled: @Sendable () -> Bool
+    private let onVocabularyNotice: @Sendable (String) async -> Void
 
     private var interactiveManager: AsrManager?
     private var backgroundManager: AsrManager?
@@ -301,7 +232,8 @@ public actor STTRuntime: STTRuntimeProtocol {
         physicalMemoryBytes: @escaping @Sendable () -> UInt64 = { ProcessInfo.processInfo.physicalMemory },
         customVocabularyProvider: (any CustomVocabularyBoostingTermProviding)? = nil,
         customVocabularyRescorer: (any CustomVocabularyRescoring)? = nil,
-        customVocabularyRecognitionBoostingEnabled: @escaping @Sendable () -> Bool = { false }
+        customVocabularyRecognitionBoostingEnabled: @escaping @Sendable () -> Bool = { false },
+        onVocabularyNotice: @escaping @Sendable (String) async -> Void = { _ in }
     ) {
         self.currentParakeetVariant = parakeetModelVariant
         // `.unified` has no TDT version; the TDT path is never taken for it, so a
@@ -317,6 +249,7 @@ public actor STTRuntime: STTRuntimeProtocol {
         self.customVocabularyProvider = customVocabularyProvider
         self.customVocabularyRescorer = customVocabularyRescorer ?? FluidAudioCustomVocabularyRescorer()
         self.customVocabularyRecognitionBoostingEnabled = customVocabularyRecognitionBoostingEnabled
+        self.onVocabularyNotice = onVocabularyNotice
     }
 
     #if DEBUG
@@ -356,12 +289,52 @@ public actor STTRuntime: STTRuntimeProtocol {
         speechEngine selection: SpeechEngineSelection,
         onProgress: (@Sendable (Int, Int) -> Void)? = nil
     ) async throws -> STTResult {
+        let vocabulary = await vocabularySnapshot(for: job)
+        return try await transcribe(
+            audioPath: audioPath, job: job, speechEngine: selection,
+            vocabulary: vocabulary, onProgress: onProgress)
+    }
+
+    func vocabularySnapshot(for job: STTJobKind) async -> CustomVocabularyBoostingVocabulary? {
+        guard job != .meetingLiveChunk, customVocabularyRecognitionBoostingEnabled(),
+            let customVocabularyProvider
+        else { return nil }
+        return await customVocabularyProvider.currentVocabulary()
+    }
+
+    /// Explicit first-use preparation after user consent. Uses the same sidecar
+    /// instance as transcription, not another runtime or inference lane.
+    public func prepareCustomVocabulary() async throws {
+        guard let customVocabularyProvider else { return }
+        let vocabulary = await customVocabularyProvider.currentVocabulary()
+        if vocabulary.isEmpty, vocabulary.warning != nil {
+            throw CustomVocabularyBoostingError.unavailableAudioOrTimings
+        }
+        guard vocabulary.terms.count <= RecognitionVocabularyPolicy.maximumEnabledTerms else {
+            throw CustomVocabularyBoostingError.tooManyTerms
+        }
+        try await customVocabularyRescorer.prepare(vocabulary: vocabulary)
+    }
+
+    func transcribe(
+        audioPath: String, job: STTJobKind, speechEngine selection: SpeechEngineSelection,
+        vocabulary: CustomVocabularyBoostingVocabulary?,
+        onProgress: (@Sendable (Int, Int) -> Void)?
+    ) async throws -> STTResult {
+        try Task.checkCancellation()
         speechEngineActivity.begin(selection.engine)
         defer { speechEngineActivity.end(selection.engine) }
 
+        if let vocabulary, !vocabulary.isEmpty,
+            !(await speechEngineCapabilities(for: selection)).supportsCustomVocabulary
+        {
+            await onVocabularyNotice(
+                "Vocabulary hints unavailable for this engine. Transcription continues without hints.")
+        }
         switch selection.engine {
         case .parakeet:
-            return try await transcribeWithParakeet(audioPath: audioPath, job: job, onProgress: onProgress)
+            return try await transcribeWithParakeet(
+                audioPath: audioPath, job: job, vocabulary: vocabulary, onProgress: onProgress)
         case .nemotron:
             return try await transcribeWithNemotron(
                 audioPath: audioPath,
@@ -370,7 +343,8 @@ public actor STTRuntime: STTRuntimeProtocol {
                 onProgress: onProgress
             )
         case .whisper:
-            return try await transcribeWithWhisper(audioPath: audioPath, language: selection.language, onProgress: onProgress)
+            return try await transcribeWithWhisper(
+                audioPath: audioPath, language: selection.language, onProgress: onProgress)
         case .cohere:
             return try await transcribeWithCohere(
                 audioPath: audioPath,
@@ -486,7 +460,8 @@ public actor STTRuntime: STTRuntimeProtocol {
 
     func appendLiveDictationSamples(_ samples: [Float], sessionID: UUID) async throws {
         guard liveDictationSession == .active(sessionID),
-              let engine = liveDictationEngine else {
+            let engine = liveDictationEngine
+        else {
             throw STTLiveDictationTranscriptionError.sessionNotActive
         }
         try await engine.processLiveDictationSamples(samples)
@@ -494,8 +469,9 @@ public actor STTRuntime: STTRuntimeProtocol {
 
     func finishLiveDictationTranscription(sessionID: UUID) async throws -> STTResult {
         guard liveDictationSession == .active(sessionID),
-              let engine = liveDictationEngine,
-              let speechEngine = liveDictationSpeechEngine else {
+            let engine = liveDictationEngine,
+            let speechEngine = liveDictationSpeechEngine
+        else {
             throw STTLiveDictationTranscriptionError.sessionNotActive
         }
         liveDictationSession = .finishing(sessionID)
@@ -512,7 +488,8 @@ public actor STTRuntime: STTRuntimeProtocol {
 
     func cancelLiveDictationTranscription(sessionID: UUID) async {
         guard liveDictationSession == .active(sessionID),
-              let speechEngine = liveDictationSpeechEngine else { return }
+            let speechEngine = liveDictationSpeechEngine
+        else { return }
         liveDictationSession = .cancelling(sessionID)
         await liveDictationEngine?.cancelLiveDictation()
         liveDictationEngine = nil
@@ -630,6 +607,7 @@ public actor STTRuntime: STTRuntimeProtocol {
     private func transcribeWithParakeet(
         audioPath: String,
         job: STTJobKind,
+        vocabulary: CustomVocabularyBoostingVocabulary?,
         onProgress: (@Sendable (Int, Int) -> Void)?
     ) async throws -> STTResult {
         // Parakeet Unified is a separate FluidAudio runtime — delegate before
@@ -681,8 +659,9 @@ public actor STTRuntime: STTRuntimeProtocol {
                     try Task.checkCancellation()
                     let boostedResult = try await applyCustomVocabularyBoostingIfAvailable(
                         to: result,
-                        preparationMode: .backgroundIfNeeded,
-                        loadAudioSamples: { paddedSamples }
+                        vocabulary: vocabulary,
+                        audioPath: audioPath,
+                        paddedSamples: paddedSamples
                     )
                     onProgress?(100, 100)
                     return STTResult(
@@ -699,24 +678,25 @@ public actor STTRuntime: STTRuntimeProtocol {
         }
 
         let audioURL = URL(fileURLWithPath: audioPath)
-        let transcriptionProgressTask: Task<Void, Never>? = if let onProgress {
-            Task {
-                do {
-                    let progressStream = await manager.transcriptionProgressStream
-                    var lastProgress = -1
-                    for try await value in progressStream {
-                        let percent = min(99, max(0, Int((value * 100).rounded())))
-                        guard percent != lastProgress else { continue }
-                        lastProgress = percent
-                        onProgress(percent, 100)
+        let transcriptionProgressTask: Task<Void, Never>? =
+            if let onProgress {
+                Task {
+                    do {
+                        let progressStream = await manager.transcriptionProgressStream
+                        var lastProgress = -1
+                        for try await value in progressStream {
+                            let percent = min(99, max(0, Int((value * 100).rounded())))
+                            guard percent != lastProgress else { continue }
+                            lastProgress = percent
+                            onProgress(percent, 100)
+                        }
+                    } catch {
+                        // The transcription task completes or fails independently.
                     }
-                } catch {
-                    // The transcription task completes or fails independently.
                 }
+            } else {
+                nil
             }
-        } else {
-            nil
-        }
         defer {
             transcriptionProgressTask?.cancel()
         }
@@ -737,10 +717,9 @@ public actor STTRuntime: STTRuntimeProtocol {
             try Task.checkCancellation()
             let boostedResult = try await applyCustomVocabularyBoostingIfAvailable(
                 to: result,
-                preparationMode: .awaitPreparation
-            ) {
-                try Self.customVocabularySidecarSamples(audioPath: audioPath)
-            }
+                vocabulary: vocabulary,
+                audioPath: audioPath
+            )
             let words = STTWordTimingBuilder.words(from: boostedResult.tokenTimings)
             onProgress?(100, 100)
             // Telemetry `language` is attributed "en": MacParakeet positions
@@ -869,132 +848,58 @@ public actor STTRuntime: STTRuntimeProtocol {
 
     private func applyCustomVocabularyBoostingIfAvailable(
         to result: ASRResult,
-        preparationMode: CustomVocabularyBoostingPreparationMode,
-        loadAudioSamples: () throws -> [Float]
+        vocabulary: CustomVocabularyBoostingVocabulary?,
+        audioPath: String,
+        paddedSamples: [Float]? = nil
     ) async throws -> ASRResult {
-        guard customVocabularyRecognitionBoostingEnabled() else { return result }
-        guard let customVocabularyProvider else { return result }
-        try Task.checkCancellation()
-        let capabilities = SpeechEngineCapabilityRegistry.capabilities(for: .parakeet(currentParakeetVariant))
-        guard capabilities.supportsCustomVocabulary else { return result }
-        let vocabulary = await customVocabularyProvider.currentVocabulary()
-        try Task.checkCancellation()
+        guard let vocabulary else { return result }
+        if let warning = vocabulary.warning { await onVocabularyNotice(warning) }
         guard !vocabulary.isEmpty else { return result }
-        guard let tokenTimings = result.tokenTimings, !tokenTimings.isEmpty else { return result }
-        let audioSamples = try loadAudioSamples()
-        try Task.checkCancellation()
-        return try await Self.applyCustomVocabularyBoosting(
-            to: result,
-            audioSamples: audioSamples,
-            capabilities: capabilities,
-            vocabulary: vocabulary,
-            rescorer: customVocabularyRescorer,
-            inferenceGate: inferenceGate,
-            preparationMode: preparationMode,
-            logger: logger
-        )
-    }
-
-    static func applyCustomVocabularyBoosting(
-        to result: ASRResult,
-        audioSamples: [Float],
-        capabilities: SpeechEngineCapabilities,
-        vocabulary: CustomVocabularyBoostingVocabulary,
-        rescorer: any CustomVocabularyRescoring,
-        inferenceGate: ANEInferenceGate,
-        preparationMode: CustomVocabularyBoostingPreparationMode = .awaitPreparation,
-        logger: Logger? = nil,
-        backgroundPreparationTaskRegistered: (@Sendable () async -> Void)? = nil,
-        recognitionBoostingEnabled: Bool = true
-    ) async throws -> ASRResult {
-        try Task.checkCancellation()
-        guard recognitionBoostingEnabled else { return result }
-        guard capabilities.supportsCustomVocabulary,
-              !vocabulary.isEmpty,
-              !audioSamples.isEmpty,
-              let tokenTimings = result.tokenTimings,
-              !tokenTimings.isEmpty
-        else {
-            return result
-        }
-
         do {
             try Task.checkCancellation()
-            switch preparationMode {
-            case .awaitPreparation:
-                try await rescorer.prepare(vocabulary: vocabulary)
-            case .backgroundIfNeeded:
-                guard await rescorer.isPrepared(vocabulary: vocabulary) else {
-                    let cancellation = BackgroundCustomVocabularyPreparationCancellation()
-                    return try await withTaskCancellationHandler {
-                        try Task.checkCancellation()
-                        let preparationTask = startBackgroundCustomVocabularyPreparation(
-                            vocabulary: vocabulary,
-                            rescorer: rescorer,
-                            cancellation: cancellation,
-                            logger: logger
-                        )
-                        try cancellation.setTask(preparationTask)
-                        if let backgroundPreparationTaskRegistered {
-                            await backgroundPreparationTaskRegistered()
-                        }
-                        try Task.checkCancellation()
-                        try cancellation.allowStart()
-                        return result
-                    } onCancel: {
-                        cancellation.cancel()
-                    }
-                }
+            guard vocabulary.terms.count <= RecognitionVocabularyPolicy.maximumEnabledTerms else {
+                throw CustomVocabularyBoostingError.tooManyTerms
             }
+            guard let tokenTimings = result.tokenTimings, !tokenTimings.isEmpty else {
+                if result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return result }
+                throw CustomVocabularyBoostingError.unavailableAudioOrTimings
+            }
+            try await customVocabularyRescorer.prepare(vocabulary: vocabulary)
             try Task.checkCancellation()
-            let rescored = try await inferenceGate.withExclusiveAccess {
-                try await rescorer.rescore(
-                    CustomVocabularyRescoringRequest(
-                        transcript: result.text,
-                        tokenTimings: tokenTimings,
-                        audioSamples: audioSamples,
-                        vocabulary: vocabulary
-                    )
+            let rescored: CustomVocabularyRescoringResult
+            if let paddedSamples {
+                guard !paddedSamples.isEmpty else { throw CustomVocabularyBoostingError.unavailableAudioOrTimings }
+                rescored = try await inferenceGate.withExclusiveAccess { [rescorer = customVocabularyRescorer] in
+                    try await rescorer.rescore(
+                        CustomVocabularyRescoringRequest(
+                            transcript: result.text, tokenTimings: tokenTimings,
+                            audioSamples: paddedSamples, vocabulary: vocabulary
+                        ))
+                }
+            } else {
+                let file = try AVAudioFile(forReading: URL(fileURLWithPath: audioPath))
+                rescored = try await CustomVocabularyLongAudio.rescore(
+                    result: result, vocabulary: vocabulary, rescorer: customVocabularyRescorer,
+                    inferenceGate: inferenceGate,
+                    loadSamples: { start, end in try CustomVocabularyLongAudio.samples(file: file, from: start, to: end)
+                    }
                 )
             }
             try Task.checkCancellation()
-            return Self.resultByApplyingCustomVocabularyRescoring(
-                rescored,
-                to: result,
-                originalTokenTimings: tokenTimings,
-                logger: logger
+            let applied = Self.resultByApplyingCustomVocabularyRescoring(
+                rescored, to: result, originalTokenTimings: tokenTimings, logger: logger
             )
+            if applied.text != rescored.text { throw CustomVocabularyBoostingError.unavailableAudioOrTimings }
+            return applied
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            logger?.warning(
-                "custom_vocabulary_boost_failed error_type=\(String(describing: type(of: error)), privacy: .public)"
+            await onVocabularyNotice(
+                vocabulary.terms.count > RecognitionVocabularyPolicy.maximumEnabledTerms
+                    ? "Vocabulary hints were not applied. Select at most 100 enabled terms; all stored words are kept."
+                    : "Vocabulary hints could not be applied. The original transcript was kept. Check Vocabulary settings and try again."
             )
             return result
-        }
-    }
-
-    private static func startBackgroundCustomVocabularyPreparation(
-        vocabulary: CustomVocabularyBoostingVocabulary,
-        rescorer: any CustomVocabularyRescoring,
-        cancellation: BackgroundCustomVocabularyPreparationCancellation,
-        logger: Logger?
-    ) -> Task<Void, Never> {
-        // Dictation finalize must not wait on the first-use CTC download/load.
-        // This deliberate fire-and-forget exception protects interactive paste
-        // latency; a later utterance uses the prepared cache once this finishes.
-        Task.detached {
-            do {
-                try await cancellation.waitUntilStartAllowed()
-                try await rescorer.prepare(vocabulary: vocabulary)
-            } catch is CancellationError {
-                // The caller either cancelled before release or already returned
-                // the unboosted dictation result.
-            } catch {
-                logger?.warning(
-                    "custom_vocabulary_prepare_background_failed error_type=\(String(describing: type(of: error)), privacy: .public)"
-                )
-            }
         }
     }
 
@@ -1013,9 +918,8 @@ public actor STTRuntime: STTRuntimeProtocol {
         }
 
         guard
-            let tokenTimings = synthesizedTokenTimings(
-                for: rescored.text,
-                replacing: originalTokenTimings
+            let tokenTimings = try? CustomVocabularyTiming.applying(
+                rescored.edits, to: result.text, tokenTimings: originalTokenTimings
             )
         else {
             logger?.warning(
@@ -1036,156 +940,6 @@ public actor STTRuntime: STTRuntimeProtocol {
         )
     }
 
-    private static func synthesizedTokenTimings(
-        for rescoredText: String,
-        replacing originalTokenTimings: [TokenTiming]
-    ) -> [TokenTiming]? {
-        let rescoredWords = rescoredText.split(whereSeparator: \.isWhitespace).map(String.init)
-        let originalWords = STTWordTimingBuilder.words(from: originalTokenTimings)
-        guard !rescoredWords.isEmpty,
-              let firstWord = originalWords.first,
-              let lastWord = originalWords.last
-        else {
-            return nil
-        }
-
-        if rescoredWords.count == originalWords.count {
-            return zip(rescoredWords, originalWords).enumerated().map { index, pair in
-                let (word, timing) = pair
-                return TokenTiming(
-                    token: "▁\(word)",
-                    tokenId: -1 - index,
-                    startTime: Double(timing.startMs) / 1_000,
-                    endTime: Double(timing.endMs) / 1_000,
-                    confidence: Float(timing.confidence)
-                )
-            }
-        }
-
-        let matches = wordTimingAlignmentMatches(
-            originalWords: originalWords,
-            rescoredWords: rescoredWords
-        )
-        var synthesized: [TokenTiming] = []
-        var originalCursor = 0
-        var rescoredCursor = 0
-        var syntheticTokenIndex = 0
-
-        func appendTiming(word: String, startMs: Int, endMs: Int, confidence: Float) {
-            synthesized.append(
-                TokenTiming(
-                    token: "▁\(word)",
-                    tokenId: -1 - syntheticTokenIndex,
-                    startTime: Double(startMs) / 1_000,
-                    endTime: Double(endMs) / 1_000,
-                    confidence: confidence
-                )
-            )
-            syntheticTokenIndex += 1
-        }
-
-        func appendSyntheticSegment(originalRange: Range<Int>, rescoredRange: Range<Int>) {
-            guard !rescoredRange.isEmpty else { return }
-
-            let segmentStartMs: Int
-            let segmentEndMs: Int
-            if !originalRange.isEmpty {
-                segmentStartMs = originalWords[originalRange.lowerBound].startMs
-                segmentEndMs = originalWords[originalRange.upperBound - 1].endMs
-            } else {
-                segmentStartMs =
-                    originalRange.lowerBound > 0
-                    ? originalWords[originalRange.lowerBound - 1].endMs
-                    : firstWord.startMs
-                segmentEndMs =
-                    originalRange.lowerBound < originalWords.count
-                    ? originalWords[originalRange.lowerBound].startMs
-                    : lastWord.endMs
-            }
-
-            let boundedSegmentEndMs = max(segmentEndMs, segmentStartMs)
-            let durationPerWord = Double(boundedSegmentEndMs - segmentStartMs) / Double(rescoredRange.count)
-            for (offset, wordIndex) in rescoredRange.enumerated() {
-                let wordStartMs = segmentStartMs + Int((durationPerWord * Double(offset)).rounded())
-                let wordEndMs =
-                    offset == rescoredRange.count - 1
-                    ? boundedSegmentEndMs
-                    : segmentStartMs + Int((durationPerWord * Double(offset + 1)).rounded())
-                appendTiming(
-                    word: rescoredWords[wordIndex],
-                    startMs: wordStartMs,
-                    endMs: wordEndMs,
-                    confidence: 0
-                )
-            }
-        }
-
-        for match in matches {
-            appendSyntheticSegment(
-                originalRange: originalCursor..<match.originalIndex,
-                rescoredRange: rescoredCursor..<match.rescoredIndex
-            )
-
-            let timing = originalWords[match.originalIndex]
-            appendTiming(
-                word: rescoredWords[match.rescoredIndex],
-                startMs: timing.startMs,
-                endMs: timing.endMs,
-                confidence: Float(timing.confidence)
-            )
-
-            originalCursor = match.originalIndex + 1
-            rescoredCursor = match.rescoredIndex + 1
-        }
-
-        appendSyntheticSegment(
-            originalRange: originalCursor..<originalWords.count,
-            rescoredRange: rescoredCursor..<rescoredWords.count
-        )
-
-        guard !synthesized.isEmpty else {
-            return nil
-        }
-
-        return synthesized
-    }
-
-    private static func wordTimingAlignmentMatches(
-        originalWords: [TimestampedWord],
-        rescoredWords: [String]
-    ) -> [(originalIndex: Int, rescoredIndex: Int)] {
-        let normalizedOriginalWords = originalWords.map { normalizedTimingWord($0.word) }
-        let normalizedRescoredWords = rescoredWords.map(normalizedTimingWord)
-        var matches: [(originalIndex: Int, rescoredIndex: Int)] = []
-        var originalSearchStart = 0
-
-        for (rescoredIndex, normalizedRescoredWord) in normalizedRescoredWords.enumerated() {
-            guard !normalizedRescoredWord.isEmpty else { continue }
-            var originalIndex = originalSearchStart
-            while originalIndex < normalizedOriginalWords.count {
-                if normalizedOriginalWords[originalIndex] == normalizedRescoredWord {
-                    matches.append((originalIndex: originalIndex, rescoredIndex: rescoredIndex))
-                    originalSearchStart = originalIndex + 1
-                    break
-                }
-                originalIndex += 1
-            }
-        }
-
-        return matches
-    }
-
-    private static func normalizedTimingWord(_ word: String) -> String {
-        word
-            .unicodeScalars
-            .filter {
-                CharacterSet.alphanumerics.contains($0)
-            }
-            .map(String.init)
-            .joined()
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
-    }
-
     #if DEBUG
     static func applyCustomVocabularyBoostingForTesting(
         transcript: String,
@@ -1195,9 +949,8 @@ public actor STTRuntime: STTRuntimeProtocol {
         vocabulary: CustomVocabularyBoostingVocabulary,
         rescorer: any CustomVocabularyRescoring,
         inferenceGate: ANEInferenceGate = ANEInferenceGate(serializationRequired: false),
-        preparationMode: CustomVocabularyBoostingPreparationMode = .awaitPreparation,
-        backgroundPreparationTaskRegistered: (@Sendable () async -> Void)? = nil,
-        recognitionBoostingEnabled: Bool = true
+        recognitionBoostingEnabled: Bool = true,
+        onNotice: @escaping @Sendable (String) async -> Void = { _ in }
     ) async throws -> ASRResult {
         let result = ASRResult(
             text: transcript,
@@ -1206,16 +959,12 @@ public actor STTRuntime: STTRuntimeProtocol {
             processingTime: 0,
             tokenTimings: tokenTimings
         )
-        return try await applyCustomVocabularyBoosting(
-            to: result,
-            audioSamples: audioSamples,
-            capabilities: capabilities,
-            vocabulary: vocabulary,
-            rescorer: rescorer,
-            inferenceGate: inferenceGate,
-            preparationMode: preparationMode,
-            backgroundPreparationTaskRegistered: backgroundPreparationTaskRegistered,
-            recognitionBoostingEnabled: recognitionBoostingEnabled
+        try Task.checkCancellation()
+        guard recognitionBoostingEnabled, capabilities.supportsCustomVocabulary else { return result }
+        let runtime = STTRuntime(
+            inferenceGate: inferenceGate, customVocabularyRescorer: rescorer, onVocabularyNotice: onNotice)
+        return try await runtime.applyCustomVocabularyBoostingIfAvailable(
+            to: result, vocabulary: vocabulary, audioPath: "", paddedSamples: audioSamples
         )
     }
     #endif
@@ -1324,54 +1073,58 @@ public actor STTRuntime: STTRuntimeProtocol {
 
             let elapsed = start.duration(to: .now)
             let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-            Telemetry.send(.modelLoaded(
-                loadTimeSeconds: seconds,
-                modelKind: modelKind,
-                speechEngine: selection.engine,
-                engineVariant: engineVariant
-            ))
-            Telemetry.send(.modelOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                action: .warmUp,
-                outcome: .success,
-                stage: .warmUp,
-                modelKind: modelKind,
-                speechEngine: selection.engine,
-                engineVariant: engineVariant,
-                durationSeconds: seconds,
-                errorType: nil
-            ))
+            Telemetry.send(
+                .modelLoaded(
+                    loadTimeSeconds: seconds,
+                    modelKind: modelKind,
+                    speechEngine: selection.engine,
+                    engineVariant: engineVariant
+                ))
+            Telemetry.send(
+                .modelOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    action: .warmUp,
+                    outcome: .success,
+                    stage: .warmUp,
+                    modelKind: modelKind,
+                    speechEngine: selection.engine,
+                    engineVariant: engineVariant,
+                    durationSeconds: seconds,
+                    errorType: nil
+                ))
             onProgress?("Ready")
         } catch is CancellationError {
             let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-            Telemetry.send(.modelOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                action: .warmUp,
-                outcome: .cancelled,
-                stage: .warmUp,
-                modelKind: modelKind,
-                speechEngine: selection.engine,
-                engineVariant: engineVariant,
-                durationSeconds: durationSeconds,
-                errorType: "CancellationError"
-            ))
+            Telemetry.send(
+                .modelOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    action: .warmUp,
+                    outcome: .cancelled,
+                    stage: .warmUp,
+                    modelKind: modelKind,
+                    speechEngine: selection.engine,
+                    engineVariant: engineVariant,
+                    durationSeconds: durationSeconds,
+                    errorType: "CancellationError"
+                ))
             throw CancellationError()
         } catch {
             let mapped = try Self.mapWarmUpError(error)
-            Telemetry.send(.modelOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                action: .warmUp,
-                outcome: .failure,
-                stage: .warmUp,
-                modelKind: modelKind,
-                speechEngine: selection.engine,
-                engineVariant: engineVariant,
-                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                errorType: TelemetryErrorClassifier.classify(mapped)
-            ))
+            Telemetry.send(
+                .modelOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    action: .warmUp,
+                    outcome: .failure,
+                    stage: .warmUp,
+                    modelKind: modelKind,
+                    speechEngine: selection.engine,
+                    engineVariant: engineVariant,
+                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                    errorType: TelemetryErrorClassifier.classify(mapped)
+                ))
             throw mapped
         }
     }
@@ -1413,7 +1166,8 @@ public actor STTRuntime: STTRuntimeProtocol {
             } catch is CancellationError {
                 // Cancelled — don't update state.
             } catch {
-                await self.setBackgroundWarmUpState(.failed(message: error.localizedDescription), generation: generation)
+                await self.setBackgroundWarmUpState(
+                    .failed(message: error.localizedDescription), generation: generation)
             }
             await self.clearBackgroundWarmUpTask(generation: generation)
         }
@@ -1455,10 +1209,11 @@ public actor STTRuntime: STTRuntimeProtocol {
                 // language preference retained for a future variant switch.
                 return await nemotronEnglishEngine?.isReady() ?? false
             }
-            guard Self.nemotronLanguageMatchesLoadedEngine(
-                requested: selection.language,
-                loaded: nemotronEngineLanguage
-            )
+            guard
+                Self.nemotronLanguageMatchesLoadedEngine(
+                    requested: selection.language,
+                    loaded: nemotronEngineLanguage
+                )
             else { return false }
             return await nemotronEngine?.isReady() ?? false
         case .whisper(_):
@@ -1527,18 +1282,19 @@ public actor STTRuntime: STTRuntimeProtocol {
             cacheRoot: CohereTranscribeEngine.defaultCacheRoot().deletingLastPathComponent()
         )
         setBackgroundWarmUpState(.idle)
-        Telemetry.send(.modelOperation(
-            operationID: operationContext.operationID,
-            operationContext: operationContext,
-            action: .clearCache,
-            outcome: .success,
-            stage: .clearCache,
-            modelKind: .localSpeechStack,
-            speechEngine: activeSpeechEngine,
-            engineVariant: engineVariant,
-            durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-            errorType: nil
-        ))
+        Telemetry.send(
+            .modelOperation(
+                operationID: operationContext.operationID,
+                operationContext: operationContext,
+                action: .clearCache,
+                outcome: .success,
+                stage: .clearCache,
+                modelKind: .localSpeechStack,
+                speechEngine: activeSpeechEngine,
+                engineVariant: engineVariant,
+                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                errorType: nil
+            ))
     }
 
     nonisolated static func clearFluidAudioModelCaches(
@@ -1548,7 +1304,7 @@ public actor STTRuntime: STTRuntimeProtocol {
             try? FileManager.default.removeItem(at: AppPaths.resolvedFluidAudioModelsDir(environment: environment))
             return
         }
-        DownloadUtils.clearAllModelCaches()
+        ModelHub.clearAllCaches()
     }
 
     public func setSpeechEngine(_ preference: SpeechEnginePreference) async throws {
@@ -1576,7 +1332,9 @@ public actor STTRuntime: STTRuntimeProtocol {
         let previous = speechEngine
         let startedAt = Date()
         let targetVariant = telemetryEngineVariant(for: preference) ?? "none"
-        logger.notice("speech_engine_switch_start from=\(previous.rawValue, privacy: .public) to=\(preference.rawValue, privacy: .public) variant=\(targetVariant, privacy: .public)")
+        logger.notice(
+            "speech_engine_switch_start from=\(previous.rawValue, privacy: .public) to=\(preference.rawValue, privacy: .public) variant=\(targetVariant, privacy: .public)"
+        )
         AudioCaptureDiagnostics.append(
             "speech_engine_switch_start from=\(previous.rawValue) to=\(preference.rawValue) variant=\(targetVariant)"
         )
@@ -1588,13 +1346,17 @@ public actor STTRuntime: STTRuntimeProtocol {
                 onProgress: onProgress
             )
             let duration = Observability.durationSeconds(since: startedAt)
-            logger.notice("speech_engine_switch_complete from=\(previous.rawValue, privacy: .public) to=\(preference.rawValue, privacy: .public) duration_s=\(duration, privacy: .public)")
+            logger.notice(
+                "speech_engine_switch_complete from=\(previous.rawValue, privacy: .public) to=\(preference.rawValue, privacy: .public) duration_s=\(duration, privacy: .public)"
+            )
             AudioCaptureDiagnostics.append(
                 "speech_engine_switch_complete from=\(previous.rawValue) to=\(preference.rawValue) duration_s=\(Self.formatSeconds(duration))"
             )
         } catch {
             let duration = Observability.durationSeconds(since: startedAt)
-            logger.error("speech_engine_switch_failed from=\(previous.rawValue, privacy: .public) to=\(preference.rawValue, privacy: .public) duration_s=\(duration, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
+            logger.error(
+                "speech_engine_switch_failed from=\(previous.rawValue, privacy: .public) to=\(preference.rawValue, privacy: .public) duration_s=\(duration, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+            )
             AudioCaptureDiagnostics.append(
                 "speech_engine_switch_failed from=\(previous.rawValue) to=\(preference.rawValue) duration_s=\(Self.formatSeconds(duration)) \(AudioCaptureDiagnostics.errorFields(error))"
             )
@@ -1626,10 +1388,12 @@ public actor STTRuntime: STTRuntimeProtocol {
             try await engine.prepare(onProgress: onProgress)
             preparedNemotron = engine
         case .whisper:
-            let engine = whisperEngine ?? WhisperEngine(
-                model: whisperModelVariant,
-                language: SpeechEnginePreference.whisperDefaultLanguage(defaults: defaults)
-            )
+            let engine =
+                whisperEngine
+                ?? WhisperEngine(
+                    model: whisperModelVariant,
+                    language: SpeechEnginePreference.whisperDefaultLanguage(defaults: defaults)
+                )
             try await engine.prepare(onProgress: onProgress)
             preparedWhisper = engine
         case .cohere:
@@ -1693,7 +1457,9 @@ public actor STTRuntime: STTRuntimeProtocol {
         let previousVariant = currentParakeetVariant
         let previousVersion = modelVersion
         let startedAt = Date()
-        logger.notice("parakeet_variant_switch_start to=\(variant.rawValue, privacy: .public) engine=\(self.speechEngine.rawValue, privacy: .public)")
+        logger.notice(
+            "parakeet_variant_switch_start to=\(variant.rawValue, privacy: .public) engine=\(self.speechEngine.rawValue, privacy: .public)"
+        )
         AudioCaptureDiagnostics.append(
             "parakeet_variant_switch_start to=\(variant.rawValue) engine=\(self.speechEngine.rawValue)"
         )
@@ -1706,8 +1472,10 @@ public actor STTRuntime: STTRuntimeProtocol {
             if let targetVersion = variant.asrModelVersion {
                 modelVersion = targetVersion
             }
-            logger.notice("parakeet_variant_switch_deferred to=\(variant.rawValue, privacy: .public) reason=engine_inactive")
-            AudioCaptureDiagnostics.append("parakeet_variant_switch_deferred to=\(variant.rawValue) reason=engine_inactive")
+            logger.notice(
+                "parakeet_variant_switch_deferred to=\(variant.rawValue, privacy: .public) reason=engine_inactive")
+            AudioCaptureDiagnostics.append(
+                "parakeet_variant_switch_deferred to=\(variant.rawValue) reason=engine_inactive")
             return
         }
 
@@ -1734,7 +1502,9 @@ public actor STTRuntime: STTRuntimeProtocol {
 
             onProgress?("\(variant.modelName) is ready")
             let duration = Observability.durationSeconds(since: startedAt)
-            logger.notice("parakeet_variant_switch_complete to=\(variant.rawValue, privacy: .public) duration_s=\(duration, privacy: .public)")
+            logger.notice(
+                "parakeet_variant_switch_complete to=\(variant.rawValue, privacy: .public) duration_s=\(duration, privacy: .public)"
+            )
             AudioCaptureDiagnostics.append(
                 "parakeet_variant_switch_complete to=\(variant.rawValue) duration_s=\(Self.formatSeconds(duration))"
             )
@@ -1748,13 +1518,17 @@ public actor STTRuntime: STTRuntimeProtocol {
             do {
                 try await ensureInitialized()
             } catch {
-                logger.error("parakeet_variant_restore_failed version=\(String(describing: previousVersion), privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
+                logger.error(
+                    "parakeet_variant_restore_failed version=\(String(describing: previousVersion), privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+                )
                 AudioCaptureDiagnostics.append(
                     "parakeet_variant_restore_failed version=\(previousVersion) \(AudioCaptureDiagnostics.errorFields(error))"
                 )
             }
             let duration = Observability.durationSeconds(since: startedAt)
-            logger.error("parakeet_variant_switch_failed to=\(variant.rawValue, privacy: .public) duration_s=\(duration, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(switchError), privacy: .public) error_detail=\(switchError.localizedDescription, privacy: .private)")
+            logger.error(
+                "parakeet_variant_switch_failed to=\(variant.rawValue, privacy: .public) duration_s=\(duration, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(switchError), privacy: .public) error_detail=\(switchError.localizedDescription, privacy: .private)"
+            )
             AudioCaptureDiagnostics.append(
                 "parakeet_variant_switch_failed to=\(variant.rawValue) duration_s=\(Self.formatSeconds(duration)) \(AudioCaptureDiagnostics.errorFields(switchError))"
             )
@@ -1783,7 +1557,9 @@ public actor STTRuntime: STTRuntimeProtocol {
 
         let previousVariant = nemotronModelVariant
         let startedAt = Date()
-        logger.notice("nemotron_variant_switch_start to=\(variant.rawValue, privacy: .public) engine=\(self.speechEngine.rawValue, privacy: .public)")
+        logger.notice(
+            "nemotron_variant_switch_start to=\(variant.rawValue, privacy: .public) engine=\(self.speechEngine.rawValue, privacy: .public)"
+        )
         AudioCaptureDiagnostics.append(
             "nemotron_variant_switch_start to=\(variant.rawValue) engine=\(self.speechEngine.rawValue)"
         )
@@ -1792,8 +1568,10 @@ public actor STTRuntime: STTRuntimeProtocol {
         guard speechEngine == .nemotron || nemotronRuntimeIsLoaded else {
             // Inactive engine: record the choice; it loads on the next Nemotron use.
             nemotronModelVariant = variant
-            logger.notice("nemotron_variant_switch_deferred to=\(variant.rawValue, privacy: .public) reason=engine_inactive")
-            AudioCaptureDiagnostics.append("nemotron_variant_switch_deferred to=\(variant.rawValue) reason=engine_inactive")
+            logger.notice(
+                "nemotron_variant_switch_deferred to=\(variant.rawValue, privacy: .public) reason=engine_inactive")
+            AudioCaptureDiagnostics.append(
+                "nemotron_variant_switch_deferred to=\(variant.rawValue) reason=engine_inactive")
             return
         }
 
@@ -1816,7 +1594,9 @@ public actor STTRuntime: STTRuntimeProtocol {
 
             onProgress?("\(variant.modelName) is ready")
             let duration = Observability.durationSeconds(since: startedAt)
-            logger.notice("nemotron_variant_switch_complete to=\(variant.rawValue, privacy: .public) duration_s=\(duration, privacy: .public)")
+            logger.notice(
+                "nemotron_variant_switch_complete to=\(variant.rawValue, privacy: .public) duration_s=\(duration, privacy: .public)"
+            )
             AudioCaptureDiagnostics.append(
                 "nemotron_variant_switch_complete to=\(variant.rawValue) duration_s=\(Self.formatSeconds(duration))"
             )
@@ -1829,13 +1609,17 @@ public actor STTRuntime: STTRuntimeProtocol {
             do {
                 try await prepareActiveNemotronEngine(onProgress: nil)
             } catch {
-                logger.error("nemotron_variant_restore_failed variant=\(previousVariant.rawValue, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
+                logger.error(
+                    "nemotron_variant_restore_failed variant=\(previousVariant.rawValue, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+                )
                 AudioCaptureDiagnostics.append(
                     "nemotron_variant_restore_failed variant=\(previousVariant.rawValue) \(AudioCaptureDiagnostics.errorFields(error))"
                 )
             }
             let duration = Observability.durationSeconds(since: startedAt)
-            logger.error("nemotron_variant_switch_failed to=\(variant.rawValue, privacy: .public) duration_s=\(duration, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(switchError), privacy: .public) error_detail=\(switchError.localizedDescription, privacy: .private)")
+            logger.error(
+                "nemotron_variant_switch_failed to=\(variant.rawValue, privacy: .public) duration_s=\(duration, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(switchError), privacy: .public) error_detail=\(switchError.localizedDescription, privacy: .private)"
+            )
             AudioCaptureDiagnostics.append(
                 "nemotron_variant_switch_failed to=\(variant.rawValue) duration_s=\(Self.formatSeconds(duration)) \(AudioCaptureDiagnostics.errorFields(switchError))"
             )
@@ -1950,18 +1734,19 @@ public actor STTRuntime: STTRuntimeProtocol {
         let removed = removeParakeetModelFiles(
             at: AppPaths.fluidAudioModelDirectory(forASRVersion: version)
         )
-        Telemetry.send(.modelOperation(
-            operationID: operationContext.operationID,
-            operationContext: operationContext,
-            action: .deleteModel,
-            outcome: removed ? .success : .failure,
-            stage: .delete,
-            modelKind: .parakeetSTT,
-            speechEngine: .parakeet,
-            engineVariant: ParakeetModelVariant(asrModelVersion: version).rawValue,
-            durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-            errorType: nil
-        ))
+        Telemetry.send(
+            .modelOperation(
+                operationID: operationContext.operationID,
+                operationContext: operationContext,
+                action: .deleteModel,
+                outcome: removed ? .success : .failure,
+                stage: .delete,
+                modelKind: .parakeetSTT,
+                speechEngine: .parakeet,
+                engineVariant: ParakeetModelVariant(asrModelVersion: version).rawValue,
+                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                errorType: nil
+            ))
         return removed
     }
 
@@ -2008,18 +1793,19 @@ public actor STTRuntime: STTRuntimeProtocol {
     ) -> Bool {
         let operationContext = Observability.childOperationContext()
         let removed = WhisperEngine.deleteModel(model: variant, defaults: defaults)
-        Telemetry.send(.modelOperation(
-            operationID: operationContext.operationID,
-            operationContext: operationContext,
-            action: .deleteModel,
-            outcome: removed ? .success : .failure,
-            stage: .delete,
-            modelKind: .whisperSTT,
-            speechEngine: .whisper,
-            engineVariant: SpeechEnginePreference.normalizeModelVariant(variant) ?? variant,
-            durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-            errorType: nil
-        ))
+        Telemetry.send(
+            .modelOperation(
+                operationID: operationContext.operationID,
+                operationContext: operationContext,
+                action: .deleteModel,
+                outcome: removed ? .success : .failure,
+                stage: .delete,
+                modelKind: .whisperSTT,
+                speechEngine: .whisper,
+                engineVariant: SpeechEnginePreference.normalizeModelVariant(variant) ?? variant,
+                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                errorType: nil
+            ))
         return removed
     }
 
@@ -2052,81 +1838,88 @@ public actor STTRuntime: STTRuntimeProtocol {
         language: String? = nil,
         emitTelemetry: Bool,
         onProgress: (@Sendable (String) -> Void)? = nil,
-        downloader: @escaping @Sendable (
-            NemotronModelVariant,
-            String?,
-            (@Sendable (String) -> Void)?
-        ) async throws -> URL
+        downloader:
+            @escaping @Sendable (
+                NemotronModelVariant,
+                String?,
+                (@Sendable (String) -> Void)?
+            ) async throws -> URL
     ) async throws {
         let operationContext = Observability.childOperationContext()
         if emitTelemetry {
-            Telemetry.send(.modelDownloadStarted(
-                modelKind: .nemotronSTT,
-                speechEngine: .nemotron,
-                engineVariant: modelVariant.rawValue
-            ))
+            Telemetry.send(
+                .modelDownloadStarted(
+                    modelKind: .nemotronSTT,
+                    speechEngine: .nemotron,
+                    engineVariant: modelVariant.rawValue
+                ))
         }
 
         do {
             _ = try await downloader(modelVariant, language, onProgress)
             guard emitTelemetry else { return }
             let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
-            Telemetry.send(.modelDownloadCompleted(
-                durationSeconds: durationSeconds,
-                modelKind: .nemotronSTT,
-                speechEngine: .nemotron,
-                engineVariant: modelVariant.rawValue
-            ))
-            Telemetry.send(.modelOperation(
-                operationID: operationContext.operationID,
-                operationContext: operationContext,
-                action: .download,
-                outcome: .success,
-                stage: .download,
-                modelKind: .nemotronSTT,
-                speechEngine: .nemotron,
-                engineVariant: modelVariant.rawValue,
-                durationSeconds: durationSeconds,
-                errorType: nil
-            ))
-        } catch is CancellationError {
-            if emitTelemetry {
-                Telemetry.send(.modelOperation(
+            Telemetry.send(
+                .modelDownloadCompleted(
+                    durationSeconds: durationSeconds,
+                    modelKind: .nemotronSTT,
+                    speechEngine: .nemotron,
+                    engineVariant: modelVariant.rawValue
+                ))
+            Telemetry.send(
+                .modelOperation(
                     operationID: operationContext.operationID,
                     operationContext: operationContext,
                     action: .download,
-                    outcome: .cancelled,
+                    outcome: .success,
                     stage: .download,
                     modelKind: .nemotronSTT,
                     speechEngine: .nemotron,
                     engineVariant: modelVariant.rawValue,
-                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                    errorType: "CancellationError"
+                    durationSeconds: durationSeconds,
+                    errorType: nil
                 ))
+        } catch is CancellationError {
+            if emitTelemetry {
+                Telemetry.send(
+                    .modelOperation(
+                        operationID: operationContext.operationID,
+                        operationContext: operationContext,
+                        action: .download,
+                        outcome: .cancelled,
+                        stage: .download,
+                        modelKind: .nemotronSTT,
+                        speechEngine: .nemotron,
+                        engineVariant: modelVariant.rawValue,
+                        durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                        errorType: "CancellationError"
+                    ))
             }
             throw CancellationError()
         } catch {
             let errorType = TelemetryErrorClassifier.classify(error)
             if emitTelemetry {
-                Telemetry.send(.modelDownloadFailed(
-                    errorType: errorType,
-                    errorDetail: TelemetryErrorClassifier.errorDetail(error),
-                    modelKind: .nemotronSTT,
-                    speechEngine: .nemotron,
-                    engineVariant: modelVariant.rawValue
-                ))
-                Telemetry.send(.modelOperation(
-                    operationID: operationContext.operationID,
-                    operationContext: operationContext,
-                    action: .download,
-                    outcome: .failure,
-                    stage: .download,
-                    modelKind: .nemotronSTT,
-                    speechEngine: .nemotron,
-                    engineVariant: modelVariant.rawValue,
-                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-                    errorType: errorType
-                ))
+                Telemetry.send(
+                    .modelDownloadFailed(
+                        errorType: errorType,
+                        errorDetail: TelemetryErrorClassifier.errorDetail(error),
+                        modelKind: .nemotronSTT,
+                        speechEngine: .nemotron,
+                        engineVariant: modelVariant.rawValue
+                    ))
+                Telemetry.send(
+                    .modelOperation(
+                        operationID: operationContext.operationID,
+                        operationContext: operationContext,
+                        action: .download,
+                        outcome: .failure,
+                        stage: .download,
+                        modelKind: .nemotronSTT,
+                        speechEngine: .nemotron,
+                        engineVariant: modelVariant.rawValue,
+                        durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                        errorType: errorType
+                    ))
             }
             throw error
         }
@@ -2138,21 +1931,23 @@ public actor STTRuntime: STTRuntimeProtocol {
         language: String? = nil
     ) -> Bool {
         let operationContext = Observability.childOperationContext()
-        let removed = modelVariant.isEnglishOnly
+        let removed =
+            modelVariant.isEnglishOnly
             ? NemotronEnglishEngine.deleteModel()
             : NemotronEngine.deleteModel(modelVariant: modelVariant, language: language)
-        Telemetry.send(.modelOperation(
-            operationID: operationContext.operationID,
-            operationContext: operationContext,
-            action: .deleteModel,
-            outcome: removed ? .success : .failure,
-            stage: .delete,
-            modelKind: .nemotronSTT,
-            speechEngine: .nemotron,
-            engineVariant: modelVariant.rawValue,
-            durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
-            errorType: nil
-        ))
+        Telemetry.send(
+            .modelOperation(
+                operationID: operationContext.operationID,
+                operationContext: operationContext,
+                action: .deleteModel,
+                outcome: removed ? .success : .failure,
+                stage: .delete,
+                modelKind: .nemotronSTT,
+                speechEngine: .nemotron,
+                engineVariant: modelVariant.rawValue,
+                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                errorType: nil
+            ))
         return removed
     }
 
@@ -2210,10 +2005,12 @@ public actor STTRuntime: STTRuntimeProtocol {
             return nemotronEngine
         }
 
-        guard speechEngineActivity.canConstruct(
-            .nemotron,
-            includingCurrentJob: includingCurrentJob
-        ) else {
+        guard
+            speechEngineActivity.canConstruct(
+                .nemotron,
+                includingCurrentJob: includingCurrentJob
+            )
+        else {
             throw STTError.engineBusy
         }
 
@@ -2235,10 +2032,12 @@ public actor STTRuntime: STTRuntimeProtocol {
             return nemotronEnglishEngine
         }
 
-        guard speechEngineActivity.canConstruct(
-            .nemotron,
-            includingCurrentJob: includingCurrentJob
-        ) else {
+        guard
+            speechEngineActivity.canConstruct(
+                .nemotron,
+                includingCurrentJob: includingCurrentJob
+            )
+        else {
             throw STTError.engineBusy
         }
 
@@ -2256,10 +2055,12 @@ public actor STTRuntime: STTRuntimeProtocol {
             return parakeetUnifiedEngine
         }
 
-        guard speechEngineActivity.canConstruct(
-            .parakeet,
-            includingCurrentJob: includingCurrentJob
-        ) else {
+        guard
+            speechEngineActivity.canConstruct(
+                .parakeet,
+                includingCurrentJob: includingCurrentJob
+            )
+        else {
             throw STTError.engineBusy
         }
 
@@ -2534,15 +2335,19 @@ public actor STTRuntime: STTRuntimeProtocol {
     private func tailPreviewUnsupportedError(for key: SpeechEngineVariantKey) -> STTError {
         switch key {
         case .parakeet(.unified):
-            STTError.transcriptionFailed("Parakeet Unified uses native live dictation partials and does not support display-preview transcription.")
+            STTError.transcriptionFailed(
+                "Parakeet Unified uses native live dictation partials and does not support display-preview transcription."
+            )
         case .parakeet(_):
             STTError.transcriptionFailed("Parakeet TDT supports display-preview transcription.")
         case .nemotron(_):
-            STTError.transcriptionFailed("Nemotron uses native live dictation partials and does not support display-preview transcription.")
+            STTError.transcriptionFailed(
+                "Nemotron uses native live dictation partials and does not support display-preview transcription.")
         case .whisper(_):
             STTError.transcriptionFailed("Whisper supports display-preview transcription.")
         case .cohere:
-            STTError.transcriptionFailed("Cohere uses record-then-transcribe dictation and does not support display-preview transcription.")
+            STTError.transcriptionFailed(
+                "Cohere uses record-then-transcribe dictation and does not support display-preview transcription.")
         }
     }
 
@@ -2581,7 +2386,7 @@ public actor STTRuntime: STTRuntimeProtocol {
                 return .modelNotLoaded
             case .invalidAudioData:
                 return .transcriptionFailed(asrError.localizedDescription)
-            case .modelLoadFailed, .modelCompilationFailed:
+            case .modelLoadFailed, .modelCompilationFailed, .encoderInstantiationFailed:
                 return .engineStartFailed(asrError.localizedDescription)
             case .processingFailed(let message):
                 return .transcriptionFailed(message)
@@ -2599,7 +2404,7 @@ public actor STTRuntime: STTRuntimeProtocol {
         if let urlError = error as? URLError {
             switch urlError.code {
             case .notConnectedToInternet, .networkConnectionLost, .timedOut,
-                 .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
                 return .modelDownloadFailed
             default:
                 return .engineStartFailed(urlError.localizedDescription)
@@ -2615,7 +2420,7 @@ public actor STTRuntime: STTRuntimeProtocol {
     /// loading and the Parakeet variant pre-download so both report identically.
     private nonisolated static func makeDownloadProgressHandler(
         _ onProgress: (@Sendable (String) -> Void)?
-    ) -> DownloadUtils.ProgressHandler? {
+    ) -> ProgressHandler? {
         guard let onProgress else { return nil }
         let clock = ContinuousClock()
         let lastProgressUpdate = OSAllocatedUnfairLock(initialState: clock.now - .seconds(1))
@@ -2641,7 +2446,7 @@ public actor STTRuntime: STTRuntimeProtocol {
         }
     }
 
-    private nonisolated static func warmUpProgressMessage(from progress: DownloadUtils.DownloadProgress) -> String? {
+    private nonisolated static func warmUpProgressMessage(from progress: DownloadProgress) -> String? {
         switch progress.phase {
         case .listing:
             return "Preparing speech model download..."

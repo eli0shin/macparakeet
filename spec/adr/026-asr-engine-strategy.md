@@ -82,8 +82,12 @@ in priority order:
 
 1. **Custom-vocabulary Parakeet CTC** — Phase 1 ships this as a
    recognition-time CTC sidecar for Parakeet TDT v2/v3 enabled anchors.
-   Future work is chunked long-audio sidecar rescoring and any support
-   FluidAudio exposes for non-TDT engines.
+   Ticket 028 extends this with bounded overlapping long-audio rescoring,
+   explicit activation/download consent, and FluidAudio 0.15.6 vocabulary
+   safety controls. Non-TDT recognition hints remain future work. Verification
+   for this SDK integration uses upstream evidence, focused tests, and practical
+   audio checks, not a new benchmark project; do not claim measured accuracy
+   or performance gains without measurements.
 2. **CJK coverage: Parakeet Japanese + SenseVoiceSmall** — closes the
    gap that currently forces Korean/Japanese/Chinese users onto Whisper
    (and that Parakeet v3 fails outright, per the ADR-001 amendment).

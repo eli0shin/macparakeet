@@ -140,7 +140,8 @@ public actor NemotronEnglishEngine: STTTranscribing, NativeLiveDictating {
     public func processLiveDictationSamples(_ samples: [Float]) async throws {
         guard !samples.isEmpty else { return }
         guard let manager = manager(for: .interactive),
-              activeLanes.contains(.interactive) else {
+            activeLanes.contains(.interactive)
+        else {
             throw STTLiveDictationTranscriptionError.sessionNotActive
         }
         do {
@@ -162,7 +163,8 @@ public actor NemotronEnglishEngine: STTTranscribing, NativeLiveDictating {
     public func finishLiveDictation() async throws -> STTResult {
         let lane: NemotronEnglishRuntimeLane = .interactive
         guard let manager = manager(for: lane),
-              activeLanes.contains(lane) else {
+            activeLanes.contains(lane)
+        else {
             throw STTLiveDictationTranscriptionError.sessionNotActive
         }
         defer { endTranscription(on: lane) }
@@ -287,7 +289,8 @@ public actor NemotronEnglishEngine: STTTranscribing, NativeLiveDictating {
 
     private nonisolated static func removeIfEmpty(_ directory: URL, fileManager: FileManager) {
         guard let children = try? fileManager.contentsOfDirectory(atPath: directory.path),
-              children.isEmpty else {
+            children.isEmpty
+        else {
             return
         }
         try? fileManager.removeItem(at: directory)
@@ -303,7 +306,7 @@ public actor NemotronEnglishEngine: STTTranscribing, NativeLiveDictating {
         guard !isModelCached(cacheRoot: cacheRoot) else { return cacheRoot }
         onProgress?("Preparing Nemotron model download...")
         let progressHandler = makeDownloadProgressHandler(onProgress)
-        try await DownloadUtils.downloadRepo(
+        try await ModelHub.download(
             .nemotronStreaming1120,
             to: modelsBaseDirectory(),
             progressHandler: progressHandler
@@ -377,15 +380,18 @@ public actor NemotronEnglishEngine: STTTranscribing, NativeLiveDictating {
     /// (16 kHz mono Float32, non-interleaved), so `resampleBuffer`'s fast path
     /// extracts the samples without a second resample.
     private nonisolated static func makePCMBuffer(samples: ArraySlice<Float>) throws -> AVAudioPCMBuffer {
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: targetSampleRate,
-            channels: 1,
-            interleaved: false
-        ), let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: AVAudioFrameCount(samples.count)
-        ), let channelData = buffer.floatChannelData else {
+        guard
+            let format = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: targetSampleRate,
+                channels: 1,
+                interleaved: false
+            ),
+            let buffer = AVAudioPCMBuffer(
+                pcmFormat: format,
+                frameCapacity: AVAudioFrameCount(samples.count)
+            ), let channelData = buffer.floatChannelData
+        else {
             throw STTError.transcriptionFailed("Failed to allocate audio buffer for Nemotron streaming")
         }
         samples.withUnsafeBufferPointer { source in
@@ -398,7 +404,7 @@ public actor NemotronEnglishEngine: STTTranscribing, NativeLiveDictating {
 
     private nonisolated static func makeDownloadProgressHandler(
         _ onProgress: (@Sendable (String) -> Void)?
-    ) -> DownloadUtils.ProgressHandler? {
+    ) -> ProgressHandler? {
         guard let onProgress else { return nil }
         let clock = ContinuousClock()
         let lastProgressUpdate = OSAllocatedUnfairLock(initialState: clock.now - .seconds(1))
@@ -424,7 +430,7 @@ public actor NemotronEnglishEngine: STTTranscribing, NativeLiveDictating {
         }
     }
 
-    private nonisolated static func progressMessage(from progress: DownloadUtils.DownloadProgress) -> String? {
+    private nonisolated static func progressMessage(from progress: DownloadProgress) -> String? {
         switch progress.phase {
         case .listing:
             return "Preparing Nemotron model download..."
@@ -467,7 +473,7 @@ public actor NemotronEnglishEngine: STTTranscribing, NativeLiveDictating {
                 return .modelNotLoaded
             case .invalidAudioData:
                 return .transcriptionFailed(asrError.localizedDescription)
-            case .modelLoadFailed, .modelCompilationFailed:
+            case .modelLoadFailed, .modelCompilationFailed, .encoderInstantiationFailed:
                 return .engineStartFailed(asrError.localizedDescription)
             case .processingFailed(let message):
                 return .transcriptionFailed(message)
@@ -480,7 +486,7 @@ public actor NemotronEnglishEngine: STTTranscribing, NativeLiveDictating {
         if let urlError = error as? URLError {
             switch urlError.code {
             case .notConnectedToInternet, .networkConnectionLost, .timedOut,
-                 .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
                 return .modelDownloadFailed
             default:
                 return .engineStartFailed(urlError.localizedDescription)

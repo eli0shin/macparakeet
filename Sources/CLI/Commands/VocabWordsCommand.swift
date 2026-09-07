@@ -91,6 +91,7 @@ struct VocabWordsCommand: AsyncParsableCommand {
                 }
                 print("\n\(words.count) word(s)")
                 print(VocabWordsCommand.recognitionBoostingStatusLine())
+                if let warning = RecognitionVocabularyPolicy.warning(for: all) { print(warning) }
             }
         }
     }
@@ -101,7 +102,7 @@ struct VocabWordsCommand: AsyncParsableCommand {
             abstract: "Add a custom word or correction."
         )
 
-        @Argument(help: "The word or phrase to match in STT output.")
+        @Argument(help: "An expected word or phrase (3+ characters), or source text for a replacement rule.")
         var word: String
 
         @Argument(help: "The replacement text (omit for vocabulary anchor).")
@@ -116,12 +117,18 @@ struct VocabWordsCommand: AsyncParsableCommand {
             let repo = CustomWordRepository(dbQueue: dbManager.dbQueue)
 
             let customWord = CustomWord(word: word, replacement: replacement)
+            do { try RecognitionVocabularyPolicy.validateSaving(customWord, among: try repo.fetchAll()) } catch {
+                throw ValidationError(error.localizedDescription)
+            }
             try repo.save(customWord)
 
             if let replacement {
                 print("Added: \(word) -> \(replacement)")
             } else {
-                print("Added vocabulary anchor: \(word)")
+                print("Added vocabulary word: \(word)")
+                print(
+                    "Enable recognition hints with: config set vocabulary-hints on (consents to a local model download)."
+                )
             }
         }
     }
@@ -165,6 +172,9 @@ struct VocabWordsCommand: AsyncParsableCommand {
                 var word = try VocabWordsCommand.resolveWord(id: id, words: try repo.fetchAll())
                 word.isEnabled = enabled
                 word.updatedAt = Date()
+                do { try RecognitionVocabularyPolicy.validateSaving(word, among: try repo.fetchAll()) } catch {
+                    throw ValidationError(error.localizedDescription)
+                }
                 try repo.save(word)
 
                 if json {

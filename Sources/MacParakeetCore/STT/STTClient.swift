@@ -7,7 +7,10 @@ import Foundation
 ///   bypassing the process-wide singleton that ADR-016 requires.
 ///   **App code must never instantiate this type directly.**
 ///   Use the shared ``STTScheduler`` from `AppEnvironment` instead.
-public actor STTClient: STTManaging, STTDictationPreviewTranscribing, SpeechEngineRoutedTranscribing, SpeechEngineSwitching, SpeechEngineSwitchAvailabilityProviding, SpeechEngineSessionManaging, SpeechEngineRoutedWarmUpManaging {
+public actor STTClient: STTManaging, STTDictationPreviewTranscribing, SpeechEngineRoutedTranscribing,
+    SpeechEngineSwitching, SpeechEngineSwitchAvailabilityProviding, SpeechEngineSessionManaging,
+    SpeechEngineRoutedWarmUpManaging
+{
     private let scheduler: STTScheduler
 
     public init(
@@ -18,15 +21,17 @@ public actor STTClient: STTManaging, STTDictationPreviewTranscribing, SpeechEngi
         defaults: UserDefaults = .standard,
         customWordRepository: (any CustomWordRepositoryProtocol)? = nil,
         customVocabularyRescorer: (any CustomVocabularyRescoring)? = nil,
-        customVocabularyRecognitionBoostingEnabled: (@Sendable () -> Bool)? = nil
+        customVocabularyRecognitionBoostingEnabled: (@Sendable () -> Bool)? = nil,
+        onVocabularyNotice: @escaping @Sendable (String) async -> Void = { _ in }
     ) {
         let customVocabularyProvider = customWordRepository.map {
             RepositoryCustomVocabularyBoostingTermProvider(repository: $0)
         }
         let runtimePreferences = UserDefaultsAppRuntimePreferences(defaults: defaults)
-        let recognitionBoostingEnabled = customVocabularyRecognitionBoostingEnabled ?? {
-            runtimePreferences.customVocabularyRecognitionBoostingEnabled
-        }
+        let recognitionBoostingEnabled =
+            customVocabularyRecognitionBoostingEnabled ?? {
+                runtimePreferences.customVocabularyRecognitionBoostingEnabled
+            }
         let runtime = STTRuntime(
             parakeetModelVariant: parakeetModelVariant,
             speechEngine: speechEngine,
@@ -35,7 +40,8 @@ public actor STTClient: STTManaging, STTDictationPreviewTranscribing, SpeechEngi
             defaults: defaults,
             customVocabularyProvider: customVocabularyProvider,
             customVocabularyRescorer: customVocabularyRescorer,
-            customVocabularyRecognitionBoostingEnabled: recognitionBoostingEnabled
+            customVocabularyRecognitionBoostingEnabled: recognitionBoostingEnabled,
+            onVocabularyNotice: onVocabularyNotice
         )
         self.scheduler = STTScheduler(runtime: runtime)
     }

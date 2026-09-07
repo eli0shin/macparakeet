@@ -2,6 +2,35 @@ import XCTest
 @testable import MacParakeetCore
 
 final class STTSchedulerTests: XCTestCase {
+    func testQueuedJobsKeepVocabularySnapshotAcrossEditsAndDisable() async throws {
+        let runtime = MockSTTRuntime()
+        await runtime.setVocabulary(.init(terms: ["FirstTerm"]))
+        await runtime.block(path: "busy")
+        let scheduler = STTScheduler(runtimeProvider: runtime)
+        let busy = Task { try await scheduler.transcribe(audioPath: "busy", job: .fileTranscription) }
+        try await waitForStartedPaths(runtime: runtime, count: 1)
+        let queued = Task {
+            try await scheduler.transcribe(
+                audioPath: "queued", job: .meetingFinalize,
+                speechEngine: SpeechEngineSelection(engine: .parakeet))
+        }
+        for _ in 0..<100 {
+            if await runtime.vocabularySnapshotCount >= 2 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let snapshots = await runtime.vocabularySnapshotCount
+        XCTAssertEqual(snapshots, 2)
+        await runtime.setVocabulary(nil)
+        await runtime.release(path: "busy")
+        _ = try await busy.value
+        _ = try await queued.value
+        _ = try await scheduler.transcribe(audioPath: "later", job: .dictation)
+        let queuedTerms = await runtime.vocabularyUsed(for: "queued")
+        let laterTerms = await runtime.vocabularyUsed(for: "later")
+        XCTAssertEqual(queuedTerms, ["FirstTerm"])
+        XCTAssertNil(laterTerms)
+    }
+
     func testRoutedWarmUpAndReadinessPreserveExplicitSelection() async throws {
         let runtime = MockSTTRuntime()
         let scheduler = STTScheduler(runtimeProvider: runtime)
@@ -1413,6 +1442,23 @@ private final class LockedStringRecorder: @unchecked Sendable {
 }
 
 private actor MockSTTRuntime: STTRuntimeProtocol {
+    private var vocabulary: CustomVocabularyBoostingVocabulary?
+    private var vocabulariesUsed: [String: [String]] = [:]
+    private(set) var vocabularySnapshotCount = 0
+    func setVocabulary(_ value: CustomVocabularyBoostingVocabulary?) { vocabulary = value }
+    func vocabularySnapshot(for job: STTJobKind) async -> CustomVocabularyBoostingVocabulary? {
+        vocabularySnapshotCount += 1
+        return vocabulary
+    }
+    func vocabularyUsed(for path: String) -> [String]? { vocabulariesUsed[path] }
+    func transcribe(
+        audioPath: String, job: STTJobKind, speechEngine: SpeechEngineSelection,
+        vocabulary: CustomVocabularyBoostingVocabulary?, onProgress: (@Sendable (Int, Int) -> Void)?
+    ) async throws -> STTResult {
+        vocabulariesUsed[audioPath] = vocabulary?.terms
+        return try await transcribe(audioPath: audioPath, job: job, speechEngine: speechEngine, onProgress: onProgress)
+    }
+
     private var blockedPaths: Set<String> = []
     private var waitingContinuations: [String: CheckedContinuation<Void, any Error>] = [:]
     private var progressScripts: [String: [Int]] = [:]

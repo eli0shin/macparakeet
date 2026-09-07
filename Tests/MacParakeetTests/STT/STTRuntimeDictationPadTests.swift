@@ -107,11 +107,13 @@ final class STTRuntimeDictationPadTests: XCTestCase {
         )
         defer { try? FileManager.default.removeItem(at: url) }
 
-        XCTAssertNotNil(STTRuntime.loadShortDictationSamples16k(path: url.path, maxSamples: ASRConstants.maxModelSamples))
-        XCTAssertNil(STTRuntime.loadShortDictationSamples16k(
-            path: url.path,
-            maxSamples: ASRConstants.maxModelSamples - padSamples
-        ))
+        XCTAssertNotNil(
+            STTRuntime.loadShortDictationSamples16k(path: url.path, maxSamples: ASRConstants.maxModelSamples))
+        XCTAssertNil(
+            STTRuntime.loadShortDictationSamples16k(
+                path: url.path,
+                maxSamples: ASRConstants.maxModelSamples - padSamples
+            ))
         XCTAssertTrue(STTRuntime.paddedDictationSamples(audioPath: url.path).isEmpty)
     }
 
@@ -140,7 +142,8 @@ final class STTRuntimeDictationPadTests: XCTestCase {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(UUID().uuidString).wav")
         XCTAssertTrue(STTRuntime.paddedDictationSamples(audioPath: missing.path).isEmpty)
-        XCTAssertNil(STTRuntime.loadShortDictationSamples16k(path: missing.path, maxSamples: ASRConstants.maxModelSamples))
+        XCTAssertNil(
+            STTRuntime.loadShortDictationSamples16k(path: missing.path, maxSamples: ASRConstants.maxModelSamples))
     }
 
     // MARK: - helpers
@@ -186,7 +189,8 @@ private actor DictationPadCustomVocabularyRescorer: CustomVocabularyRescoring {
             text: text,
             detectedTerms: request.vocabulary.terms,
             appliedTerms: request.vocabulary.terms,
-            replacementCount: request.vocabulary.terms.count
+            replacementCount: request.vocabulary.terms.count,
+            edits: [CustomVocabularyEdit(utf8Range: 0..<request.transcript.utf8.count, text: text, startTime: 0)]
         )
     }
 

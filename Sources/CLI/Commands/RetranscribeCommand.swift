@@ -117,10 +117,10 @@ struct RetranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding 
         commandName: "retranscribe",
         abstract: "Retranscribe retained source audio for an existing saved record in place.",
         discussion: """
-        Resolves a saved dictation, transcription, or meeting by UUID, UUID \
-        prefix, or exact title/name where safe. The command requires --update \
-        because it replaces transcript-derived fields on the existing row.
-        """
+            Resolves a saved dictation, transcription, or meeting by UUID, UUID \
+            prefix, or exact title/name where safe. The command requires --update \
+            because it replaces transcript-derived fields on the existing row.
+            """
     )
 
     @Argument(help: "Saved record UUID, UUID prefix, or exact transcription/meeting title.")
@@ -141,22 +141,38 @@ struct RetranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding 
     @Option(help: "Text processing mode: raw, clean, app-default.")
     var mode: TranscribeMode = .appDefault
 
-    @Option(help: "Speech engine: app-default, parakeet, nemotron, whisper, cohere. Parakeet is the local default; app-default follows the saved GUI preference.")
+    @Option(
+        help:
+            "Speech engine: app-default, parakeet, nemotron, whisper, cohere. Parakeet is the local default; app-default follows the saved GUI preference."
+    )
     var engine: TranscribeSpeechEngine = .parakeet
 
-    @Option(help: "Language hint for Nemotron, Whisper, or Cohere, such as ko, en, or en-US. Cohere requires a supported language; Parakeet and the English-only Nemotron build ignore this flag.")
+    @Option(
+        help:
+            "Language hint for Nemotron, Whisper, or Cohere, such as ko, en, or en-US. Cohere requires a supported language; Parakeet and the English-only Nemotron build ignore this flag."
+    )
     var language: String?
 
-    @Option(name: .long, help: "Parakeet build: app-default, v3 (English + supported European languages), v2 (English word timestamps), unified (readable English with word timestamps). Ignored for Nemotron, Cohere, and Whisper.")
+    @Option(
+        name: .long,
+        help:
+            "Parakeet build: app-default, v3 (English + supported European languages), v2 (English word timestamps), unified (readable English with word timestamps). Ignored for Nemotron, Cohere, and Whisper."
+    )
     var parakeetModel: TranscribeParakeetModel = .appDefault
 
-    @Option(name: .long, help: "Nemotron Beta build: app-default, multilingual-1120ms, english-1120ms. Ignored for Parakeet, Cohere, and Whisper.")
+    @Option(
+        name: .long,
+        help:
+            "Nemotron Beta build: app-default, multilingual-1120ms, english-1120ms. Ignored for Parakeet, Cohere, and Whisper."
+    )
     var nemotronModel: TranscribeNemotronModel = .appDefault
 
     @Option(name: .long, help: "Speaker detection for saved transcriptions/meetings: app-default, on, off.")
     var speakerDetection: SpeakerDetectionOption = .appDefault
 
-    @Option(name: .long, help: "Exact speaker count for this retranscription. Mutually exclusive with --speaker-min/--speaker-max.")
+    @Option(
+        name: .long,
+        help: "Exact speaker count for this retranscription. Mutually exclusive with --speaker-min/--speaker-max.")
     var speakerCount: Int?
 
     @Option(name: .long, help: "Minimum speaker count for this retranscription. Can be combined with --speaker-max.")
@@ -255,8 +271,9 @@ struct RetranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding 
                 storedVariant: SpeechEnginePreference.nemotronModelVariant(defaults: defaults)
             )
             if speechEngine.engine == .nemotron,
-               TranscribeCommand.nemotronIgnoresLanguageOverride(nemotronVariant),
-               language != nil {
+                TranscribeCommand.nemotronIgnoresLanguageOverride(nemotronVariant),
+                language != nil
+            {
                 printErr("Note: --language is ignored by the English-only Nemotron build.")
             }
 
@@ -265,7 +282,8 @@ struct RetranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding 
                 speechEngine: speechEngine.engine,
                 nemotronModelVariant: nemotronVariant,
                 defaults: defaults,
-                customWordRepository: customWordRepo
+                customWordRepository: customWordRepo,
+                onVocabularyNotice: { message in printErr(message) }
             )
             sttClient = client
 
@@ -339,7 +357,8 @@ struct RetranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding 
     }
 
     private func validateDictationOnlyOptions() throws {
-        let hasSpeakerOption = speakerDetection != .appDefault
+        let hasSpeakerOption =
+            speakerDetection != .appDefault
             || noDiarize
             || speakerCount != nil
             || speakerMin != nil
@@ -379,11 +398,12 @@ struct RetranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding 
             snippets = try snippetRepo.fetchEnabled()
         }
         for trigger in UserDefaultsAppRuntimePreferences(defaults: defaults).voiceReturnTriggers {
-            snippets.append(TextSnippet(
-                trigger: trigger,
-                expansion: KeyAction.returnKey.label,
-                action: .returnKey
-            ))
+            snippets.append(
+                TextSnippet(
+                    trigger: trigger,
+                    expansion: KeyAction.returnKey.label,
+                    action: .returnKey
+                ))
         }
 
         let refinement = await TextRefinementService().refine(
@@ -581,7 +601,8 @@ struct RetranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding 
 
         do {
             let transcription = try findTranscription(id: value, repo: transcriptionRepo)
-            matches.append(transcription.sourceType == .meeting ? .meeting(transcription) : .transcription(transcription))
+            matches.append(
+                transcription.sourceType == .meeting ? .meeting(transcription) : .transcription(transcription))
         } catch let error as CLILookupError {
             switch error {
             case .ambiguous:

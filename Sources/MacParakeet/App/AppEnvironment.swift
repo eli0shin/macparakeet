@@ -25,6 +25,7 @@ final class AppEnvironment {
     let aiFormatterProfileRepo: AIFormatterProfileRepository
     let transformHistoryRepo: TransformHistoryRepository
     let quickPromptRepo: QuickPromptRepository
+    let vocabularyStatus = RecognitionVocabularyStatus()
     let sttRuntime: STTRuntime
     let sttScheduler: STTScheduler
     let sharedMicStream: SharedMicrophoneStream
@@ -104,6 +105,7 @@ final class AppEnvironment {
             runtimePreferences.meetingAudioSourceMode
         }
 
+        let vocabularyStatus = self.vocabularyStatus
         sttRuntime = STTRuntime(
             parakeetModelVariant: SpeechEnginePreference.parakeetModelVariant(),
             speechEngine: SpeechEnginePreference.current(),
@@ -112,7 +114,8 @@ final class AppEnvironment {
             customVocabularyProvider: RepositoryCustomVocabularyBoostingTermProvider(repository: customWordRepo),
             customVocabularyRecognitionBoostingEnabled: { [runtimePreferences] in
                 runtimePreferences.customVocabularyRecognitionBoostingEnabled
-            }
+            },
+            onVocabularyNotice: { message in await vocabularyStatus.report(message) }
         )
         sttScheduler = STTScheduler(runtime: sttRuntime)
         // Ship raw meeting mic capture by default. VPIO remains available for

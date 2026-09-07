@@ -156,7 +156,11 @@ final class AppEnvironmentConfigurer {
                 return false
             }
         }
-        customWordsViewModel.configure(repo: env.customWordRepo)
+        customWordsViewModel.configure(
+            repo: env.customWordRepo,
+            recognitionStatus: env.vocabularyStatus,
+            prepareRecognition: { [runtime = env.sttRuntime] in try await runtime.prepareCustomVocabulary() }
+        )
         textSnippetsViewModel.configure(repo: env.snippetRepo)
         let vocabularyBackupService = VocabularyImportExportService(
             customWordRepo: env.customWordRepo,

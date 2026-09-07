@@ -118,7 +118,17 @@ with human progress/status kept off stdout.
   replacement text may improve the returned transcript text before downstream
   processing. Unsupported engines and empty vocabularies keep the previous
   unboosted path; human `vocab words list` support text is not a JSON
-  contract.
+  contract. `config set vocabulary-hints on` explicitly consents to an
+  additional local model download on the next supported job; the default is
+  off. Hints apply before Raw/Clean processing and include long recordings.
+  Each admitted job keeps its vocabulary snapshot even if settings change.
+  New vocabulary words enabled through `vocab words add/set` require at least
+  three characters and a selection of at most 100 unique enabled terms.
+  Replacement rules are not subject to this recognition limit. Imported or
+  legacy larger lists remain stored; no terms are silently selected from them.
+  Failed hint processing retains the base transcript and emits a content-free
+  notice on stderr (not JSON stdout). These notices also cover unsupported
+  engines and oversized or unreadable vocabulary. No JSON fields change.
 - Destructive local mutators that advertise `--json` return a single success
   object with `ok: true` plus affected IDs, counts, or model/cache names. Use
   `macparakeet-cli spec --json` for each command's documented JSON mode and

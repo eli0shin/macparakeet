@@ -89,6 +89,20 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ## [Unreleased]
 
+### Vocabulary hints
+
+- Add `config get/set vocabulary-hints on|off`. Setting `on` consents to an
+  additional local model download on the next supported transcription; default
+  is off. Parakeet TDT v2/v3 uses hints before Raw/Clean processing, including
+  recordings over five minutes. Jobs keep their admitted vocabulary selection.
+- `vocab words add/set` validates newly enabled vocabulary words: at least three
+  characters and at most 100 unique enabled terms. Replacement rules are not
+  limited. Existing/imported words remain stored; oversized selections receive
+  a notice instead of silent truncation.
+- Hint failures keep the base transcript and report a notice on stderr. JSON
+  stdout shapes are unchanged. FluidAudio is pinned to 0.15.6 for vocabulary
+  safety controls and long-audio seam fixes; this is not a measured accuracy claim.
+
 ### Changed
 
 - Meeting TXT and Markdown file exports, Markdown stdout, `meetings export`,

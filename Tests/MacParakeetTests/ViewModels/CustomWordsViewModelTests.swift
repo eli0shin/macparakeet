@@ -6,11 +6,84 @@ import XCTest
 final class CustomWordsViewModelTests: XCTestCase {
     var viewModel: CustomWordsViewModel!
     var mockRepo: MockCustomWordRepository!
+    var defaults: UserDefaults!
+    var suiteName: String!
 
     override func setUp() async throws {
         mockRepo = MockCustomWordRepository()
         viewModel = CustomWordsViewModel()
-        viewModel.configure(repo: mockRepo)
+        suiteName = "vocabulary-view-model-\(UUID())"
+        defaults = UserDefaults(suiteName: suiteName)!
+        viewModel.configure(repo: mockRepo, defaults: defaults)
+    }
+
+    override func tearDown() async throws {
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    func testAddingWordDoesNotEnableOrDownloadWithoutConsent() async {
+        let probe = VocabularyPreparationProbe()
+        viewModel.configure(repo: mockRepo, defaults: defaults, prepareRecognition: { await probe.prepare() })
+        viewModel.newWord = "MacParakeet"
+        viewModel.addWord()
+        XCTAssertTrue(viewModel.needsRecognitionConsent)
+        XCTAssertFalse(viewModel.recognitionEnabled)
+        let before = await probe.count
+        XCTAssertEqual(before, 0)
+        await viewModel.answerRecognitionConsent(false)
+        viewModel.newWord = "FluidAudio"
+        viewModel.addWord()
+        XCTAssertFalse(viewModel.needsRecognitionConsent)
+        let after = await probe.count
+        XCTAssertEqual(after, 0)
+    }
+
+    func testConsentPreparesBeforeEnablingAndOffPreservesWords() async {
+        let probe = VocabularyPreparationProbe()
+        viewModel.configure(repo: mockRepo, defaults: defaults, prepareRecognition: { await probe.prepare() })
+        viewModel.newWord = "MacParakeet"
+        viewModel.addWord()
+        await viewModel.answerRecognitionConsent(true)
+        XCTAssertTrue(viewModel.recognitionEnabled)
+        XCTAssertTrue(defaults.bool(forKey: UserDefaultsAppRuntimePreferences.customVocabularyRecognitionConsentKey))
+        let count = await probe.count
+        XCTAssertEqual(count, 1)
+        await viewModel.requestRecognitionEnabled(false)
+        XCTAssertFalse(viewModel.recognitionEnabled)
+        XCTAssertEqual(viewModel.words.count, 1)
+    }
+
+    func testFailedPreparationDoesNotEnableHints() async {
+        viewModel.configure(repo: mockRepo, defaults: defaults, prepareRecognition: { throw CancellationError() })
+        await viewModel.answerRecognitionConsent(true)
+        XCTAssertFalse(viewModel.recognitionEnabled)
+        XCTAssertFalse(viewModel.isPreparingRecognition)
+        XCTAssertNotNil(viewModel.errorMessage)
+    }
+
+    func testShortVocabularyRejectedButShortReplacementAllowed() {
+        viewModel.newWord = "AI"
+        viewModel.addWord()
+        XCTAssertTrue(viewModel.words.isEmpty)
+        XCTAssertNotNil(viewModel.errorMessage)
+        viewModel.newReplacement = "artificial intelligence"
+        viewModel.addWord()
+        XCTAssertEqual(viewModel.words.count, 1)
+    }
+
+    func testLimitRejectsNewEnabledTermButPreservesLegacyListAndAllowsDisable() throws {
+        for index in 0..<101 { try mockRepo.save(CustomWord(word: "Term\(index)")) }
+        viewModel.loadWords()
+        XCTAssertNotNil(viewModel.vocabularyWarning)
+        viewModel.newWord = "MacParakeet"
+        viewModel.addWord()
+        XCTAssertEqual(viewModel.words.count, 101)
+        XCTAssertNotNil(viewModel.errorMessage)
+        viewModel.toggleEnabled(try XCTUnwrap(viewModel.words.first))
+        XCTAssertNil(viewModel.vocabularyWarning)
+        viewModel.newReplacement = "replacement"
+        viewModel.addWord()
+        XCTAssertEqual(viewModel.words.count, 102)
     }
 
     func testInitialState() {
@@ -99,4 +172,9 @@ final class CustomWordsViewModelTests: XCTestCase {
         viewModel.searchText = ""
         XCTAssertEqual(viewModel.filteredWords.count, 1)
     }
+}
+
+private actor VocabularyPreparationProbe {
+    var count = 0
+    func prepare() { count += 1 }
 }
