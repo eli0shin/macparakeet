@@ -1,5 +1,6 @@
 from contextlib import redirect_stdout
 import io
+import json
 import os
 from pathlib import Path
 import shutil
@@ -173,8 +174,89 @@ class SignedArtifactScriptTests(unittest.TestCase):
         self.privacy_verify = Path("scripts/dist/verify_app_privacy_surface.sh").read_text()
         self.downloadable_verify = Path("scripts/ci/verify_downloadable_app.sh").read_text()
 
+    def run_publish_fixture(self, build_exit=0, missing_input=None,
+                            invalid_certificate=False, interrupt_build=False):
+        temporary_directory = tempfile.TemporaryDirectory(prefix="signed artifact fixture ")
+        root = Path(temporary_directory.name)
+        (root / "scripts/ci").mkdir(parents=True)
+        (root / "scripts/dist").mkdir(parents=True)
+        (root / "dist").mkdir()
+        shutil.copyfile("scripts/ci/publish_signed_artifact.sh",
+                        root / "scripts/ci/publish_signed_artifact.sh")
+
+        command_log = root / "security-commands.jsonl"
+        fake_bin = root / "fake bin"
+        fake_bin.mkdir()
+        security = fake_bin / "security"
+        security.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, sys\n"
+            "with open(os.environ['SECURITY_COMMAND_LOG'], 'a') as log:\n"
+            "    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+            "if sys.argv[1:] == ['list-keychains', '-d', 'user']:\n"
+            "    for path in json.loads(os.environ['ORIGINAL_KEYCHAINS']):\n"
+            "        print(f'    \\\"{path}\\\"')\n"
+            "elif sys.argv[1:4] == ['find-identity', '-v', '-p']:\n"
+            "    print('1) ABCDEF \\\"' + os.environ['SIGNING_IDENTITY'] + '\\\"')\n"
+        )
+        security.chmod(0o755)
+        xcrun = fake_bin / "xcrun"
+        xcrun.write_text("#!/bin/sh\nexit 0\n")
+        xcrun.chmod(0o755)
+
+        build_body = f"#!/bin/sh\nexit {build_exit}\n"
+        if interrupt_build:
+            build_body = "#!/bin/sh\nkill -TERM \"$PPID\"\nsleep 1\nexit 0\n"
+        for path, body in [
+            (root / "scripts/dist/build_app_bundle.sh", build_body),
+            (root / "scripts/dist/sign_notarize.sh", "#!/bin/sh\nexit 0\n"),
+            (root / "scripts/ci/verify_signed_dmg.sh", "#!/bin/sh\ntouch dist/MacParakeet.dmg\n"),
+        ]:
+            path.write_text(body)
+            path.chmod(0o755)
+
+        identity = "Developer ID Application: Test Signer (ABCDEFGHIJ)"
+        original_keychains = [
+            str(root / "Login Keychain With Spaces.keychain-db"),
+            str(root / "second-keychain.keychain-db"),
+        ]
+        environment = os.environ.copy()
+        environment.update({
+            "PATH": str(fake_bin) + os.pathsep + environment["PATH"],
+            "RUNNER_TEMP": str(root / "runner temp"),
+            "SECURITY_COMMAND_LOG": str(command_log),
+            "ORIGINAL_KEYCHAINS": json.dumps(original_keychains),
+            "SIGNING_IDENTITY": identity,
+            "SIGNED_ARTIFACT_VERSION": "1.2.3",
+            "SIGNED_ARTIFACT_BUILD_NUMBER": "20260906123456",
+            "DEVELOPMENT_ID_CERTIFICATE_BASE64": "Zml4dHVyZQ==",
+            "DEVELOPMENT_ID_CERTIFICATE_PASSWORD": "fixture-password",
+            "DEVELOPER_ID_APPLICATION_IDENTITY": identity,
+            "APPLE_TEAM_ID": "ABCDEFGHIJ",
+            "NOTARY_APPLE_ID": "fixture@example.com",
+            "NOTARY_APP_SPECIFIC_PASSWORD": "fixture-notary-password",
+        })
+        if missing_input:
+            environment.pop(missing_input)
+        if invalid_certificate:
+            environment["DEVELOPMENT_ID_CERTIFICATE_BASE64"] = "not-valid-base64!"
+        (root / "runner temp").mkdir()
+        result = subprocess.run(
+            ["bash", str(root / "scripts/ci/publish_signed_artifact.sh")],
+            cwd=root,
+            env=environment,
+            text=True,
+            capture_output=True,
+        )
+        commands = []
+        if command_log.exists():
+            commands = [json.loads(line) for line in command_log.read_text().splitlines()]
+        return temporary_directory, result, commands, original_keychains
+
     def test_credentials_use_ephemeral_keychain_with_failure_cleanup(self):
-        self.assertIn("trap cleanup EXIT INT TERM", self.publish)
+        self.assertIn("trap cleanup EXIT", self.publish)
+        self.assertIn("trap 'exit 130' INT", self.publish)
+        self.assertIn("trap 'exit 143' TERM", self.publish)
         self.assertIn('security create-keychain', self.publish)
         self.assertIn('security delete-keychain "$KEYCHAIN_PATH"', self.publish)
         self.assertIn('rm -f "$CERTIFICATE_PATH"', self.publish)
@@ -183,6 +265,58 @@ class SignedArtifactScriptTests(unittest.TestCase):
         self.assertIn('NOTARYTOOL_KEYCHAIN="$KEYCHAIN_PATH"', self.publish)
         self.assertIn('codesign --keychain "$SIGN_KEYCHAIN"', self.sign)
         self.assertIn('xcrun notarytool "$@" --keychain "$NOTARYTOOL_KEYCHAIN"', self.sign)
+
+    def test_signing_keychain_is_added_then_original_search_list_is_restored(self):
+        fixture, result, commands, original_keychains = self.run_publish_fixture()
+        with fixture:
+            self.assertEqual(result.returncode, 0, result.stderr)
+            search_list_updates = [command for command in commands
+                                   if command[:4] == ["list-keychains", "-d", "user", "-s"]]
+            self.assertEqual(len(search_list_updates), 2)
+            temporary_keychain = search_list_updates[0][4]
+            self.assertIn("runner temp", temporary_keychain)
+            self.assertEqual(search_list_updates[0][5:], original_keychains)
+            self.assertEqual(search_list_updates[1][4:], original_keychains)
+            restore_index = commands.index(search_list_updates[1])
+            delete_index = next(index for index, command in enumerate(commands)
+                                if command[:1] == ["delete-keychain"])
+            self.assertLess(restore_index, delete_index)
+
+    def test_build_failure_restores_original_search_list_before_deleting_keychain(self):
+        fixture, result, commands, original_keychains = self.run_publish_fixture(build_exit=23)
+        with fixture:
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(commands[-2], ["list-keychains", "-d", "user", "-s",
+                                            *original_keychains])
+            self.assertEqual(commands[-1][0], "delete-keychain")
+
+    def test_interruption_restores_original_search_list(self):
+        fixture, result, commands, original_keychains = self.run_publish_fixture(
+            interrupt_build=True
+        )
+        with fixture:
+            self.assertEqual(result.returncode, 143)
+            self.assertEqual(commands[-2], ["list-keychains", "-d", "user", "-s",
+                                            *original_keychains])
+            self.assertEqual(commands[-1][0], "delete-keychain")
+
+    def test_missing_credentials_leave_original_search_list_untouched(self):
+        fixture, result, commands, _ = self.run_publish_fixture(
+            missing_input="DEVELOPMENT_ID_CERTIFICATE_PASSWORD"
+        )
+        with fixture:
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(commands, [])
+
+    def test_invalid_certificate_restores_original_search_list(self):
+        fixture, result, commands, original_keychains = self.run_publish_fixture(
+            invalid_certificate=True
+        )
+        with fixture:
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(commands[-2], ["list-keychains", "-d", "user", "-s",
+                                            *original_keychains])
+            self.assertEqual(commands[-1][0], "delete-keychain")
 
     def test_missing_credentials_version_and_identity_fail_closed(self):
         for name in [
