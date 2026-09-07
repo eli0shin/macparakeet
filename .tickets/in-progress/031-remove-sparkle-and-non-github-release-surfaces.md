@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@031-remove-sparkle-and-non-github-release-surfaces
 Tags:
   - ready-for-agent
 Parent:

@@ -323,7 +323,7 @@ MacParakeet optimizes the default pipeline for Parakeet while routing optional N
 
 This is not "cloud by default with a local mode." Core speech recognition runs entirely on-device. There is no cloud STT path, no account system, and no requirement to send audio anywhere.
 
-Optional network features exist, but they are explicit and separate: transcript text can be sent to user-configured LLM providers, Sparkle checks for updates, YouTube imports download media, and self-hosted telemetry can be disabled. The privacy boundary is simple: speech stays local.
+Optional network features exist, but they are explicit and separate: transcript text can be sent to user-configured LLM providers, YouTube imports download media, and self-hosted telemetry can be disabled. The privacy boundary is simple: speech stays local.
 
 ### 3. Free and Open-Source
 
@@ -461,8 +461,8 @@ YouTube transcription and full export pipeline.
 Ship-quality polish. Direct distribution via notarized DMG.
 
 - Onboarding flow (permissions, first dictation)
-- Notarized DMG distribution (macparakeet.com/R2 + Sparkle)
-- Sparkle auto-updates
+- Notarized DMG distribution through this fork's GitHub Releases
+- Manual updates by downloading the latest GitHub Release
 - Marketing site (macparakeet.com)
 - Accessibility (VoiceOver, keyboard navigation)
 - UI Localization (English UI first, structure for future languages; STT already supports 25 European languages)

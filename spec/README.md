@@ -62,7 +62,7 @@ These decisions are final. Do not second-guess them.
 
 | Channel | Status | Notes |
 |---------|--------|-------|
-| Stable DMG `0.7.3` | User-facing release, recommended for normal use | Dictation, file/media URL transcription, System Default microphone routing, separate live/final speech-engine routes, meeting recording with cleaned-mic finalization and bounded capture lifecycle, calendar auto-start and activity-based auto-stop (both opt-in, default off), Transforms, VAD-guided meeting live-preview chunking, optional Nemotron Beta, Cohere, and WhisperKit, bundled CLI 3.0, exports, vocabulary, AI features |
+| Stable DMG `0.7.3` | User-facing release, recommended for normal use | Published manually only at [GitHub Releases](https://github.com/eli0shin/macparakeet/releases/latest); includes dictation, file/media URL transcription, System Default microphone routing, separate live/final speech-engine routes, meeting recording with cleaned-mic finalization and bounded capture lifecycle, calendar auto-start and activity-based auto-stop (both opt-in, default off), Transforms, VAD-guided meeting live-preview chunking, optional Nemotron Beta, Cohere, and WhisperKit, bundled CLI 3.0, exports, vocabulary, AI features |
 | `main` | Development | Current `0.7.3` source plus subsequent reviewed development; developer-gated in-process MLX local LLM groundwork remains compiled/tested but hidden from normal users |
 
 Current `main` feature gates in `Sources/MacParakeetCore/AppFeatures.swift`:
@@ -166,7 +166,7 @@ Dictation + transcription + history + settings. Get audio in, text out, pasted i
 - [x] Speaker diarization CLI preview (FluidAudio offline pipeline, ADR-010)
 - [x] Speaker diarization GUI (summary panel + inline rename)
 - [x] Custom hotkey support (any single key + chord combos, ADR-009)
-- [x] Sparkle auto-updates
+- [x] Manual updates from this fork's GitHub Releases
 - [x] LLM provider integration (cloud API keys, summary + chat, ADR-011)
 - [x] Private dictation mode
 - [x] Newline escape in text snippets
@@ -175,7 +175,7 @@ Dictation + transcription + history + settings. Get audio in, text out, pasted i
 - [x] Voice stats dashboard
 - [x] UI polish (toggles, sidebar sections, copy improvements)
 - [x] Non-blocking transcription progress (bottom bar UX)
-- [x] Distribution: Notarized DMG via macparakeet.com/R2, Sparkle auto-updates
+- [x] Distribution: notarized DMG published manually through this fork's GitHub Releases
 
 ### v0.5 Data, UI & Prompts (Implemented)
 

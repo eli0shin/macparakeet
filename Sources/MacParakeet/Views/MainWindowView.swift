@@ -1,4 +1,3 @@
-import Sparkle
 import SwiftUI
 import MacParakeetCore
 import MacParakeetViewModels
@@ -69,7 +68,6 @@ struct MainWindowView: View {
     let libraryViewModel: TranscriptionLibraryViewModel
     let meetingsWorkspaceViewModel: MeetingsWorkspaceViewModel
     let meetingPillViewModel: MeetingRecordingPillViewModel
-    let updater: SPUUpdater
     let onRecordMeeting: () -> Void
     let onRecordMeetingFromWorkspace: () -> Void
     let onPauseToggleMeeting: (() -> Void)?
@@ -262,7 +260,6 @@ struct MainWindowView: View {
                         SettingsView(
                             viewModel: settingsViewModel,
                             llmSettingsViewModel: llmSettingsViewModel,
-                            updater: updater,
                             transformHotkeys: transformsViewModel.transforms,
                             requestedTab: state.requestedSettingsTab,
                             requestedAnchor: state.requestedSettingsAnchor,

@@ -436,7 +436,6 @@ class DownloadableAppVerificationTests(unittest.TestCase):
         resources.mkdir(parents=True)
         if include_app_resource_bundle:
             (resources / "MacParakeet_MacParakeet.bundle").mkdir()
-        (contents / "Frameworks" / "Sparkle.framework").mkdir(parents=True)
         macos = contents / "MacOS"
         macos.mkdir()
         app_executable = macos / "MacParakeet"
@@ -539,6 +538,33 @@ class DownloadableAppVerificationTests(unittest.TestCase):
         self.assertIn("yt-dlp: 2026.01.01", result.stdout)
         self.assertIn("CLI: macparakeet-cli 3.0.0", result.stdout)
         self.assertIn("node: v24.13.1", result.stdout)
+
+    def test_verifier_rejects_removed_update_components(self):
+        forbidden_paths = [
+            "Contents/Frameworks/Sparkle.framework",
+            "Contents/Frameworks/Autoupdate",
+            "Contents/Frameworks/Updater.app",
+            "Contents/Frameworks/Downloader.xpc",
+            "Contents/Frameworks/InstallerLauncher.xpc",
+        ]
+        for forbidden_path in forbidden_paths:
+            with self.subTest(forbidden_path=forbidden_path), tempfile.TemporaryDirectory() as directory:
+                app = self.make_app(directory)
+                path = app / forbidden_path
+                path.mkdir(parents=True)
+                result = self.verify(app)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("removed update component", result.stderr)
+
+    def test_verifier_rejects_removed_update_metadata(self):
+        for forbidden_key in ["SUFeedURL", "SUPublicEDKey"]:
+            with self.subTest(forbidden_key=forbidden_key), tempfile.TemporaryDirectory() as directory:
+                app = self.make_app(directory)
+                info_plist = app / "Contents/Info.plist"
+                info_plist.write_text(f"<plist><dict><key>{forbidden_key}</key></dict></plist>")
+                result = self.verify(app)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("removed update metadata", result.stderr)
 
     def test_packaged_launch_smoke_catches_prefixed_resource_bundle_failure(self):
         with tempfile.TemporaryDirectory() as directory:

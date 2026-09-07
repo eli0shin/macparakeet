@@ -114,31 +114,6 @@ xattr -cr "$APP_PATH" || true
 echo "[2/8] Signing nested frameworks and executables (if any)…"
 # Sign inside-out: frameworks first, then helper binaries, then the app itself.
 
-# Sign Sparkle.framework (auto-update framework) if embedded.
-# Must sign inside-out: XPC services and nested apps first, then the framework itself.
-SPARKLE_FW="$APP_PATH/Contents/Frameworks/Sparkle.framework"
-if [[ -d "$SPARKLE_FW" ]]; then
-  echo "Signing: Sparkle.framework (inside-out)…"
-  # Sign XPC services
-  while IFS= read -r -d '' xpc; do
-    echo "  Signing XPC: $(basename "$xpc")"
-    codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$xpc"
-  done < <(find "$SPARKLE_FW" -name "*.xpc" -type d -print0 2>/dev/null || true)
-  # Sign nested apps (Updater.app)
-  while IFS= read -r -d '' app; do
-    echo "  Signing app: $(basename "$app")"
-    codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$app"
-  done < <(find "$SPARKLE_FW" -name "*.app" -type d -print0 2>/dev/null || true)
-  # Sign standalone executables (Autoupdate)
-  while IFS= read -r -d '' bin; do
-    echo "  Signing binary: $(basename "$bin")"
-    codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$bin"
-  done < <(find "$SPARKLE_FW/Versions/B" -maxdepth 1 -type f -perm -111 -print0 2>/dev/null || true)
-  # Sign the framework itself
-  echo "  Signing: Sparkle.framework"
-  codesign_for_distribution --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$SPARKLE_FW"
-fi
-
 # Sign optional model-backed meeting echo-suppression dylibs.
 while IFS= read -r -d '' dylib; do
   echo "Signing bundled dylib: $dylib"

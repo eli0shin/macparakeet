@@ -503,14 +503,6 @@ public enum SettingsSearchIndex {
             cardAnchor: "system.storage"
         ),
         SettingsSearchEntry(
-            id: "system.updates",
-            tab: .system,
-            title: "Updates",
-            subtitle: "Automatic update checks and manual update.",
-            keywords: ["update", "sparkle", "version", "release", "auto update"],
-            cardAnchor: "system.updates"
-        ),
-        SettingsSearchEntry(
             id: "system.privacy",
             tab: .system,
             title: "Privacy",

@@ -62,9 +62,8 @@ sitting at a keyboard, it lives in the .app.
   output.
 - **Media URL transcription** via yt-dlp for public media URLs, plus native
   Apple Podcasts link resolution and freetext Apple Podcasts search through
-  `transcribe --podcast`. The standalone Homebrew install uses Homebrew's
-  `yt-dlp`; the app bundle can seed a signed helper into MacParakeet's
-  Application Support folder before first media URL use.
+  `transcribe --podcast`. The app bundle can seed a signed `yt-dlp` helper into
+  MacParakeet's Application Support folder before first media URL use.
 - **Persistent SQLite memory layer** -- everything transcribed is queryable
   later: dictation history, transcriptions, prompt outputs.
 - **Shared app/CLI preferences** -- agents can set speech engine, processing
@@ -82,41 +81,36 @@ sitting at a keyboard, it lives in the .app.
 
 ## Install
 
-**Recommended for agents/headless Macs:**
-
-```bash
-brew install moona3k/tap/macparakeet-cli
-macparakeet-cli --version
-macparakeet-cli health --json
-```
-
-This installs the standalone CLI plus its Homebrew-managed `ffmpeg` and
-`yt-dlp` runtime dependencies. It does not require `MacParakeet.app`.
-Parakeet, Nemotron, and Cohere CoreML caches are managed by FluidAudio.
-WhisperKit model downloads live under
-`~/Library/Application Support/MacParakeet/models/stt/whisper/`.
-
-**Bundled app alternative:** after installing
-[MacParakeet](https://macparakeet.com), the same CLI surface is available at:
+Install the app from the [latest release](https://github.com/eli0shin/macparakeet/releases/latest).
+The CLI ships inside the bundle:
 
 ```bash
 /Applications/MacParakeet.app/Contents/MacOS/macparakeet-cli --help
 ```
 
+Parakeet, Nemotron, and Cohere CoreML caches are managed by FluidAudio.
+WhisperKit model downloads live under
+`~/Library/Application Support/MacParakeet/models/stt/whisper/`.
+
 MacParakeet deliberately does not modify your shell configuration or install
-files into package-manager directories. If you want the bundled executable
-under the shorter `macparakeet-cli` command, use the Homebrew installation
-above or configure your own shell alias, PATH entry, or symlink. First check
-whether another copy is already available:
+files into package-manager directories. To get the shorter `macparakeet-cli`
+command, use a user-owned PATH directory. First check whether another copy is
+already available:
 
 ```bash
 command -v macparakeet-cli
 ```
 
-The Homebrew CLI and the app-bundled CLI are released independently, so their
-versions can differ. Use `command -v macparakeet-cli` and
-`macparakeet-cli --version` to confirm which executable Terminal will run. Do
-not replace a Homebrew-managed link with an app-managed link.
+Then link it and add the directory to your shell or agent environment:
+
+```bash
+mkdir -p "$HOME/.local/bin"
+ln -sf /Applications/MacParakeet.app/Contents/MacOS/macparakeet-cli \
+  "$HOME/.local/bin/macparakeet-cli"
+export PATH="$HOME/.local/bin:$PATH"
+macparakeet-cli --version
+macparakeet-cli health --json
+```
 
 ## Why Apple Silicon specifically
 
@@ -610,8 +604,7 @@ OpenClaw, Hermes, or another local agent framework.
   egress paths are: explicit helper repair (`health --repair-binaries`),
   media URL downloads (yt-dlp), optional LLM provider calls (only when
   `prompts run` or `llm` targets a hosted provider, or when a configured
-  Local CLI command contacts its own service), Sparkle update checks (app,
-  not CLI), and a single privacy-safe
+  Local CLI command contacts its own service), and a single privacy-safe
   `cli_operation` event per successfully parsed CLI invocation, posted to the
   self-hosted endpoint at `https://macparakeet.com/api/telemetry`. The telemetry event
   ships only allowlisted invocation metadata (`operation_id`, `workflow_id`,
