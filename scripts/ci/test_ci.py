@@ -151,6 +151,106 @@ class GitHubReleasePlanTests(unittest.TestCase):
         self.assertEqual(plan.version, "1.3.0")
 
 
+class InterruptedReleaseRecoveryTests(unittest.TestCase):
+    def run_recovery(self, annotation, draft_id="", release_status="404", tag_type="tag"):
+        temporary_directory = tempfile.TemporaryDirectory()
+        root = Path(temporary_directory.name)
+        fake_bin = root / "bin"
+        fake_bin.mkdir()
+        command_log = root / "commands"
+
+        git = fake_bin / "git"
+        git.write_text(
+            "#!/bin/sh\n"
+            "printf 'git %s\\n' \"$*\" >> \"$COMMAND_LOG\"\n"
+            "if [ \"$1 $2\" = 'tag --merged' ]; then echo v0.7.3; fi\n"
+            "if [ \"$1 $2\" = 'cat-file -t' ]; then printf '%s\\n' \"$TAG_TYPE\"; fi\n"
+            "if [ \"$1 $2\" = 'tag -l' ]; then printf '%s\\n' \"$TAG_ANNOTATION\"; fi\n"
+        )
+        git.chmod(0o755)
+        gh = fake_bin / "gh"
+        gh.write_text(
+            "#!/bin/sh\n"
+            "printf 'gh %s\\n' \"$*\" >> \"$COMMAND_LOG\"\n"
+            "if [ \"$1 $2\" = 'api --include' ]; then\n"
+            "  if [ \"$RELEASE_STATUS\" = 200 ]; then exit 0; fi\n"
+            "  echo \"HTTP/2.0 $RELEASE_STATUS Fixture\"\n"
+            "  exit 1\n"
+            "fi\n"
+            "if [ \"$1 $2\" = 'api --paginate' ]; then printf '%s\\n' \"$DRAFT_ID\"; fi\n"
+        )
+        gh.chmod(0o755)
+
+        environment = os.environ.copy()
+        environment.update({
+            "PATH": str(fake_bin) + os.pathsep + environment["PATH"],
+            "COMMAND_LOG": str(command_log),
+            "RELEASE_STATUS": release_status,
+            "DRAFT_ID": draft_id,
+            "GITHUB_REPOSITORY": "eli0shin/macparakeet",
+            "TAG_ANNOTATION": annotation,
+            "TAG_TYPE": tag_type,
+            "TARGET_SHA": "abc123",
+        })
+        result = subprocess.run(
+            ["bash", "scripts/ci/recover_interrupted_release.sh"],
+            text=True,
+            capture_output=True,
+            env=environment,
+        )
+        commands = command_log.read_text() if command_log.exists() else ""
+        return temporary_directory, result, commands
+
+    def test_preserves_intentional_baseline_without_github_release(self):
+        fixture, result, commands = self.run_recovery("MacParakeet 0.7.3 baseline")
+        with fixture:
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("git push origin :refs/tags/v0.7.3", commands)
+            self.assertNotIn("gh api --method DELETE", commands)
+
+    def test_preserves_lightweight_tag_even_when_commit_subject_matches_marker(self):
+        fixture, result, commands = self.run_recovery(
+            "MacParakeet automated release v0.7.3", tag_type="commit"
+        )
+        with fixture:
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("git push origin :refs/tags/v0.7.3", commands)
+
+    def test_preserves_annotated_tag_with_additional_annotation_text(self):
+        fixture, result, commands = self.run_recovery(
+            "MacParakeet automated release v0.7.3\nadditional text"
+        )
+        with fixture:
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("git push origin :refs/tags/v0.7.3", commands)
+
+    def test_preserves_tag_when_published_release_exists(self):
+        fixture, result, commands = self.run_recovery(
+            "MacParakeet automated release v0.7.3", release_status="200"
+        )
+        with fixture:
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("git push origin :refs/tags/v0.7.3", commands)
+
+    def test_non_not_found_api_failure_stays_fail_closed(self):
+        fixture, result, commands = self.run_recovery(
+            "MacParakeet 0.7.3 baseline", release_status="500"
+        )
+        with fixture:
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("git push origin :refs/tags/v0.7.3", commands)
+
+    def test_removes_interrupted_automated_tag_without_github_release(self):
+        fixture, result, commands = self.run_recovery(
+            "MacParakeet automated release v0.7.3", draft_id="99"
+        )
+        with fixture:
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("gh api --method DELETE repos/eli0shin/macparakeet/releases/99", commands)
+            self.assertIn("git push origin :refs/tags/v0.7.3", commands)
+            self.assertIn("git tag -d v0.7.3", commands)
+
+
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
         self.workflow = Path(".github/workflows/ci.yml").read_text()
@@ -205,6 +305,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("permissions:\n      contents: write", job)
         self.assertEqual(self.github_release_workflow.count("contents: write"), 1)
         self.assertIn("environment: signed-ci-artifact", job)
+
+    def test_github_release_recovers_before_planning(self):
+        job = self.github_release_job
+        recovery = job.index("bash scripts/ci/recover_interrupted_release.sh")
+        planning = job.index("python3 scripts/ci/plan_github_release.py")
+        self.assertLess(recovery, planning)
 
     def test_github_release_verifies_before_tag_and_publication(self):
         job = self.github_release_job
