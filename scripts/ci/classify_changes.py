@@ -6,18 +6,22 @@ from pathlib import PurePosixPath
 import subprocess
 
 
+def ignored_for_automation(path):
+    p = PurePosixPath(path)
+    return bool(p.parts) and (
+        p.parts[0] in {".tickets", "docs", "plans", "spec", "integrations"}
+        or (len(p.parts) == 1 and p.suffix == ".md")
+        or (p.parts[0] == "Sources" and p.name == "README.md")
+    )
+
+
 def classify(paths):
     code = False
     release = False
     shipping = False
     for path in paths:
         p = PurePosixPath(path)
-        prose = p.suffix == ".md" and (
-            len(p.parts) == 1
-            or p.parts[0] in {"docs", "plans", "spec", "integrations"}
-            or (p.parts[0] == "Sources" and p.name == "README.md")
-        )
-        if prose:
+        if ignored_for_automation(path):
             continue
         code = True
         release |= (
@@ -46,15 +50,22 @@ def classify(paths):
 
 
 def main():
-    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
-        base = os.environ["PR_BASE_SHA"]
-        # Include both sides of renames and the full PR, not only the last commit.
+    event = os.environ.get("GITHUB_EVENT_NAME")
+    if event in {"pull_request", "push"}:
+        if event == "pull_request":
+            revision = f"{os.environ['PR_BASE_SHA']}...HEAD"
+        else:
+            revision = f"{os.environ['PUSH_BASE_SHA']}..{os.environ['GITHUB_SHA']}"
+        # Include both sides of renames and the complete PR or push.
         changed = subprocess.check_output(
-            ["git", "diff", "--name-only", "--no-renames", "-z", f"{base}...HEAD"]
+            ["git", "diff", "--name-only", "--no-renames", "-z", revision]
         ).decode().split("\0")
         result = classify(path for path in changed if path)
+        # Every non-documentation main push retains complete release validation.
+        if event == "push" and result["code"]:
+            result["release"] = True
     else:
-        # main and manual validation retain release coverage.
+        # Manual validation retains complete coverage.
         result = {"code": True, "release": True, "shipping": True}
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         for key, value in result.items():

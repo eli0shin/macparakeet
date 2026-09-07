@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@033-skip-all-automation-for-docs-only-and-ticket-only-changes
 Tags:
   - ready-for-agent
 Parent:

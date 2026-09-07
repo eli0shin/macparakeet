@@ -13,11 +13,11 @@ The workflow runs:
 
 | Lane | When | Checks |
 |---|---|---|
-| `changes` | Every PR, main push, manual run | Script tests, subsystem README references, change classification |
+| `changes` | Every PR, non-documentation main push, manual run | Script tests, subsystem README references, change classification |
 | `debug-tests` | Code/input changes | One app/CLI/test build with concurrency warnings; all XCTest and Swift Testing cases; debug CLI smoke |
 | `swift6` | Code/input changes, parallel with debug | First-party Swift 6 compilation without WhisperKit; informational format lint |
-| `release` | Release-input PRs, every main push, manual run | Optimized release build and release CLI smoke; PRs use a fast fixture bundle smoke |
-| `development-artifact` | Successful `main` pushes and manual runs | Build the complete app, apply structural ad-hoc signatures, verify it, and upload a three-day owner-only development DMG |
+| `release` | Release-input PRs, every non-documentation main push, manual run | Optimized release build and release CLI smoke; PRs use a fast fixture bundle smoke |
+| `development-artifact` | Successful non-documentation `main` pushes and manual runs | Build the complete app, apply structural ad-hoc signatures, verify it, and upload a three-day owner-only development DMG |
 | `signed-artifact` | Explicit manual request on `main`, after protected-environment approval | Build, Developer ID sign, notarize, staple, verify, and upload a seven-day CI test DMG |
 | `Publish GitHub Release` | Successful trusted `main` push CI with shipping changes | Derive the next tag, build, sign, notarize, verify, then publish `MacParakeet.dmg` on GitHub Releases |
 | `swift-test` | Always | Stable, fail-closed result for all required lanes |
@@ -52,12 +52,18 @@ Missing credentials or any verification failure leaves no uploadable trusted
 DMG. This test artifact is not sent to R2 or Sparkle and is not an official
 release. Provisioning and download instructions are in `docs/distribution.md`.
 
-Only known prose paths skip compilation: root Markdown, Markdown under docs,
-plans, spec, integrations, and source README files. The CLI changelog remains a
-test input because `CLIVersionTests` checks it against the binary version. Unknown files,
-fixtures, JSON contracts, and mixed changes still receive code checks. Renames
-include old and new paths. The complete PR diff is used, not only its last commit.
-There are no workflow-level path skips, so prose PRs also report a final status.
+Pushes to `main` do not start CI when all changed paths are ticket tracking,
+anything under docs, plans, spec, or integrations, root Markdown, or source
+README files. This also prevents a downstream `workflow_run` release workflow
+from starting for those pushes. A mixed push starts CI and retains all main
+validation and artifact lanes. Manual dispatch remains available. Pull requests
+remain unfiltered so they report the stable final status.
+
+The classifier uses the same ignored paths. The CLI changelog remains a test
+input because `CLIVersionTests` checks it against the binary version. Unknown
+files, test fixtures, and mixed changes still receive code checks. Renames
+include old and new paths. The complete PR or push diff is used, not only its
+last commit.
 
 The separate release workflow runs only after successful push CI on this repository's
 `main`. It compares the successful commit with the most recent `vX.Y.Z` tag. Production
