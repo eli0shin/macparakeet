@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@030-publish-tagged-github-releases-from-ci
 Tags:
   - ready-for-agent
 Parent:

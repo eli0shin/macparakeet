@@ -9,6 +9,7 @@ import subprocess
 def classify(paths):
     code = False
     release = False
+    shipping = False
     for path in paths:
         p = PurePosixPath(path)
         prose = p.suffix == ".md" and (
@@ -27,7 +28,21 @@ def classify(paths):
             or any(part.endswith((".xcodeproj", ".xcworkspace")) for part in p.parts)
             or p.suffix in {".plist", ".entitlements", ".xcconfig"}
         )
-    return {"code": code, "release": release}
+        non_shipping = (
+            p.suffix == ".md"
+            or p.parts[0] in {
+                "Tests", "docs", "plans", "spec", ".tickets", "benchmarks", ".github"
+            }
+            or path.startswith(("scripts/ci/", "scripts/dev/"))
+        )
+        shipping |= not non_shipping and (
+            path in {"Package.swift", "Package.resolved"}
+            or p.parts[0] in {"Sources", "Assets"}
+            or path.startswith("scripts/dist/")
+            or "Resources" in p.parts
+            or p.suffix in {".plist", ".entitlements", ".xcconfig"}
+        )
+    return {"code": code, "release": release, "shipping": shipping}
 
 
 def main():
@@ -40,7 +55,7 @@ def main():
         result = classify(path for path in changed if path)
     else:
         # main and manual validation retain release coverage.
-        result = {"code": True, "release": True}
+        result = {"code": True, "release": True, "shipping": True}
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         for key, value in result.items():
             line = f"{key}={str(value).lower()}"
