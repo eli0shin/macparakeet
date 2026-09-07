@@ -187,7 +187,7 @@ jobs:
     # Ordinary source PRs intentionally do not wait for whole-module optimization.
     if: needs.changes.outputs.release == 'true'
     runs-on: macos-14
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
         with:

@@ -237,6 +237,9 @@ class WorkflowTests(unittest.TestCase):
         debug_job = self.workflow.split("\n  debug-tests:\n", 1)[1].split("\n  swift6:\n", 1)[0]
         self.assertIn("\n    timeout-minutes: 20\n", debug_job)
 
+    def test_release_job_allows_both_fifteen_minute_build_steps(self):
+        self.assertIn("\n    timeout-minutes: 35\n", self.release_job)
+
     def test_fixture_bundle_inputs_cannot_reach_published_app(self):
         fixture = self.release_job.split("      - name: Release Bundle Fixture Smoke\n", 1)[1]
         fixture = fixture.split("      - name:", 1)[0]
