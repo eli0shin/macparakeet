@@ -57,11 +57,15 @@ The script installs or updates `MacParakeet.app` from this repository's latest G
 
 ## Acceptance criteria
 
-- [ ] The exact `curl | bash` command works without a checkout.
-- [ ] An absent app is installed from the latest GitHub Release.
-- [ ] An older app is updated, while an equal or newer app is left unchanged.
-- [ ] `$HOME/.local/bin/macparakeet-cli` points to the CLI in the installed app.
-- [ ] zsh and bash PATH setup is idempotent.
-- [ ] The script remains small, self-contained, and consistent with `../repos/install.sh`.
-- [ ] Focused isolated tests pass.
-- [ ] The README contains the supported install command.
+- [x] The exact `curl | bash` command works without a checkout.
+- [x] An absent app is installed from the latest GitHub Release.
+- [x] An older app is updated, while an equal or newer app is left unchanged.
+- [x] `$HOME/.local/bin/macparakeet-cli` points to the CLI in the installed app.
+- [x] zsh and bash PATH setup is idempotent.
+- [x] The script remains small, self-contained, and consistent with `../repos/install.sh`.
+- [x] Focused isolated tests pass.
+- [x] The README contains the supported install command.
+
+## Resolution
+
+PR #38 merged as `09c8f81c` from reviewed head `3ee3efc6a0a4089141687a0e75bb822b500fe81d`. All applicable CI checks passed for that head. Independent review confirmed ticket compliance, intentional generated output, idempotent PATH handling, and no unresolved findings.
