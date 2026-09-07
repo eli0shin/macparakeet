@@ -10,6 +10,8 @@ Blocked-By: []
 
 Correct the protected signed-artifact workflow for this fork's Apple Developer team. The merged PR #17 documentation and verification hard-code upstream team `FYAF2ZD7RM` and upstream identity `Developer ID Application: Daniel Moon (...)`. The repository owner can only issue certificates for their own team; the installed Apple Development identity confirms team `3ZK76CKTXW` for Elimelech Oshinsky.
 
+> **Correction (2026-09-07):** that inference was wrong. On an individual account the parenthetical in an `Apple Development:` identity is the personal ID, not the team ID. The authoritative team ID is the `OU` of the **Developer ID Application** certificate, which is `GY6L5GL2Z7`. Using `3ZK76CKTXW` as `APPLE_TEAM_ID` made `scripts/ci/publish_signed_artifact.sh` fail its identity/team consistency check. Docs and dist script defaults now use `GY6L5GL2Z7`.
+
 Treat the protected environment's `APPLE_TEAM_ID` and `DEVELOPER_ID_APPLICATION_IDENTITY` secrets as the explicit expected identity. Do not weaken verification: prove the imported Developer ID Application certificate, signed app, nested code, DMG, and notarization request all use those configured values. Do not log secret values unnecessarily. Keep pull requests and untrusted events outside the credential boundary.
 
 ## Acceptance criteria
@@ -18,7 +20,7 @@ Treat the protected environment's `APPLE_TEAM_ID` and `DEVELOPER_ID_APPLICATION_
 - [x] The configured `APPLE_TEAM_ID` is used consistently for notary submission and post-signing TeamIdentifier verification.
 - [x] The configured full Developer ID Application identity is selected exactly and verified as a Developer ID Application certificate.
 - [x] A wrong-team or wrong-identity certificate fails before publication.
-- [x] Documentation uses this fork owner's team `3ZK76CKTXW` and a matching identity example without exposing credentials.
+- [x] Documentation uses this fork owner's team `GY6L5GL2Z7` and a matching identity example without exposing credentials.
 - [x] Workflow-control tests prove there is no hard-coded upstream signing identity and preserve protected-event, ephemeral-keychain, fail-closed, and complete-CI-gate behavior.
 - [x] Applicable CI checks pass.
 
