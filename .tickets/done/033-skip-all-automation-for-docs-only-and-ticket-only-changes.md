@@ -43,14 +43,18 @@ Do not weaken source-change CI or signed release verification.
 
 ## Acceptance criteria
 
-- [ ] A push containing only `.tickets/**` changes starts no GitHub Actions CI
+- [x] A push containing only `.tickets/**` changes starts no GitHub Actions CI
       workflow and creates no build, test run, artifact, tag, or release.
-- [ ] The same no-run behavior applies to documentation-only changes in the
+- [x] The same no-run behavior applies to documentation-only changes in the
       listed documentation paths and repository Markdown files.
-- [ ] A mixed push with at least one non-documentation/non-ticket path runs the
+- [x] A mixed push with at least one non-documentation/non-ticket path runs the
       existing CI lanes normally.
-- [ ] `workflow_dispatch` still runs when invoked manually.
-- [ ] The existing classifier tests are updated; no new test framework or
+- [x] `workflow_dispatch` still runs when invoked manually.
+- [x] The existing classifier tests are updated; no new test framework or
       standalone verification script is added.
-- [ ] The future tagged-release flow from ticket `030` cannot publish from a
+- [x] The future tagged-release flow from ticket `030` cannot publish from a
       documentation-only or ticket-only change.
+
+## Resolution
+
+PR #32 implemented workflow-level documentation and ticket path exclusions plus aligned classifier coverage; squash merge `6dcb4f19`. PR #33 increased only the release validation job timeout so completed build and fixture work can finish cache cleanup; reviewed head `968e74fe2fc15de8be7a7f0d7c0859b136f39de7`, squash merge `c02b4823`. Current-head CI passed and generated logs showed the intended release fixture with no publication artifact, tag, or release.
