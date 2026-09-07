@@ -119,10 +119,6 @@ metadata:
     requires:
       bins:
         - macparakeet-cli
-    install:
-      - kind: brew
-        formula: moona3k/tap/macparakeet-cli
-        bins: [macparakeet-cli]
     envVars:
       - name: ANTHROPIC_API_KEY
         required: false
