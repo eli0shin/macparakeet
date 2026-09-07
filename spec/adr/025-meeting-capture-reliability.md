@@ -77,8 +77,8 @@ Raw callback cessation is now a direct source-lifecycle failure:
   meeting-consumer recovery loop.
 
 Amplitude- or cross-source-signal-inferred restarts remain deferred. The
-meeting health monitor continues to warn and record those signatures in local
-diagnostics without changing the capture graph.
+meeting health monitor updates the active in-memory warning state without
+changing the capture graph.
 
 ### 2026-07-20 field-evidence amendment: final recording truth
 
@@ -164,8 +164,8 @@ that makes "mic is silent" *meaningful*.
   panel/pill: *"This meeting may be missing your side."* It does not
   stop the recording, does not modal-block, and does not throw — the
   meeting keeps capturing whatever it can.
-- Record the signature and timing in local diagnostics. No audio or transcript
-  content is included.
+- Store the active stall signature in the in-memory warning state so the
+  recording UI can present the warning.
 
 **Source-callback recovery is implemented; signal-inferred recovery remains
 deferred.** The #820 diagnostic confirmed that raw tap callbacks can stop while
@@ -523,8 +523,8 @@ deliver value without later ones.
 1. **Phase A — Mic-health detection core (implemented 2026-06-14).** Pure
    `MeetingMicHealthMonitor` with the three signatures + ~3 s
    confirmation gate, table tests, and the `MeetingAudioCaptureService`
-   wiring that feeds liveness signals and local diagnostics. Amplitude- and
-   cross-source-signal-inferred mic restart remains
+   wiring that feeds liveness signals into the in-memory warning state.
+   Amplitude- and cross-source-signal-inferred mic restart remains
    deliberately absent until field evidence can distinguish a dead graph from
    legitimate silence.
 2. **Phase B — Direct lifecycle recovery + actionable warnings (implemented
