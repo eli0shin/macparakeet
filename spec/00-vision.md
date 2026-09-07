@@ -98,9 +98,9 @@ Fully local speech is a core product property, and the app can stay fully local 
 - Local STT. No cloud speech processing, no accounts, no required backend for core speech.
 - Audio never leaves your Mac for dictation or transcription.
 - No email signup. No login. Optional self-hosted telemetry can be disabled in Settings.
-- Core capture and local-file speech workflows work in airplane-mode or air-gapped environments after the required models are installed. Media imports, updates, telemetry, and remote AI providers are separate network surfaces.
+- Core capture and local-file speech workflows work in airplane-mode or air-gapped environments after the required models are installed. Media imports, telemetry, and remote AI providers are separate network surfaces.
 
-This is privacy by architecture: speech recognition has no server path. Optional transcript-AI, media-download, update, and telemetry surfaces remain explicit and separately documented.
+This is privacy by architecture: speech recognition has no server path. Optional transcript-AI, media-download, and telemetry surfaces remain explicit and separately documented.
 
 ### 3. Simplicity Over Features
 
@@ -323,7 +323,7 @@ MacParakeet optimizes the default pipeline for Parakeet while routing optional N
 
 This is not "cloud by default with a local mode." Core speech recognition runs entirely on-device. There is no cloud STT path, no account system, and no requirement to send audio anywhere.
 
-Optional network features exist, but they are explicit and separate: transcript text can be sent to user-configured LLM providers, Sparkle checks for updates, YouTube imports download media, and self-hosted telemetry can be disabled. The privacy boundary is simple: speech stays local.
+Optional network features exist, but they are explicit and separate: transcript text can be sent to user-configured LLM providers, YouTube imports download media, and self-hosted telemetry can be disabled. The privacy boundary is simple: speech stays local.
 
 ### 3. Free and Open-Source
 
@@ -461,8 +461,8 @@ YouTube transcription and full export pipeline.
 Ship-quality polish. Direct distribution via notarized DMG.
 
 - Onboarding flow (permissions, first dictation)
-- Notarized DMG distribution (macparakeet.com/R2 + Sparkle)
-- Sparkle auto-updates
+- Notarized DMG distribution through this fork's GitHub Releases
+- Manual updates by downloading the latest GitHub Release
 - Marketing site (macparakeet.com)
 - Accessibility (VoiceOver, keyboard navigation)
 - UI Localization (English UI first, structure for future languages; STT already supports 25 European languages)
@@ -502,7 +502,7 @@ Ship-quality polish. Direct distribution via notarized DMG.
 | **YouTube downloads** | Standalone yt-dlp | macOS binary, auto-updates via `--update`. No Python needed. |
 | **UI framework** | SwiftUI | Native Mac experience. Menu bar + window. |
 | **Database** | SQLite (GRDB) | Single file. No server. Dictation history, custom words, settings. |
-| **Cloud option** | No cloud STT; optional LLM providers | Core speech stays local. AI and media downloads are user-triggered; updates and opt-out telemetry/crash reporting are product-managed network surfaces. Retained purchase activation endpoints remain in code but current public builds are free/unlocked. |
+| **Cloud option** | No cloud STT; optional LLM providers | Core speech stays local. AI and media downloads are user-triggered; opt-out telemetry/crash reporting is a product-managed network surface. Retained purchase activation endpoints remain in code but current public builds are free/unlocked. |
 | **Pricing** | Current public build free/GPL | Zero friction today; GPL-compatible official paid distribution/support remains available later. |
 
 ---

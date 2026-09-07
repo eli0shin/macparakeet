@@ -221,7 +221,7 @@ File/URL/meeting action -> MainWindowView/TranscribeView -> TranscriptionService
 
 #### Settings View
 
-**Responsibility:** User preferences and diagnostics. Four-tab settings shell for modes, local speech engines, optional AI, appearance, system permissions, storage, updates, and retained entitlement diagnostics.
+**Responsibility:** User preferences and diagnostics. Four-tab settings shell for modes, local speech engines, optional AI, appearance, system permissions, storage, and retained entitlement diagnostics.
 
 **Key Types:**
 - `SettingsView` — Tabbed/searchable shell (`Modes`, `Engine`, `AI`, `System`) with per-tab scroll bodies
@@ -230,7 +230,7 @@ File/URL/meeting action -> MainWindowView/TranscribeView -> TranscriptionService
 - `SettingsSearchIndex` — Cross-tab search entries; includes calendar rows while `AppFeatures.calendarEnabled` is `true`, and hides them when the flag is off
 - `SettingsViewModel` — Manages settings state, appearance preference, permissions, model status, speech-engine selection, calendar preferences, and legacy entitlement state
 
-**Dependencies:** `UserDefaults`, `CustomWordRepository`, `TextSnippetRepository`, `STTModelManager`, `WhisperModelManager`, `SPUUpdater`
+**Dependencies:** `UserDefaults`, `CustomWordRepository`, `TextSnippetRepository`, `STTModelManager`, `WhisperModelManager`
 
 #### Feedback View
 
@@ -1149,7 +1149,7 @@ same required permission checks in context.
 
 ### Privacy Guarantees
 
-1. **No cloud STT** — Speech recognition stays local. Network is used only for explicit surfaces such as model downloads, update checks, optional LLM providers, optional telemetry/crash reporting, retained purchase activation endpoints if explicitly invoked, and user-initiated YouTube downloads.
+1. **No cloud STT** — Speech recognition stays local. Network is used only for explicit surfaces such as model downloads, optional LLM providers, optional telemetry/crash reporting, retained purchase activation endpoints if explicitly invoked, and user-initiated YouTube downloads.
 2. **Managed temporary files** — Owning flows clean their temporary working files; persisted dictation/meeting audio follows the user's explicit storage and retention settings
 3. **No required product account** — No login or email is required; optional telemetry/crash reporting is described separately
 4. **Telemetry is opt-out** — Self-hosted usage analytics and crash reporting run only while telemetry is enabled
@@ -1382,7 +1382,7 @@ open Package.swift
 
 2. **Protocol-first services.** Every service has a protocol. Tests inject mocks. No singletons.
 
-3. **Local-only for user data.** Core speech inference has no cloud or API-key dependency. Network is only for model artifacts, optional LLM providers, update/telemetry surfaces, retained purchase activation/validation if explicitly invoked, and user-initiated media downloads.
+3. **Local-only for user data.** Core speech inference has no cloud or API-key dependency. Network is only for model artifacts, optional LLM providers, telemetry surfaces, retained purchase activation/validation if explicitly invoked, and user-initiated media downloads.
 
 4. **Fast launch + onboarding pre-warm.** App launch stays lightweight; first-run onboarding prepares STT model so core features feel ready immediately afterward.
 

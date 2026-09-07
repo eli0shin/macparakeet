@@ -1,36 +1,9 @@
 import AppKit
-import Sparkle
 import MacParakeetCore
 import MacParakeetViewModels
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    // MARK: - Auto-Update
-
-    /// Sparkle update gating: refuses checks during active meeting recordings
-    /// (so a relaunch can't kill an in-flight recording) and during local
-    /// dev/sentinel builds (so a `0.0.0` / `dev` binary doesn't auto-update
-    /// itself to the shipped release). See `SparkleUpdateGuard`.
-    private lazy var sparkleUpdateGuard: SparkleUpdateGuard = SparkleUpdateGuard(
-        isMeetingRecordingActive: { [weak self] in
-            self?.meetingRecordingFlowCoordinator?.isMeetingRecordingActive == true
-        }
-    )
-
-    #if DEBUG
-    private lazy var updaterController: SPUStandardUpdaterController = SPUStandardUpdaterController(
-        startingUpdater: false,
-        updaterDelegate: sparkleUpdateGuard,
-        userDriverDelegate: nil
-    )
-    #else
-    private lazy var updaterController: SPUStandardUpdaterController = SPUStandardUpdaterController(
-        startingUpdater: true,
-        updaterDelegate: sparkleUpdateGuard,
-        userDriverDelegate: nil
-    )
-    #endif
-
     // MARK: - Runtime Services
 
     private var appEnvironment: AppEnvironment?
@@ -202,7 +175,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         libraryViewModel: libraryViewModel,
         meetingsWorkspaceViewModel: meetingsWorkspaceViewModel,
         meetingPillViewModel: meetingPillViewModel,
-        updaterController: updaterController,
         onRecordMeeting: { [weak self] in
             self?.toggleMeetingRecording(originatesFromWindow: true)
         },
@@ -235,7 +207,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
 
     private lazy var menuBarCoordinator = MenuBarCoordinator(
-        updaterController: updaterController,
         transcriptionViewModel: transcriptionViewModel,
         youtubeInputController: youtubeInputController,
         environmentProvider: { [weak self] in

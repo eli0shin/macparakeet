@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://downloads.macparakeet.com/MacParakeet.dmg"><img src="https://img.shields.io/badge/Download-DMG-E86B3B.svg?style=for-the-badge&logo=apple&logoColor=white" alt="Download DMG"></a>
+  <a href="https://github.com/eli0shin/macparakeet/releases/latest"><img src="https://img.shields.io/badge/Download-DMG-E86B3B.svg?style=for-the-badge&logo=apple&logoColor=white" alt="Download DMG"></a>
 </p>
 
 <p align="center">
@@ -59,7 +59,7 @@ MacParakeet combines system-wide dictation, file/media transcription, and meetin
 
 ## Release status
 
-The [notarized DMG](https://downloads.macparakeet.com/MacParakeet.dmg) is the stable release channel.
+The [notarized DMG](https://github.com/eli0shin/macparakeet/releases/latest) from GitHub Releases is the only release channel.
 
 | Channel | Status | Includes |
 |---------|--------|----------|
@@ -128,38 +128,31 @@ Cohere is the most accurate on-device engine in this benchmark, but its statisti
 
 ## Get it
 
-**Download:** Grab the [notarized DMG](https://downloads.macparakeet.com/MacParakeet.dmg) or visit [macparakeet.com](https://macparakeet.com). Drag to Applications, done.
+**Download:** Grab the notarized DMG from the [latest release](https://github.com/eli0shin/macparakeet/releases/latest). Drag to Applications, done.
 
-On the standard path, first launch downloads the default Parakeet CoreML build (~465 MB) plus speaker-detection assets (~130 MB) as needed. Locale-aware Korean/Japanese/Chinese/Cantonese setup downloads WhisperKit instead when no preferred English language is present. Parakeet v2 and v3 cache independently if you install both. Core dictation, local-file transcription, and meeting recording can work offline after required models are installed; media imports, updates, telemetry, and cloud/remote AI providers still require a network.
+On the standard path, first launch downloads the default Parakeet CoreML build (~465 MB) plus speaker-detection assets (~130 MB) as needed. Locale-aware Korean/Japanese/Chinese/Cantonese setup downloads WhisperKit instead when no preferred English language is present. Parakeet v2 and v3 cache independently if you install both. Core dictation, local-file transcription, and meeting recording can work offline after required models are installed; media imports, telemetry, and cloud/remote AI providers still require a network.
 
-The DMG is the stable release.
+Every release is Developer ID signed and Apple-notarized, so it opens without
+quarantine workarounds. GitHub Releases is the only distribution channel.
 
-**Mac app (Homebrew cask):**
-
-```bash
-brew install --cask macparakeet
-```
-
-This is the official [`homebrew/cask`](https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/m/macparakeet.rb)
-entry — no tap required. It installs the same notarized DMG as the direct
-download, and in-app updates continue through Sparkle.
-
-**Standalone CLI (Homebrew):**
+**Standalone CLI:** the `macparakeet-cli` binary ships inside the app bundle at
+`MacParakeet.app/Contents/MacOS/macparakeet-cli`. It shares the same local
+database and model cache as the app. To use the short command, link it in a
+user-owned directory and add that directory to your shell or agent `PATH`:
 
 ```bash
-brew install moona3k/tap/macparakeet-cli
+mkdir -p "$HOME/.local/bin"
+ln -sf /Applications/MacParakeet.app/Contents/MacOS/macparakeet-cli \
+  "$HOME/.local/bin/macparakeet-cli"
+export PATH="$HOME/.local/bin:$PATH"
 macparakeet-cli --version
 macparakeet-cli health --json
 ```
 
-The Homebrew formula installs the public `macparakeet-cli` surface plus
-Homebrew-managed `ffmpeg` and `yt-dlp`. It shares the same local database and
-model cache as the app.
-
 **Build from source:**
 
 ```bash
-git clone https://github.com/moona3k/macparakeet.git
+git clone https://github.com/eli0shin/macparakeet.git
 cd macparakeet
 swift test
 scripts/dev/run_app.sh    # build, sign, launch
@@ -223,7 +216,7 @@ Use `--format transcript` for transcript-only stdout in shell pipelines. Add `--
 | STT orchestration | Shared runtime + explicit scheduler with a reserved dictation slot and a shared meeting/file slot; speech-engine routing and meeting-session pinning |
 | Language | Swift 6 language mode (package tools-version 5.9) + SwiftUI |
 | Database | SQLite via GRDB |
-| Auto-updates | Sparkle 2 |
+| Distribution | GitHub Releases |
 | Media URLs | yt-dlp |
 | Podcasts | Apple Podcasts via iTunes lookup API + native enclosure downloader |
 | Platform | macOS 14.2+, Apple Silicon |
@@ -278,7 +271,7 @@ All speech recognition runs locally. Parakeet uses the Neural Engine; optional N
 - **Opt-out telemetry.** Non-identifying usage analytics and crash reporting go to a self-hosted endpoint only when telemetry is enabled. No persistent IDs, no IP storage, and no transcript/audio content is transmitted. [Source code is right here](Sources/MacParakeetCore/Services/Telemetry/TelemetryService.swift) — verify it yourself.
 - **Temp files cleaned up.** Audio deleted after transcription unless you save it. Saved meeting audio follows your retention setting (kept by default).
 
-**What does use the network:** AI summaries, chat/Meeting Ask, AI Formatter, and Transforms connect to configured LLM providers, or to whatever service a configured CLI tool chooses to use, when you choose them. Sparkle checks for app updates. Media URL transcription downloads via yt-dlp; Apple Podcasts links query the public iTunes lookup API to find the episode audio, then download it. Telemetry and crash reports go to our self-hosted server unless you opt out. Core dictation and transcription stay fully offline.
+**What does use the network:** AI summaries, chat/Meeting Ask, AI Formatter, and Transforms connect to configured LLM providers, or to whatever service a configured CLI tool chooses to use, when you choose them. Media URL transcription downloads via yt-dlp; Apple Podcasts links query the public iTunes lookup API to find the episode audio, then download it. Telemetry and crash reports go to our self-hosted server unless you opt out. Core dictation and transcription stay fully offline.
 
 **Note:** Builds from source also send telemetry by default. Opt out in Settings or set `MACPARAKEET_TELEMETRY_URL` to override.
 

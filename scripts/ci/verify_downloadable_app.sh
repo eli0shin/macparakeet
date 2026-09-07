@@ -10,7 +10,6 @@ fi
 RESOURCES="$APP_PATH/Contents/Resources"
 APP_EXECUTABLE="$APP_PATH/Contents/MacOS/MacParakeet"
 CLI="$APP_PATH/Contents/MacOS/macparakeet-cli"
-SPARKLE="$APP_PATH/Contents/Frameworks/Sparkle.framework"
 FFMPEG="$RESOURCES/ffmpeg"
 YTDLP="$RESOURCES/yt-dlp"
 APP_RESOURCE_BUNDLE="$RESOURCES/MacParakeet_MacParakeet.bundle"
@@ -27,16 +26,23 @@ APP_RESOURCE_BUNDLE="$RESOURCES/MacParakeet_MacParakeet.bundle"
   echo "Error: bundled CLI is missing or not executable: $CLI" >&2
   exit 1
 }
+for forbidden_name in Sparkle.framework Autoupdate Updater.app Downloader.xpc InstallerLauncher.xpc; do
+  if find "$APP_PATH/Contents" -name "$forbidden_name" -print -quit | grep -q .; then
+    echo "Error: removed update component remains in app bundle: $forbidden_name" >&2
+    exit 1
+  fi
+done
+for forbidden_key in SUFeedURL SUPublicEDKey; do
+  if grep -q "<key>${forbidden_key}</key>" "$APP_PATH/Contents/Info.plist" 2>/dev/null; then
+    echo "Error: removed update metadata remains in Info.plist: $forbidden_key" >&2
+    exit 1
+  fi
+done
 BUILD_BUNDLE_FALLBACKS="$(strings "$APP_EXECUTABLE" | grep -E '/\.build/[^[:space:]]*\.bundle' || true)"
 if [[ -n "$BUILD_BUNDLE_FALLBACKS" ]]; then
   echo "Error: packaged app contains a SwiftPM resource fallback into a build checkout" >&2
   exit 1
 fi
-[[ -d "$SPARKLE" ]] || {
-  echo "Error: Sparkle.framework is missing: $SPARKLE" >&2
-  exit 1
-}
-
 for helper in "$FFMPEG" "$YTDLP"; do
   if [[ ! -x "$helper" ]]; then
     echo "Error: required bundled helper is missing or not executable: $helper" >&2

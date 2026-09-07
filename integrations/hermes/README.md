@@ -18,17 +18,21 @@ meeting artifacts, and store externally generated meeting results.
 
 ## Install
 
+Install MacParakeet from the
+[latest GitHub release](https://github.com/eli0shin/macparakeet/releases/latest),
+then use its bundled CLI:
+
 ```bash
-brew install moona3k/tap/macparakeet-cli
+mkdir -p "$HOME/.local/bin"
+ln -sf /Applications/MacParakeet.app/Contents/MacOS/macparakeet-cli \
+  "$HOME/.local/bin/macparakeet-cli"
+export PATH="$HOME/.local/bin:$PATH"  # also set this in the Hermes environment
 macparakeet-cli --version   # confirm the installed release
 macparakeet-cli health --json
 ```
 
 Minimum CLI for the command set shown here is `2.12.0`; `spec --json` itself
 requires `macparakeet-cli >= 2.4.0`.
-
-If MacParakeet.app is already installed, the bundled CLI is also available at
-`/Applications/MacParakeet.app/Contents/MacOS/macparakeet-cli`.
 Parakeet, Nemotron, and Cohere CoreML caches are managed by FluidAudio.
 WhisperKit model downloads live under
 `~/Library/Application Support/MacParakeet/models/stt/whisper/`.

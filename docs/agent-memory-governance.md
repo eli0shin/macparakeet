@@ -86,7 +86,7 @@ nearly every session.
   the focused test file's header comments.
 - Public CLI behavior: `integrations/README.md`, `Sources/CLI/README.md`,
   `Sources/CLI/CHANGELOG.md`, and CLI tests.
-- Release, signing, notarization, Sparkle, and DMG details:
+- Release, signing, notarization, and DMG details:
   `docs/distribution.md` and `spec/README.md`.
 - PR review, worktree safety, and merge readiness:
   `AGENTS.md` and `docs/pr-review-workflow.md`.
