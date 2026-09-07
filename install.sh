@@ -124,7 +124,15 @@ case "${SHELL:-/bin/zsh}" in
   *) PROFILE="${HOME}/.zprofile" ;;
 esac
 PATH_LINE="export PATH=\"\$HOME/.local/bin:\$PATH\""
-if [[ ! -f "$PROFILE" ]] || ! grep -Fxq "$PATH_LINE" "$PROFILE"; then
+path_is_configured() {
+  [[ -f "$PROFILE" ]] && {
+    grep -Fxq "export PATH=\"\$HOME/.local/bin:\$PATH\"" "$PROFILE" ||
+      grep -Fxq "export PATH=\"\$HOME/.local/bin:\${PATH}\"" "$PROFILE" ||
+      grep -Fxq "export PATH=\"\${HOME}/.local/bin:\$PATH\"" "$PROFILE" ||
+      grep -Fxq "export PATH=\"\${HOME}/.local/bin:\${PATH}\"" "$PROFILE"
+  }
+}
+if ! path_is_configured; then
   printf '\n%s\n' "$PATH_LINE" >>"$PROFILE"
   echo "Added ${BIN_DIR} to PATH in ${PROFILE}."
 else

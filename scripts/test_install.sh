@@ -168,6 +168,23 @@ assert_file_contains_once "$HOME_DIR/.zprofile" "$EXPECTED_PATH_LINE"
 [[ ! -f "$TEST_LOG/hdiutil" ]] || fail "repeated current install mounted a DMG"
 pass "repeated zsh setup is idempotent and repairs the CLI symlink"
 
+equivalent_path_lines=(
+  "export PATH=\"\$HOME/.local/bin:\${PATH}\""
+  "export PATH=\"\${HOME}/.local/bin:\$PATH\""
+  "export PATH=\"\${HOME}/.local/bin:\${PATH}\""
+)
+for path_line in "${equivalent_path_lines[@]}"; do
+  new_case
+  TEST_LATEST_VERSION="3.0.0"
+  TEST_SHELL="/bin/zsh"
+  seed_install "3.0.0"
+  printf '%s\n' "$path_line" >"$HOME_DIR/.zprofile"
+  run_installer >/dev/null
+  run_installer >/dev/null
+  [[ "$(cat "$HOME_DIR/.zprofile")" == "$path_line" ]] || fail "equivalent PATH entry was duplicated: $path_line"
+done
+pass "equivalent HOME and PATH forms remain idempotent"
+
 new_case
 TEST_LATEST_VERSION="3.0.0"
 TEST_SHELL="/bin/bash"
