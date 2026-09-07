@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@035-install-or-update-release-and-configure-cli-path
 Tags:
   - ready-for-agent
 Parent:
