@@ -19,6 +19,7 @@ The workflow runs:
 | `release` | Release-input PRs, every main push, manual run | Optimized release build and release CLI smoke; PRs use a fast fixture bundle smoke |
 | `development-artifact` | Successful `main` pushes and manual runs | Build the complete app, apply structural ad-hoc signatures, verify it, and upload a three-day owner-only development DMG |
 | `signed-artifact` | Explicit manual request on `main`, after protected-environment approval | Build, Developer ID sign, notarize, staple, verify, and upload a seven-day CI test DMG |
+| `Publish GitHub Release` | Successful trusted `main` push CI with shipping changes | Derive the next tag, build, sign, notarize, verify, then publish `MacParakeet.dmg` on GitHub Releases |
 | `swift-test` | Always | Stable, fail-closed result for all required lanes |
 
 Release inputs include package manifests/lockfile, `.github/`, `scripts/ci/`,
@@ -57,6 +58,19 @@ test input because `CLIVersionTests` checks it against the binary version. Unkno
 fixtures, JSON contracts, and mixed changes still receive code checks. Renames
 include old and new paths. The complete PR diff is used, not only its last commit.
 There are no workflow-level path skips, so prose PRs also report a final status.
+
+The separate release workflow runs only after successful push CI on this repository's
+`main`. It compares the successful commit with the most recent `vX.Y.Z` tag. Production
+sources, package manifests, assets, distribution scripts, resources, plists,
+entitlements, and xcconfig files are shipping changes. Tests, tickets, documentation,
+plans, specs, benchmarks, workflows, CI/development scripts, and all Markdown are not.
+A reachable baseline version tag is required; this fork starts from `v0.7.3`. The
+default increment is patch; `[minor]` and `[major]` in the commits since the prior tag
+override it. Release runs are serialized. Verification completes before the workflow
+pushes its annotated tag and creates the GitHub Release. Failed publication cleanup
+removes draft releases and tags when GitHub confirms their incomplete state. The next
+run applies the same cleanup to an interrupted automation tag that has no matching
+release.
 
 Default debug/release dependencies still include WhisperKit. Tests and product
 behavior are unchanged; no regression suite has been removed.

@@ -30,6 +30,7 @@ jobs:
     outputs:
       code: ${{ steps.classify.outputs.code }}
       release: ${{ steps.classify.outputs.release }}
+      shipping: ${{ steps.classify.outputs.shipping }}
     steps:
       - uses: actions/checkout@v6
         with:

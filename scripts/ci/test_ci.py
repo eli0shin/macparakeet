@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from classify_changes import classify, main as classify_main
 from check_results import check
+from plan_github_release import make_plan, next_tag, repository_plan
 from run_tests import executed_count, parse_tests, partition, run_command
 
 
@@ -20,7 +21,9 @@ class ClassificationTests(unittest.TestCase):
         paths = ["README.md", "AGENTS.md", "CLAUDE.md", "docs/test.md",
                  "plans/one.md", "spec/contracts/cli.md", "integrations/README.md",
                  "Sources/MacParakeetCore/Audio/README.md"]
-        self.assertEqual(classify(paths), {"code": False, "release": False})
+        self.assertEqual(
+            classify(paths), {"code": False, "release": False, "shipping": False}
+        )
 
     def test_unknown_inputs_and_test_fixtures_get_code_checks(self):
         for path in ["Sources/Core.swift", "Tests/test.swift", "Tests/fixture.md",
@@ -35,11 +38,34 @@ class ClassificationTests(unittest.TestCase):
                      "Assets/icon.png", "Sources/App/Resources/file.json",
                      "App.xcodeproj/project.pbxproj", "App.entitlements", "Info.plist"]:
             with self.subTest(path=path):
-                self.assertEqual(classify([path]), {"code": True, "release": True})
+                result = classify([path])
+                self.assertTrue(result["code"])
+                self.assertTrue(result["release"])
 
-    def test_mixed_changes_do_not_skip_code(self):
-        self.assertEqual(classify(["README.md", "Sources/Core.swift"]),
-                         {"code": True, "release": False})
+    def test_shipping_inputs_match_the_installed_app_boundary(self):
+        shipping = [
+            "Sources/Core.swift", "Package.swift", "Package.resolved", "Assets/icon.png",
+            "scripts/dist/build_app_bundle.sh", "Example/Resources/file.json",
+            "Info.plist", "App.entitlements", "Config.xcconfig",
+        ]
+        non_shipping = [
+            "Tests/test.swift", ".tickets/todo/030.md", "docs/schema.json",
+            "plans/plan.txt", "spec/data.json", "benchmarks/result.json",
+            ".github/workflows/release.yml", "scripts/ci/run_tests.py",
+            "scripts/dev/check.sh", "Sources/Core/README.md",
+        ]
+        for path in shipping:
+            with self.subTest(path=path):
+                self.assertTrue(classify([path])["shipping"])
+        for path in non_shipping:
+            with self.subTest(path=path):
+                self.assertFalse(classify([path])["shipping"])
+
+    def test_mixed_changes_do_not_skip_code_or_shipping(self):
+        self.assertEqual(
+            classify(["README.md", "Sources/Core.swift"]),
+            {"code": True, "release": False, "shipping": True},
+        )
 
     def test_main_and_manual_run_all_checks(self):
         for event in ["push", "workflow_dispatch"]:
@@ -47,7 +73,9 @@ class ClassificationTests(unittest.TestCase):
                 output = Path(directory) / "outputs"
                 with patch.dict(os.environ, {"GITHUB_EVENT_NAME": event, "GITHUB_OUTPUT": str(output)}):
                     classify_main()
-                self.assertEqual(output.read_text(), "code=true\nrelease=true\n")
+                self.assertEqual(
+                    output.read_text(), "code=true\nrelease=true\nshipping=true\n"
+                )
 
     def test_pr_diff_includes_old_and_new_rename_paths(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -57,9 +85,41 @@ class ClassificationTests(unittest.TestCase):
                 with patch("classify_changes.subprocess.check_output", return_value=
                            b"Assets/old.png\0docs/new.md\0") as git:
                     classify_main()
-            self.assertEqual(output.read_text(), "code=true\nrelease=true\n")
+            self.assertEqual(
+                output.read_text(), "code=true\nrelease=true\nshipping=true\n"
+            )
             git.assert_called_once_with(
                 ["git", "diff", "--name-only", "--no-renames", "-z", "abc123...HEAD"])
+
+
+class GitHubReleasePlanTests(unittest.TestCase):
+    def test_default_patch_bump_uses_previous_tag(self):
+        self.assertEqual(next_tag("v1.2.3", ["Fix capture"]), "v1.2.4")
+
+    def test_minor_and_major_commit_overrides(self):
+        self.assertEqual(next_tag("v1.2.3", ["Add route [minor]"]), "v1.3.0")
+        self.assertEqual(next_tag("v1.2.3", ["[major] Redesign", "[minor] Add"]), "v2.0.0")
+
+    def test_missing_baseline_tag_fails_closed(self):
+        with patch("plan_github_release.latest_version_tag", return_value=""):
+            with self.assertRaisesRegex(RuntimeError, "baseline tag"):
+                repository_plan("HEAD")
+
+    def test_non_shipping_diff_does_not_increment_version(self):
+        plan = make_plan(
+            "v1.2.3",
+            ["Tests/Test.swift", "docs/guide.md", ".github/workflows/ci.yml"],
+            ["Documentation"],
+        )
+        self.assertFalse(plan.should_release)
+        self.assertEqual(plan.tag, "")
+
+    def test_mixed_diff_produces_exactly_one_next_release(self):
+        plan = make_plan(
+            "v1.2.3", ["docs/guide.md", "Sources/App.swift"], ["Ship [minor]"]
+        )
+        self.assertEqual(plan.tag, "v1.3.0")
+        self.assertEqual(plan.version, "1.3.0")
 
 
 class WorkflowTests(unittest.TestCase):
@@ -69,6 +129,8 @@ class WorkflowTests(unittest.TestCase):
         self.development_job = self.workflow.split("\n  development-artifact:\n", 1)[1].split("\n  signed-artifact:\n", 1)[0]
         self.signed_job = self.workflow.split("\n  signed-artifact:\n", 1)[1].split("\n  # Preserve", 1)[0]
         self.prototype_job = self.workflow.split("\n  compact-transcript-prototype:\n", 1)[1].split("\n  debug-tests:\n", 1)[0]
+        self.github_release_workflow = Path(".github/workflows/release.yml").read_text()
+        self.github_release_job = self.github_release_workflow.split("\n  release:\n", 1)[1]
 
     def test_compact_transcript_prototype_is_self_contained_and_downloadable(self):
         self.assertIn("github.event_name == 'pull_request'", self.prototype_job)
@@ -84,6 +146,53 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("if-no-files-found: error", upload)
         self.assertIn("retention-days: 14", upload)
         self.assertNotIn("secrets.", self.prototype_job)
+
+    def test_github_release_runs_only_after_trusted_main_push_ci(self):
+        workflow = self.github_release_workflow
+        job = self.github_release_job
+        self.assertIn("workflow_run:", workflow)
+        self.assertIn("workflows: [CI]", workflow)
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", job)
+        self.assertIn("github.event.workflow_run.event == 'push'", job)
+        self.assertIn("github.event.workflow_run.head_branch == 'main'", job)
+        self.assertIn("github.event.workflow_run.head_repository.full_name == 'eli0shin/macparakeet'", job)
+        self.assertNotIn("pull_request:", workflow)
+        self.assertNotIn("workflow_dispatch:", workflow)
+
+    def test_github_release_serializes_and_scopes_write_permission(self):
+        workflow_prefix, job = self.github_release_workflow.split("\n  release:\n", 1)
+        self.assertIn("cancel-in-progress: false", workflow_prefix)
+        self.assertIn("permissions:\n  contents: read", workflow_prefix)
+        self.assertIn("permissions:\n      contents: write", job)
+        self.assertEqual(self.github_release_workflow.count("contents: write"), 1)
+        self.assertIn("environment: signed-ci-artifact", job)
+
+    def test_github_release_verifies_before_tag_and_publication(self):
+        job = self.github_release_job
+        build = job.index("bash scripts/ci/publish_signed_artifact.sh")
+        tag = job.index('git tag -a "$TAG"')
+        publication = job.index("gh release create --repo eli0shin/macparakeet")
+        self.assertLess(build, tag)
+        self.assertLess(tag, publication)
+        self.assertIn("scripts/ci/plan_github_release.py", job)
+        self.assertIn('SIGNED_ARTIFACT_BUILD_NUMBER="$(date -u +%Y%m%d%H%M%S)"', job)
+        self.assertIn("dist/MacParakeet.dmg", job)
+        self.assertIn('git push origin ":refs/tags/$TAG"', job)
+        self.assertIn(".draft == true", job)
+        self.assertIn("gh api --method DELETE", job)
+
+    def test_github_release_uses_only_the_six_protected_signing_secrets(self):
+        secret_names = [
+            "DEVELOPMENT_ID_CERTIFICATE_BASE64",
+            "DEVELOPMENT_ID_CERTIFICATE_PASSWORD",
+            "DEVELOPER_ID_APPLICATION_IDENTITY",
+            "APPLE_TEAM_ID",
+            "NOTARY_APPLE_ID",
+            "NOTARY_APP_SPECIFIC_PASSWORD",
+        ]
+        for name in secret_names:
+            self.assertIn("${{ secrets." + name + " }}", self.github_release_job)
+        self.assertEqual(self.github_release_job.count("${{ secrets."), len(secret_names))
 
     def test_debug_tests_job_has_twenty_minute_timeout(self):
         debug_job = self.workflow.split("\n  debug-tests:\n", 1)[1].split("\n  swift6:\n", 1)[0]

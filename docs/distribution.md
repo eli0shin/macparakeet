@@ -176,8 +176,9 @@ Homebrew. The official release procedure remains the separate process below.
 2. Create an Apple ID app-specific password for the Apple ID that can submit
    notarization requests for the same team.
 3. In GitHub, open **Settings -> Environments**, create
-   `signed-ci-artifact`, require an owner as a reviewer, and limit deployment
-   branches to `main`.
+   `signed-ci-artifact`, do not configure required reviewers, and limit
+   deployment branches to `main`. The environment protects the signing secrets,
+   but automatic releases must not wait for human approval.
 4. Add these environment secrets (not repository variables):
 
    | Secret | Exact value |
@@ -217,8 +218,7 @@ that exact DMG is absent.
 2. Enable **Publish the protected signed and notarized CI test DMG**.
 3. Enter an explicit `X.Y.Z` test version. `0.0.0` and other sentinel values are
    rejected. The job generates an increasing UTC timestamp build number.
-4. Approve the `signed-ci-artifact` environment deployment.
-5. After the run succeeds, download `MacParakeet-signed-notarized-ci-test` from
+4. After the run succeeds, download `MacParakeet-signed-notarized-ci-test` from
    **Artifacts**, expand the GitHub ZIP, open the DMG, and drag the app to
    Applications.
 

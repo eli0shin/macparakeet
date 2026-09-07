@@ -1,0 +1,143 @@
+name: Publish GitHub Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-github-release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == 'eli0shin/macparakeet' &&
+      github.repository == 'eli0shin/macparakeet'
+    permissions:
+      contents: write
+    environment: signed-ci-artifact
+    runs-on: macos-14
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Remove an interrupted automated tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          latest_tag=""
+          while IFS= read -r candidate; do
+            if [[ "$candidate" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              latest_tag="$candidate"
+              break
+            fi
+          done < <(git tag --merged "$TARGET_SHA" --sort=-version:refname)
+          if [[ -n "$latest_tag" ]]; then
+            release_response=""
+            release_status=0
+            release_response="$(
+              gh api --include "repos/eli0shin/macparakeet/releases/tags/$latest_tag" 2>&1
+            )" || release_status=$?
+            if [[ "$release_status" -ne 0 ]] && \
+               grep -Eq '(HTTP/[^ ]+ 404|HTTP 404)' <<<"$release_response" && \
+               [[ "$(git tag -l "$latest_tag" --format='%(contents)' | head -1)" == \
+                  "MacParakeet automated release $latest_tag" ]]; then
+              draft_id="$(
+                gh api --paginate 'repos/eli0shin/macparakeet/releases?per_page=100' \
+                  --jq ".[] | select(.tag_name == \"$latest_tag\" and .draft == true) | .id" | \
+                  head -1
+              )"
+              if [[ -n "$draft_id" ]]; then
+                gh api --method DELETE "repos/eli0shin/macparakeet/releases/$draft_id"
+              fi
+              git push origin ":refs/tags/$latest_tag"
+              git tag -d "$latest_tag"
+            elif [[ "$release_status" -ne 0 ]]; then
+              printf '%s\n' "$release_response" >&2
+              exit "$release_status"
+            fi
+          fi
+      - name: Plan release from the previous tag
+        id: plan
+        env:
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: python3 scripts/ci/plan_github_release.py --head "$TARGET_SHA"
+      - uses: ./.github/actions/setup-swift
+        if: steps.plan.outputs.should_release == 'true'
+        with:
+          lane: release
+      - name: Build, sign, notarize, and verify release DMG
+        if: steps.plan.outputs.should_release == 'true'
+        timeout-minutes: 70
+        env:
+          SIGNED_ARTIFACT_VERSION: ${{ steps.plan.outputs.version }}
+          DEVELOPMENT_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPMENT_ID_CERTIFICATE_BASE64 }}
+          DEVELOPMENT_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPMENT_ID_CERTIFICATE_PASSWORD }}
+          DEVELOPER_ID_APPLICATION_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_APP_SPECIFIC_PASSWORD: ${{ secrets.NOTARY_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export SIGNED_ARTIFACT_BUILD_NUMBER="$(date -u +%Y%m%d%H%M%S)"
+          bash scripts/ci/publish_signed_artifact.sh
+          cp dist/MacParakeet-signed-notarized-ci-test.dmg dist/MacParakeet.dmg
+      - name: Create tag and GitHub Release
+        if: steps.plan.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag_pushed=0
+          cleanup_failed_publication() {
+            status=$?
+            if [[ "$status" -ne 0 && "$tag_pushed" == "1" ]]; then
+              release_response=""
+              release_status=0
+              release_response="$(
+                gh api --include "repos/eli0shin/macparakeet/releases/tags/$TAG" 2>&1
+              )" || release_status=$?
+              if [[ "$release_status" -ne 0 ]] && \
+                 grep -Eq '(HTTP/[^ ]+ 404|HTTP 404)' <<<"$release_response"; then
+                draft_id="$(
+                  gh api --paginate 'repos/eli0shin/macparakeet/releases?per_page=100' \
+                    --jq ".[] | select(.tag_name == \"$TAG\" and .draft == true) | .id" | \
+                    head -1
+                )" || draft_id=""
+                if [[ -n "$draft_id" ]]; then
+                  gh api --method DELETE "repos/eli0shin/macparakeet/releases/$draft_id" \
+                    >/dev/null 2>&1 || true
+                fi
+                git push origin ":refs/tags/$TAG" >/dev/null 2>&1 || true
+              fi
+            fi
+            exit "$status"
+          }
+          trap cleanup_failed_publication EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          git tag -a "$TAG" "$TARGET_SHA" -m "MacParakeet automated release $TAG"
+          git push origin "refs/tags/$TAG"
+          tag_pushed=1
+          gh release create --repo eli0shin/macparakeet "$TAG" \
+            dist/MacParakeet.dmg \
+            --verify-tag \
+            --target "$TARGET_SHA" \
+            --title "MacParakeet $VERSION" \
+            --generate-notes
+          tag_pushed=0
