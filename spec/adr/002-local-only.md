@@ -2,7 +2,7 @@
 
 > Status: **Accepted** (Amended 2026-03-11)
 > Date: 2026-02-08
-> Amended: 2026-03-11 — Refined scope from "no cloud processing" to local processing with optional external AI/telemetry surfaces (ADR-011)
+> Amended: 2026-03-11 — Refined scope from "no cloud processing" to local processing with optional external AI surfaces (ADR-011). The telemetry part of that amendment was superseded in this fork by ADR-012's removal.
 
 ## Context
 
@@ -26,7 +26,7 @@ LLM-powered features (summaries, chat/Meeting Ask, AI Formatter, and Transforms)
 - **Audio capture**: All microphone and file audio stays on-device
 - **Text processing**: Deterministic pipeline runs locally (ADR-004)
 - **Database**: All dictations, transcriptions, history stored locally (SQLite/GRDB)
-- **Analytics**: Non-identifying, opt-out telemetry via Cloudflare (ADR-012). No persistent IDs, no IP storage, no content transmitted.
+- **Analytics**: Fork builds do not collect or upload analytics or crash reports. ADR-012 records the removed upstream design as historical context.
 
 ### What uses external providers (opt-in, user-configured)
 
@@ -63,7 +63,7 @@ A local 8B model produces mediocre summaries. Cloud models (Claude, GPT-4) produ
 
 Users make an informed choice. The UI makes the tradeoff explicit. Apple Intelligence follows the same pattern — on-device by default, cloud with user consent for complex tasks.
 
-MacParakeet can still be used in a fully local configuration: no cloud STT, no cloud AI, telemetry disabled, and only local features/providers enabled.
+MacParakeet can still be used in a fully local configuration: no cloud STT, no cloud AI, and only local features/providers enabled. Fork builds have no remote telemetry transport.
 
 ### Official paid distribution still works
 

@@ -18,7 +18,6 @@ Sources/CLI/
 └── Commands/
     ├── CLIHelpers.swift        # shared lookups, JSON envelopes, errorType
     │                           #   taxonomy, emitJSONOrRethrow wrappers
-    ├── CLITelemetry.swift      # opt-out/CI/DO_NOT_TRACK-gated instrumentation
     ├── SpecCommand.swift       # `spec --json`: the machine-readable catalog
     └── <Feature>Command.swift  # one file per top-level command / family
 ```

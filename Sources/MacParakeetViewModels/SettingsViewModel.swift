@@ -67,16 +67,6 @@ public final class SettingsViewModel {
             Telemetry.send(.settingChanged(setting: .hidePill, value: Self.settingValue(!showIdlePill)))
         }
     }
-    public var telemetryEnabled: Bool {
-        didSet {
-            defaults.set(telemetryEnabled, forKey: AppPreferences.telemetryEnabledKey)
-            if !telemetryEnabled {
-                Telemetry.clearQueue()
-                Telemetry.send(.telemetryOptedOut)
-                Task { await Telemetry.flush() }
-            }
-        }
-    }
     /// Play a chime (and, when MacParakeet is in the background, post a banner)
     /// when a file/URL transcription or a batch finishes. Default on.
     public var notifyOnTranscriptionComplete: Bool {
@@ -758,7 +748,6 @@ public final class SettingsViewModel {
         menuBarOnlyMode = AppPreferences.isMenuBarOnlyModeEnabled(defaults: defaults)
         appAppearanceMode = AppPreferences.appearanceMode(defaults: defaults)
         showIdlePill = defaults.object(forKey: UserDefaultsAppRuntimePreferences.showIdlePillKey) as? Bool ?? true
-        telemetryEnabled = AppPreferences.isTelemetryEnabled(defaults: defaults)
         notifyOnTranscriptionComplete =
             defaults.object(
                 forKey: UserDefaultsAppRuntimePreferences.notifyOnTranscriptionCompleteKey

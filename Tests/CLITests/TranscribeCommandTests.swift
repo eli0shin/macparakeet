@@ -690,22 +690,6 @@ final class TranscribeCommandTests: XCTestCase {
         )
     }
 
-    func testTelemetryInputKindUsesMediaForNonYouTubeURL() {
-        XCTAssertEqual(
-            TranscribeCommand.telemetryInputKind(for: "https://www.facebook.com/reel/1998924354042801"),
-            .media
-        )
-    }
-
-    func testTelemetryInputKindUsesPodcastForApplePodcastsURL() {
-        XCTAssertEqual(
-            TranscribeCommand.telemetryInputKind(
-                for: "https://podcasts.apple.com/us/podcast/the-daily/id1200361736?i=1000654321987"
-            ),
-            .podcast
-        )
-    }
-
     func testDownloadableURLInputAcceptsApplePodcastsURL() {
         let podcast = "https://podcasts.apple.com/us/podcast/the-daily/id1200361736?i=1000654321987"
 

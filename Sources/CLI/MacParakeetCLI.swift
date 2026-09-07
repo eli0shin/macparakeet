@@ -4,11 +4,8 @@ import Darwin
 @main
 struct CLI: AsyncParsableCommand {
     /// Single source of truth for the CLI's semver. Surfaced via ArgumentParser's
-    /// `--version` and reported as `app_ver` to telemetry so CLI sessions are
-    /// distinguishable from synthesized Bundle.main values (the bare executable
-    /// has no Info.plist and macOS otherwise reports an SDK marker like "16.0").
-    /// Bump in lockstep with `Sources/CLI/CHANGELOG.md`.
-    static let cliVersion = "3.1.0"
+    /// `--version`. Bump in lockstep with `Sources/CLI/CHANGELOG.md`.
+    static let cliVersion = "4.0.0"
 
     static let configuration = CommandConfiguration(
         commandName: "macparakeet-cli",
@@ -49,7 +46,11 @@ struct CLI: AsyncParsableCommand {
     static func main(_ arguments: [String]?) async {
         do {
             var command = try parseAsRoot(arguments)
-            try await CLITelemetry.runInstrumented(&command)
+            if var asyncCommand = command as? AsyncParsableCommand {
+                try await asyncCommand.run()
+            } else {
+                try command.run()
+            }
         } catch {
             exitWithNormalizedError(error)
         }

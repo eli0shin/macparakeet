@@ -1850,7 +1850,7 @@ authoritative transcript and is unchanged by this live-preview strategy.
 - `TransformsHotkeyRegistry` owns one process-wide event tap and dispatches hotkeys to Transform prompt IDs.
 - Selection capture is AX-first with clipboard fallback; replacement uses clipboard paste with snapshot/restore guards so the output lands in the currently focused target rather than forcing activation back to the selection source.
 - `TransformExecutor` uses `LLMService.transformStream` in the GUI so the progress pill can react to streamed output; CLI JSON uses the detailed LLM path for provider/model/latency metadata where available.
-- `transform_history` stores local input/output/source-app/timing rows for completed Transform runs. This is deliberate local user data; telemetry records only privacy-safe `transform_executed`, `transform_failed`, and `transform_operation` metadata and does not duplicate the content.
+- `transform_history` stores local input/output/source-app/timing rows for completed Transform runs. This is deliberate local user data. Inherited `transform_executed`, `transform_failed`, and `transform_operation` event instrumentation remains inert compatibility code: fork builds do not configure a telemetry service and do not collect or upload these events.
 - The menu bar supports pasting the latest Transform result and recent Transform results, mirroring the dictation paste history affordance.
 - `macparakeet-cli transforms` manages and runs saved Transforms headlessly; `macparakeet-cli transforms history` reads and manages local Transform history.
 
@@ -1876,7 +1876,7 @@ authoritative transcript and is unchanged by this live-preview strategy.
 
 ### F45: Activity-Based Meeting Detection
 
-> Status: **PARTIAL IMPLEMENTATION** — ADR-024 Phases A+B implement the CoreAudio process attribution collector, CoreMediaIO camera activity collector, shared signal snapshot types, trust-tiered app registry, detection mode, and pure detector tests behind `AppFeatures.meetingActivityDetectionEnabled = false`. Coordinator/UI wiring, prompt/auto-start telemetry, and ADR-023 auto-stop attribution remain proposed.
+> Status: **PARTIAL IMPLEMENTATION** — ADR-024 Phases A+B implement the CoreAudio process attribution collector, CoreMediaIO camera activity collector, shared signal snapshot types, trust-tiered app registry, detection mode, and pure detector tests behind `AppFeatures.meetingActivityDetectionEnabled = false`. Coordinator/UI wiring, inherited inert prompt/auto-start event instrumentation, and ADR-023 auto-stop attribution remain proposed. Fork builds do not configure a telemetry service and cannot upload these events.
 
 **What:** Recognize an *unscheduled* live meeting from metadata-only on-device signals — per-process CoreAudio audio attribution (which app holds the mic, never the audio itself), CoreMediaIO camera activity, and a recognized conferencing-app/URL registry — fused conservatively so camera alone (e.g. Photo Booth) never triggers, with the app's own capture excluded from the signals. Phases A+B ship the metadata-only collectors and pure policy foundation only; they do not start observers at runtime or show prompts while the flag remains off. Later phases offer to record ("Record this meeting?"), with opt-in auto-start as a separate mode. Extends ADR-017's calendar-only trigger to ad-hoc calls and someone-else's invites. Metadata-only / local-first, opt-in, default off, gated by `AppFeatures.meetingActivityDetectionEnabled`. The same signal layer feeds F44 auto-stop.
 
@@ -1886,7 +1886,7 @@ authoritative transcript and is unchanged by this live-preview strategy.
 
 **Implemented:** A stopped AVAudioEngine configuration-change episode rebuilds against the current route and format with bounded retries, and succeeds only after a replacement microphone buffer arrives. After the first input buffer, a five-second absence of further tap callbacks uses that same recovery even when AVAudioEngine still reports itself running; ordinary acoustic silence remains healthy because buffers continue. Typed ScreenCaptureKit first-buffer, heartbeat, and unexpected delegate failures similarly retry with fresh system streams while preserving the other source. Confirmed recovering, interrupted, stalled, or unavailable states surface non-blocking warnings. Finalization persists per-source written-frame coverage and partial-capture status in the meeting artifact; missing legacy reports mean unknown, not healthy.
 
-**Still proposed:** The metadata-only mic-health monitor emits privacy-safe `mic_stall_detected` telemetry, but signal amplitude alone does not restart the microphone. The separately proposed offline VAD pass would find transcript gaps and re-transcribe missed speech; the implemented frame report measures recorded media coverage, not transcript completeness.
+**Still proposed:** The metadata-only mic-health monitor would invoke the inherited `mic_stall_detected` event instrumentation, which remains inert in fork builds because no telemetry service or upload transport is configured. Signal amplitude alone does not restart the microphone. The separately proposed offline VAD pass would find transcript gaps and re-transcribe missed speech; the implemented frame report measures recorded media coverage, not transcript completeness.
 
 ---
 
@@ -1937,18 +1937,18 @@ MacParakeet's brand is privacy. These are non-negotiable.
 | Requirement | Detail |
 |-------------|--------|
 | Core offline operation | Dictation, file transcription, and meeting recording work fully offline after local model setup |
-| Opt-out telemetry | Self-hosted usage analytics and crash reporting can be disabled in Settings |
+| No remote telemetry | Fork builds do not collect or upload usage analytics or crash reports |
 | No accounts | No email, no login, no registration |
 | No cloud STT | All speech recognition runs locally on Apple Silicon; Parakeet is default and Nemotron/Cohere/WhisperKit are optional |
 | User-controlled storage | File/YouTube/meeting audio is retained for playback/recovery unless deleted; dictation audio is opt-in |
-| Explicit network surfaces | Model download, update checks, optional LLM providers, optional telemetry/crash reporting, retained purchase activation endpoints if explicitly invoked, and YouTube download |
+| Explicit network surfaces | Model downloads, optional LLM providers, explicit feedback, retained purchase activation endpoints if explicitly invoked, and media downloads |
 
 **What "supports a fully local setup" means:**
 - Parakeet, Nemotron, and Cohere STT run locally via FluidAudio CoreML; WhisperKit also runs locally when selected
 - Audio never leaves the device
 - Transcripts stay local unless the user explicitly enables external AI features
 - Users can remain fully local by sticking to offline/core features and local providers such as Ollama
-- Network access is limited to explicit product surfaces such as updates, telemetry/crash reporting, model downloads, optional LLM providers, retained purchase activation endpoints if explicitly invoked, and media download
+- Network access is limited to explicit product surfaces such as model downloads, optional LLM providers, explicit feedback, retained purchase activation endpoints if explicitly invoked, and media downloads
 
 ---
 

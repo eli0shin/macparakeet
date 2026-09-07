@@ -135,9 +135,9 @@ Logger(subsystem: "com.macparakeet", category: "CalendarService") // legacy/simp
 
 New log lines should use stable event-style messages with `key=value`
 dimensions, for example `meeting_recording_started session=<uuid>`, rather than
-free-form prose. Local logs are for developer triage and explicit diagnostic
-bundles; product-health analytics come from typed telemetry operation events in
-`docs/telemetry.md`.
+free-form prose. Local logs are for developer triage and diagnostic data that
+users explicitly choose to provide. Fork builds do not upload telemetry or
+crash reports.
 
 **Log levels:**
 - `.debug` -- Verbose diagnostic info, high-volume details, and gated traces
@@ -172,9 +172,8 @@ diagnostic bundle must use classified `error_type` plus sanitized, single-line
 
 ## Error Reporting
 
-Errors are always logged locally. If telemetry is enabled, non-identifying
-operation failures and crash reports may also be sent to MacParakeet's
-self-hosted telemetry pipeline.
+Errors and crash reports remain local. Fork builds do not upload them
+automatically.
 
 The in-app feedback flow has an explicit opt-in control for attaching
 `~/Library/Logs/MacParakeet/dictation-audio.log` when users report dictation or

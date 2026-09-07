@@ -67,20 +67,10 @@ private enum TranscribeStdoutEmission {
     case transcription(Transcription, TranscribeOutputFormat)
 }
 
-struct TranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding {
+struct TranscribeCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "transcribe",
-        abstract: "Transcribe files, folders, Apple Podcasts, podcast searches, or media URLs.",
-        discussion: """
-            Telemetry: the root CLI runner emits one privacy-safe `cli_operation` \
-            event per invocation; `transcribe` adds allowlisted input/output metadata \
-            (input_kind, output_format, json). It never includes the path, URL, \
-            transcript, language value, or user content. Disable with \
-            `MACPARAKEET_TELEMETRY=0`, `DO_NOT_TRACK=1`, the persistent \
-            `macparakeet-cli config set telemetry off`, or the GUI Settings toggle. \
-            Auto-disabled in CI (CI/GITHUB_ACTIONS/etc.). See \
-            https://github.com/moona3k/macparakeet/blob/main/docs/telemetry.md.
-            """
+        abstract: "Transcribe files, folders, Apple Podcasts, podcast searches, or media URLs."
     )
 
     @Argument(
@@ -197,15 +187,6 @@ struct TranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding {
         name: .long,
         help: "Do not save the completed transcription to MacParakeet history. Downloaded media is temporary.")
     var noHistory: Bool = false
-
-    var cliTelemetryMetadata: CLITelemetry.OperationMetadata {
-        CLITelemetry.OperationMetadata(
-            command: Self.configuration.commandName ?? "transcribe",
-            inputKind: normalizedPodcastQuery != nil ? .podcast : Self.telemetryInputKind(for: inputs.first ?? ""),
-            outputFormat: format.rawValue,
-            json: format == .json
-        )
-    }
 
     var effectiveMediaAudioQuality: YouTubeAudioQualityOption {
         mediaAudioQuality ?? legacyYouTubeAudioQuality ?? .appDefault
@@ -528,20 +509,6 @@ struct TranscribeCommand: AsyncParsableCommand, CLITelemetryMetadataProviding {
                     + "(\(tracks.count) audio tracks)."
             )
         }
-    }
-
-    static func telemetryInputKind(for input: String) -> ObservabilityInputKind {
-        let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        if PodcastURLValidator.isApplePodcastsURL(trimmedInput) {
-            return .podcast
-        }
-        if YouTubeURLValidator.isYouTubeURL(trimmedInput) {
-            return .youtube
-        }
-        if DownloadableMediaURLValidator.isDownloadableMediaURL(trimmedInput) {
-            return .media
-        }
-        return Observability.inputKind(for: Self.localFileURL(for: trimmedInput)) ?? .unknown
     }
 
     static func isDownloadableURLInput(_ input: String) -> Bool {

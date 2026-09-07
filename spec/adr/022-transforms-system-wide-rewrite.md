@@ -106,7 +106,7 @@ transforms delete <name|id> [--json]
 
 The existing `llm transform --prompt "..." <input>` continues to exist as the raw-prompt ad-hoc primitive. `transforms run <name>` is the saved-prompt productized surface. They coexist.
 
-### 8. Telemetry — opt-out, per-name counts, no content
+### 8. Historical telemetry instrumentation — inert in fork builds
 
 Two events:
 
@@ -115,7 +115,7 @@ Two events:
 
 Custom-Transform names are never transmitted (every non-built-in maps to `custom` in telemetry). This protects users who name a Transform after the company they're using it for, etc.
 
-Both events must be added to `ALLOWED_EVENTS` in `macparakeet-website/functions/api/telemetry.ts` before they fire in production; the Worker drops the entire batch on any unknown event. This is a two-repo coordination point baked into the rollout plan.
+These inherited event definitions remain as compatibility code. Fork builds do not configure a telemetry transport or send them remotely.
 
 ### 9. Feature-flag rollout (`AppFeatures.transformsEnabled`)
 

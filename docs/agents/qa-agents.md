@@ -30,9 +30,8 @@ Mostly N/A for MacParakeet — we're not a REST product. Two slivers worth a
 beat:
 
 - **Schemathesis** (Apache-2.0, property-based fuzzing from OpenAPI) on the
-  Cloudflare Worker telemetry endpoint and feedback Pages Function would
-  catch the kind of allowlist drift that hit us per the
-  `feedback_telemetry_allowlist.md` memory.
+  feedback Pages Function could validate the explicit feedback contract. Fork
+  builds have no telemetry endpoint contract to test.
 - **Prism** mocks of the LLM-provider HTTP shapes (OpenAI-compatible /
   Anthropic / LM Studio / Ollama) would pin contracts MP consumes from
   `OpenAICompatibleProvider`. Useful but not urgent.

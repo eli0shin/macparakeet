@@ -241,14 +241,14 @@ resolve_cli
 printf 'MacParakeet release demo smoke fixture. This short local audio proves transcription and export.\n' >"$fixture_text"
 
 run_capture "cli-version" "$output_dir/cli-version.txt" "$output_dir/cli-version.stderr" "${CLI_CMD[@]}" --version
-run_capture "health-json" "$health_json" "$output_dir/health.stderr" env MACPARAKEET_TELEMETRY=0 "${CLI_CMD[@]}" health --json
+run_capture "health-json" "$health_json" "$output_dir/health.stderr" "${CLI_CMD[@]}" health --json
 validate_json "$health_json"
 
 run_capture "say-fixture" "$output_dir/say.stdout" "$output_dir/say.stderr" /usr/bin/say -o "$fixture_aiff" "$(cat "$fixture_text")"
 run_capture "convert-fixture" "$output_dir/afconvert.stdout" "$output_dir/afconvert.stderr" /usr/bin/afconvert -f WAVE -d LEI16@16000 "$fixture_aiff" "$fixture_wav"
 require_file "$fixture_wav"
 
-run_capture "transcribe-json" "$transcribe_json" "$output_dir/transcribe.stderr" env MACPARAKEET_TELEMETRY=0 "${CLI_CMD[@]}" transcribe "$fixture_wav" --format json --database "$smoke_db" --speaker-detection off
+run_capture "transcribe-json" "$transcribe_json" "$output_dir/transcribe.stderr" "${CLI_CMD[@]}" transcribe "$fixture_wav" --format json --database "$smoke_db" --speaker-detection off
 validate_json "$transcribe_json"
 
 transcription_id="$(/usr/bin/plutil -extract id raw -o - "$transcribe_json")"
@@ -274,7 +274,7 @@ if [[ -z "${raw_transcript}${clean_transcript}" ]]; then
   exit 1
 fi
 
-run_capture "export-markdown" "$output_dir/export.stdout" "$output_dir/export.stderr" env MACPARAKEET_TELEMETRY=0 "${CLI_CMD[@]}" export "$transcription_id" --format markdown --output "$export_md" --database "$smoke_db"
+run_capture "export-markdown" "$output_dir/export.stdout" "$output_dir/export.stderr" "${CLI_CMD[@]}" export "$transcription_id" --format markdown --output "$export_md" --database "$smoke_db"
 require_file "$export_md"
 
 write_summary "pass" "$transcription_id" "$transcript_preview"

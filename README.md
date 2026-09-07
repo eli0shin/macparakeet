@@ -130,7 +130,7 @@ Cohere is the most accurate on-device engine in this benchmark, but its statisti
 
 **Download:** Grab the notarized DMG from the [latest release](https://github.com/eli0shin/macparakeet/releases/latest). Drag to Applications, done.
 
-On the standard path, first launch downloads the default Parakeet CoreML build (~465 MB) plus speaker-detection assets (~130 MB) as needed. Locale-aware Korean/Japanese/Chinese/Cantonese setup downloads WhisperKit instead when no preferred English language is present. Parakeet v2 and v3 cache independently if you install both. Core dictation, local-file transcription, and meeting recording can work offline after required models are installed; media imports, telemetry, and cloud/remote AI providers still require a network.
+On the standard path, first launch downloads the default Parakeet CoreML build (~465 MB) plus speaker-detection assets (~130 MB) as needed. Locale-aware Korean/Japanese/Chinese/Cantonese setup downloads WhisperKit instead when no preferred English language is present. Parakeet v2 and v3 cache independently if you install both. Core dictation, local-file transcription, and meeting recording can work offline after required models are installed; media imports and cloud/remote AI providers still require a network.
 
 Every release is Developer ID signed and Apple-notarized, so it opens without
 quarantine workarounds. GitHub Releases is the only distribution channel.
@@ -268,12 +268,10 @@ All speech recognition runs locally. Parakeet uses the Neural Engine; optional N
 
 - **No cloud STT.** The model runs on-device. No audio is transmitted.
 - **No accounts.** No login, no email, no registration.
-- **Opt-out telemetry.** Non-identifying usage analytics and crash reporting go to a self-hosted endpoint only when telemetry is enabled. No persistent IDs, no IP storage, and no transcript/audio content is transmitted. [Source code is right here](Sources/MacParakeetCore/Services/Telemetry/TelemetryService.swift) — verify it yourself.
+- **No telemetry uploads.** Fork builds do not collect or upload usage analytics, crash reports, audio, or transcripts. Crash reports created for diagnosis stay on the Mac unless the user explicitly attaches information to feedback.
 - **Temp files cleaned up.** Audio deleted after transcription unless you save it. Saved meeting audio follows your retention setting (kept by default).
 
-**What does use the network:** AI summaries, chat/Meeting Ask, AI Formatter, and Transforms connect to configured LLM providers, or to whatever service a configured CLI tool chooses to use, when you choose them. Media URL transcription downloads via yt-dlp; Apple Podcasts links query the public iTunes lookup API to find the episode audio, then download it. Telemetry and crash reports go to our self-hosted server unless you opt out. Core dictation and transcription stay fully offline.
-
-**Note:** Builds from source also send telemetry by default. Opt out in Settings or set `MACPARAKEET_TELEMETRY_URL` to override.
+**What does use the network:** AI summaries, chat/Meeting Ask, AI Formatter, and Transforms connect to configured LLM providers, or to whatever service a configured CLI tool chooses to use, when you choose them. Media URL transcription downloads via yt-dlp; Apple Podcasts links query the public iTunes lookup API to find the episode audio, then download it. Model downloads and explicit feedback delivery also use the network. Core dictation and transcription stay fully offline.
 
 ## Contributing
 
