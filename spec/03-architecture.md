@@ -170,7 +170,7 @@ The UI layer. Thin shell over MacParakeetCore. No business logic lives here.
 **Key Types:**
 - `MainWindowView` — `NavigationSplitView` sidebar (Transcribe / Library / Dictations / Vocabulary / Transforms / Feedback / Settings) plus a global transcription progress bar
 - `TranscribeView` — YouTube card, file drop card, Meeting Recording tile, and transcript detail / progress surfaces
-- `TranscriptionLibraryView` — file, YouTube, meeting, and favorite transcript browse with search/sort/filter support
+- `TranscriptionLibraryView` — file, video, podcast, and meeting browse with a nested Library-folder tree, aggregate All Items view, search, sort, per-item movement, and bulk movement
 - `TranscriptResultView` — Scrollable text with optional word-level timestamps
 - `DictationHistoryView` — Flat chronological list with bottom bar audio player
 

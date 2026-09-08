@@ -17,6 +17,19 @@ public enum TranscriptionLibraryScope: Sendable {
 }
 
 public typealias LibrarySortOrder = TranscriptionLibrarySortOrder
+public typealias LibraryLocation = TranscriptionLibraryLocation
+
+public struct LibraryFolderNode: Identifiable, Sendable, Equatable {
+    public let folder: LibraryFolder
+    public let children: [LibraryFolderNode]
+
+    public var id: UUID { folder.id }
+
+    public init(folder: LibraryFolder, children: [LibraryFolderNode]) {
+        self.folder = folder
+        self.children = children
+    }
+}
 
 /// Date-based bucket used to group meeting/library rows under headers like
 /// "Today", "Yesterday", "Previous 7 Days". Computed against the user's
@@ -118,6 +131,8 @@ public struct BulkOperationResult: Sendable, Equatable {
 public final class TranscriptionLibraryViewModel {
     private let logger = Logger(subsystem: "com.macparakeet.viewmodels", category: "TranscriptionLibrary")
     public private(set) var transcriptions: [Transcription] = []
+    public private(set) var folders: [LibraryFolder] = []
+    public private(set) var location: LibraryLocation
     public var filter: LibraryFilter = .all { didSet { reloadAfterStateChange() } }
     public var searchText: String = "" { didSet { debounceSearchReload() } }
     public var sortOrder: LibrarySortOrder = .dateDescending { didSet { reloadAfterStateChange() } }
@@ -140,7 +155,9 @@ public final class TranscriptionLibraryViewModel {
     public var calendar: Calendar = .autoupdatingCurrent
 
     private var transcriptionRepo: TranscriptionRepositoryProtocol?
+    private var folderRepo: LibraryFolderRepositoryProtocol?
     private var loadTask: Task<Void, Never>?
+    private var folderLoadTask: Task<Void, Never>?
     private var searchDebounceTask: Task<Void, Never>?
     private var loadGeneration = 0
     private var bulkSelectionGeneration = 0
@@ -148,10 +165,142 @@ public final class TranscriptionLibraryViewModel {
 
     public init(scope: TranscriptionLibraryScope = .all) {
         self.scope = scope
+        location = scope == .all ? .root : .allItems
     }
 
-    public func configure(transcriptionRepo: TranscriptionRepositoryProtocol) {
+    public func configure(
+        transcriptionRepo: TranscriptionRepositoryProtocol,
+        folderRepo: LibraryFolderRepositoryProtocol? = nil
+    ) {
         self.transcriptionRepo = transcriptionRepo
+        self.folderRepo = folderRepo
+    }
+
+    public var folderTree: [LibraryFolderNode] {
+        Self.makeFolderNodes(parentID: nil, folders: folders)
+    }
+
+    public var currentFolder: LibraryFolder? {
+        guard case .folder(let id) = location else { return nil }
+        return folders.first { $0.id == id }
+    }
+
+    public var currentLocationTitle: String {
+        switch location {
+        case .allItems: return "All Items"
+        case .root: return "Library"
+        case .folder(let id): return folders.first(where: { $0.id == id })?.name ?? "Library"
+        }
+    }
+
+    public var currentFolderPath: [LibraryFolder] {
+        guard var folder = currentFolder else { return [] }
+        var reversed = [folder]
+        var seen: Set<UUID> = [folder.id]
+        while let parentID = folder.parentID,
+            let parent = folders.first(where: { $0.id == parentID }),
+            seen.insert(parent.id).inserted
+        {
+            reversed.append(parent)
+            folder = parent
+        }
+        return reversed.reversed()
+    }
+
+    public func selectLocation(_ newLocation: LibraryLocation) {
+        guard scope == .all, location != newLocation else { return }
+        finishBulkSelection()
+        location = newLocation
+        loadTranscriptions()
+    }
+
+    @discardableResult
+    public func loadFolders() -> Task<Void, Never> {
+        folderLoadTask?.cancel()
+        guard let folderRepo else {
+            folders = []
+            return Task {}
+        }
+        let task = Task { @MainActor [weak self, folderRepo] in
+            do {
+                let folders = try await Task.detached(priority: .userInitiated) {
+                    try folderRepo.fetchAll()
+                }.value
+                guard let self, !Task.isCancelled else { return }
+                self.folders = folders
+                if case .folder(let id) = self.location, !folders.contains(where: { $0.id == id }) {
+                    self.location = .root
+                    self.loadTranscriptions()
+                }
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.errorMessage = "Failed to load Library folders: \(error.localizedDescription)"
+            }
+        }
+        folderLoadTask = task
+        return task
+    }
+
+    @discardableResult
+    public func createFolder(name: String) async -> LibraryFolder? {
+        guard let folderRepo else { return nil }
+        let parentID: UUID?
+        if case .folder(let id) = location { parentID = id } else { parentID = nil }
+        do {
+            let folder = try await Task.detached(priority: .userInitiated) {
+                try folderRepo.create(name: name, parentID: parentID)
+            }.value
+            await loadFolders().value
+            return folder
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    @discardableResult
+    public func moveTranscriptions(_ transcriptions: [Transcription], to folderID: UUID?) async -> Bool {
+        guard let transcriptionRepo, !transcriptions.isEmpty else { return false }
+        isBulkOperationInProgress = true
+        errorMessage = nil
+        do {
+            try await Task.detached(priority: .userInitiated) {
+                try transcriptionRepo.moveToLibraryFolder(ids: transcriptions.map(\.id), folderID: folderID)
+            }.value
+            isBulkOperationInProgress = false
+            finishBulkSelection()
+            if scope == .all {
+                location = folderID.map(LibraryLocation.folder) ?? .root
+            }
+            await loadTranscriptions().value
+            return true
+        } catch {
+            isBulkOperationInProgress = false
+            errorMessage = "Failed to move Library items: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    @discardableResult
+    public func moveSelectedTranscriptions(to folderID: UUID?) async -> Bool {
+        await moveTranscriptions(selectedLoadedTranscriptions, to: folderID)
+    }
+
+    @discardableResult
+    public func deleteFolder(_ folder: LibraryFolder) async -> Bool {
+        guard let folderRepo else { return false }
+        do {
+            _ = try await Task.detached(priority: .userInitiated) {
+                try folderRepo.delete(id: folder.id)
+            }.value
+            location = .root
+            await loadFolders().value
+            await loadTranscriptions().value
+            return true
+        } catch {
+            errorMessage = "Failed to delete folder: \(error.localizedDescription)"
+            return false
+        }
     }
 
     public var selectedTranscriptionCount: Int {
@@ -654,6 +803,7 @@ public final class TranscriptionLibraryViewModel {
         let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         return TranscriptionLibraryQuery(
             sourceType: sourceType,
+            location: scope == .all ? location : .allItems,
             favoritesOnly: favoritesOnly,
             searchText: trimmedSearch.isEmpty ? nil : trimmedSearch,
             sortOrder: sortOrder,
@@ -678,6 +828,21 @@ public final class TranscriptionLibraryViewModel {
 
     private var selectedLoadedTranscriptions: [Transcription] {
         filteredTranscriptions.filter { selectedTranscriptionIDs.contains($0.id) }
+    }
+
+    nonisolated private static func makeFolderNodes(
+        parentID: UUID?,
+        folders: [LibraryFolder]
+    ) -> [LibraryFolderNode] {
+        folders
+            .filter { $0.parentID == parentID }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            .map { folder in
+                LibraryFolderNode(
+                    folder: folder,
+                    children: makeFolderNodes(parentID: folder.id, folders: folders)
+                )
+            }
     }
 
     nonisolated private static func hasRemovableMeetingAudio(_ transcription: Transcription) -> Bool {

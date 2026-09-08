@@ -1344,6 +1344,46 @@ public final class DatabaseManager: Sendable {
             }
         }
 
+        // v0.32 — Filesystem-like Library folders. Folders are organization
+        // metadata only. Existing transcription rows keep NULL membership and
+        // therefore remain directly at Library root.
+        migrator.registerMigration("v0.32-library-folders") { db in
+            try db.create(table: "library_folders") { t in
+                t.column("id", .text).primaryKey()
+                t.column("parentID", .text)
+                    .references("library_folders", onDelete: .cascade)
+                t.column("name", .text).notNull()
+                t.column("createdAt", .text).notNull()
+                t.column("updatedAt", .text).notNull()
+                t.check(sql: "TRIM(name) != ''")
+            }
+            try db.execute(sql: """
+                CREATE UNIQUE INDEX idx_library_folders_root_name
+                ON library_folders(name COLLATE NOCASE)
+                WHERE parentID IS NULL
+                """)
+            try db.execute(sql: """
+                CREATE UNIQUE INDEX idx_library_folders_parent_name
+                ON library_folders(parentID, name COLLATE NOCASE)
+                WHERE parentID IS NOT NULL
+                """)
+            try db.create(
+                index: "idx_library_folders_parent",
+                on: "library_folders",
+                columns: ["parentID"]
+            )
+
+            try db.alter(table: "transcriptions") { t in
+                t.add(column: "libraryFolderID", .text)
+                    .references("library_folders", onDelete: .setNull)
+            }
+            try db.create(
+                index: "idx_transcriptions_library_folder_created_at",
+                on: "transcriptions",
+                columns: ["libraryFolderID", "createdAt"]
+            )
+        }
+
         return migrator
     }
 

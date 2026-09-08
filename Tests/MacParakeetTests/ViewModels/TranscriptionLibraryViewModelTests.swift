@@ -6,12 +6,14 @@ import XCTest
 final class TranscriptionLibraryViewModelTests: XCTestCase {
     var vm: TranscriptionLibraryViewModel!
     var repo: TranscriptionRepository!
+    var folderRepo: LibraryFolderRepository!
 
     override func setUp() async throws {
         let manager = try DatabaseManager()
         repo = TranscriptionRepository(dbQueue: manager.dbQueue)
+        folderRepo = LibraryFolderRepository(dbQueue: manager.dbQueue)
         vm = TranscriptionLibraryViewModel()
-        vm.configure(transcriptionRepo: repo)
+        vm.configure(transcriptionRepo: repo, folderRepo: folderRepo)
     }
 
     private func load(_ viewModel: TranscriptionLibraryViewModel? = nil) async {
@@ -961,6 +963,69 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: systemURL.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: manifestURL.path))
+    }
+
+    func testCreatesNestedFolderAtCurrentLocationAndNavigatesTree() async throws {
+        let createdParent = await vm.createFolder(name: "Projects")
+        let parent = try XCTUnwrap(createdParent)
+        vm.selectLocation(.folder(parent.id))
+        let createdChild = await vm.createFolder(name: "Sprint")
+        let child = try XCTUnwrap(createdChild)
+
+        XCTAssertEqual(child.parentID, parent.id)
+        XCTAssertEqual(vm.currentFolderPath.map(\.name), ["Projects"])
+        XCTAssertEqual(vm.folderTree.map(\.folder.name), ["Projects"])
+        XCTAssertEqual(vm.folderTree.first?.children.map(\.folder.name), ["Sprint"])
+
+        vm.selectLocation(.folder(child.id))
+        XCTAssertEqual(vm.currentFolderPath.map(\.name), ["Projects", "Sprint"])
+    }
+
+    func testPerItemAndBulkMoveRefreshCurrentLocationAndCanReturnToRoot() async throws {
+        let folder = try folderRepo.create(name: "Archive", parentID: nil)
+        let first = Transcription(fileName: "meeting.m4a", status: .completed, sourceType: .meeting)
+        let second = Transcription(fileName: "episode.m4a", status: .completed, sourceType: .podcast)
+        try repo.save(first)
+        try repo.save(second)
+        await load()
+
+        let movedFirst = await vm.moveTranscriptions([first], to: folder.id)
+        XCTAssertTrue(movedFirst)
+        XCTAssertEqual(vm.location, .folder(folder.id))
+        XCTAssertEqual(vm.filteredTranscriptions.map(\.id), [first.id])
+
+        vm.selectLocation(.root)
+        await load()
+        vm.beginBulkSelection(startingWith: second)
+        let movedSecond = await vm.moveSelectedTranscriptions(to: folder.id)
+        XCTAssertTrue(movedSecond)
+        XCTAssertEqual(vm.location, .folder(folder.id))
+        XCTAssertEqual(Set(vm.filteredTranscriptions.map(\.id)), [first.id, second.id])
+        XCTAssertFalse(vm.isBulkSelectionModeEnabled)
+
+        vm.beginBulkSelection()
+        vm.selectLoadedVisibleTranscriptions()
+        let movedToRoot = await vm.moveSelectedTranscriptions(to: nil)
+        XCTAssertTrue(movedToRoot)
+        XCTAssertEqual(vm.location, .root)
+        XCTAssertEqual(Set(vm.filteredTranscriptions.map(\.id)), [first.id, second.id])
+    }
+
+    func testDeleteCurrentFolderReturnsNestedItemsToRoot() async throws {
+        let parent = try folderRepo.create(name: "Parent", parentID: nil)
+        let child = try folderRepo.create(name: "Child", parentID: parent.id)
+        let item = Transcription(fileName: "local.m4a", status: .completed)
+        try repo.save(item)
+        try repo.moveToLibraryFolder(ids: [item.id], folderID: child.id)
+        await vm.loadFolders().value
+        vm.selectLocation(.folder(parent.id))
+
+        let deleted = await vm.deleteFolder(parent)
+        XCTAssertTrue(deleted)
+
+        XCTAssertEqual(vm.location, .root)
+        XCTAssertEqual(vm.filteredTranscriptions.map(\.id), [item.id])
+        XCTAssertTrue(vm.folders.isEmpty)
     }
 
     func testRequestDeleteAudioOnlySkipCountExcludesNonMeetings() async throws {

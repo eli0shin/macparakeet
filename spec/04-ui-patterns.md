@@ -68,7 +68,7 @@ Minimum window width: 800pt.
 The sidebar uses NavigationSplitView with flat items (icon + label):
 
 - **Transcribe** (`waveform`) -- Capture hub: YouTube card + file drop card + Meeting Recording tile
-- **Library** (`square.grid.2x2`) -- All transcriptions; filter chips switch between thumbnail grid (All/YouTube/Local/Favorites) and date-grouped list (Meetings)
+- **Library** (`square.grid.2x2`) -- All transcription source types in a Finder-like nested folder tree; Library is the root and All Items is the aggregate view
 - **Dictations** (`clock.arrow.circlepath`) -- Flat history list with bottom bar player
 - **Meetings** (`person.2.wave.2`) -- Workflow space for upcoming, live, and saved meeting work; visible when `AppFeatures.meetingRecordingEnabled` is true
 - **Vocabulary** (`book.fill`) -- Processing mode, pipeline guide, custom words & snippets management
@@ -119,9 +119,29 @@ States, all bound to the long-lived `MeetingRecordingPillViewModel` shared with 
 
 The tile body is informational. Only the visible Start and Stop capsules are real SwiftUI `Button`s, and both call the same `toggleRecording` path the menu bar uses. Completing, transcribing, completed, and error states render as inert status surfaces and must not expose button traits or no-op accessibility actions. The floating pill stays visible by default during recording so users who hide the main window keep an active control surface; users can hide it in Settings and continue controlling the live recording from the status menu, hotkey, or Meetings surfaces.
 
+### Library Folder Tree
+
+The main Library uses accepted prototype A: a permanent 210pt folder pane beside
+the item content. `Library` is the filesystem-like root and shows only items
+with no folder. `All Items` is a visually separate aggregate row. User folders
+form an expandable nested tree. One `+ Folder` header action creates at the
+current location (or at Library root from All Items). The content pane shows a
+breadcrumb and permits deletion only for a user folder.
+
+The action label is `Select`, not `Select Many`. Selection mode keeps the
+existing cleanup/export actions and adds `Move to…`. Every recording card or
+meeting row has `Open` and `Move to Folder…` in its ellipsis/context menu.
+Movement changes only local organization metadata. Folder deletion confirmation
+states that the folder and descendants are deleted, every item is moved to
+Library root, and recordings plus managed files are retained.
+
+Folders replace the main Library source filters. Source identity remains visible
+on cards and all file, video, podcast, and meeting rows can share one folder.
+The dedicated Meetings workspace remains unchanged.
+
 ### Library Meetings Filter
 
-When `Library.filter == .meeting`, the view renders a date-grouped list (`Today` / `Yesterday` / `Previous 7 Days` / `Previous 30 Days` / `{Month Year}`) using `MeetingDateGroupHeader` + `MeetingRowCard` instead of the thumbnail grid the other filters use. Meeting rows surface saved-audio state directly (`Audio saved`, `Audio removed`, or `Audio missing`) so playback/retranscription expectations are visible before the user opens a menu.
+In the dedicated Meetings scope, the view renders a date-grouped list (`Today` / `Yesterday` / `Previous 7 Days` / `Previous 30 Days` / `{Month Year}`) using `MeetingDateGroupHeader` + `MeetingRowCard` instead of the thumbnail grid the other filters use. Meeting rows surface saved-audio state directly (`Audio saved`, `Audio removed`, or `Audio missing`) so playback/retranscription expectations are visible before the user opens a menu.
 
 Opening an empty processing meeting row must preserve that same lifecycle
 truth. The transcript pane shows an indeterminate "Transcribing meeting"

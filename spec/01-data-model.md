@@ -20,6 +20,7 @@ MacParakeet uses **SQLite via GRDB** for all persistent storage. Single database
 │  transcriptions  │◄──FK──│   chat_conversations    │  v0.5 — Multi-conversation chat
 │                  │◄──FK──│      summaries          │  v0.7 — Prompt results per transcript
 │                  │◄──FK──│        cards            │  v0.28 — Derived knowledge cards
+│                  │──FK──▶│    library_folders      │  v0.32 — Local organization metadata
 └──────────────────┘       └─────────────────────────┘
    v0.1 — File transcription records
 
@@ -150,6 +151,7 @@ CREATE TABLE transcriptions (
     engineVariant TEXT,                                  -- v0.8: Engine-specific model variant
     calendarEventSnapshot TEXT,                          -- v0.25: JSON local calendar context captured at meeting start
     titleOverride TEXT,                                  -- v0.26: User-authored non-meeting display title override
+    libraryFolderID TEXT REFERENCES library_folders(id) ON DELETE SET NULL, -- v0.32: NULL = Library root
     derivedTitle TEXT,                                   -- v0.9: Display title derived from transcript content
     derivedSnippet TEXT,                                 -- v0.9: Display preview snippet derived from transcript content
     updatedAt TEXT NOT NULL                              -- ISO 8601 timestamp
@@ -159,6 +161,7 @@ CREATE INDEX idx_transcriptions_created_at ON transcriptions(createdAt);
 CREATE INDEX idx_transcriptions_source_type_created_at ON transcriptions(sourceType, createdAt);
 CREATE INDEX idx_transcriptions_favorite_created_at ON transcriptions(isFavorite, createdAt);
 CREATE INDEX idx_transcriptions_status_created_at ON transcriptions(status, createdAt);
+CREATE INDEX idx_transcriptions_library_folder_created_at ON transcriptions(libraryFolderID, createdAt);
 ```
 
 **Notes:**
@@ -197,6 +200,7 @@ CREATE INDEX idx_transcriptions_status_created_at ON transcriptions(status, crea
 - `engine` / `engineVariant` record the STT engine attribution for Parakeet, Nemotron Beta, Cohere, and optional WhisperKit paths. Added in v0.8; legacy rows keep `NULL`.
 - `calendarEventSnapshot` is a JSON blob for meeting rows only. It stores `confidence` (`confirmed` for calendar auto-start, `probable` for manual starts matched against the current poll cache), EventKit `eventIdentifier`, optional `externalId`, event title, scheduled start/end, attendee names/emails, organizer name/email, meeting URL/service, and capture timestamp. This is local user data and must not be sent in telemetry, including attendee counts. Added in v0.25.
 - `titleOverride` stores a user-authored display title for non-meeting transcription rows. It is app metadata only: it does not rename/move `filePath`, replace the original `fileName`, or participate in meeting artifact naming. Blank titles are normalized to `NULL`. Added in v0.26.
+- `libraryFolderID` is nullable organization metadata for every transcription source type. `NULL` means the item is directly at Library root. The `ON DELETE SET NULL` foreign key keeps items when their folder or an ancestor is deleted; it never changes media paths or meeting artifact folders. Added in v0.32.
 - `derivedTitle` / `derivedSnippet` cache semantic display copy derived from the completed transcript. Local file rows retain the original `fileName` as their default visible title, but the derived copy remains available for search and preview-related behavior. Added in v0.9 so Library surfaces do not need to recompute derived text on every render.
 - The legacy `summary` column was migrated into `summaries` in v0.7 and dropped in v0.7.6.
 - No FTS on transcriptions in v0.1. Search by filename or scroll the list. Revisit if the list grows large.
@@ -208,6 +212,34 @@ CREATE INDEX idx_transcriptions_status_created_at ON transcriptions(status, crea
 - Speaker assignment per word is stored via `speakerId` on each `WordTimestamp` entry using **stable IDs** (`"S1"`, `"S2"`) — not display labels. Display labels are resolved via the `speakers` mapping.
 - `transcriptSegments`: JSON array of durable transcript segments derived from the persisted word array. Readers should use this array for citations instead of re-segmenting words. Nil for legacy/no-timing rows.
 - All diarization fields are nullable. If diarization fails, ASR result is still persisted with these fields as nil.
+
+---
+
+### `library_folders` (v0.32)
+
+Stores the filesystem-like Library hierarchy. These rows are app metadata, not
+Finder directories and not meeting artifact folders.
+
+```sql
+CREATE TABLE library_folders (
+    id TEXT PRIMARY KEY,
+    parentID TEXT REFERENCES library_folders(id) ON DELETE CASCADE,
+    name TEXT NOT NULL CHECK (TRIM(name) != ''),
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_library_folders_root_name
+    ON library_folders(name COLLATE NOCASE) WHERE parentID IS NULL;
+CREATE UNIQUE INDEX idx_library_folders_parent_name
+    ON library_folders(parentID, name COLLATE NOCASE) WHERE parentID IS NOT NULL;
+CREATE INDEX idx_library_folders_parent ON library_folders(parentID);
+```
+
+Deleting one folder cascades through descendant folder rows. The separate
+`transcriptions.libraryFolderID` foreign key uses `ON DELETE SET NULL`, so the
+same transaction retains all contained Library items and returns them to
+Library root. A folder's parent is fixed after creation in v1, which makes a
+cycle impossible through supported writes.
 
 ---
 

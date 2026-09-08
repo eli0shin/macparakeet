@@ -1621,15 +1621,17 @@ Embedded video/audio playback, split-pane detail view, synced transcript highlig
 
 > Status: **IMPLEMENTED**
 
-**What:** Grid view of all transcriptions with thumbnail cards, filters, search, and sorting.
+**What:** Filesystem-like Library with a permanent nested-folder tree, mixed transcription cards, search, and sorting.
 
 **Acceptance criteria:**
 - [x] Thumbnail grid layout with cards (YouTube thumbnails downloaded, embedded local artwork cached, local video frames extracted via FFmpeg)
-- [x] Filter bar: All / YouTube / Local / Favorites
+- [x] Library root contains items without a folder; All Items is an aggregate across root and folders
+- [x] Nested folders support contextual creation, direct and bulk item movement, and movement back to Library root
+- [x] Deleting a folder tree retains every contained item at Library root and does not delete managed media or meeting artifacts
 - [x] Search across transcription titles and content
 - [x] Sort by date (newest/oldest)
 - [x] Local transcription rows can be renamed from the Library and detail header; rename stores app metadata only and does not rename, move, or retain the original source file
-- [x] Multi-select cleanup with `Select Many...`, `Select All`, clear/cancel, and contextual destructive confirmations
+- [x] Multi-select mode with `Select`, `Select All`, clear/cancel, bulk Move to, and contextual destructive confirmations
 - [x] Meeting cleanup supports both full deletion and `Remove Audio Only...`; optional notes, AI results, and chats are removed only by full meeting deletion
 
 Visible transcription titles are source-aware. Meeting rows use their meeting `fileName`. Local file rows use a non-empty user `titleOverride` when explicitly renamed, then the original media `fileName`; transcript-derived opening words never replace that source identity. URL rows retain the non-empty `titleOverride`, `derivedTitle`, then `fileName` fallback. Library cards, detail headers, title sort, agent-facing title fields, and GUI export filename suggestions use that effective title. Search still matches the override, original filename, derived title, and transcript content. Public CLI exact-name lookup and export defaults remain tied to the existing CLI contract.

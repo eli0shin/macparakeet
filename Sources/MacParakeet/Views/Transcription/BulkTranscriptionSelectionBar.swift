@@ -11,6 +11,7 @@ struct BulkTranscriptionSelectionBar: View {
     let onSelectVisible: () -> Void
     let onClear: () -> Void
     let onCancel: () -> Void
+    var onMove: (() -> Void)? = nil
     var onExport: (() -> Void)?
     let onDeleteAudioOnly: () -> Void
     let onDeleteItems: () -> Void
@@ -23,7 +24,8 @@ struct BulkTranscriptionSelectionBar: View {
         if isMeetingContext {
             return "Remove Audio Only..."
         }
-        return "Remove Audio for \(selectedMeetingAudioCount) \(selectedMeetingAudioCount == 1 ? "Meeting" : "Meetings")..."
+        return
+            "Remove Audio for \(selectedMeetingAudioCount) \(selectedMeetingAudioCount == 1 ? "Meeting" : "Meetings")..."
     }
 
     private var deleteItemsTitle: String {
@@ -118,6 +120,7 @@ struct BulkTranscriptionSelectionBar: View {
             cancelAction
             selectVisibleAction
             clearAction
+            moveAction
             exportAction
         }
     }
@@ -136,6 +139,7 @@ struct BulkTranscriptionSelectionBar: View {
             cancelAction
             selectVisibleAction
             clearAction
+            moveAction
             exportAction
             if showsAudioAction {
                 deleteAudioAction
@@ -178,6 +182,19 @@ struct BulkTranscriptionSelectionBar: View {
             isDisabled: selectedCount == 0 || isPerformingOperation,
             action: onClear
         )
+    }
+
+    @ViewBuilder
+    private var moveAction: some View {
+        if let onMove {
+            SelectionBarActionButton(
+                title: "Move to…",
+                systemImage: "folder",
+                tone: .utility,
+                isDisabled: selectedCount == 0 || isPerformingOperation,
+                action: onMove
+            )
+        }
     }
 
     @ViewBuilder
