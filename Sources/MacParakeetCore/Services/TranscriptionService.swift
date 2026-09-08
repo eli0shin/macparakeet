@@ -1408,7 +1408,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
     ) async throws -> Transcription {
         let processingStartedAt = Date()
         var lifecycleStage: TelemetryTranscriptionStage = .audioConversion
-        let detectSystem = (recording.systemSpeakerDetection ?? shouldDiarizeMeetings())
+        let detectSystem =
+            (recording.systemSpeakerDetection ?? shouldDiarizeMeetings())
             && recording.sourceAlignment.system != nil
         let detectMicrophone = recording.microphoneSpeakerDetection && recording.sourceAlignment.microphone != nil
         let diarizationRequested = diarizationService != nil && (detectSystem || detectMicrophone)
