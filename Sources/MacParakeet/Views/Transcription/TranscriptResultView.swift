@@ -3930,7 +3930,8 @@ struct TranscriptResultView: View {
     // MARK: - Actions
 
     private func copyMeetingToClipboard() {
-        let document = cachedReadingDocument.turns.isEmpty
+        let document =
+            cachedReadingDocument.turns.isEmpty
             ? nil
             : cachedReadingDocument
         let markdown = MeetingMarkdownRenderer().renderForClipboard(
@@ -4238,7 +4239,8 @@ struct TranscriptResultView: View {
         // Use the ViewModel's copy which reflects any in-flight renames
         let source = activeTranscription
         do {
-            let readingDocument = usesMeetingReadingSurface && !cachedReadingDocument.turns.isEmpty
+            let readingDocument =
+                usesMeetingReadingSurface && !cachedReadingDocument.turns.isEmpty
                 ? cachedReadingDocument
                 : nil
             let fileURL = try TranscriptResultActions.exportTranscriptToDownloads(
