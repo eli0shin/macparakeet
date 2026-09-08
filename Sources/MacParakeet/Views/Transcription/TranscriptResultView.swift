@@ -246,6 +246,9 @@ struct TranscriptResultView: View {
     // Cached transcript data — recomputed only when transcription.id changes, not on every playback tick
     @State private var cachedSegments: [TranscriptSegment] = []
     @State private var cachedIdentifiedTurnCards: [IdentifiedSpeakerTurn] = []
+    /// Canonical Reading Turns remain the source for exports and AI context.
+    @State private var cachedReadingDocument = MeetingTranscriptPresentationDocument(turns: [])
+    /// The completed-meeting UI groups consecutive contributions by speaker.
     @State private var cachedReadingTurns: [IdentifiedReadingTurn] = []
     @State private var cachedHasSpeakers: Bool = false
     @State private var cachedSpeakerColorMap: [String: Color] = [:]
@@ -1116,9 +1119,7 @@ struct TranscriptResultView: View {
             !cachedReadingTurns.isEmpty
         {
             return TranscriptAIContextFormatter.format(
-                document: MeetingTranscriptPresentationDocument(
-                    turns: cachedReadingTurns.map(\.turn)
-                ),
+                document: cachedReadingDocument,
                 plainTranscript: transcriptText,
                 mode: currentAIContextMode
             )
@@ -3751,7 +3752,10 @@ struct TranscriptResultView: View {
             cleanup: meetingTranscriptCleanup,
             formatting: activeTranscription.meetingReadingTurnFormatting ?? []
         )
-        cachedReadingTurns = identifiedReadingTurns(readingDocument.turns)
+        cachedReadingDocument = readingDocument
+        cachedReadingTurns = identifiedReadingTurns(
+            MeetingTranscriptDisplayBuilder.build(from: readingDocument).turns
+        )
 
         guard let words = activeTranscription.wordTimestamps, !words.isEmpty else {
             cachedSegments = []
@@ -3926,9 +3930,9 @@ struct TranscriptResultView: View {
     // MARK: - Actions
 
     private func copyMeetingToClipboard() {
-        let document = cachedReadingTurns.isEmpty
+        let document = cachedReadingDocument.turns.isEmpty
             ? nil
-            : MeetingTranscriptPresentationDocument(turns: cachedReadingTurns.map(\.turn))
+            : cachedReadingDocument
         let markdown = MeetingMarkdownRenderer().renderForClipboard(
             transcription: activeTranscription,
             readingDocument: document
@@ -3942,11 +3946,8 @@ struct TranscriptResultView: View {
             !activeTranscription.isTranscriptEdited,
             !cachedReadingTurns.isEmpty
         {
-            let document = MeetingTranscriptPresentationDocument(
-                turns: cachedReadingTurns.map(\.turn)
-            )
             TranscriptResultActions.copyText(
-                MeetingTranscriptDocumentRenderer.markdown(document),
+                MeetingTranscriptDocumentRenderer.markdown(cachedReadingDocument),
                 source: .meeting
             )
         } else {
@@ -4237,8 +4238,8 @@ struct TranscriptResultView: View {
         // Use the ViewModel's copy which reflects any in-flight renames
         let source = activeTranscription
         do {
-            let readingDocument = usesMeetingReadingSurface && !cachedReadingTurns.isEmpty
-                ? MeetingTranscriptPresentationDocument(turns: cachedReadingTurns.map(\.turn))
+            let readingDocument = usesMeetingReadingSurface && !cachedReadingDocument.turns.isEmpty
+                ? cachedReadingDocument
                 : nil
             let fileURL = try TranscriptResultActions.exportTranscriptToDownloads(
                 transcription: source,

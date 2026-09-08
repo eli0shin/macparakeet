@@ -18,7 +18,26 @@ final class MeetingReadingTurnIdentityTests: XCTestCase {
             ))
     }
 
-    func testScrollIdentityIsOnePerReadingTurnAndPlaybackSelectsTheLatestStart() {
+    func testGroupedSpeakerRunHasOneScrollIdentityAndOnePlaybackTarget() {
+        let canonical = MeetingTranscriptPresentationDocument(turns: [
+            turn(speaker: "microphone", source: .microphone, firstWord: 0, startMs: 0),
+            turn(speaker: "microphone", source: .microphone, firstWord: 3, startMs: 8_000),
+            turn(speaker: "microphone", source: .microphone, firstWord: 6, startMs: 16_000),
+        ])
+        let displayed = MeetingTranscriptDisplayBuilder.build(from: canonical)
+        let turns = identifiedReadingTurns(displayed.turns)
+
+        XCTAssertEqual(turns.count, 1)
+        XCTAssertEqual(turns[0].turn.wordReferences, [0, 3, 6])
+        XCTAssertEqual(turns[0].turn.timeRange?.startMs, 0)
+        XCTAssertEqual(readingTurnScrollTarget(for: 8_000, in: turns), turns[0].scrollID)
+        XCTAssertEqual(
+            displayed.navigationTarget(containingWordReference: 6)?.turnID,
+            canonical.turns[0].id
+        )
+    }
+
+    func testScrollIdentityIsOnePerDisplayedTurnAndPlaybackSelectsTheLatestStart() {
         let turns = identifiedReadingTurns([
             turn(speaker: "microphone", source: .microphone, firstWord: 0, startMs: 0),
             turn(speaker: "system:S1", source: .system, firstWord: 3, startMs: 1_000),
@@ -62,7 +81,7 @@ final class MeetingReadingTurnIdentityTests: XCTestCase {
         XCTAssertEqual(
             turns.map(\.turn.id.firstWordIndex),
             [0, 3, 99, 4, 5],
-            "Removing overlap chrome must not regroup or reorder Reading Turns"
+            "Overlap chrome must not regroup or reorder different-speaker turns"
         )
         XCTAssertNil(turns[0].turn.overlap)
         XCTAssertEqual(turns[1].turn.overlap, overlap)
