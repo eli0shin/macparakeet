@@ -1250,6 +1250,24 @@ private struct LibraryFolderSidebar: View {
     }
 
     private func locationButton(title: String, systemImage: String, location: LibraryLocation) -> some View {
+        LibrarySidebarLocationButton(
+            title: title,
+            systemImage: systemImage,
+            location: location,
+            selectedLocation: selectedLocation,
+            onSelect: onSelect
+        )
+    }
+}
+
+struct LibrarySidebarLocationButton: View {
+    let title: String
+    let systemImage: String
+    let location: LibraryLocation
+    let selectedLocation: LibraryLocation
+    let onSelect: (LibraryLocation) -> Void
+
+    var body: some View {
         Button {
             onSelect(location)
         } label: {
@@ -1263,13 +1281,14 @@ private struct LibraryFolderSidebar: View {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(selectedLocation == location ? DesignSystem.Colors.accent.opacity(0.14) : .clear)
                 )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityValue(selectedLocation == location ? "Selected" : "")
     }
 }
 
-private struct LibraryFolderTreeNodeView: View {
+struct LibraryFolderTreeNodeView: View {
     let node: LibraryFolderNode
     let selectedLocation: LibraryLocation
     let onSelect: (LibraryLocation) -> Void
@@ -1314,6 +1333,7 @@ private struct LibraryFolderTreeNodeView: View {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(selectedLocation == location ? DesignSystem.Colors.accent.opacity(0.14) : .clear)
                 )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(node.folder.name)
