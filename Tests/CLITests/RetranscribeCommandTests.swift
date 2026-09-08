@@ -4,6 +4,19 @@ import XCTest
 @testable import MacParakeetCore
 
 final class RetranscribeCommandTests: XCTestCase {
+    func testMeetingMicrophoneDetectionHonorsCapturedChoiceAndExplicitCLIOptOut() throws {
+        let base = ["abcd", "--update", "--kind", "meeting"]
+        for options in [[], ["--speaker-detection", "on"], ["--speaker-count", "2"]] {
+            let command = try RetranscribeCommand.parse(base + options)
+            XCTAssertTrue(command.microphoneSpeakerDetectionEnabled(capturedEnabled: true))
+            XCTAssertFalse(command.microphoneSpeakerDetectionEnabled(capturedEnabled: false))
+        }
+        for options in [["--speaker-detection", "off"], ["--no-diarize"]] {
+            let command = try RetranscribeCommand.parse(base + options)
+            XCTAssertFalse(command.microphoneSpeakerDetectionEnabled(capturedEnabled: true))
+        }
+    }
+
     func testRequiresExplicitUpdateConfirmation() {
         XCTAssertThrowsError(try RetranscribeCommand.parse(["abcd"])) { error in
             XCTAssertTrue(String(describing: error).contains("Pass --update"), String(describing: error))

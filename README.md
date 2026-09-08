@@ -76,6 +76,8 @@ Meeting calendar support is live in the stable DMG. MacParakeet reads upcoming m
 
 **Meeting recording** — Record system audio and microphone together, or pick microphone-only or system-only capture (microphone-only needs no Screen Recording permission). See a live local transcript preview, take notes during the call, then save the finalized transcript to the library with export, prompts, and chat. Choose how long to keep the source audio: keep it, auto-delete after a set number of days, or remove it right after transcription.
 
+On the development branch, Settings → Capture → Meeting Recording also offers **Detect speakers on microphone** (off by default). Enable it before an in-person recording to get local speaker labels in the final transcript. It uses the existing local model, requires word timestamps, and does not identify which voice is yours. Live preview is unchanged. Adjust Speakers can rerun detection for either retained track; counts apply to the selected track on these recordings.
+
 **Meeting calendar support** — Grant Calendar access to get local reminders for upcoming meetings or opt into auto-start. MacParakeet uses calendars already configured in macOS Calendar through EventKit; it does not add Google or Microsoft sign-ins, and recordings still stop manually.
 
 **Text cleanup** — Filler word removal, custom word replacements, text snippets with triggers. Deterministic pipeline, no LLM needed.

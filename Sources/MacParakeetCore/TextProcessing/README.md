@@ -115,7 +115,9 @@ LLM-free per ADR-004.
 
 **Reading Turn speaker attribution is presentation-only.** The builder forms
 utterances per capture source before it reads remote-speaker evidence. Microphone
-utterances remain `Me`. System utterances use aggregate overlap with retained
+utterances remain `Me` when microphone speaker detection is off. When enabled,
+local speakers receive the same source-isolated evidence treatment as remote
+speakers, with a neutral `Local Speakers` fallback. System utterances use aggregate overlap with retained
 diarization regions, with aggregate word labels only as a legacy fallback. An
 isolated remote-speaker run shorter than one second is absorbed when the same
 stable speaker surrounds it, unless at least 200 ms of concurrent diarization

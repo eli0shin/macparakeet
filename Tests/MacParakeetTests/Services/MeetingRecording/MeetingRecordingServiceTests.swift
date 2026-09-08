@@ -238,6 +238,27 @@ final class MeetingRecordingServiceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(lockStore.deletes.count, 1)
     }
 
+    func testMicrophoneSpeakerDetectionIsSavedAtStartAndPreservedAtStop() async throws {
+        let capture = MockMeetingAudioCaptureService()
+        let locks = RecordingLockFileStore()
+        let service = MeetingRecordingService(
+            microphoneSpeakerDetection: { true },
+            audioCaptureService: capture,
+            audioConverter: MockMeetingAudioFileConverter(),
+            sttTranscriber: CountingMeetingSTTClient(),
+            lockFileStore: locks
+        )
+        try await service.startRecording()
+        XCTAssertEqual(locks.writes.first?.file.microphoneSpeakerDetection, true)
+        let buffer = try XCTUnwrap(makeMonoFloatBuffer(frameCount: 4_800, sampleValue: 0.25))
+        await capture.yield(.microphoneBuffer(buffer, AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: 100))))
+        let output = try await service.stopRecording()
+        defer { try? FileManager.default.removeItem(at: output.folderURL) }
+        XCTAssertTrue(output.microphoneSpeakerDetection)
+        XCTAssertEqual(locks.writes.last?.file.microphoneSpeakerDetection, true)
+        XCTAssertTrue(try MeetingRecordingMetadataStore.load(from: output.folderURL).microphoneSpeakerDetection)
+    }
+
     func testStopRecordingKeepsAwaitingTranscriptionLockAfterStop() async throws {
         let captureService = MockMeetingAudioCaptureService()
         let lockStore = RecordingLockFileStore()

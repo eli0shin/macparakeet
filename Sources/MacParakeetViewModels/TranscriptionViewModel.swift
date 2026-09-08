@@ -935,7 +935,7 @@ public final class TranscriptionViewModel {
             return
         }
         do {
-            _ = try selection.remoteDiarizationConstraint(hasSystemAudio: recording.sourceAlignment.system != nil)
+            _ = try selection.constraint(for: recording)
         } catch {
             speakerAttributionCorrectionState = .failed(message: error.localizedDescription)
             return
@@ -944,7 +944,7 @@ public final class TranscriptionViewModel {
         speakerAttributionTask?.cancel()
         let taskID = UUID()
         activeSpeakerAttributionTaskID = taskID
-        speakerAttributionCorrectionState = .running(message: "Preparing saved system audio…")
+        speakerAttributionCorrectionState = .running(message: "Preparing saved audio…")
         speakerAttributionTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {

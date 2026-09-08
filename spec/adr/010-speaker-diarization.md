@@ -178,6 +178,24 @@ Skip diarization for: dictation (single speaker by design), or when the correspo
 > correction only when the current canonical words still match its input, so a
 > concurrent retranscription makes stale correction work fail without mutation.
 >
+> **Amendment — microphone speaker detection:** Meeting Settings now includes
+> **Detect speakers on microphone**, default off and independent of system-audio
+> detection. The choice is captured at recording start and retained in the lock
+> and recording metadata for recovery and retranscription. Missing legacy values
+> mean off. Enabled recordings run the existing offline diarizer on the same
+> cleaned-or-raw microphone input selected for STT, after capture. Timed words
+> are required. Detected IDs use `microphone:<id>` and labels `Local Speaker N`;
+> unattributed speech uses `microphone:unknown` / `Local Speakers`, never `Me`.
+> Disabled recordings retain the former `microphone` / `Me` behavior.
+>
+> Reading Turns apply speaker evidence independently to each capture source.
+> Adjust Speakers can target microphone audio on enabled recordings. Counts
+> then apply to the selected track, including system counts in combined capture;
+> legacy recordings retain total-including-Me semantics. Correction preserves
+> the other track's names and evidence and does not rerun STT. No live speaker
+> detection, automatic identification of the user, cross-track identity matching,
+> new model, or network processing is added.
+>
 > **2. The FluidAudio dependency surface has grown.** The core decision above
 > still stands — MacParakeet ships only the offline batch pipeline and uses
 > neither Sortformer nor streaming diarization. But the pinned FluidAudio now

@@ -1,12 +1,51 @@
 import Foundation
 
-/// The speaker-count hint for a completed meeting. User-entered values always
-/// describe total people in the meeting, including Me. Only the remote count is
-/// passed to system-audio diarization.
+/// Counts for a completed meeting. Legacy recordings use totals including Me.
+/// Recordings with microphone detection use counts for the selected track.
 public enum MeetingSpeakerCountSelection: Equatable, Sendable {
     case auto
     case exact(totalPeople: Int)
     case bounded(minTotalPeople: Int, maxTotalPeople: Int)
+
+    /// Counts only people captured by the microphone, not remote participants.
+    indirect case microphone(MeetingSpeakerCountSelection)
+
+    public var source: AudioSource {
+        if case .microphone = self { return .microphone }
+        return .system
+    }
+
+    public func constraint(for recording: MeetingRecordingOutput) throws -> SpeakerDiarizationConstraint? {
+        if case .microphone(let selection) = self {
+            guard recording.microphoneSpeakerDetection, recording.sourceAlignment.microphone != nil else {
+                throw MeetingSpeakerCountCorrectionError.microphoneDetectionUnavailable
+            }
+            return try selection.localConstraint()
+        }
+        // Legacy meetings retain total-including-Me semantics. With microphone
+        // detection enabled, system counts refer only to that independent track.
+        if recording.microphoneSpeakerDetection {
+            guard recording.sourceAlignment.system != nil else {
+                throw MeetingSpeakerCountCorrectionError.systemAudioUnavailable
+            }
+            return try localConstraint()
+        }
+        return try remoteDiarizationConstraint(hasSystemAudio: recording.sourceAlignment.system != nil)
+    }
+
+    private func localConstraint() throws -> SpeakerDiarizationConstraint? {
+        switch self {
+        case .auto: return nil
+        case .exact(let count):
+            guard count >= 1 else { throw MeetingSpeakerCountCorrectionError.invalidLocalCount }
+            return .exact(count)
+        case .bounded(let minimum, let maximum):
+            guard minimum >= 1, maximum >= minimum else { throw MeetingSpeakerCountCorrectionError.invalidLocalCount }
+            return .range(min: minimum, max: maximum)
+        case .microphone(let selection):
+            return try selection.localConstraint()
+        }
+    }
 
     public func remoteDiarizationConstraint(
         hasSystemAudio: Bool
@@ -16,6 +55,8 @@ public enum MeetingSpeakerCountSelection: Equatable, Sendable {
         }
 
         switch self {
+        case .microphone(let selection):
+            return try selection.localConstraint()
         case .auto:
             return nil
         case .exact(let totalPeople):
@@ -40,6 +81,9 @@ public enum MeetingSpeakerCountSelection: Equatable, Sendable {
             !speakers.isEmpty
         else {
             return nil
+        }
+        if speakers.contains(where: { $0.id.hasPrefix("microphone:") }) {
+            return speakers.count
         }
         let includesMe = speakers.contains { $0.id == AudioSource.microphone.rawValue }
         return speakers.count + (includesMe ? 0 : 1)
@@ -70,6 +114,8 @@ public struct MeetingSpeakerAttributionUpdate: Equatable, Sendable {
 
 public enum MeetingSpeakerCountCorrectionError: LocalizedError, Equatable, Sendable {
     case systemAudioUnavailable
+    case microphoneDetectionUnavailable
+    case invalidLocalCount
     case totalMustIncludeRemoteSpeaker
     case invalidBounds
     case timedWordsUnavailable
@@ -81,8 +127,14 @@ public enum MeetingSpeakerCountCorrectionError: LocalizedError, Equatable, Senda
 
     public var errorDescription: String? {
         switch self {
+        case .microphoneDetectionUnavailable:
+            return
+                "Microphone speaker detection must have been enabled for this recording, and saved microphone audio is required."
+        case .invalidLocalCount:
+            return "Enter at least 1 speaker, with the minimum no greater than the maximum."
         case .systemAudioUnavailable:
-            return "Speaker attribution needs a saved system-audio track. Microphone-only meetings have only Me."
+            return
+                "Speaker attribution needs a saved system-audio track. Select Microphone for an in-person recording with microphone speaker detection enabled."
         case .totalMustIncludeRemoteSpeaker:
             return "Enter at least 2 people: Me and at least one remote speaker."
         case .invalidBounds:
@@ -90,7 +142,7 @@ public enum MeetingSpeakerCountCorrectionError: LocalizedError, Equatable, Senda
         case .timedWordsUnavailable:
             return "Speaker attribution needs a timed transcript. The current transcript has no word timestamps."
         case .noRemoteSpeechDetected:
-            return "No remote speech was detected. The existing transcript was not changed."
+            return "No speakers were detected in the selected audio. The existing transcript was not changed."
         case .unsupportedService:
             return "Speaker attribution correction is not available."
         case .retainedAudioUnavailable:

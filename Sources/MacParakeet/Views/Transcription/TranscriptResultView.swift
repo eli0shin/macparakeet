@@ -260,6 +260,10 @@ struct TranscriptResultView: View {
     @State private var showingRetranscribeOptions = false
     @State private var pendingRetranscribePick: RetranscribePick?
     @State private var showingSpeakerCountCorrection = false
+    @State private var speakerCorrectionSource: AudioSource = .system
+    @State private var microphoneSpeakerDetection = false
+    @State private var speakerCorrectionSources: [AudioSource] = []
+    @State private var speakerCorrectionMetadataLoading = true
     @State private var speakerCountEditorMode: SpeakerCountEditorMode = .auto
     @State private var exactTotalPeople = ""
     @State private var minimumTotalPeople = ""
@@ -738,12 +742,13 @@ struct TranscriptResultView: View {
                 Button {
                     speakerCountEditorError = nil
                     viewModel.clearMeetingSpeakerAttributionCorrectionError()
+                    speakerCorrectionMetadataLoading = true
                     showingSpeakerCountCorrection.toggle()
                 } label: {
                     Label("Adjust Speakers", systemImage: "person.2.badge.gearshape")
                 }
                 .parakeetAction(.secondary)
-                .help("Rerun remote-speaker attribution without changing transcript words")
+                .help("Rerun speaker attribution without changing transcript words")
                 .popover(isPresented: $showingSpeakerCountCorrection, arrowEdge: .top) {
                     speakerCountCorrectionPopover
                 }
@@ -910,47 +915,75 @@ struct TranscriptResultView: View {
         .frame(width: 390)
     }
 
+    private var detectedCorrectionSpeakerCount: Int? {
+        if microphoneSpeakerDetection {
+            let count = (activeTranscription.speakers ?? []).filter {
+                AudioSource.forSpeakerID($0.id) == speakerCorrectionSource
+            }.count
+            return count > 0 ? count : nil
+        }
+        return MeetingSpeakerCountSelection.detectedTotalPeople(in: activeTranscription)
+    }
+
     private var speakerCountCorrectionPopover: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Adjust speaker count").font(DesignSystem.Typography.body.weight(.semibold))
-                    if let detected = MeetingSpeakerCountSelection.detectedTotalPeople(in: activeTranscription) {
-                        Text("Detected: \(detected) total \(detected == 1 ? "person" : "people")")
+                    if let detected = detectedCorrectionSpeakerCount {
+                        Text(microphoneSpeakerDetection
+                             ? "Detected: \(detected) in selected audio"
+                             : "Detected: \(detected) total \(detected == 1 ? "person" : "people")")
                             .font(DesignSystem.Typography.caption)
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
                     }
                 }
                 Spacer()
-                Button { showingSpeakerCountCorrection = false } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Close speaker count options")
+                Button {
+                    showingSpeakerCountCorrection = false
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close speaker count options")
             }
-            Text("Counts are total people in the meeting, including Me. MacParakeet applies the remaining count to remote speakers in system audio.")
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+            if microphoneSpeakerDetection {
+                Picker("Audio source", selection: $speakerCorrectionSource) {
+                    ForEach(speakerCorrectionSources, id: \.self) { source in
+                        Text(source == .microphone ? "Microphone" : "System audio").tag(source)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            Text(
+                microphoneSpeakerDetection
+                    ? "Counts apply only to the selected audio source. Local and remote speakers are detected separately."
+                    : "Counts are total people in the meeting, including Me. MacParakeet applies the remaining count to remote speakers in system audio."
+            )
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
             Picker("Speaker count", selection: $speakerCountEditorMode) {
                 ForEach(SpeakerCountEditorMode.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             switch speakerCountEditorMode {
             case .auto:
-                Text("Detect the remote-speaker count automatically.")
+                Text("Detect the speaker count automatically.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             case .exact:
                 TextField("Total people", text: $exactTotalPeople)
                     .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Exact total people including Me")
+                    .accessibilityLabel("Exact speaker count")
             case .bounded:
                 HStack {
                     TextField("Minimum total", text: $minimumTotalPeople)
                         .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("Minimum total people including Me")
+                        .accessibilityLabel("Minimum speaker count")
                     TextField("Maximum total", text: $maximumTotalPeople)
                         .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("Maximum total people including Me")
+                        .accessibilityLabel("Maximum speaker count")
                 }
             }
             if let message = speakerCountCorrectionMessage {
@@ -970,12 +1003,34 @@ struct TranscriptResultView: View {
                     Spacer()
                     Button("Rerun Attribution") { startSpeakerCountCorrection() }
                         .parakeetAction(.primary)
+                        .disabled(speakerCorrectionMetadataLoading)
                 }
             }
         }
         .padding(DesignSystem.Spacing.md)
         .frame(width: 390)
+        .task(id: activeTranscription.id) {
+            let transcription = activeTranscription
+            let recording = await Task.detached {
+                guard let path = transcription.filePath else { return Optional<MeetingRecordingOutput>.none }
+                return try? MeetingRecordingOutput.loadArchived(
+                    displayName: "Meeting", mixedAudioURL: URL(fileURLWithPath: path),
+                    durationSeconds: Double(transcription.durationMs ?? 0) / 1000
+                )
+            }.value
+            guard !Task.isCancelled else { return }
+            microphoneSpeakerDetection = recording?.microphoneSpeakerDetection ?? false
+            speakerCorrectionSources = [AudioSource.microphone, .system].filter {
+                recording?.sourceAlignment.track(for: $0) != nil
+            }
+            speakerCorrectionSource = microphoneSpeakerDetection ? (speakerCorrectionSources.first ?? .microphone) : .system
+            speakerCorrectionMetadataLoading = false
+        }
         .onChange(of: speakerCountEditorMode) {
+            speakerCountEditorError = nil
+            viewModel.clearMeetingSpeakerAttributionCorrectionError()
+        }
+        .onChange(of: speakerCorrectionSource) {
             speakerCountEditorError = nil
             viewModel.clearMeetingSpeakerAttributionCorrectionError()
         }
@@ -1006,15 +1061,12 @@ struct TranscriptResultView: View {
             }
             selection = .bounded(minTotalPeople: minimum, maxTotalPeople: maximum)
         }
-        do {
-            _ = try selection.remoteDiarizationConstraint(hasSystemAudio: true)
-        } catch {
-            speakerCountEditorError = error.localizedDescription
-            return
-        }
         speakerCountEditorError = nil
         speakerCorrectionSubmitted = true
-        viewModel.correctMeetingSpeakerAttribution(activeTranscription, selection: selection)
+        let targetedSelection: MeetingSpeakerCountSelection =
+            microphoneSpeakerDetection && speakerCorrectionSource == .microphone
+            ? .microphone(selection) : selection
+        viewModel.correctMeetingSpeakerAttribution(activeTranscription, selection: targetedSelection)
     }
 
     private func selectRetranscribeEngine(

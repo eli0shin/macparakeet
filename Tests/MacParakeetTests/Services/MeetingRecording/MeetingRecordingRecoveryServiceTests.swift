@@ -22,6 +22,15 @@ final class MeetingRecordingRecoveryServiceTests: XCTestCase {
         try? FileManager.default.removeItem(at: tempRoot)
     }
 
+    func testCrashRecoveryPreservesMicrophoneSpeakerDetectionFromLock() async throws {
+        let fixture = try makeRecoverableSession()
+        let lock = fixture.lock.withMicrophoneSpeakerDetection(true)
+        try lockStore.write(lock, folderURL: fixture.folderURL)
+        _ = try await recoveryService.recover(lock)
+        XCTAssertEqual(transcriptionService.recordings.first?.microphoneSpeakerDetection, true)
+        XCTAssertTrue(try MeetingRecordingMetadataStore.load(from: fixture.folderURL).microphoneSpeakerDetection)
+    }
+
     func testRecoverSynthesizesMetadataAndPersistsRecoveredTranscription() async throws {
         let fixture = try makeRecoverableSession()
 

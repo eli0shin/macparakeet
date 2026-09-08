@@ -1,5 +1,15 @@
 # Completed-Meeting Reading Turn Consumers
 
+## Local speakers
+
+Reading Turns recognize `microphone:<id>` as microphone speech, not remote
+speech. Detected local speakers use their saved names; `microphone:unknown`
+is the neutral `Local Speakers` fallback. Legacy `microphone` stays `Me`.
+Speaker evidence is evaluated within each capture source. Same-source overlap
+requires concurrent evidence for two detected speakers from that source.
+All completed-meeting consumers retain this attribution without changing
+canonical word text, timing, confidence, or source.
+
 > Status: ACTIVE - stable readable transcript consumer contract.
 
 ## Purpose

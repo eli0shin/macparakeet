@@ -1233,7 +1233,7 @@ struct SettingsView: View {
                 Divider()
 
                 settingsToggleRow(
-                    title: "Speaker detection",
+                    title: "Detect speakers in system audio",
                     detail: "Split captured system audio into other speakers after recording when audio is clear.",
                     isOn: $viewModel.meetingSpeakerDiarization
                 )
@@ -1241,8 +1241,18 @@ struct SettingsView: View {
                 Divider()
 
                 settingsToggleRow(
+                    title: "Detect speakers on microphone",
+                    detail:
+                        "For in-person meetings. Label local speakers after recording, instead of calling everyone Me. Applies to new recordings; requires a speech engine with word timestamps. Processing stays on your Mac.",
+                    isOn: $viewModel.microphoneSpeakerDetection
+                )
+
+                Divider()
+
+                settingsToggleRow(
                     title: "Also save meetings to a folder",
-                    detail: "MacParakeet keeps the complete meeting in its managed storage. Turn this on to also save the selected format to a folder you choose.",
+                    detail:
+                        "MacParakeet keeps the complete meeting in its managed storage. Turn this on to also save the selected format to a folder you choose.",
                     isOn: $viewModel.meetingAutoSave
                 )
 

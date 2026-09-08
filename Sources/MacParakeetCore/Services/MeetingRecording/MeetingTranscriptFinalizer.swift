@@ -7,7 +7,7 @@ struct MeetingTranscriptFinalizer {
         let startOffsetMs: Int
     }
 
-    struct SystemDiarization: Sendable {
+    struct SourceDiarization: Sendable {
         let speakers: [SpeakerInfo]
         let segments: [SpeakerSegment]
     }
@@ -22,7 +22,9 @@ struct MeetingTranscriptFinalizer {
 
     static func finalize(
         sourceTranscripts: [SourceTranscript],
-        systemDiarization: SystemDiarization? = nil
+        systemDiarization: SourceDiarization? = nil,
+        microphoneDiarization: SourceDiarization? = nil,
+        microphoneSpeakerDetection: Bool = false
     ) -> FinalizedTranscript {
         let normalized = sourceTranscripts.sorted { lhs, rhs in
             if lhs.startOffsetMs == rhs.startOffsetMs {
@@ -47,7 +49,17 @@ struct MeetingTranscriptFinalizer {
             microphoneWords: shiftedWordsBySource[.microphone] ?? [],
             systemWords: systemWords
         )
-        let microphoneWords = sourceReconciliation.microphoneWords
+        let attributedMicrophoneWords =
+            microphoneDiarization.map {
+                SpeakerMerger.mergeWordTimestampsWithSpeakers(
+                    words: sourceReconciliation.microphoneWords, segments: $0.segments)
+            } ?? sourceReconciliation.microphoneWords
+        let microphoneWords = attributedMicrophoneWords.map { word in
+            guard microphoneSpeakerDetection, word.speakerId == AudioSource.microphone.rawValue else { return word }
+            return WordTimestamp(
+                word: word.word, startMs: word.startMs, endMs: word.endMs, confidence: word.confidence,
+                speakerId: AudioSource.unidentifiedMicrophoneSpeakerID)
+        }
         let finalizedSystemWords: [WordTimestamp]
         if let systemDiarization {
             finalizedSystemWords = SpeakerMerger.mergeWordTimestampsWithSpeakers(
@@ -67,11 +79,14 @@ struct MeetingTranscriptFinalizer {
             return $0.startMs < $1.startMs
         }
 
-        let speakers = activeSpeakers(from: mergedWords, systemDiarization: systemDiarization)
+        let speakers = activeSpeakers(
+            from: mergedWords, systemDiarization: systemDiarization,
+            microphoneDiarization: microphoneDiarization
+        )
         let diarizationSegments = diarizationEvidence(
-            microphoneWords: microphoneWords,
             mergedWords: mergedWords,
-            systemDiarization: systemDiarization
+            systemDiarization: systemDiarization,
+            microphoneDiarization: microphoneDiarization
         )
         let rawTranscript = finalTranscriptText(
             from: normalized,
@@ -88,43 +103,66 @@ struct MeetingTranscriptFinalizer {
         )
     }
 
-    /// Replaces only system-speaker attribution on canonical meeting words.
-    /// Word text, timing, confidence, order, and microphone identity stay intact.
-    static func reattributeSystemWords(
+    /// Replace one track's attribution without changing canonical words or
+    /// discarding the other track's speaker names and overlap evidence.
+    static func reattributeWords(
         _ words: [WordTimestamp],
-        systemDiarization: SystemDiarization
+        source: AudioSource,
+        diarization: SourceDiarization,
+        existingSpeakers: [SpeakerInfo],
+        existingSegments: [DiarizationSegmentRecord],
+        microphoneSpeakerDetection: Bool
     ) -> FinalizedTranscript {
-        let resetWords = words.map { word in
-            guard source(for: word.speakerId) == .system else { return word }
+        let sourceWords = words.filter { AudioSource.forSpeakerID($0.speakerId) == source }.map {
+            WordTimestamp(
+                word: $0.word, startMs: $0.startMs, endMs: $0.endMs, confidence: $0.confidence,
+                speakerId: source.rawValue)
+        }
+        var attributed = SpeakerMerger.mergeWordTimestampsWithSpeakers(
+            words: sourceWords, segments: diarization.segments
+        ).makeIterator()
+        let merged = words.map { word in
+            guard AudioSource.forSpeakerID(word.speakerId) == source else { return word }
+            let updated = attributed.next() ?? word
+            guard source == .microphone, microphoneSpeakerDetection, updated.speakerId == source.rawValue else {
+                return updated
+            }
             return WordTimestamp(
-                word: word.word,
-                startMs: word.startMs,
-                endMs: word.endMs,
-                confidence: word.confidence,
-                speakerId: AudioSource.system.rawValue
-            )
+                word: updated.word,
+                startMs: updated.startMs,
+                endMs: updated.endMs,
+                confidence: updated.confidence,
+                speakerId: AudioSource.unidentifiedMicrophoneSpeakerID)
         }
-        let systemWords = resetWords.filter { source(for: $0.speakerId) == .system }
-        let attributedSystemWords = SpeakerMerger.mergeWordTimestampsWithSpeakers(
-            words: systemWords,
-            segments: systemDiarization.segments
-        )
-        var attributedIterator = attributedSystemWords.makeIterator()
-        let mergedWords = resetWords.map { word in
-            source(for: word.speakerId) == .system ? (attributedIterator.next() ?? word) : word
+        var speakers = existingSpeakers.filter { AudioSource.forSpeakerID($0.id) != source }
+        speakers += diarization.speakers
+        let fallbackID =
+            source == .microphone && microphoneSpeakerDetection
+            ? AudioSource.unidentifiedMicrophoneSpeakerID : source.rawValue
+        if merged.contains(where: { $0.speakerId == fallbackID }) {
+            speakers.append(
+                SpeakerInfo(
+                    id: fallbackID,
+                    label: fallbackID == AudioSource.unidentifiedMicrophoneSpeakerID
+                        ? "Local Speakers" : source.displayLabel))
         }
-        let microphoneWords = mergedWords.filter { source(for: $0.speakerId) == .microphone }
+        let segments =
+            existingSegments.filter { AudioSource.forSpeakerID($0.speakerId) != source }
+            + diarization.segments.map {
+                DiarizationSegmentRecord(
+                    speakerId: $0.speakerId,
+                    startMs: $0.startMs, endMs: $0.endMs)
+            }
 
         return FinalizedTranscript(
-            rawTranscript: transcriptText(from: mergedWords),
-            words: mergedWords,
-            speakers: activeSpeakers(from: mergedWords, systemDiarization: systemDiarization),
-            diarizationSegments: diarizationEvidence(
-                microphoneWords: microphoneWords,
-                mergedWords: mergedWords,
-                systemDiarization: systemDiarization
-            ),
-            durationMs: mergedWords.map(\.endMs).max()
+            rawTranscript: transcriptText(from: merged),
+            words: merged,
+            speakers: speakers,
+            diarizationSegments: segments.sorted {
+                if $0.startMs == $1.startMs { return $0.speakerId < $1.speakerId }
+                return $0.startMs < $1.startMs
+            },
+            durationMs: merged.map(\.endMs).max()
         )
     }
 
@@ -146,10 +184,13 @@ struct MeetingTranscriptFinalizer {
 
     private static func activeSpeakers(
         from words: [WordTimestamp],
-        systemDiarization: SystemDiarization?
+        systemDiarization: SourceDiarization?,
+        microphoneDiarization: SourceDiarization? = nil
     ) -> [SpeakerInfo] {
         let wordSpeakerIDs = Set(words.compactMap(\.speakerId))
-        let regionSpeakerIDs = Set(systemDiarization?.segments.map(\.speakerId) ?? [])
+        let regionSpeakerIDs = Set(
+            (systemDiarization?.segments.map(\.speakerId) ?? [])
+                + (microphoneDiarization?.segments.map(\.speakerId) ?? []))
         let activeIDs = wordSpeakerIDs.union(regionSpeakerIDs)
         var speakers: [SpeakerInfo] = []
 
@@ -157,12 +198,16 @@ struct MeetingTranscriptFinalizer {
             speakers.append(SpeakerInfo(id: AudioSource.microphone.rawValue, label: AudioSource.microphone.displayLabel))
         }
 
+        if activeIDs.contains(AudioSource.unidentifiedMicrophoneSpeakerID) {
+            speakers.append(SpeakerInfo(id: AudioSource.unidentifiedMicrophoneSpeakerID, label: "Local Speakers"))
+        }
+
         if activeIDs.contains(AudioSource.system.rawValue) {
             speakers.append(SpeakerInfo(id: AudioSource.system.rawValue, label: AudioSource.system.displayLabel))
         }
 
-        if let systemDiarization {
-            for speaker in systemDiarization.speakers where activeIDs.contains(speaker.id) {
+        for diarization in [microphoneDiarization, systemDiarization].compactMap({ $0 }) {
+            for speaker in diarization.speakers where activeIDs.contains(speaker.id) {
                 speakers.append(speaker)
             }
         }
@@ -171,23 +216,29 @@ struct MeetingTranscriptFinalizer {
     }
 
     private static func diarizationEvidence(
-        microphoneWords: [WordTimestamp],
         mergedWords: [WordTimestamp],
-        systemDiarization: SystemDiarization?
+        systemDiarization: SourceDiarization?,
+        microphoneDiarization: SourceDiarization? = nil
     ) -> [DiarizationSegmentRecord] {
-        guard let systemDiarization else {
+        guard systemDiarization != nil || microphoneDiarization != nil else {
             return buildDiarizationSegments(from: mergedWords)
         }
 
-        let microphoneSegments = buildDiarizationSegments(from: microphoneWords)
-        let rawSystemSegments = systemDiarization.segments.map {
-            DiarizationSegmentRecord(
-                speakerId: $0.speakerId,
-                startMs: $0.startMs,
-                endMs: $0.endMs
-            )
+        let segments = [AudioSource.microphone, .system].flatMap { source -> [DiarizationSegmentRecord] in
+            let diarization = source == .microphone ? microphoneDiarization : systemDiarization
+            if let diarization {
+                return diarization.segments.map {
+                    DiarizationSegmentRecord(
+                        speakerId: $0.speakerId,
+                        startMs: $0.startMs,
+                        endMs: $0.endMs
+                    )
+                }
+            }
+            return buildDiarizationSegments(
+                from: mergedWords.filter { AudioSource.forSpeakerID($0.speakerId) == source })
         }
-        return (microphoneSegments + rawSystemSegments).sorted {
+        return segments.sorted {
             if $0.startMs == $1.startMs { return $0.speakerId < $1.speakerId }
             return $0.startMs < $1.startMs
         }
@@ -296,7 +347,7 @@ struct MeetingTranscriptFinalizer {
 
     private static func sourceOrder(id: String?) -> Int {
         switch id {
-        case AudioSource.microphone.rawValue:
+        case let value? where AudioSource.forSpeakerID(value) == .microphone:
             return 0
         case AudioSource.system.rawValue:
             return 1
@@ -342,7 +393,7 @@ struct MeetingTranscriptFinalizer {
 
     private static func source(for speakerID: String?) -> AudioSource? {
         switch speakerID {
-        case AudioSource.microphone.rawValue:
+        case let value? where AudioSource.forSpeakerID(value) == .microphone:
             return .microphone
         case AudioSource.system.rawValue:
             return .system

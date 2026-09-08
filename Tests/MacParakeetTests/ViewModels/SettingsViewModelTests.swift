@@ -1034,6 +1034,16 @@ final class SettingsViewModelTests: XCTestCase {
         )
     }
 
+    func testMicrophoneSpeakerDetectionDefaultsOffAndPersistsIndependently() {
+        XCTAssertFalse(viewModel.microphoneSpeakerDetection)
+        viewModel.microphoneSpeakerDetection = true
+        XCTAssertTrue(UserDefaultsAppRuntimePreferences.microphoneSpeakerDetectionEnabled(defaults: testDefaults))
+        viewModel.meetingSpeakerDiarization = false
+        XCTAssertTrue(UserDefaultsAppRuntimePreferences.microphoneSpeakerDetectionEnabled(defaults: testDefaults))
+        viewModel.microphoneSpeakerDetection = false
+        XCTAssertFalse(UserDefaultsAppRuntimePreferences.microphoneSpeakerDetectionEnabled(defaults: testDefaults))
+    }
+
     func testSettingSpeakerDiarizationPersists() {
         viewModel.speakerDiarization = true
 

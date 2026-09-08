@@ -1,5 +1,27 @@
 # Meeting Artifacts v1
 
+## Microphone speaker detection
+
+`meeting-recording-metadata.json` and `recording.lock` include the additive
+Boolean `microphoneSpeakerDetection`, captured at recording start. Missing or
+malformed values decode as false. Lock rewrites, metadata updates, crash
+recovery, and archive loading preserve the choice. No database migration is
+needed; speaker IDs and timing evidence use the existing transcript fields.
+
+Enabled recordings use `microphone:<id>` for detected local speakers and
+`microphone:unknown` for unattributed local speech. Default labels are
+`Local Speaker N` and `Local Speakers`. Disabled and legacy recordings retain
+`microphone` / `Me`; system IDs remain `system:<id>` with `system` as fallback.
+IDs preserve capture source even after a speaker is renamed. There is no
+cross-track identity matching. Readable artifacts, exports, and agent context
+use the same source-aware Reading Turns as the app.
+
+Detection runs after capture, on the same microphone audio selected for STT.
+It needs timed words. Empty or failed detection retains the transcript with a
+neutral local label; cancellation aborts finalization. Audio retention is
+unchanged. Adjust Speakers requires retained audio, changes attribution only
+on the selected track, and preserves the other track's evidence and names.
+
 > Status: ACTIVE - stable local meeting session artifact contract.
 
 ## Purpose

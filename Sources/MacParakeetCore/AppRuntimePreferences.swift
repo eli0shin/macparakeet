@@ -515,6 +515,11 @@ public final class UserDefaultsAppRuntimePreferences: AppRuntimePreferencesProto
     public static let youtubeAudioQualityKey = "youtubeAudioQuality"
     public static let speakerDiarizationKey = "speakerDiarization"
     public static let defaultSpeakerDiarizationEnabled = true
+    public static let microphoneSpeakerDetectionKey = "microphoneSpeakerDetection"
+    public static func microphoneSpeakerDetectionEnabled(defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: microphoneSpeakerDetectionKey)
+    }
+
     public static let meetingSpeakerDiarizationKey = "meetingSpeakerDiarization"
     public static let defaultMeetingSpeakerDiarizationEnabled = true
     public static let aiFormatterEnabledKey = "aiFormatterEnabled"

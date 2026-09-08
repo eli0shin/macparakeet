@@ -8,6 +8,16 @@
 agents, and external tools. JSON modes must remain machine-readable on stdout,
 with human progress/status kept off stdout.
 
+## Meeting microphone speaker IDs
+
+Existing speaker fields can contain `microphone:<id>` when the recording opted
+into microphone speaker detection, and `microphone:unknown` for unattributed
+local speech. The source remains microphone after renaming. Legacy
+`microphone` / `Me` and `system:<id>` keep their meaning. Archived meeting
+retranscription preserves the captured microphone choice independently of the
+saved system-audio preference; explicit `--speaker-detection off` or
+`--no-diarize` disables both tracks for that run. No JSON shape changes.
+
 ## Producers
 
 - `CLIHelpers.printJSON`

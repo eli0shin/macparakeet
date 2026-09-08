@@ -231,7 +231,7 @@ public enum MeetingTranscriptPresentationBuilder {
                 allWords: indexedWords,
                 source: source,
                 labels: labels,
-                diarizationSegments: diarizationSegments ?? [],
+                diarizationSegments: (diarizationSegments ?? []).filter { readingSource(for: $0.speakerId) == source },
                 customWords: customWords,
                 cleanup: cleanup
             )
@@ -299,7 +299,10 @@ public enum MeetingTranscriptPresentationBuilder {
             let label: String
             switch source {
             case .microphone:
-                label = AudioSource.microphone.displayLabel
+                label =
+                    speakerId == AudioSource.microphone.rawValue
+                    ? AudioSource.microphone.displayLabel
+                    : (normalizedLabel(labels[speakerId]) ?? "Local Speakers")
             case .system:
                 label =
                     normalizedLabel(labels[speakerId])
@@ -380,7 +383,7 @@ public enum MeetingTranscriptPresentationBuilder {
                     allowsMergeWithPrevious: currentAllowsMergeWithPrevious
                 ))
         }
-        guard source == .system else { return utterances }
+        guard source != .unknown else { return utterances }
         return utterances.flatMap {
             splitDiarizationSupportedOverlap($0, diarizationSegments: diarizationSegments)
         }
@@ -395,7 +398,7 @@ public enum MeetingTranscriptPresentationBuilder {
         diarizationSegments: [DiarizationSegmentRecord]
     ) -> [SourceUtterance] {
         let speakerIds = Set(
-            utterance.words.compactMap(\.word.speakerId).filter(isRefinedSystemSpeaker)
+            utterance.words.compactMap(\.word.speakerId).filter(isDetectedSpeaker)
         )
         guard speakerIds.count >= 2 else { return [utterance] }
 
@@ -459,14 +462,17 @@ public enum MeetingTranscriptPresentationBuilder {
         supportedOverlapSpeakerId: String?,
         diarizationSegments: [DiarizationSegmentRecord]
     ) -> SpeakerEvidence {
-        if source == .microphone {
+        if source == .microphone,
+            !words.contains(where: { $0.word.speakerId?.hasPrefix("microphone:") == true }),
+            !diarizationSegments.contains(where: { $0.speakerId.hasPrefix("microphone:") })
+        {
             return SpeakerEvidence(
-                speakerId: AudioSource.microphone.rawValue,
+                speakerId: words.first?.word.speakerId ?? AudioSource.microphone.rawValue,
                 durationMs: 0,
                 hasStrongOverlapEvidence: false
             )
         }
-        if source == .system, let supportedOverlapSpeakerId {
+        if source != .unknown, let supportedOverlapSpeakerId {
             return SpeakerEvidence(
                 speakerId: supportedOverlapSpeakerId,
                 durationMs: wordEvidenceDurationMs(for: supportedOverlapSpeakerId, in: words),
@@ -475,9 +481,9 @@ public enum MeetingTranscriptPresentationBuilder {
         }
 
         var durationBySpeaker: [String: Int] = [:]
-        if source == .system, let startMs = words.first?.word.startMs {
+        if source != .unknown, let startMs = words.first?.word.startMs {
             let endMs = words.map { $0.word.endMs }.max() ?? startMs
-            for segment in diarizationSegments where isRefinedSystemSpeaker(segment.speakerId) {
+            for segment in diarizationSegments where isDetectedSpeaker(segment.speakerId) {
                 let overlapMs = max(0, min(endMs, segment.endMs) - max(startMs, segment.startMs))
                 if overlapMs > 0 {
                     durationBySpeaker[segment.speakerId, default: 0] += overlapMs
@@ -490,18 +496,21 @@ public enum MeetingTranscriptPresentationBuilder {
         if durationBySpeaker.isEmpty {
             for indexedWord in words {
                 guard let speakerId = indexedWord.word.speakerId else { continue }
-                if source == .system, !isRefinedSystemSpeaker(speakerId) { continue }
+                if source != .unknown, !isDetectedSpeaker(speakerId) { continue }
                 let durationMs = max(1, indexedWord.word.endMs - indexedWord.word.startMs)
                 durationBySpeaker[speakerId, default: 0] += durationMs
             }
         }
 
-        let fallback = source == .system ? AudioSource.system.rawValue : "unknown"
+        let fallback =
+            source == .microphone
+            ? AudioSource.unidentifiedMicrophoneSpeakerID
+            : (source == .system ? AudioSource.system.rawValue : "unknown")
         guard let dominant = unambiguousDominantSpeaker(in: durationBySpeaker) else {
             let wordSpeakerIds = Set(
-                words.compactMap(\.word.speakerId).filter(isRefinedSystemSpeaker)
+                words.compactMap(\.word.speakerId).filter(isDetectedSpeaker)
             )
-            if source == .system, wordSpeakerIds.count == 1,
+            if source != .unknown, wordSpeakerIds.count == 1,
                 let wordSpeakerId = wordSpeakerIds.first,
                 hasStrongRemoteOverlap(
                     speakerId: wordSpeakerId,
@@ -553,7 +562,7 @@ public enum MeetingTranscriptPresentationBuilder {
         _ utterances: [ResolvedUtterance],
         source: ReadingTurnSource
     ) -> [ResolvedUtterance] {
-        guard source == .system, utterances.count >= 3 else { return utterances }
+        guard source != .unknown, utterances.count >= 3 else { return utterances }
         var smoothed = utterances
         var runStart = 0
 
@@ -596,7 +605,7 @@ public enum MeetingTranscriptPresentationBuilder {
         _ utterances: [ResolvedUtterance],
         source: ReadingTurnSource
     ) -> [ResolvedUtterance] {
-        guard source == .system, utterances.count >= 3 else { return utterances }
+        guard source != .unknown, utterances.count >= 3 else { return utterances }
         var result: [ResolvedUtterance] = []
         var index = 0
 
@@ -766,10 +775,10 @@ public enum MeetingTranscriptPresentationBuilder {
         if lhs.source != rhs.source {
             return lhs.source != .unknown && rhs.source != .unknown
         }
-        guard lhs.source == .system,
+        guard lhs.source != .unknown,
             lhs.speakerId != rhs.speakerId,
-            isRefinedSystemSpeaker(lhs.speakerId),
-            isRefinedSystemSpeaker(rhs.speakerId)
+            isDetectedSpeaker(lhs.speakerId),
+            isDetectedSpeaker(rhs.speakerId)
         else { return false }
 
         return remoteSegmentOverlapMs(
@@ -787,11 +796,13 @@ public enum MeetingTranscriptPresentationBuilder {
         endMs: Int,
         diarizationSegments: [DiarizationSegmentRecord]
     ) -> Bool {
-        guard isRefinedSystemSpeaker(speakerId) else { return false }
+        guard isDetectedSpeaker(speakerId) else { return false }
         let peers = Set(
             diarizationSegments.lazy
                 .map(\.speakerId)
-                .filter { isRefinedSystemSpeaker($0) && $0 != speakerId }
+                .filter {
+                    isDetectedSpeaker($0) && $0 != speakerId && readingSource(for: $0) == readingSource(for: speakerId)
+                }
         )
         return peers.contains { peer in
             remoteSegmentOverlapMs(
@@ -835,9 +846,10 @@ public enum MeetingTranscriptPresentationBuilder {
         max(0, min(lhsEndMs, rhsEndMs) - max(lhsStartMs, rhsStartMs))
     }
 
-    private static func isRefinedSystemSpeaker(_ speakerId: String) -> Bool {
+    private static func isDetectedSpeaker(_ speakerId: String) -> Bool {
         speakerId != AudioSource.microphone.rawValue
             && speakerId != AudioSource.system.rawValue
+            && speakerId != AudioSource.unidentifiedMicrophoneSpeakerID
     }
 
     private static func makeParagraphs(
@@ -1009,15 +1021,12 @@ public enum MeetingTranscriptPresentationBuilder {
 
     private static func readingSource(for speakerId: String?) -> ReadingTurnSource {
         switch speakerId {
-        case AudioSource.microphone.rawValue:
+        case let id? where AudioSource.forSpeakerID(id) == .microphone:
             return .microphone
         case AudioSource.system.rawValue:
             return .system
         case .some:
-            // Meeting diarization currently prefixes remote IDs with `system:`.
-            // Older completed meetings can contain bare IDs such as `S1`.
-            // Meetings diarize only the system track, so every attributed ID
-            // other than the deterministic microphone ID is remote speech.
+            // Older completed meetings can contain bare remote IDs such as `S1`.
             return .system
         case nil:
             return .unknown
