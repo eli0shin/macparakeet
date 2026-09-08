@@ -1163,6 +1163,61 @@ struct TranscriptionLibraryView: View {
 
 // MARK: - Library folder dialogs
 
+struct LibraryNewFolderDialog: View {
+    @Binding var name: String
+    let locationMessage: String
+    let onCancel: () -> Void
+    let onCreate: () -> Void
+
+    @FocusState private var nameFieldFocused: Bool
+
+    private var isCreateDisabled: Bool {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("New Folder")
+                    .font(DesignSystem.Typography.sectionTitle)
+                Text(locationMessage)
+                    .font(DesignSystem.Typography.bodySmall)
+                    .foregroundStyle(.secondary)
+            }
+
+            TextField("Folder name", text: $name)
+                .font(DesignSystem.Typography.body)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.large)
+                .focused($nameFieldFocused)
+                .accessibilityIdentifier("library-new-folder-name-field")
+                .accessibilityLabel("Folder name")
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                    .parakeetAction(.secondary)
+                Button("Create", action: onCreate)
+                    .keyboardShortcut(.defaultAction)
+                    .parakeetAction(.primaryProminent)
+                    .disabled(isCreateDisabled)
+            }
+        }
+        .padding(DesignSystem.Spacing.xl)
+        .frame(width: 440)
+        .task {
+            // The sheet window installs its first responder after its content
+            // appears. Yield once, then focus the field on every presentation.
+            await Task.yield()
+            nameFieldFocused = true
+        }
+        .onDisappear {
+            nameFieldFocused = false
+        }
+    }
+}
+
 private struct LibraryFolderDialogs: ViewModifier {
     @Binding var showingCreate: Bool
     @Binding var newFolderName: String
@@ -1179,13 +1234,16 @@ private struct LibraryFolderDialogs: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .alert("New Folder", isPresented: $showingCreate) {
-                TextField("Folder name", text: $newFolderName)
-                Button("Cancel", role: .cancel) {}
-                Button("Create") { onCreate(newFolderName) }
-                    .disabled(newFolderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            } message: {
-                Text(createLocationMessage)
+            .sheet(isPresented: $showingCreate) {
+                LibraryNewFolderDialog(
+                    name: $newFolderName,
+                    locationMessage: createLocationMessage,
+                    onCancel: { showingCreate = false },
+                    onCreate: {
+                        showingCreate = false
+                        onCreate(newFolderName)
+                    }
+                )
             }
             .alert(
                 "Delete Folder?",

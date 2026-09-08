@@ -136,7 +136,9 @@ Library root, and recordings plus managed files are retained.
 
 Folders replace the main Library source filters. Source identity remains visible
 on cards and all file, video, podcast, and meeting rows can share one folder.
-The dedicated Meetings workspace remains unchanged.
+The New Folder sheet uses a 440pt dialog with a large, full-width name field.
+The name field receives keyboard focus on every opening at Library root or in a
+nested folder. The dedicated Meetings workspace remains unchanged.
 
 ### Library Meetings Filter
 
