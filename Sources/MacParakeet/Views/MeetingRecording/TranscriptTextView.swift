@@ -146,11 +146,6 @@ struct TranscriptTextView: NSViewRepresentable {
 
         let bodyFontSize: CGFloat = 14
         let bodyFont = NSFont.systemFont(ofSize: bodyFontSize, weight: .regular)
-        let serifFont: NSFont = {
-            let descriptor = NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body)
-                .withDesign(.serif) ?? NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body)
-            return NSFont(descriptor: descriptor, size: bodyFontSize) ?? bodyFont
-        }()
 
         let speakerFont = NSFont.systemFont(ofSize: 11, weight: .medium)
         let dotFont = NSFont.systemFont(ofSize: 10, weight: .medium)
@@ -202,7 +197,7 @@ struct TranscriptTextView: NSViewRepresentable {
             textPara.headIndent = 11
 
             let text = NSAttributedString(string: "\(line.text)\n", attributes: [
-                .font: serifFont,
+                .font: bodyFont,
                 .foregroundColor: textColor,
                 .paragraphStyle: textPara,
             ])
