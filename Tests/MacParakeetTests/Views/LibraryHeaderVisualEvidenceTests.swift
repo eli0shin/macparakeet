@@ -16,14 +16,26 @@ final class LibraryHeaderVisualEvidenceTests: XCTestCase {
         let transcriptionRepository = TranscriptionRepository(dbQueue: manager.dbQueue)
         let folderRepository = LibraryFolderRepository(dbQueue: manager.dbQueue)
         let folder = try folderRepository.create(name: "Project Aurora", parentID: nil)
-        try transcriptionRepository.save(
+        let nestedRecordings = [
             Transcription(
                 fileName: "Weekly product review.m4a",
                 durationMs: 1_842_000,
                 status: .completed,
-                sourceType: .meeting,
-                libraryFolderID: folder.id
-            )
+                sourceType: .meeting
+            ),
+            Transcription(
+                fileName: "Aurora research notes.mp3",
+                durationMs: 1_135_000,
+                status: .completed,
+                sourceType: .file
+            ),
+        ]
+        for recording in nestedRecordings {
+            try transcriptionRepository.save(recording)
+        }
+        try transcriptionRepository.moveToLibraryFolder(
+            ids: nestedRecordings.map(\.id),
+            folderID: folder.id
         )
         try transcriptionRepository.save(
             Transcription(
@@ -46,9 +58,12 @@ final class LibraryHeaderVisualEvidenceTests: XCTestCase {
 
         viewModel.selectLocation(.folder(folder.id))
         await viewModel.loadTranscriptions().value
+        XCTAssertEqual(viewModel.filteredTranscriptions.count, 2)
         try render(viewModel: viewModel, name: "nested-folder", outputDirectory: outputDirectory)
 
-        viewModel.beginBulkSelection()
+        let selectedRecording = try XCTUnwrap(viewModel.filteredTranscriptions.first)
+        viewModel.beginBulkSelection(startingWith: selectedRecording)
+        XCTAssertEqual(viewModel.selectedTranscriptionCount, 1)
         try render(viewModel: viewModel, name: "selection", outputDirectory: outputDirectory)
     }
 

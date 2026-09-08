@@ -3,12 +3,17 @@
 These images render the production `TranscriptionLibraryView` at 1000 × 700
 with an isolated in-memory database. No user Library data is used or changed.
 The “before” images use the merged PR #46 code. The “after” images use this
-change.
+change. Both sets use the same repository-backed fixture: two recordings are
+saved, moved into `Project Aurora` through `moveToLibraryFolder`, and loaded
+before capture. Selection mode starts with one of those two recordings selected,
+so enabled and disabled action states are visible.
 
-> The AppKit snapshot path does not composite native bordered-button labels in
-> the before images. Their white native control bounds still show the rejected
-> small sizing. The after images fully render because the restored Library
-> controls use the accepted custom capsule treatment.
+> The AppKit snapshot path does not composite the native root-header and
+> Delete Folder button labels in the before images. Their white native control
+> bounds still show the rejected small sizing. This is a snapshot limitation,
+> not evidence of a production rendering defect. The before selection controls
+> and all after controls are legible; the after nested-folder image provides the
+> legible Delete Folder evidence.
 
 ## Root
 
