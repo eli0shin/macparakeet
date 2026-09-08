@@ -51,9 +51,15 @@ The v1 folder can contain these stable filenames:
   suppressor is loaded (plan #605 U3). Internal STT input for the local ("Me")
   track only after final-STT readiness/decodability gates pass, not a
   user-facing export; the raw `microphone-raw.m4a` remains the source of truth.
-  Absent for single-source meetings, missing/unloaded AEC assets, render
-  failures, and when the echo-path probe finds no system-audio bleed to cancel.
-  Removed with the other managed audio by retention/detach.
+  Absent on initial cleanup for single-source meetings, missing/unloaded AEC
+  assets, render failures, and when the echo-path probe finds no system-audio
+  bleed to cancel. GUI and CLI retranscription regenerate this derived file
+  from retained source tracks with a snapshot of the current residual echo
+  setting, including when a cleaned file already exists. Successful renders
+  replace the prior derived file; failed, timed-out, or cancelled renders keep
+  it but do not route the current transcription to that stale file. Raw tracks
+  and playback remain unchanged. Removed with other managed audio by
+  retention/detach.
 - `meeting-recording-metadata.json`: optional source-alignment and speech-route
   sidecar. `speechEngine` is the authoritative final-transcription selection;
   optional additive `previewSpeechEngine` records the live-preview route when
@@ -61,7 +67,10 @@ The v1 folder can contain these stable filenames:
   folders. It may also include additive `echoSuppression` provenance with
   `reasonCode` plus optional `modelVersion`, `renderDurationMs`,
   `delayEstimateMs`, and `probeBestCorrelation` fields so shared artifact
-  folders can explain cleaned-vs-raw microphone routing without app logs. It
+  folders can explain cleaned-vs-raw microphone routing without app logs.
+  The additive `rawNotPrepared` reason means no render was scheduled and no
+  usable cleaned file was found; it does not assert that AEC assets are missing.
+  `rawNoAECAssets` is reserved for an unavailable processor. It
   may also include additive `startContext` with the one-shot local start
   snapshot. `calendarEventSnapshot`, when present, is local EventKit context
   and can include attendee/organizer names and emails. New finalized recordings

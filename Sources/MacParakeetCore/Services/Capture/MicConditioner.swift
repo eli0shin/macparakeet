@@ -58,14 +58,22 @@ protocol MeetingEchoModelVersionProviding: AnyObject {
 
 protocol MicConditioning: AnyObject, Sendable {
     var diagnostics: MeetingEchoSuppressionDiagnostics { get }
+    /// Long acquisition holds make callback-level RMS stale for emitted chunks.
+    var buffersAcquisition: Bool { get }
     func condition(microphone: [Float], speaker: [Float], hasSpeakerReference: Bool) -> [Float]
-    /// Drain any microphone samples held back by internal framing, raw.
+    /// Drain held microphone samples in order; an incomplete final hop stays raw.
     /// Stateless conditioners hold nothing and return `[]` (the default).
     func flush() -> [Float]
     func reset()
+    /// Offline-only lookahead. Prime filter state without consuming output time.
+    func prime(microphone: [Float], speaker: [Float]) throws
 }
 
 extension MicConditioning {
+    var buffersAcquisition: Bool { false }
+
+    func prime(microphone: [Float], speaker: [Float]) throws {}
+
     func condition(microphone: [Float], speaker: [Float]) -> [Float] {
         condition(microphone: microphone, speaker: speaker, hasSpeakerReference: !speaker.isEmpty)
     }
@@ -137,6 +145,10 @@ final class StreamingMeetingEchoSuppressor: MicConditioning, @unchecked Sendable
     private let processor: any MeetingEchoSuppressing
     private let modelVersion: String?
     private let seedDelaySamples: Int
+    private let handlesMicrophoneGaps: Bool
+    let buffersAcquisition: Bool
+    private var needsAcquisitionPrime: Bool
+    private var silentMicrophoneSamples = 0
     private let estimator: MeetingEchoDelayEstimator?
     private let reestimateIntervalSamples: Int
     /// Reference history is retained this far behind the microphone so any delay
@@ -189,9 +201,14 @@ final class StreamingMeetingEchoSuppressor: MicConditioning, @unchecked Sendable
         processor: any MeetingEchoSuppressing,
         referenceDelaySamples: Int = 0,
         estimator: MeetingEchoDelayEstimator? = nil,
-        reestimateIntervalSamples: Int = 8_000
+        reestimateIntervalSamples: Int = 8_000,
+        handlesMicrophoneGaps: Bool = false,
+        buffersAcquisition: Bool = false
     ) {
         self.processor = processor
+        self.handlesMicrophoneGaps = handlesMicrophoneGaps
+        self.buffersAcquisition = buffersAcquisition
+        self.needsAcquisitionPrime = buffersAcquisition
         self.modelVersion = (processor as? MeetingEchoModelVersionProviding)?.modelVersion
         self.seedDelaySamples = max(0, referenceDelaySamples)
         self.estimator = estimator
@@ -259,17 +276,50 @@ final class StreamingMeetingEchoSuppressor: MicConditioning, @unchecked Sendable
         lock.lock()
         defer { lock.unlock() }
 
-        guard !pendingMicrophone.isEmpty else { return [] }
-        let tail = pendingMicrophone
-        diagnosticsStorage.rawFallbackFrames += 1
-        advanceConsumedLocked(by: tail.count)
-        return tail
+        var output = drainProcessableFramesLocked(flushing: true)
+        if !pendingMicrophone.isEmpty {
+            let tail = pendingMicrophone
+            diagnosticsStorage.rawFallbackFrames += 1
+            advanceConsumedLocked(by: tail.count)
+            output += tail
+        }
+        return output
+    }
+
+    func prime(microphone: [Float], speaker: [Float]) throws {
+        guard handlesMicrophoneGaps else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        try primeLocked(microphone: microphone, speaker: speaker)
+    }
+
+    private func primeLocked(microphone: [Float], speaker: [Float]) throws {
+        processor.reset()
+        silentMicrophoneSamples = 0
+        needsAcquisitionPrime = false
+        let hop = max(1, processor.frameSize)
+        let count = min(microphone.count, speaker.count, processor.sampleRate * 8)
+        var output = [Float](repeating: 0, count: hop)
+        var silence = 0
+        for start in stride(from: 0, to: max(0, count - hop + 1), by: hop) {
+            try Task.checkCancellation()
+            let mic = Array(microphone[start..<(start + hop)])
+            silence = mic.allSatisfy { abs($0) < 1e-9 } ? silence + hop : 0
+            if silence >= processor.sampleRate { break }
+            try processor.processFrame(
+                microphone: mic,
+                reference: Array(speaker[start..<(start + hop)]),
+                output: &output
+            )
+        }
     }
 
     func reset() {
         lock.lock()
         defer { lock.unlock() }
         processor.reset()
+        silentMicrophoneSamples = 0
+        needsAcquisitionPrime = buffersAcquisition
         pendingMicrophone.removeAll()
         referenceHistory.removeAll()
         referenceValidity.removeAll()
@@ -315,7 +365,7 @@ final class StreamingMeetingEchoSuppressor: MicConditioning, @unchecked Sendable
         case missing
     }
 
-    private func drainProcessableFramesLocked() -> [Float] {
+    private func drainProcessableFramesLocked(flushing: Bool = false) -> [Float] {
         let frameSize = max(processor.frameSize, 1)
         guard pendingMicrophone.count >= frameSize else { return [] }
 
@@ -335,6 +385,41 @@ final class StreamingMeetingEchoSuppressor: MicConditioning, @unchecked Sendable
             }
             for offset in 0..<frameSize {
                 micFrame[offset] = pendingMicrophone[consumed + offset]
+            }
+            if handlesMicrophoneGaps {
+                let silent = micFrame.allSatisfy { abs($0) < 1e-9 }
+                if !silent, silentMicrophoneSamples >= processor.sampleRate {
+                    // Do not carry a filter trained on muted mic + active system
+                    // audio into the next near-end interval. Keep timeline counters.
+                    processor.reset()
+                    needsAcquisitionPrime = buffersAcquisition
+                }
+                silentMicrophoneSamples =
+                    silent
+                    ? min(processor.sampleRate, silentMicrophoneSamples + frameSize) : 0
+                if needsAcquisitionPrime, !silent {
+                    let acquisitionCount = processor.sampleRate * 8
+                    let available = pendingMicrophone.count - consumed
+                    if available < acquisitionCount, !flushing { break }
+                    // Hold the first incoming audio, learn from that same
+                    // bounded window, then emit it from its original position.
+                    // Offline renderers prime explicitly and never wait here.
+                    let count = min(available, acquisitionCount)
+                    var reference: [Float] = []
+                    for offset in stride(from: 0, to: count - frameSize + 1, by: frameSize) {
+                        _ = fillReferenceFrameLocked(
+                            &referenceFrame, frameStartPosition: microphonePosition + consumed + offset)
+                        reference.append(contentsOf: referenceFrame)
+                    }
+                    do {
+                        try primeLocked(
+                            microphone: Array(pendingMicrophone[consumed..<(consumed + count)]),
+                            speaker: reference)
+                    } catch {
+                        processor.reset()
+                        diagnosticsStorage.processingFailures += 1
+                    }
+                }
             }
             let referenceQuality = fillReferenceFrameLocked(
                 &referenceFrame,

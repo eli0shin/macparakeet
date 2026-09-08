@@ -1228,6 +1228,10 @@ struct SettingsView: View {
 
                 Divider()
 
+                MeetingEchoSuppressionControls()
+
+                Divider()
+
                 settingsToggleRow(
                     title: "Speaker detection",
                     detail: "Split captured system audio into other speakers after recording when audio is clear.",

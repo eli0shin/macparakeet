@@ -483,19 +483,32 @@ final class MeetingCleanedMicRenderer {
         output.reserveCapacity(microphone.count)
         let chunkSize = 4_096
         var cursor = 0
+        var needsPrime = true
+        var silentSamples = 0
+        func reference(from start: Int, to end: Int) -> [Float] {
+            (start..<end).map { position in
+                let index = position - relativeShiftSamples
+                return index >= 0 && index < system.count ? system[index] : 0
+            }
+        }
         while cursor < microphone.count {
             try Task.checkCancellation()
             let end = min(cursor + chunkSize, microphone.count)
             let micChunk = Array(microphone[cursor..<end])
-            var refChunk: [Float] = []
-            refChunk.reserveCapacity(end - cursor)
-            for destinationIndex in cursor..<end {
-                let sourceIndex = destinationIndex - relativeShiftSamples
-                refChunk.append(
-                    sourceIndex >= 0 && sourceIndex < system.count
-                        ? system[sourceIndex]
-                        : 0)
+            let refChunk = reference(from: cursor, to: end)
+            let silent = micChunk.allSatisfy { abs($0) < 1e-9 }
+            if !silent, needsPrime || silentSamples >= sampleRate {
+                // Available file audio lets the DAF acquire its filter before
+                // emitting the first samples after startup or a long mute gap.
+                // Replay those same samples normally: no speech is trimmed.
+                let primeEnd = min(cursor + sampleRate * 8, microphone.count)
+                try conditioner.prime(
+                    microphone: Array(microphone[cursor..<primeEnd]),
+                    speaker: reference(from: cursor, to: primeEnd)
+                )
+                needsPrime = false
             }
+            silentSamples = silent ? min(sampleRate, silentSamples + micChunk.count) : 0
             output += conditioner.condition(
                 microphone: micChunk, speaker: refChunk, hasSpeakerReference: true)
             cursor = end

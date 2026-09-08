@@ -7,6 +7,7 @@ public enum MeetingCleanedMicrophoneRoutingReason: String, Sendable, Codable, Ca
     case rawRenderFailed
     case rawMissingSystemReference
     case rawNoAECAssets
+    case rawNotPrepared
     case skippedNoEchoPath
     case predictedRenderTimeout
 }
@@ -86,6 +87,7 @@ enum MeetingCleanedMicrophoneRenderCompletion: Sendable, Equatable {
 struct MeetingCleanedMicrophoneReadiness: Sendable {
     let outputURL: URL?
     private let candidateOutputURL: URL?
+    private let preserveExistingOutput: Bool
     private let task: Task<MeetingCleanedMicrophoneRenderCompletion, Never>?
     private let fileManager: UncheckedSendableBox<FileManager>?
     private let notScheduledReason: MeetingCleanedMicrophoneRoutingReason?
@@ -95,13 +97,15 @@ struct MeetingCleanedMicrophoneReadiness: Sendable {
         candidateOutputURL: URL?,
         task: Task<MeetingCleanedMicrophoneRenderCompletion, Never>?,
         fileManager: FileManager?,
-        notScheduledReason: MeetingCleanedMicrophoneRoutingReason?
+        notScheduledReason: MeetingCleanedMicrophoneRoutingReason?,
+        preserveExistingOutput: Bool = false
     ) {
         self.outputURL = outputURL
         self.candidateOutputURL = candidateOutputURL
         self.task = task
         self.fileManager = fileManager.map(UncheckedSendableBox.init)
         self.notScheduledReason = notScheduledReason
+        self.preserveExistingOutput = preserveExistingOutput
     }
 
     static func notScheduled(
@@ -120,14 +124,16 @@ struct MeetingCleanedMicrophoneReadiness: Sendable {
         outputURL: URL,
         task: Task<MeetingCleanedMicrophoneRenderCompletion, Never>,
         candidateOutputURL: URL? = nil,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        preserveExistingOutput: Bool = false
     ) -> MeetingCleanedMicrophoneReadiness {
         MeetingCleanedMicrophoneReadiness(
             outputURL: outputURL,
             candidateOutputURL: candidateOutputURL,
             task: task,
             fileManager: fileManager,
-            notScheduledReason: nil
+            notScheduledReason: nil,
+            preserveExistingOutput: preserveExistingOutput
         )
     }
 
@@ -187,8 +193,12 @@ struct MeetingCleanedMicrophoneReadiness: Sendable {
 
         let fileManager = fileManager?.value ?? .default
         do {
-            try? fileManager.removeItem(at: outputURL)
-            try fileManager.moveItem(at: renderedURL, to: outputURL)
+            if preserveExistingOutput, fileManager.fileExists(atPath: outputURL.path) {
+                _ = try fileManager.replaceItemAt(outputURL, withItemAt: renderedURL)
+            } else {
+                try? fileManager.removeItem(at: outputURL)
+                try fileManager.moveItem(at: renderedURL, to: outputURL)
+            }
             if renderedURL != candidateOutputURL {
                 try? fileManager.removeItem(at: candidateOutputURL)
             }
@@ -204,7 +214,7 @@ struct MeetingCleanedMicrophoneReadiness: Sendable {
         if let candidateOutputURL {
             try? fileManager.removeItem(at: candidateOutputURL)
         }
-        if let outputURL {
+        if let outputURL, !preserveExistingOutput {
             try? fileManager.removeItem(at: outputURL)
         }
     }
@@ -358,8 +368,14 @@ enum MeetingCleanedMicrophoneRenderScheduler {
         sessionID: UUID,
         conditionerFactory: @escaping @Sendable () -> any MicConditioning,
         fileManager: FileManager,
-        eventName: String
+        eventName: String,
+        preserveExistingOutput: Bool = false
     ) -> MeetingCleanedMicrophoneReadiness {
+        // Archived retries retain the previous derived file until a new render
+        // is ready. Never select that stale file on a failed retry.
+        if preserveExistingOutput, microphoneURL == nil || systemURL == nil {
+            return .notScheduled(reason: .rawMissingSystemReference)
+        }
         guard let microphoneURL else {
             discardArtifact(
                 at: outputURL,
@@ -394,13 +410,15 @@ enum MeetingCleanedMicrophoneRenderScheduler {
         }
         let rendererFileManager = UncheckedSendableBox(fileManager)
         let candidateOutputURL = candidateOutputURL(for: outputURL, sessionID: sessionID)
-        discardArtifact(
-            at: outputURL,
-            sessionID: sessionID,
-            reason: "prepare_candidate_render",
-            fileManager: fileManager,
-            eventName: eventName
-        )
+        if !preserveExistingOutput {
+            discardArtifact(
+                at: outputURL,
+                sessionID: sessionID,
+                reason: "prepare_candidate_render",
+                fileManager: fileManager,
+                eventName: eventName
+            )
+        }
         discardArtifact(
             at: candidateOutputURL,
             sessionID: sessionID,
@@ -466,7 +484,8 @@ enum MeetingCleanedMicrophoneRenderScheduler {
             outputURL: outputURL,
             task: task,
             candidateOutputURL: candidateOutputURL,
-            fileManager: fileManager
+            fileManager: fileManager,
+            preserveExistingOutput: preserveExistingOutput
         )
     }
 
@@ -683,7 +702,7 @@ extension MeetingRecordingOutput {
             renderSummary = nil
             decision = .init(
                 url: microphoneAudioURL,
-                reason: sourceAlignment.system == nil ? .rawMissingSystemReference : .rawNoAECAssets
+                reason: sourceAlignment.system == nil ? .rawMissingSystemReference : .rawNotPrepared
             )
         }
 
@@ -754,8 +773,8 @@ extension MeetingRecordingOutput {
                     delayEstimateMs: existing.delayEstimateMs,
                     probeBestCorrelation: existing.probeBestCorrelation
                 )
-            case .rawTimeout, .rawRenderFailed, .rawMissingSystemReference, .rawNoAECAssets,
-                    .skippedNoEchoPath, .predictedRenderTimeout:
+            case .rawTimeout, .rawRenderFailed, .rawMissingSystemReference, .rawNoAECAssets, .rawNotPrepared,
+                .skippedNoEchoPath, .predictedRenderTimeout:
                 break
             }
         }

@@ -74,8 +74,10 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
             audioConverter: audioConverter,
             fileManager: fileManager,
             micConditionerFactory: {
-                MeetingEchoSuppressionFactory.makeConditioner(
-                    configuration: echoSuppressionConfiguration)
+                let suppression = MeetingResidualEchoSuppression.current()
+                return MeetingEchoSuppressionFactory.makeConditioner(
+                    configuration: echoSuppressionConfiguration,
+                    residualSuppression: { suppression })
             }
         )
     }

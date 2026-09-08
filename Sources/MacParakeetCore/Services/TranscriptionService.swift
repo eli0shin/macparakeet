@@ -277,6 +277,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
     private let meetingAutomationHookRunner: MeetingAutomationHookRunning?
     private let meetingCleanedMicrophoneReadinessPolicy: MeetingCleanedMicrophoneReadinessPolicy
     private let meetingFinalizationBenchmarkObserver: MeetingFinalizationBenchmarkObserver?
+    private let meetingResidualSuppression: @Sendable () -> MeetingResidualEchoSuppression
 
     public init(
         audioProcessor: AudioProcessorProtocol,
@@ -308,7 +309,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         playbackConverter: YouTubeAudioPlaybackConverting = YouTubeAudioPlaybackConverter(),
         meetingArtifactStore: MeetingArtifactStoring? = MeetingArtifactStore(),
         meetingAutomationHookRunner: MeetingAutomationHookRunning? = MeetingAutomationHookRunner(),
-        meetingCleanedMicrophoneReadinessPolicy: MeetingCleanedMicrophoneReadinessPolicy = .production
+        meetingCleanedMicrophoneReadinessPolicy: MeetingCleanedMicrophoneReadinessPolicy = .production,
+        meetingResidualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() }
     ) {
         self.init(
             audioProcessor: audioProcessor,
@@ -341,7 +343,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             meetingArtifactStore: meetingArtifactStore,
             meetingAutomationHookRunner: meetingAutomationHookRunner,
             meetingCleanedMicrophoneReadinessPolicy: meetingCleanedMicrophoneReadinessPolicy,
-            meetingFinalizationBenchmarkObserver: nil
+            meetingFinalizationBenchmarkObserver: nil,
+            meetingResidualSuppression: meetingResidualSuppression
         )
     }
 
@@ -376,7 +379,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         meetingArtifactStore: MeetingArtifactStoring? = MeetingArtifactStore(),
         meetingAutomationHookRunner: MeetingAutomationHookRunning? = MeetingAutomationHookRunner(),
         meetingCleanedMicrophoneReadinessPolicy: MeetingCleanedMicrophoneReadinessPolicy = .production,
-        meetingFinalizationBenchmarkObserver: MeetingFinalizationBenchmarkObserver?
+        meetingFinalizationBenchmarkObserver: MeetingFinalizationBenchmarkObserver?,
+        meetingResidualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() }
     ) {
         self.audioProcessor = audioProcessor
         self.sttTranscriber = sttTranscriber
@@ -411,6 +415,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         self.meetingAutomationHookRunner = meetingAutomationHookRunner
         self.meetingCleanedMicrophoneReadinessPolicy = meetingCleanedMicrophoneReadinessPolicy
         self.meetingFinalizationBenchmarkObserver = meetingFinalizationBenchmarkObserver
+        self.meetingResidualSuppression = meetingResidualSuppression
     }
 
     public func transcribe(
@@ -702,8 +707,11 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 audioDurationSeconds: recording.durationSeconds
             ))
 
+            let preparedRecording = recording.preparingEchoRetranscription(
+                suppression: meetingResidualSuppression()
+            )
             return try await transcribeMeetingAudio(
-                recording: recording,
+                recording: preparedRecording,
                 transcription: &transcription,
                 operation: operation,
                 persistFailureStatus: false,
