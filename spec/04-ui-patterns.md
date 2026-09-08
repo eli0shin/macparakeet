@@ -68,7 +68,7 @@ Minimum window width: 800pt.
 The sidebar uses NavigationSplitView with flat items (icon + label):
 
 - **Transcribe** (`waveform`) -- Capture hub: YouTube card + file drop card + Meeting Recording tile
-- **Library** (`square.grid.2x2`) -- All transcription source types in a Finder-like nested folder tree; Library is the root and All Items is the aggregate view
+- **Library** (`square.grid.2x2`) -- All transcription source types in a Finder-like nested folder tree; each main-sidebar click opens Library root, while All Items remains a separate aggregate view
 - **Dictations** (`clock.arrow.circlepath`) -- Flat history list with bottom bar player
 - **Meetings** (`person.2.wave.2`) -- Workflow space for upcoming, live, and saved meeting work; visible when `AppFeatures.meetingRecordingEnabled` is true
 - **Vocabulary** (`book.fill`) -- Processing mode, pipeline guide, custom words & snippets management

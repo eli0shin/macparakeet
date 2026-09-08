@@ -92,8 +92,14 @@ struct MainWindowView: View {
                 List(selection: $state.selectedItem) {
                     Section {
                         ForEach(SidebarItem.primaryItems) { item in
-                            SidebarItemLabel(item: item)
-                                .tag(item)
+                            MainSidebarItemRow(item: item) {
+                                state.navigateFromSidebar(
+                                    to: item,
+                                    libraryViewModel: libraryViewModel,
+                                    transcriptionViewModel: transcriptionViewModel
+                                )
+                            }
+                            .tag(item)
                         }
                     }
 
@@ -487,6 +493,20 @@ private struct TransformEditorSheetHost: View {
             onCancel: onCancel,
             onReset: onReset
         )
+    }
+}
+
+struct MainSidebarItemRow: View {
+    let item: SidebarItem
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            Label(item.rawValue, systemImage: item.icon)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

@@ -65,6 +65,63 @@ final class MainWindowStateTests: XCTestCase {
         XCTAssertEqual(state.selectedItem, .library)
     }
 
+    func testSidebarLibraryNavigationOpensRootAndClosesDetailEveryTime() {
+        let state = MainWindowState()
+        let libraryViewModel = TranscriptionLibraryViewModel()
+        let transcriptionViewModel = TranscriptionViewModel()
+        let folderID = UUID()
+        let detail = Transcription(fileName: "detail.wav", status: .completed)
+
+        libraryViewModel.selectLocation(.folder(folderID))
+        transcriptionViewModel.currentTranscription = detail
+        state.navigateFromSidebar(
+            to: .library,
+            libraryViewModel: libraryViewModel,
+            transcriptionViewModel: transcriptionViewModel
+        )
+        XCTAssertEqual(state.selectedItem, .library)
+        XCTAssertEqual(libraryViewModel.location, .root)
+        XCTAssertNil(transcriptionViewModel.currentTranscription)
+
+        state.navigate(to: .settings)
+        libraryViewModel.selectLocation(.allItems)
+        state.navigateFromSidebar(
+            to: .library,
+            libraryViewModel: libraryViewModel,
+            transcriptionViewModel: transcriptionViewModel
+        )
+        XCTAssertEqual(state.selectedItem, .library)
+        XCTAssertEqual(libraryViewModel.location, .root)
+
+        libraryViewModel.selectLocation(.folder(folderID))
+        state.navigateFromSidebar(
+            to: .library,
+            libraryViewModel: libraryViewModel,
+            transcriptionViewModel: transcriptionViewModel
+        )
+        XCTAssertEqual(libraryViewModel.location, .root)
+    }
+
+    func testSidebarNavigationOutsideLibraryPreservesLibraryLocationAndDetail() {
+        let state = MainWindowState()
+        let libraryViewModel = TranscriptionLibraryViewModel()
+        let transcriptionViewModel = TranscriptionViewModel()
+        let folderID = UUID()
+        let detail = Transcription(fileName: "detail.wav", status: .completed)
+        libraryViewModel.selectLocation(.folder(folderID))
+        transcriptionViewModel.currentTranscription = detail
+
+        state.navigateFromSidebar(
+            to: .settings,
+            libraryViewModel: libraryViewModel,
+            transcriptionViewModel: transcriptionViewModel
+        )
+
+        XCTAssertEqual(state.selectedItem, .settings)
+        XCTAssertEqual(libraryViewModel.location, .folder(folderID))
+        XCTAssertEqual(transcriptionViewModel.currentTranscription?.id, detail.id)
+    }
+
     func testEveryRemainingSidebarDestinationCanBeSelected() {
         let state = MainWindowState()
 

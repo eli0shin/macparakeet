@@ -1626,6 +1626,7 @@ Embedded video/audio playback, split-pane detail view, synced transcript highlig
 **Acceptance criteria:**
 - [x] Thumbnail grid layout with cards (YouTube thumbnails downloaded, embedded local artwork cached, local video frames extracted via FFmpeg)
 - [x] Library root contains items without a folder; All Items is an aggregate across root and folders
+- [x] Every main-sidebar Library click opens Library root, including when Library is already selected
 - [x] Nested folders support contextual creation, direct and bulk item movement, and movement back to Library root
 - [x] Deleting a folder tree retains every contained item at Library root and does not delete managed media or meeting artifacts
 - [x] Search across transcription titles and content

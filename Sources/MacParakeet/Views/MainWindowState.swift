@@ -24,6 +24,19 @@ final class MainWindowState {
         selectedItem = item
     }
 
+    /// Handle an explicit click in the main sidebar. Each Library click opens
+    /// the root list, even when Library or a transcription detail is visible.
+    func navigateFromSidebar(
+        to item: SidebarItem,
+        libraryViewModel: TranscriptionLibraryViewModel,
+        transcriptionViewModel: TranscriptionViewModel
+    ) {
+        selectedItem = item
+        guard item == .library else { return }
+        transcriptionViewModel.showInputPortal()
+        libraryViewModel.selectLocation(.root)
+    }
+
     func startNewTranscription() {
         selectedItem = .transcribe
         showingProgressDetail = false
