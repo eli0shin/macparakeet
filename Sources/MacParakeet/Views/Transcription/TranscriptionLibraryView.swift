@@ -1163,6 +1163,70 @@ struct TranscriptionLibraryView: View {
 
 // MARK: - Library folder dialogs
 
+struct LibraryNewFolderDialog: View {
+    @Binding var name: String
+    let locationMessage: String
+    let onCancel: () -> Void
+    let onCreate: () -> Void
+
+    @FocusState private var nameFieldFocused: Bool
+
+    private var isCreateDisabled: Bool {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("New Folder")
+                    .font(DesignSystem.Typography.sectionTitle)
+                Text(locationMessage)
+                    .font(DesignSystem.Typography.bodySmall)
+                    .foregroundStyle(.secondary)
+            }
+
+            TextField("Folder name", text: $name)
+                .font(DesignSystem.Typography.body)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.large)
+                .focused($nameFieldFocused)
+                .accessibilityIdentifier("library-new-folder-name-field")
+                .accessibilityLabel("Folder name")
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Spacer()
+                LibraryActionButton(
+                    title: "Cancel",
+                    systemImage: "xmark",
+                    accessibilityHint: "Closes the New Folder sheet without creating a folder",
+                    action: onCancel
+                )
+                .keyboardShortcut(.cancelAction)
+
+                LibraryPrimaryActionButton(
+                    title: "Create",
+                    systemImage: "folder.badge.plus",
+                    isDisabled: isCreateDisabled,
+                    accessibilityHint: "Creates the folder at the current Library location",
+                    action: onCreate
+                )
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(DesignSystem.Spacing.xl)
+        .frame(width: 440)
+        .task {
+            // The sheet window installs its first responder after its content
+            // appears. Yield once, then focus the field on every presentation.
+            await Task.yield()
+            nameFieldFocused = true
+        }
+        .onDisappear {
+            nameFieldFocused = false
+        }
+    }
+}
+
 private struct LibraryFolderDialogs: ViewModifier {
     @Binding var showingCreate: Bool
     @Binding var newFolderName: String
@@ -1179,13 +1243,16 @@ private struct LibraryFolderDialogs: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .alert("New Folder", isPresented: $showingCreate) {
-                TextField("Folder name", text: $newFolderName)
-                Button("Cancel", role: .cancel) {}
-                Button("Create") { onCreate(newFolderName) }
-                    .disabled(newFolderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            } message: {
-                Text(createLocationMessage)
+            .sheet(isPresented: $showingCreate) {
+                LibraryNewFolderDialog(
+                    name: $newFolderName,
+                    locationMessage: createLocationMessage,
+                    onCancel: { showingCreate = false },
+                    onCreate: {
+                        showingCreate = false
+                        onCreate(newFolderName)
+                    }
+                )
             }
             .alert(
                 "Delete Folder?",
@@ -1398,6 +1465,9 @@ private struct LibraryFilterChip: View {
 /// lifts on hover.
 private struct LibraryPrimaryActionButton: View {
     let title: String
+    var systemImage = "plus"
+    var isDisabled = false
+    var accessibilityHint = "Starts a new transcription"
     let action: () -> Void
 
     @State private var isHovered = false
@@ -1405,7 +1475,7 @@ private struct LibraryPrimaryActionButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: "plus")
+                Image(systemName: systemImage)
                     .font(.system(size: 12, weight: .bold))
                 Text(title)
                     .font(DesignSystem.Typography.bodySmall.weight(.semibold))
@@ -1424,12 +1494,19 @@ private struct LibraryPrimaryActionButton: View {
             .animation(DesignSystem.Animation.hoverTransition, value: isHovered)
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.48 : 1)
         .onHover { hovering in
-            isHovered = hovering
+            isHovered = hovering && !isDisabled
         }
-        .pointingHandCursor(isActive: isHovered)
+        .onChange(of: isDisabled) { _, disabled in
+            if disabled {
+                isHovered = false
+            }
+        }
+        .pointingHandCursor(isActive: isHovered && !isDisabled)
         .accessibilityLabel(title)
-        .accessibilityHint("Starts a new transcription")
+        .accessibilityHint(accessibilityHint)
     }
 }
 
