@@ -486,7 +486,16 @@ struct RetranscribeCommand: AsyncParsableCommand {
     ) async throws -> RetranscribeResult {
         let mixedAudioURL = try Self.retainedAudioURL(path: original.filePath, kind: "meeting", id: original.id)
         let archived = Self.archivedMeetingRecording(for: original, mixedAudioURL: mixedAudioURL)
-        let detectMicrophone = microphoneSpeakerDetectionEnabled(capturedEnabled: archived?.microphoneSpeakerDetection ?? false)
+        let storedSpeakerDetection =
+            defaults.object(
+                forKey: UserDefaultsAppRuntimePreferences.meetingSpeakerDiarizationKey
+            ) as? Bool
+        let detectSystem = systemSpeakerDetectionEnabled(
+            capturedEnabled: archived?.systemSpeakerDetection,
+            storedEnabled: storedSpeakerDetection
+        )
+        let detectMicrophone = microphoneSpeakerDetectionEnabled(
+            capturedEnabled: archived?.microphoneSpeakerDetection ?? false)
         let service = makeTranscriptionService(
             sttTranscriber: sttTranscriber,
             transcriptionRepo: transcriptionRepo,
@@ -496,9 +505,7 @@ struct RetranscribeCommand: AsyncParsableCommand {
             customWordRepo: customWordRepo,
             snippetRepo: snippetRepo,
             defaults: defaults,
-            storedSpeakerDetection: defaults.object(
-                forKey: UserDefaultsAppRuntimePreferences.meetingSpeakerDiarizationKey
-            ) as? Bool,
+            storedSpeakerDetection: storedSpeakerDetection,
             microphoneSpeakerDetection: detectMicrophone
         )
         printErr("Retranscribing meeting \(original.fileName) with \(speechEngine.engine.rawValue)...")
@@ -507,7 +514,10 @@ struct RetranscribeCommand: AsyncParsableCommand {
         if let archived {
             updated = try await service.retranscribeMeeting(
                 existing: original,
-                recording: archived.withMicrophoneSpeakerDetection(detectMicrophone),
+                recording: archived.withSpeakerDetection(
+                    systemAudio: detectSystem,
+                    microphone: detectMicrophone
+                ),
                 speechEngineOverride: speechEngine,
                 onProgress: progress.transcriptionProgress
             )
@@ -523,6 +533,28 @@ struct RetranscribeCommand: AsyncParsableCommand {
         let preserved = Self.preserveOriginalTranscriptionMetadata(updated, original: original)
         try transcriptionRepo.save(preserved)
         return RetranscribeResult(kind: .meeting, sourcePath: mixedAudioURL.path, transcription: preserved)
+    }
+
+    /// App-default retranscription preserves a captured current-meeting choice.
+    /// Explicit CLI choices and speaker-count constraints still override it.
+    func systemSpeakerDetectionEnabled(capturedEnabled: Bool?, storedEnabled: Bool?) -> Bool {
+        let resolved = TranscribeCommand.resolveSpeakerDetection(
+            speakerDetection,
+            storedEnabled: storedEnabled,
+            noDiarize: noDiarize,
+            speakerCount: speakerCount,
+            speakerMin: speakerMin,
+            speakerMax: speakerMax
+        )
+        guard speakerDetection == .appDefault,
+            !noDiarize,
+            speakerCount == nil,
+            speakerMin == nil,
+            speakerMax == nil
+        else {
+            return resolved.enabled
+        }
+        return capturedEnabled ?? resolved.enabled
     }
 
     /// Explicit CLI opt-out covers both tracks; a saved system preference does

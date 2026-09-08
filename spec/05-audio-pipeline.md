@@ -294,7 +294,11 @@ User clicks "Start Meeting Recording"
     → Start MeetingAudioCaptureService with the selected source mode
     → Show recording pill (red dot + elapsed timer + stop button)
     → Consume AsyncStream<MeetingAudioCaptureEvent>, write buffers to M4A files
-      and keep `recording.lock` current with session state/notes/final speech engine
+      and keep `recording.lock` current with session state, notes, final speech
+      engine, and independent system/microphone speaker-detection choices
+    → The live panel audio-controls popover can update either speaker-detection
+      choice without stopping capture; successful writes affect finalization and
+      also become the defaults for new meetings
     → User clicks Stop
     → Stop capture and finalize the captured source file(s); if a written source
       cannot finalize, preserve the lock/source artifacts and abort settlement
@@ -310,7 +314,9 @@ User clicks "Start Meeting Recording"
     → Background queue converts each captured source M4A → 16kHz mono WAV via FFmpeg
     → Send each source WAV to the captured local STT engine
     → Merge fresh per-source STT using persisted source offsets
-    → Optionally refine the isolated system side with diarization
+    → Optionally refine each isolated source with local diarization according to
+      the track choices persisted for this meeting; legacy missing system choices
+      follow the current default
     → Update the existing Transcription row, then settle: MeetingRecordingSettlement
       verifies the completed row and deletes `recording.lock` (on failure the
       lock stays for recovery to re-settle; the queue still reports success)
@@ -347,8 +353,8 @@ the stopped meeting waits for that job to finish; once the slot is free,
     ├── system-raw.m4a        # System audio when captured (AAC, 48kHz mono)
     ├── microphone-cleaned.m4a  # Optional derived echo-cancelled mic (16kHz mono); STT input for the "Me" track only after readiness/decodability gates pass
     ├── meeting-playback.m4a       # Playback/export artifact (stereo dual-source when both tracks exist)
-    ├── meeting-recording-metadata.json  # Source timing/alignment + capture report + final engine + optional preview engine / echoSuppression provenance
-    ├── recording.lock     # Recovery state, notes, and captured final engine (schema v2 unchanged)
+    ├── meeting-recording-metadata.json  # Source timing/alignment + capture report + final engine + speaker choices + optional preview engine / echoSuppression provenance
+    ├── recording.lock     # Recovery state, notes, captured final engine, and speaker choices (schema v2 unchanged)
     └── chunks/            # Live-preview scratch chunks
 ```
 

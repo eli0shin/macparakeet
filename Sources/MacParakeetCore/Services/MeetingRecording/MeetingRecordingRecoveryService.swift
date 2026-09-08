@@ -262,6 +262,7 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
         }
         var recoveredMetadata = MeetingRecordingMetadata(
             sourceAlignment: sourceAlignment,
+            systemSpeakerDetection: existingMetadata?.systemSpeakerDetection ?? lock.systemSpeakerDetection,
             microphoneSpeakerDetection: existingMetadata?.microphoneSpeakerDetection ?? lock.microphoneSpeakerDetection,
             captureReport: captureReport,
             speechEngine: existingMetadata?.speechEngine ?? lock.speechEngine,
@@ -365,7 +366,10 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
             startContext: recoveredMetadata.startContext,
             userNotes: lock.notes,
             calendarEventSnapshot: recoveredMetadata.calendarEventSnapshot
-        ).withMicrophoneSpeakerDetection(recoveredMetadata.microphoneSpeakerDetection)
+        ).withSpeakerDetection(
+            systemAudio: recoveredMetadata.systemSpeakerDetection,
+            microphone: recoveredMetadata.microphoneSpeakerDetection
+        )
 
         do {
             let transcription: Transcription

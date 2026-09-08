@@ -1,5 +1,74 @@
 import MacParakeetCore
+import MacParakeetViewModels
 import SwiftUI
+
+struct MeetingInProgressAudioControls: View {
+    @Bindable var viewModel: MeetingRecordingPanelViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                Text("Speaker detection")
+                    .font(DesignSystem.Typography.bodySmall.weight(.semibold))
+
+                speakerToggle(
+                    title: "System audio",
+                    detail: viewModel.speakerDetectionState.canDetectSystemAudio
+                        ? "Detect remote speakers in the final transcript."
+                        : "System audio is not recorded in this meeting.",
+                    source: .system,
+                    isOn: viewModel.speakerDetectionState.systemAudioEnabled,
+                    isAvailable: viewModel.speakerDetectionState.canDetectSystemAudio
+                )
+                speakerToggle(
+                    title: "Microphone",
+                    detail: viewModel.speakerDetectionState.canDetectMicrophone
+                        ? "Detect local room speakers instead of labeling everyone Me."
+                        : "The microphone is not recorded in this meeting.",
+                    source: .microphone,
+                    isOn: viewModel.speakerDetectionState.microphoneEnabled,
+                    isAvailable: viewModel.speakerDetectionState.canDetectMicrophone
+                )
+
+                Text(
+                    "Changes apply to this meeting's final transcript and become the defaults for new meetings. Live preview does not change."
+                )
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textTertiary)
+            }
+
+            if viewModel.speakerDetectionState.canDetectSystemAudio
+                && viewModel.speakerDetectionState.canDetectMicrophone
+            {
+                Divider()
+                MeetingEchoSuppressionControls(isLive: true)
+            }
+        }
+        .foregroundStyle(DesignSystem.Colors.textSecondary)
+    }
+
+    private func speakerToggle(
+        title: String,
+        detail: String,
+        source: AudioSource,
+        isOn: Bool,
+        isAvailable: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Toggle(
+                title,
+                isOn: Binding(
+                    get: { isOn },
+                    set: { viewModel.requestSpeakerDetection($0, for: source) }
+                )
+            )
+            .disabled(!isAvailable)
+            Text(detail)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textTertiary)
+        }
+    }
+}
 
 /// Shared by meeting Settings and the live recording panel. The processor reads
 /// these preferences on incoming hops; UI changes never rewrite raw audio.

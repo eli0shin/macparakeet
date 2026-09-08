@@ -17,6 +17,31 @@ final class RetranscribeCommandTests: XCTestCase {
         }
     }
 
+    func testMeetingSystemDetectionPreservesCapturedChoiceUnlessCLIOverridesIt() throws {
+        let base = ["abcd", "--update", "--kind", "meeting"]
+        let appDefault = try RetranscribeCommand.parse(base)
+        XCTAssertFalse(
+            appDefault.systemSpeakerDetectionEnabled(
+                capturedEnabled: false,
+                storedEnabled: true
+            )
+        )
+        XCTAssertTrue(
+            appDefault.systemSpeakerDetectionEnabled(
+                capturedEnabled: nil,
+                storedEnabled: true
+            )
+        )
+
+        let forcedOn = try RetranscribeCommand.parse(base + ["--speaker-detection", "on"])
+        XCTAssertTrue(forcedOn.systemSpeakerDetectionEnabled(capturedEnabled: false, storedEnabled: false))
+
+        for options in [["--speaker-detection", "off"], ["--no-diarize"]] {
+            let command = try RetranscribeCommand.parse(base + options)
+            XCTAssertFalse(command.systemSpeakerDetectionEnabled(capturedEnabled: true, storedEnabled: true))
+        }
+    }
+
     func testRequiresExplicitUpdateConfirmation() {
         XCTAssertThrowsError(try RetranscribeCommand.parse(["abcd"])) { error in
             XCTAssertTrue(String(describing: error).contains("Pass --update"), String(describing: error))

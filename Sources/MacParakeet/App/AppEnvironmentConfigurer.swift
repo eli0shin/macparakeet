@@ -328,6 +328,14 @@ final class AppEnvironmentConfigurer {
             sttManager: env.sttScheduler,
             speechEngineSelectionProvider: { SpeechEngineSelection.liveSpeech() },
             meetingAudioSourceModeProvider: { env.runtimePreferences.meetingAudioSourceMode },
+            onSpeakerDetectionDefaultChanged: { [settingsViewModel = self.settingsViewModel] source, enabled in
+                switch source {
+                case .system:
+                    settingsViewModel.meetingSpeakerDiarization = enabled
+                case .microphone:
+                    settingsViewModel.microphoneSpeakerDetection = enabled
+                }
+            },
             shouldShowFloatingMeetingPill: { env.runtimePreferences.shouldShowMeetingRecordingPill },
             probableCalendarSnapshotProvider: {
                 calendarCoordinator?.probableSnapshotForManualStart()

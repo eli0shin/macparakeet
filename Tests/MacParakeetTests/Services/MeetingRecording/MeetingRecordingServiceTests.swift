@@ -259,6 +259,114 @@ final class MeetingRecordingServiceTests: XCTestCase {
         XCTAssertTrue(try MeetingRecordingMetadataStore.load(from: output.folderURL).microphoneSpeakerDetection)
     }
 
+    func testActiveMeetingSpeakerDetectionChangesAreIndependentAndPersisted() async throws {
+        let capture = MockMeetingAudioCaptureService()
+        let locks = RecordingLockFileStore()
+        let service = MeetingRecordingService(
+            systemSpeakerDetection: { true },
+            microphoneSpeakerDetection: { false },
+            audioCaptureService: capture,
+            audioConverter: MockMeetingAudioFileConverter(),
+            sttTranscriber: CountingMeetingSTTClient(),
+            lockFileStore: locks
+        )
+
+        try await service.startRecording(title: nil, sourceMode: .microphoneAndSystem)
+        var state = await service.activeSpeakerDetectionState
+        XCTAssertEqual(state.systemAudioEnabled, true)
+        XCTAssertEqual(state.microphoneEnabled, false)
+        XCTAssertTrue(state.canDetectSystemAudio)
+        XCTAssertTrue(state.canDetectMicrophone)
+
+        state = try await service.setSpeakerDetection(false, for: .system)
+        XCTAssertEqual(state.systemAudioEnabled, false)
+        XCTAssertEqual(state.microphoneEnabled, false)
+        XCTAssertEqual(locks.writes.last?.file.systemSpeakerDetection, false)
+
+        state = try await service.setSpeakerDetection(true, for: .microphone)
+        XCTAssertEqual(state.systemAudioEnabled, false)
+        XCTAssertEqual(state.microphoneEnabled, true)
+        XCTAssertEqual(locks.writes.last?.file.systemSpeakerDetection, false)
+        XCTAssertEqual(locks.writes.last?.file.microphoneSpeakerDetection, true)
+
+        let buffer = try XCTUnwrap(makeMonoFloatBuffer(frameCount: 4_800, sampleValue: 0.25))
+        let time = AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: 100))
+        await capture.yield(.microphoneBuffer(buffer, time))
+        await capture.yield(.systemBuffer(buffer, time))
+        let output = try await service.stopRecording()
+        defer { try? FileManager.default.removeItem(at: output.folderURL) }
+
+        XCTAssertEqual(output.systemSpeakerDetection, false)
+        XCTAssertTrue(output.microphoneSpeakerDetection)
+        let metadata = try MeetingRecordingMetadataStore.load(from: output.folderURL)
+        XCTAssertEqual(metadata.systemSpeakerDetection, false)
+        XCTAssertTrue(metadata.microphoneSpeakerDetection)
+        XCTAssertEqual(locks.writes.last?.file.systemSpeakerDetection, false)
+        XCTAssertTrue(locks.writes.last?.file.microphoneSpeakerDetection == true)
+    }
+
+    func testSpeakerDetectionChangeDoesNotApplyWhenLockPersistenceFails() async throws {
+        let locks = RecordingLockFileStore()
+        let service = MeetingRecordingService(
+            systemSpeakerDetection: { true },
+            audioCaptureService: MockMeetingAudioCaptureService(),
+            audioConverter: MockMeetingAudioFileConverter(),
+            sttTranscriber: CountingMeetingSTTClient(),
+            lockFileStore: locks
+        )
+
+        try await service.startRecording()
+        locks.errorToThrow = TestError.lockWriteFailed
+
+        do {
+            _ = try await service.setSpeakerDetection(false, for: .system)
+            XCTFail("Expected speaker-detection persistence failure")
+        } catch {
+            // Expected. The current session must retain its durable choice.
+        }
+
+        let state = await service.activeSpeakerDetectionState
+        XCTAssertTrue(state.systemAudioEnabled)
+        XCTAssertEqual(locks.writes.last?.file.systemSpeakerDetection, true)
+        locks.errorToThrow = nil
+        await service.cancelRecording()
+    }
+
+    func testMicrophoneOnlyMeetingDisablesSystemControlButUpdatesMicrophoneChoice() async throws {
+        let capture = MockMeetingAudioCaptureService(
+            startReport: MeetingAudioCaptureStartReport(
+                sourceMode: .microphoneOnly,
+                microphone: MeetingMicrophoneCaptureStartReport(
+                    requestedMode: .raw,
+                    effectiveMode: .raw
+                )
+            )
+        )
+        let locks = RecordingLockFileStore()
+        let service = MeetingRecordingService(
+            systemSpeakerDetection: { true },
+            microphoneSpeakerDetection: { false },
+            audioCaptureService: capture,
+            audioConverter: MockMeetingAudioFileConverter(),
+            sttTranscriber: CountingMeetingSTTClient(),
+            lockFileStore: locks
+        )
+
+        try await service.startRecording(title: nil, sourceMode: .microphoneOnly)
+        let writeCount = locks.writes.count
+        var state = try await service.setSpeakerDetection(false, for: .system)
+        XCTAssertEqual(locks.writes.count, writeCount)
+        XCTAssertFalse(state.canDetectSystemAudio)
+        XCTAssertTrue(state.systemAudioEnabled)
+
+        state = try await service.setSpeakerDetection(true, for: .microphone)
+        XCTAssertTrue(state.canDetectMicrophone)
+        XCTAssertTrue(state.microphoneEnabled)
+        XCTAssertTrue(locks.writes.last?.file.microphoneSpeakerDetection == true)
+
+        await service.cancelRecording()
+    }
+
     func testStopRecordingKeepsAwaitingTranscriptionLockAfterStop() async throws {
         let captureService = MockMeetingAudioCaptureService()
         let lockStore = RecordingLockFileStore()

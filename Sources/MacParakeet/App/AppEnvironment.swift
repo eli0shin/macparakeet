@@ -169,6 +169,7 @@ final class AppEnvironment {
         )
         meetingRecordingLockFileStore = MeetingRecordingLockFileStore()
         meetingRecordingService = MeetingRecordingService(
+            systemSpeakerDetection: { UserDefaultsAppRuntimePreferences.meetingSpeakerDiarizationEnabled() },
             microphoneSpeakerDetection: { UserDefaultsAppRuntimePreferences.microphoneSpeakerDetectionEnabled() },
             micProcessingMode: meetingMicProcessingMode,
             audioCaptureService: MeetingAudioCaptureService(

@@ -50,6 +50,8 @@ Stable lock fields:
 - `state`
 - `finalizationLeaseId`
 - `speechEngine`
+- `systemSpeakerDetection`
+- `microphoneSpeakerDetection`
 - `notes`
 
 Stable states:
@@ -57,6 +59,12 @@ Stable states:
 - `recording`: capture may still be writing source audio.
 - `awaitingTranscription`: source/mixed audio has been finalized, but final
   transcription or recovery cleanup has not completed.
+
+The track-specific speaker-detection fields are backward-compatible additions.
+Active-meeting changes rewrite them through the recording actor with the other
+lock state. Missing system choices retain legacy current-default behavior;
+missing microphone choices default off. Recovery preserves both effective
+choices through finalization.
 
 `notes` is a backward-compatible additive field. Missing values decode to safe
 defaults, and malformed `notes` does not block recovery of the structural lock
