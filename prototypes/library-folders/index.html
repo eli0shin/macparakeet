@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Library Folders Prototype — MacParakeet</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #242624;
+      --muted: #686b66;
+      --faint: #62655f;
+      --line: #dedfda;
+      --paper: #fbfaf7;
+      --chrome: #ebeae6;
+      --surface: #fff;
+      --accent: #e86b3b;
+      --accent-soft: #fff0e9;
+      --blue: #3f7295;
+      --green: #377762;
+      --danger: #b84032;
+      --shadow: 0 16px 48px rgb(25 28 25 / 16%);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); }
+    button, input, select { font: inherit; }
+    button { color: inherit; }
+    .app { display: grid; grid-template-columns: 184px minmax(0, 1fr); min-height: 100vh; }
+    .app-sidebar { position: sticky; top: 0; height: 100vh; padding: 18px 12px; border-right: 1px solid #d4d3cf; background: var(--chrome); }
+    .brand { display: flex; align-items: center; gap: 9px; padding: 3px 8px 22px; font-size: 14px; font-weight: 750; }
+    .brand-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: #35160c; }
+    .app-nav { margin: 2px 0; padding: 8px 10px; border-radius: 7px; color: #555752; font-size: 13px; }
+    .app-nav.active { background: #d5d4d0; color: var(--ink); font-weight: 680; }
+    main { min-width: 0; padding: 26px 34px 132px; }
+    .page { max-width: 1180px; margin: auto; }
+    .header { display: flex; align-items: center; gap: 20px; }
+    h1 { margin: 0; font-size: 27px; letter-spacing: -.025em; }
+    .header-actions { display: flex; gap: 8px; margin-left: auto; }
+    .button { padding: 7px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; font-size: 12px; font-weight: 620; }
+    .button:hover { border-color: #b9bbb5; background: #f7f7f4; }
+    .button.primary { border-color: var(--accent); background: var(--accent); color: #38170b; }
+    .button.danger { border-color: #e5bbb5; color: var(--danger); }
+    .button:disabled { cursor: default; opacity: .42; }
+    .search { width: min(300px, 35vw); padding: 8px 11px; border: 1px solid var(--line); border-radius: 8px; outline: none; background: var(--surface); font-size: 12px; }
+    .search:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+    .prototype-note { display: flex; justify-content: space-between; gap: 20px; margin: 16px 0; padding: 9px 11px; border: 1px dashed #c9a28e; border-radius: 8px; background: #fff7f1; color: #6b4d40; font-size: 11px; }
+    .workspace { min-height: 610px; }
+    .view-title { display: flex; align-items: center; gap: 8px; min-height: 35px; margin-bottom: 12px; }
+    .view-title h2 { margin: 0; font-size: 18px; }
+    .count { color: var(--muted); font-size: 11px; }
+    .crumb { border: 0; background: transparent; color: var(--blue); cursor: pointer; padding: 2px; font-size: 12px; }
+    .empty { padding: 70px 20px; color: var(--muted); text-align: center; }
+    .item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 12px; }
+    .item-card { position: relative; min-height: 152px; padding: 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); cursor: pointer; }
+    .item-card:hover { box-shadow: 0 6px 20px rgb(20 24 20 / 8%); }
+    .item-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+    .item-card .check { position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 19px; height: 19px; border: 1px solid #bbbdb7; border-radius: 50%; background: white; font-size: 11px; }
+    .item-card.selected .check { border-color: var(--accent); background: var(--accent); }
+    .item-menu { position: absolute; z-index: 2; top: 8px; right: 8px; width: 25px; height: 25px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-weight: 800; }
+    .item-menu:hover { background: #efefeb; color: var(--ink); }
+    .table-row .item-menu { position: static; justify-self: end; }
+    .kind { color: var(--muted); font-size: 10px; font-weight: 720; letter-spacing: .05em; text-transform: uppercase; }
+    .item-card h3 { margin: 22px 0 7px; font-size: 14px; line-height: 1.25; }
+    .snippet { color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .meta { position: absolute; bottom: 12px; left: 14px; right: 14px; display: flex; justify-content: space-between; color: var(--faint); font-size: 9px; }
+    .bulk-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 10px; border-radius: 9px; background: var(--accent-soft); font-size: 11px; }
+    .bulk-bar strong { margin-right: auto; }
+    .folder-button { width: 100%; border: 0; background: transparent; cursor: pointer; text-align: left; }
+    .folder-button.active { color: #9b3d1b; font-weight: 700; }
+    .folder-row { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 4px 7px; border-radius: 6px; font-size: 12px; }
+    .folder-row:hover { background: rgb(0 0 0 / 4%); }
+    .folder-row small { margin-left: auto; color: var(--faint); }
+    .tree-children { padding-left: 15px; }
+
+    /* A: Finder-like split workspace with a permanent folder tree. */
+    .variant-tree .library-frame { display: grid; grid-template-columns: 214px minmax(0, 1fr); min-height: 580px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: white; }
+    .variant-tree .folder-pane { padding: 13px 9px; border-right: 1px solid var(--line); background: #f1f0ec; }
+    .pane-label { padding: 4px 7px 7px; color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+    .variant-tree .content-pane { padding: 18px; }
+    .variant-tree .folder-actions { display: flex; gap: 5px; margin-top: 14px; padding: 10px 6px 0; border-top: 1px solid var(--line); }
+    .mini { padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: white; cursor: pointer; font-size: 10px; }
+
+    /* B: folders are the primary content, with a spatial overview above items. */
+    .variant-overview .builtins { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+    .builtin-card { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 11px; background: white; cursor: pointer; }
+    .builtin-card.active { border-color: var(--accent); background: var(--accent-soft); }
+    .builtin-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: #efefeb; font-size: 19px; }
+    .builtin-card strong { display: block; font-size: 13px; }
+    .builtin-card small { color: var(--muted); font-size: 10px; }
+    .section-head { display: flex; align-items: center; margin: 18px 0 9px; }
+    .section-head h3 { margin: 0; font-size: 12px; }
+    .section-head button { margin-left: auto; }
+    .folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+    .folder-tile { min-height: 104px; padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: linear-gradient(145deg, #fff, #f5f4f0); cursor: pointer; }
+    .folder-tile:hover { border-color: #bbbdb7; }
+    .folder-tile .folder-icon { color: #d38a3f; font-size: 25px; }
+    .folder-tile strong { display: block; margin-top: 8px; font-size: 12px; }
+    .folder-tile small { color: var(--muted); font-size: 9px; }
+    .variant-overview .item-card { min-height: 138px; }
+
+    /* C: dense transcript table; folder is navigation and row metadata. */
+    .variant-list .list-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 11px; }
+    .folder-select { min-width: 220px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: white; font-size: 11px; }
+    .table { overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: white; }
+    .table-row { display: grid; grid-template-columns: 30px minmax(210px, 2fr) 100px minmax(120px, 1fr) 85px; align-items: center; min-height: 48px; padding: 0 10px; border-bottom: 1px solid #ecece8; font-size: 11px; }
+    .table-row:last-child { border-bottom: 0; }
+    .table-row.header-row { min-height: 34px; background: #f2f1ed; color: var(--muted); font-size: 9px; font-weight: 730; letter-spacing: .04em; text-transform: uppercase; }
+    .table-row.selected { background: var(--accent-soft); }
+    .row-check { width: 17px; height: 17px; border: 1px solid #b9bbb5; border-radius: 50%; background: white; cursor: pointer; }
+    .row-check.checked { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 4px white; }
+    .title-cell strong { display: block; font-size: 11px; }
+    .title-cell small, .folder-cell { color: var(--muted); font-size: 9px; }
+    .folder-browser { display: flex; gap: 5px; overflow-x: auto; margin: 10px 0 14px; padding-bottom: 4px; }
+    .path-chip { flex: 0 0 auto; padding: 5px 8px; border: 1px solid var(--line); border-radius: 999px; background: white; cursor: pointer; font-size: 10px; }
+    .path-chip.active { border-color: var(--accent); color: #9b3d1b; }
+
+    .state-panel { position: fixed; z-index: 8; left: 12px; bottom: 76px; width: 160px; max-height: 285px; overflow: auto; padding: 9px; border: 1px solid #4e514d; border-radius: 10px; background: rgb(34 37 34 / 95%); color: #f2f3ef; box-shadow: var(--shadow); font: 9px ui-monospace, SFMono-Regular, monospace; }
+    .state-panel summary { cursor: pointer; font-family: -apple-system, sans-serif; font-size: 11px; font-weight: 700; }
+    .state-panel pre { margin: 9px 0 0; white-space: pre-wrap; color: #cdd2cc; }
+    .switcher { position: fixed; z-index: 20; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 7px; padding: 7px; border-radius: 15px; background: #202220; color: white; box-shadow: 0 10px 34px rgb(0 0 0 / 28%); }
+    .switcher button { width: 34px; height: 34px; border: 0; border-radius: 9px; background: #3a3d3a; color: white; cursor: pointer; }
+    .switcher button:hover { background: #505450; }
+    .variant-label { min-width: 230px; text-align: center; }
+    .variant-label strong { display: block; font-size: 12px; }
+    .variant-label span { color: #b6bbb6; font-size: 9px; }
+    .dialog-backdrop { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; background: rgb(20 22 20 / 30%); }
+    .dialog { width: min(390px, calc(100vw - 30px)); padding: 18px; border: 1px solid var(--line); border-radius: 13px; background: white; box-shadow: var(--shadow); }
+    .dialog h2 { margin: 0 0 7px; font-size: 17px; }
+    .dialog p { color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .dialog input, .dialog select { width: 100%; margin: 7px 0; padding: 8px 9px; border: 1px solid var(--line); border-radius: 7px; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 13px; }
+    .folder-choice { display: block; width: 100%; margin: 4px 0; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: white; cursor: pointer; text-align: left; font-size: 11px; }
+    .folder-choice:hover { background: var(--accent-soft); }
+    .toast { position: fixed; z-index: 40; top: 18px; left: 50%; transform: translateX(-50%); padding: 9px 13px; border-radius: 8px; background: #303430; color: white; box-shadow: var(--shadow); font-size: 11px; }
+    @media (max-width: 850px) {
+      .app { grid-template-columns: 1fr; }
+      .app-sidebar { display: none; }
+      main { padding: 20px 14px 130px; }
+      .header { flex-wrap: wrap; }
+      .header-actions { width: 100%; margin-left: 0; }
+      .search { flex: 1; width: auto; }
+      .variant-tree .library-frame { grid-template-columns: 165px minmax(0, 1fr); }
+      .table-row { grid-template-columns: 28px minmax(170px, 2fr) 90px 1fr; }
+      .table-row > :last-child { display: none; }
+      .state-panel { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="app-sidebar" aria-label="Application preview navigation">
+      <div class="brand"><span class="brand-mark">M</span> MacParakeet</div>
+      <div class="app-nav">⌁ Transcribe</div>
+      <div class="app-nav active">▦ Library</div>
+      <div class="app-nav">◷ Dictations</div>
+      <div class="app-nav">♬ Meetings</div>
+      <div class="app-nav">✦ Transforms</div>
+      <div class="app-nav">⚙ Settings</div>
+    </aside>
+    <main>
+      <div class="page">
+        <header class="header">
+          <h1>Library</h1>
+          <div class="header-actions">
+            <input class="search" id="search" type="search" placeholder="Search all Library items" aria-label="Search Library">
+            <button class="button" id="new-folder">＋ Folder</button>
+            <button class="button" id="select-many">Select</button>
+          </div>
+        </header>
+        <div class="prototype-note"><strong>THROWAWAY PROTOTYPE — synthetic Library only</strong><span>Three layouts share one in-memory state. Reload to reset. No saving, analytics, or network use.</span></div>
+        <section id="workspace" class="workspace" aria-live="polite"></section>
+      </div>
+    </main>
+  </div>
+  <details class="state-panel" open><summary>Visible prototype state</summary><pre id="state"></pre></details>
+  <nav class="switcher" aria-label="Prototype variant switcher">
+    <button id="previous" aria-label="Previous variant">←</button>
+    <div class="variant-label"><strong id="variant-name"></strong><span>Click or use Left and Right Arrow keys</span></div>
+    <button id="next" aria-label="Next variant">→</button>
+  </nav>
+  <div id="overlay"></div>
+
+  <script>
+    // Three Library-folder variants, switchable with ?variant=, inside a native-app browser facsimile.
+    const variants = Object.freeze([
+      { key: "tree", name: "A — Sidebar folder tree", className: "variant-tree" },
+      { key: "overview", name: "B — Folder-first overview", className: "variant-overview" },
+      { key: "list", name: "C — List-first navigator", className: "variant-list" }
+    ]);
+    const initialFolders = Object.freeze([
+      { id: "product", name: "Product", parentId: null },
+      { id: "research", name: "Research", parentId: null },
+      { id: "speech", name: "Speech models", parentId: "research" }
+    ]);
+    const initialItems = Object.freeze([
+      { id: "m1", title: "Weekly planning — September 8", kind: "Meeting", date: "Today, 10:02 AM", duration: "42 min", snippet: "Roadmap, launch checks, and next sprint ownership", folderId: null },
+      { id: "m2", title: "Design critique: onboarding", kind: "Meeting", date: "Yesterday", duration: "31 min", snippet: "Review of first-run language and model choices", folderId: null },
+      { id: "m3", title: "Release readiness sync", kind: "Meeting", date: "Sep 5", duration: "27 min", snippet: "Final validation, support copy, and rollout gates", folderId: null },
+      { id: "m4", title: "Customer interview — local privacy", kind: "Meeting", date: "Sep 3", duration: "48 min", snippet: "How local-first speech tools fit daily work", folderId: null },
+      { id: "f1", title: "field-notes.m4a", kind: "Imported audio", date: "Sep 2", duration: "18 min", snippet: "Observations from the prototype qualification", folderId: null },
+      { id: "v1", title: "FluidAudio architecture talk", kind: "Video", date: "Aug 29", duration: "56 min", snippet: "CoreML scheduling and local inference", folderId: null },
+      { id: "p1", title: "The future of private speech tools", kind: "Podcast", date: "Aug 27", duration: "1 hr 12 min", snippet: "Product design and on-device models", folderId: null },
+      { id: "f2", title: "research-interview.wav", kind: "Imported audio", date: "Aug 25", duration: "36 min", snippet: "Synthetic interview transcript for layout density", folderId: null },
+      { id: "m5", title: "Accessibility review", kind: "Meeting", date: "Aug 22", duration: "24 min", snippet: "Keyboard navigation and VoiceOver findings", folderId: null },
+      { id: "v2", title: "Swift concurrency session", kind: "Video", date: "Aug 18", duration: "44 min", snippet: "Actor isolation patterns for desktop apps", folderId: null }
+    ]);
+
+    let folders = initialFolders.map(folder => ({ ...folder }));
+    let items = initialItems.map(item => ({ ...item }));
+    let currentView = "root";
+    let selected = new Set();
+    let selectionMode = false;
+    let searchText = "";
+    let events = ["Loaded 10 existing items at the Library root"];
+    let toastTimer;
+
+    const workspace = document.getElementById("workspace");
+    const overlay = document.getElementById("overlay");
+    const search = document.getElementById("search");
+
+    function variant() {
+      const requested = new URLSearchParams(location.search).get("variant") || "tree";
+      return variants.find(entry => entry.key === requested) || variants[0];
+    }
+    function setVariant(index) {
+      const next = variants[(index + variants.length) % variants.length];
+      const url = new URL(location.href);
+      url.searchParams.set("variant", next.key);
+      history.replaceState({}, "", url);
+      render();
+    }
+    function folderById(id) { return folders.find(folder => folder.id === id); }
+    function childFolders(parentId) { return folders.filter(folder => folder.parentId === parentId); }
+    function folderDepth(folder) {
+      let depth = 0, cursor = folder;
+      while (cursor && cursor.parentId) { depth += 1; cursor = folderById(cursor.parentId); }
+      return depth;
+    }
+    function descendants(id) {
+      const found = [];
+      function visit(parent) { childFolders(parent).forEach(child => { found.push(child.id); visit(child.id); }); }
+      visit(id);
+      return found;
+    }
+    function pathFor(id) {
+      const path = [];
+      let cursor = folderById(id);
+      while (cursor) { path.unshift(cursor); cursor = folderById(cursor.parentId); }
+      return path;
+    }
+    function folderLabel(id) { return id ? pathFor(id).map(folder => folder.name).join(" / ") : "Library"; }
+    function viewItems() {
+      if (searchText) {
+        const query = searchText.toLowerCase();
+        return items.filter(item => `${item.title} ${item.kind} ${item.snippet} ${folderLabel(item.folderId)}`.toLowerCase().includes(query));
+      }
+      if (currentView === "root") return items.filter(item => item.folderId === null);
+      if (currentView !== "all") return items.filter(item => item.folderId === currentView);
+      return items;
+    }
+    function itemCountInTree(id) {
+      const ids = new Set([id, ...descendants(id)]);
+      return items.filter(item => ids.has(item.folderId)).length;
+    }
+    function viewName() {
+      if (currentView === "all") return "All Items";
+      if (currentView === "root") return "Library";
+      return folderLabel(currentView);
+    }
+    function escapeHTML(value) {
+      return String(value).replace(/[&<>'"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
+    }
+    function record(message) { events.unshift(message); events = events.slice(0, 6); }
+    function notify(message) {
+      clearTimeout(toastTimer);
+      document.querySelector(".toast")?.remove();
+      const node = document.createElement("div");
+      node.className = "toast";
+      node.textContent = message;
+      document.body.appendChild(node);
+      toastTimer = setTimeout(() => node.remove(), 2400);
+    }
+
+    function builtInRows() {
+      return `
+        <button class="folder-button ${currentView === "root" ? "active" : ""}" data-view="root"><span class="folder-row">▰ Library <small>${items.filter(item => item.folderId === null).length}</small></span></button>
+        <button class="folder-button ${currentView === "all" ? "active" : ""}" data-view="all"><span class="folder-row">▦ All Items <small>${items.length}</small></span></button>`;
+    }
+    function treeRows(parentId = null) {
+      return childFolders(parentId).map(folder => `
+        <div>
+          <button class="folder-button ${currentView === folder.id ? "active" : ""}" data-view="${folder.id}"><span class="folder-row">▾ 📁 ${escapeHTML(folder.name)} <small>${itemCountInTree(folder.id)}</small></span></button>
+          <div class="tree-children">${treeRows(folder.id)}</div>
+        </div>`).join("");
+    }
+    function crumbs() {
+      if (currentView === "root" || currentView === "all") return "";
+      return `<button class="crumb" data-view="root">Library</button> ${pathFor(currentView).map(folder => `› <button class="crumb" data-view="${folder.id}">${escapeHTML(folder.name)}</button>`).join(" ")}`;
+    }
+    function bulkBar() {
+      if (!selectionMode) return "";
+      return `<div class="bulk-bar"><strong>${selected.size} selected</strong><button class="button" data-action="select-visible">Select All Visible</button><button class="button" data-action="move" ${selected.size ? "" : "disabled"}>Move to…</button><button class="button" data-action="cancel-selection">Cancel</button></div>`;
+    }
+    function itemCards() {
+      const visible = viewItems();
+      if (!visible.length) return `<div class="empty"><strong>No items here</strong><br><small>${searchText ? "Try another search." : "Move Library items into this folder, or choose another view."}</small></div>`;
+      return `<div class="item-grid">${visible.map(item => `
+        <article class="item-card ${selected.has(item.id) ? "selected" : ""}" data-item="${item.id}" tabindex="0">
+          ${selectionMode ? `<span class="check">${selected.has(item.id) ? "✓" : ""}</span>` : `<button class="item-menu" data-item-menu="${item.id}" aria-label="Actions for ${escapeHTML(item.title)}">•••</button>`}
+          <div class="kind">${escapeHTML(item.kind)}</div>
+          <h3>${escapeHTML(item.title)}</h3>
+          <div class="snippet">${escapeHTML(item.snippet)}</div>
+          <div class="meta"><span>${escapeHTML(item.date)} · ${escapeHTML(item.duration)}</span><span>${escapeHTML(folderLabel(item.folderId))}</span></div>
+        </article>`).join("")}</div>`;
+    }
+
+    function renderTree() {
+      return `<div class="library-frame">
+        <aside class="folder-pane" aria-label="Library folders">
+          <div class="pane-label">Library</div>${builtInRows()}
+          <div class="pane-label" style="margin-top:13px">Folders</div>${treeRows() || `<div class="folder-row" style="color:var(--muted)">No folders</div>`}
+          <div class="folder-actions"><button class="mini" data-action="new-folder">＋ Folder</button>${currentView !== "root" && currentView !== "all" ? `<button class="mini" data-action="delete-folder">Delete…</button>` : ""}</div>
+        </aside>
+        <section class="content-pane"><div class="view-title"><div><h2>${escapeHTML(viewName())}</h2>${crumbs()}</div><span class="count">${viewItems().length} shown</span></div>${bulkBar()}${itemCards()}</section>
+      </div>`;
+    }
+    function overviewFolderTiles() {
+      const parentId = currentView === "root" || currentView === "all" ? null : currentView;
+      const children = childFolders(parentId);
+      if (!children.length) return `<div class="empty" style="padding:25px">No folders at this level</div>`;
+      return `<div class="folder-grid">${children.map(folder => `<button class="folder-tile" data-view="${folder.id}"><span class="folder-icon">▰</span><strong>${escapeHTML(folder.name)}</strong><small>${childFolders(folder.id).length} folders inside · ${itemCountInTree(folder.id)} items</small></button>`).join("")}</div>`;
+    }
+    function renderOverview() {
+      return `<div class="builtins">
+          <button class="builtin-card ${currentView === "root" ? "active" : ""}" data-view="root"><span class="builtin-icon">▰</span><span><strong>Library</strong><small>${items.filter(item => item.folderId === null).length} items at the top level</small></span></button>
+          <button class="builtin-card ${currentView === "all" ? "active" : ""}" data-view="all"><span class="builtin-icon">▦</span><span><strong>All Items</strong><small>${items.length} items across every folder</small></span></button>
+        </div>
+        <div class="view-title"><div><h2>${escapeHTML(viewName())}</h2>${crumbs()}</div></div>
+        <section><div class="section-head"><h3>Folders here</h3>${currentView !== "root" && currentView !== "all" ? `<button class="mini" data-action="delete-folder">Delete Folder…</button>` : ""}<button class="mini" data-action="new-folder">＋ Folder</button></div>${overviewFolderTiles()}</section>
+        <section><div class="section-head"><h3>${currentView === "all" ? "Every Library item" : "Items directly in this folder"}</h3><span class="count">${viewItems().length} shown</span></div>${bulkBar()}${itemCards()}</section>`;
+    }
+    function listFolderOptions() {
+      return `<option value="root" ${currentView === "root" ? "selected" : ""}>Library</option><option value="all" ${currentView === "all" ? "selected" : ""}>All Items</option>${folders.map(folder => `<option value="${folder.id}" ${currentView === folder.id ? "selected" : ""}>${"  ".repeat(folderDepth(folder) + 1)}${escapeHTML(folderLabel(folder.id))}</option>`).join("")}`;
+    }
+    function listRows() {
+      const visible = viewItems();
+      if (!visible.length) return `<div class="empty">No items match this folder and search.</div>`;
+      return visible.map(item => `<div class="table-row ${selected.has(item.id) ? "selected" : ""}" data-item="${item.id}">
+        ${selectionMode ? `<button class="row-check ${selected.has(item.id) ? "checked" : ""}" aria-label="Select ${escapeHTML(item.title)}"></button>` : `<span></span>`}
+        <span class="title-cell"><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.snippet)}</small></span>
+        <span>${escapeHTML(item.kind)}</span><span class="folder-cell">${escapeHTML(folderLabel(item.folderId))}</span><button class="item-menu" data-item-menu="${item.id}" aria-label="Actions for ${escapeHTML(item.title)}">•••</button>
+      </div>`).join("");
+    }
+    function renderList() {
+      return `<div class="list-toolbar"><select class="folder-select" id="folder-navigator" aria-label="Current folder">${listFolderOptions()}</select><button class="button" data-action="new-folder">＋ Folder</button><button class="button danger" data-action="delete-folder" ${currentView === "root" || currentView === "all" ? "disabled" : ""}>Delete Folder…</button></div>
+        <div class="folder-browser"><button class="path-chip ${currentView === "root" ? "active" : ""}" data-view="root">Library</button><button class="path-chip ${currentView === "all" ? "active" : ""}" data-view="all">All Items</button>${folders.map(folder => `<button class="path-chip ${currentView === folder.id ? "active" : ""}" data-view="${folder.id}">${"↳ ".repeat(folderDepth(folder))}${escapeHTML(folder.name)}</button>`).join("")}</div>
+        ${bulkBar()}
+        <div class="table"><div class="table-row header-row"><span></span><span>Title</span><span>Type</span><span>Folder</span><span>Actions</span></div>${listRows()}</div>`;
+    }
+
+    function renderState() {
+      const sprint = folders.find(folder => folder.name === "Sprint Planning");
+      const sprintCreated = Boolean(sprint) || events.some(event => event.startsWith("Created Sprint Planning"));
+      const nested = Boolean(sprint && childFolders(sprint.id).length) || events.some(event => event.includes("inside Sprint Planning"));
+      const movedMeetings = items.filter(item => item.kind === "Meeting" && item.folderId !== null).length;
+      const movedThreeMeetings = movedMeetings >= 3 || events.some(event => event.startsWith("Moved 3 items"));
+      const retainedAfterDelete = !sprint && events.some(event => event.startsWith("Deleted Sprint Planning"));
+      document.getElementById("state").textContent = [
+        `view: ${viewName()}`,
+        `folders: ${folders.length}`,
+        ...folders.map(folder => `  ${"  ".repeat(folderDepth(folder))}• ${folder.name} (${itemCountInTree(folder.id)} tree items)`),
+        `Library root items: ${items.filter(item => item.folderId === null).length}`,
+        `selected: ${selected.size ? [...selected].join(", ") : "none"}`,
+        "",
+        "Demo progress:",
+        `${sprintCreated ? "✓" : "○"} Create Sprint Planning`,
+        `${nested ? "✓" : "○"} Open it and create a folder inside`,
+        `${movedThreeMeetings ? "✓" : "○"} Move three meetings into folders`,
+        `${retainedAfterDelete ? "✓" : "○"} Delete its tree; retain its items`,
+        "",
+        "Recent state changes:",
+        ...events.map(event => `• ${event}`)
+      ].join("\n");
+    }
+    function render() {
+      const active = variant();
+      workspace.className = `workspace ${active.className}`;
+      workspace.innerHTML = active.key === "tree" ? renderTree() : active.key === "overview" ? renderOverview() : renderList();
+      document.getElementById("variant-name").textContent = active.name;
+      document.getElementById("select-many").textContent = selectionMode ? "Cancel" : "Select";
+      bindWorkspace();
+      renderState();
+    }
+
+    function bindWorkspace() {
+      workspace.querySelectorAll("[data-view]").forEach(button => button.addEventListener("click", () => { currentView = button.dataset.view; selected.clear(); render(); }));
+      workspace.querySelectorAll("[data-item]").forEach(node => node.addEventListener("click", event => {
+        if (event.target.closest("[data-item-menu]")) return;
+        if (!selectionMode) { notify("Opened recording detail (represented only as navigation in this folder prototype)."); return; }
+        const id = node.dataset.item;
+        selected.has(id) ? selected.delete(id) : selected.add(id);
+        render();
+      }));
+      workspace.querySelectorAll("[data-item-menu]").forEach(button => button.addEventListener("click", event => {
+        event.stopPropagation();
+        showItemActions(button.dataset.itemMenu);
+      }));
+      workspace.querySelectorAll("[data-action]").forEach(button => button.addEventListener("click", event => {
+        event.stopPropagation();
+        const action = button.dataset.action;
+        if (action === "new-folder") showCreateDialog(currentView === "root" || currentView === "all" ? null : currentView);
+        if (action === "select-visible") { viewItems().forEach(item => selected.add(item.id)); render(); }
+        if (action === "move") showMoveDialog();
+        if (action === "cancel-selection") { selectionMode = false; selected.clear(); render(); }
+        if (action === "delete-folder") showDeleteDialog(currentView);
+      }));
+      workspace.querySelector("#folder-navigator")?.addEventListener("change", event => { currentView = event.target.value; selected.clear(); render(); });
+    }
+
+    function showDialog(content) { overlay.innerHTML = `<div class="dialog-backdrop"><section class="dialog">${content}</section></div>`; overlay.querySelector("[data-close]")?.addEventListener("click", closeDialog); }
+    function closeDialog() { overlay.innerHTML = ""; }
+    function showCreateDialog(parentId) {
+      showDialog(`<h2>New folder</h2><p>${parentId ? `Create a folder inside <strong>${escapeHTML(folderLabel(parentId))}</strong>.` : "Create a folder at the top level of Library."} Folder state stays in memory only.</p><input id="folder-name" value="${parentId ? "Agenda and decisions" : "Sprint Planning"}" aria-label="Folder name"><div class="dialog-actions"><button class="button" data-close>Cancel</button><button class="button primary" id="confirm-create">Create</button></div>`);
+      const input = document.getElementById("folder-name"); input.focus(); input.select();
+      document.getElementById("confirm-create").addEventListener("click", () => {
+        const name = input.value.trim();
+        if (!name) return;
+        const id = `folder-${Date.now()}`;
+        folders.push({ id, name, parentId });
+        currentView = id;
+        record(`Created ${name}${parentId ? ` inside ${folderLabel(parentId)}` : ""}`);
+        closeDialog(); render(); notify(`Created “${name}”`);
+      });
+    }
+    function moveChoices() {
+      return [{ id: null, name: "Library" }, ...folders.map(folder => ({ id: folder.id, name: folderLabel(folder.id) }))];
+    }
+    function moveItems(itemIDs) {
+      showDialog(`<h2>Move ${itemIDs.length === 1 ? "recording" : `${itemIDs.length} items`}</h2><p>Choose a folder. Moving does not delete or duplicate Library items.</p><div>${moveChoices().map(choice => `<button class="folder-choice" data-destination="${choice.id || "root"}">📁 ${escapeHTML(choice.name)}</button>`).join("")}</div><div class="dialog-actions"><button class="button" data-close>Cancel</button></div>`);
+      overlay.querySelectorAll("[data-destination]").forEach(button => button.addEventListener("click", () => {
+        const destination = button.dataset.destination === "root" ? null : button.dataset.destination;
+        items.forEach(item => { if (itemIDs.includes(item.id)) item.folderId = destination; });
+        record(`Moved ${itemIDs.length} item${itemIDs.length === 1 ? "" : "s"} to ${folderLabel(destination)}`);
+        selected.clear(); selectionMode = false; currentView = destination || "root";
+        closeDialog(); render(); notify(`Moved to ${folderLabel(destination)}`);
+      }));
+    }
+    function showMoveDialog() {
+      if (selected.size) moveItems([...selected]);
+    }
+    function showItemActions(itemID) {
+      const item = items.find(candidate => candidate.id === itemID);
+      if (!item) return;
+      showDialog(`<h2>${escapeHTML(item.title)}</h2><p>${escapeHTML(item.kind)} · ${escapeHTML(item.date)} · ${escapeHTML(folderLabel(item.folderId))}</p><button class="folder-choice" id="open-recording">Open recording</button><button class="folder-choice" id="move-recording">Move to folder…</button><div class="dialog-actions"><button class="button" data-close>Cancel</button></div>`);
+      document.getElementById("open-recording").addEventListener("click", () => { closeDialog(); notify("Opened recording detail (prototype navigation only)."); });
+      document.getElementById("move-recording").addEventListener("click", () => moveItems([itemID]));
+    }
+    function showDeleteDialog(folderId) {
+      if (!folderById(folderId)) return;
+      const ids = [folderId, ...descendants(folderId)];
+      const affected = items.filter(item => ids.includes(item.folderId));
+      const folderName = folderById(folderId).name;
+      showDialog(`<h2>Delete “${escapeHTML(folderName)}”?</h2><p>This deletes <strong>${ids.length} folder${ids.length === 1 ? "" : "s"}</strong>, including every folder inside it. It does <strong>not</strong> delete Library items.</p><p><strong>${affected.length} item${affected.length === 1 ? "" : "s"}</strong> will move back to the Library root. Deleting Library items is a separate action.</p><div class="dialog-actions"><button class="button" data-close>Cancel</button><button class="button danger" id="confirm-delete">Delete Folder${ids.length === 1 ? "" : "s"}</button></div>`);
+      document.getElementById("confirm-delete").addEventListener("click", () => {
+        items.forEach(item => { if (ids.includes(item.folderId)) item.folderId = null; });
+        folders = folders.filter(folder => !ids.includes(folder.id));
+        record(`Deleted ${folderName} tree; retained ${affected.length} items at the Library root`);
+        currentView = "root"; selected.clear(); selectionMode = false;
+        closeDialog(); render(); notify(`Deleted folders; kept ${affected.length} items in Library`);
+      });
+    }
+
+    document.getElementById("new-folder").addEventListener("click", () => showCreateDialog(currentView === "root" || currentView === "all" ? null : currentView));
+    document.getElementById("select-many").addEventListener("click", () => { selectionMode = !selectionMode; if (!selectionMode) selected.clear(); render(); });
+    search.addEventListener("input", event => { searchText = event.target.value.trim(); render(); });
+    document.getElementById("previous").addEventListener("click", () => setVariant(variants.indexOf(variant()) - 1));
+    document.getElementById("next").addEventListener("click", () => setVariant(variants.indexOf(variant()) + 1));
+    document.addEventListener("keydown", event => {
+      const tag = event.target.tagName;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || event.target.isContentEditable || overlay.innerHTML) return;
+      if (event.key === "ArrowLeft") setVariant(variants.indexOf(variant()) - 1);
+      if (event.key === "ArrowRight") setVariant(variants.indexOf(variant()) + 1);
+    });
+    window.addEventListener("popstate", render);
+    render();
+  </script>
+</body>
+</html>
