@@ -103,12 +103,12 @@ struct BulkTranscriptionSelectionBar: View {
 
     private var actionCluster: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: 6) {
                 utilityActions
                 destructiveActions
             }
 
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            VStack(alignment: .leading, spacing: 6) {
                 utilityActions
                 destructiveActions
             }
@@ -116,7 +116,7 @@ struct BulkTranscriptionSelectionBar: View {
     }
 
     private var utilityActions: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
+        HStack(spacing: 6) {
             cancelAction
             selectVisibleAction
             clearAction
@@ -126,7 +126,7 @@ struct BulkTranscriptionSelectionBar: View {
     }
 
     private var destructiveActions: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
+        HStack(spacing: 6) {
             if showsAudioAction {
                 deleteAudioAction
             }
@@ -135,7 +135,7 @@ struct BulkTranscriptionSelectionBar: View {
     }
 
     private var actionFlow: some View {
-        FlowLayout(spacing: DesignSystem.Spacing.sm) {
+        FlowLayout(spacing: 6) {
             cancelAction
             selectVisibleAction
             clearAction
@@ -238,14 +238,39 @@ private enum SelectionBarActionTone {
     case destructive
     case subtle
 
-    var actionRole: ParakeetActionRole {
+    func foreground(isHovered: Bool, isDisabled: Bool) -> Color {
+        if isDisabled { return DesignSystem.Colors.textTertiary }
         switch self {
         case .utility:
-            return .secondary
+            return isHovered ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary
         case .destructive:
-            return .destructive
+            return DesignSystem.Colors.errorRed
         case .subtle:
-            return .subtle
+            return isHovered ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary
+        }
+    }
+
+    func fill(isHovered: Bool) -> Color {
+        switch self {
+        case .utility:
+            return isHovered
+                ? DesignSystem.Colors.textPrimary.opacity(0.08)
+                : DesignSystem.Colors.surface.opacity(0.72)
+        case .destructive:
+            return DesignSystem.Colors.errorRed.opacity(isHovered ? 0.16 : 0.09)
+        case .subtle:
+            return isHovered ? DesignSystem.Colors.textPrimary.opacity(0.06) : .clear
+        }
+    }
+
+    var stroke: Color {
+        switch self {
+        case .utility:
+            return DesignSystem.Colors.border.opacity(0.7)
+        case .destructive:
+            return DesignSystem.Colors.errorRed.opacity(0.24)
+        case .subtle:
+            return .clear
         }
     }
 }
@@ -258,6 +283,8 @@ private struct SelectionBarActionButton: View {
     var usesEscapeShortcut: Bool = false
     var role: ButtonRole?
     let action: () -> Void
+
+    @State private var isHovered = false
 
     var body: some View {
         Group {
@@ -272,10 +299,39 @@ private struct SelectionBarActionButton: View {
 
     private var baseButton: some View {
         Button(role: role, action: action) {
-            Label(title, systemImage: systemImage)
-                .lineLimit(1)
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(title)
+                    .lineLimit(1)
+            }
+            .font(DesignSystem.Typography.bodySmall.weight(.semibold))
+            .foregroundStyle(tone.foreground(isHovered: isHovered, isDisabled: isDisabled))
+            .padding(.horizontal, tone == .subtle ? 8 : 11)
+            .frame(height: 30)
+            .background(
+                Capsule()
+                    .fill(tone.fill(isHovered: isHovered))
+            )
+            .overlay {
+                Capsule()
+                    .strokeBorder(tone.stroke, lineWidth: tone == .subtle ? 0 : 0.6)
+            }
+            .contentShape(Capsule())
         }
-        .parakeetAction(tone.actionRole)
+        .buttonStyle(.plain)
         .disabled(isDisabled)
+        .opacity(isDisabled ? 0.48 : 1)
+        .onHover { hovering in
+            isHovered = hovering && !isDisabled
+        }
+        .onChange(of: isDisabled) { _, _ in
+            if isDisabled {
+                isHovered = false
+            }
+        }
+        .pointingHandCursor(isActive: isHovered && !isDisabled)
+        .animation(DesignSystem.Animation.hoverTransition, value: isHovered)
+        .animation(DesignSystem.Animation.hoverTransition, value: isDisabled)
     }
 }

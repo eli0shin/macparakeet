@@ -50,7 +50,7 @@ struct TranscriptionLibraryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
-            HStack(spacing: DesignSystem.Spacing.sm) {
+            HStack {
                 Text(title)
                     .font(DesignSystem.Typography.pageTitle)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -58,13 +58,14 @@ struct TranscriptionLibraryView: View {
                 Spacer()
 
                 if usesFolderNavigation {
-                    Button {
+                    LibrarySecondaryActionButton(
+                        title: "New Folder",
+                        systemImage: "folder.badge.plus",
+                        accessibilityHint: "Creates a folder at the current Library location"
+                    ) {
                         newFolderName = ""
                         showingCreateFolder = true
-                    } label: {
-                        Label("Folder", systemImage: "plus")
                     }
-                    .parakeetAction(.secondary)
                     .help("Create a folder at the current Library location")
                 }
 
@@ -309,7 +310,7 @@ struct TranscriptionLibraryView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: DesignSystem.Spacing.sm) {
+                HStack(spacing: 6) {
                     Button("Library") { viewModel.selectLocation(.root) }
                         .buttonStyle(.plain)
                         .foregroundStyle(DesignSystem.Colors.accent)
@@ -338,7 +339,7 @@ struct TranscriptionLibraryView: View {
                         } label: {
                             Label("Delete Folder…", systemImage: "trash")
                         }
-                        .parakeetAction(.destructive)
+                        .parakeetAction(.secondary)
                         .help("Delete this folder tree and keep its Library items")
                     }
                 }
@@ -1389,19 +1390,96 @@ private struct LibraryFilterChip: View {
     }
 }
 
-/// The Library header's highest-priority action. The shared semantic role owns
-/// its sizing, typography, color, and interaction states.
+/// The Library header's primary "New Transcription" CTA. This is the accepted
+/// pre-#46 reference treatment: a filled coral capsule with a soft shadow that
+/// lifts on hover.
 private struct LibraryPrimaryActionButton: View {
     let title: String
     let action: () -> Void
 
+    @State private var isHovered = false
+
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: "plus")
+            HStack(spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .bold))
+                Text(title)
+                    .font(DesignSystem.Typography.bodySmall.weight(.semibold))
+            }
+            .foregroundStyle(DesignSystem.Colors.onAccent)
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, 9)
+            .background(Capsule().fill(DesignSystem.Colors.accent))
+            .shadow(
+                color: DesignSystem.Colors.accent.opacity(isHovered ? 0.45 : 0.26),
+                radius: isHovered ? 12 : 6,
+                x: 0,
+                y: isHovered ? 5 : 3
+            )
+            .scaleEffect(isHovered ? 1.035 : 1.0)
+            .animation(DesignSystem.Animation.hoverTransition, value: isHovered)
         }
-        .parakeetAction(.primaryProminent)
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .pointingHandCursor(isActive: isHovered)
         .accessibilityLabel(title)
         .accessibilityHint("Starts a new transcription")
+    }
+}
+
+/// A neutral companion to the accepted Library CTA. It shares the CTA's type,
+/// padding, capsule shape, and hover lift while keeping secondary actions quiet.
+private struct LibrarySecondaryActionButton: View {
+    let title: String
+    let systemImage: String
+    let accessibilityHint: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(title)
+                    .font(DesignSystem.Typography.bodySmall.weight(.semibold))
+            }
+            .foregroundStyle(
+                isHovered ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary
+            )
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, 9)
+            .background(
+                Capsule()
+                    .fill(
+                        isHovered
+                            ? DesignSystem.Colors.textPrimary.opacity(0.08)
+                            : DesignSystem.Colors.surface.opacity(0.72)
+                    )
+            )
+            .overlay {
+                Capsule()
+                    .strokeBorder(DesignSystem.Colors.border.opacity(0.8), lineWidth: 0.8)
+            }
+            .shadow(
+                color: Color.black.opacity(isHovered ? 0.10 : 0.05),
+                radius: isHovered ? 5 : 3,
+                y: 2
+            )
+            .scaleEffect(isHovered ? 1.035 : 1.0)
+            .animation(DesignSystem.Animation.hoverTransition, value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .pointingHandCursor(isActive: isHovered)
+        .accessibilityLabel(title)
+        .accessibilityHint(accessibilityHint)
     }
 }
 
@@ -1409,11 +1487,12 @@ private struct LibrarySelectManyButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            Label("Select", systemImage: "checklist")
-        }
-        .parakeetAction(.secondary)
+        LibrarySecondaryActionButton(
+            title: "Select",
+            systemImage: "checklist",
+            accessibilityHint: "Shows selection controls for bulk cleanup",
+            action: action
+        )
         .help("Select Library items")
-        .accessibilityHint("Shows selection controls for bulk cleanup")
     }
 }
