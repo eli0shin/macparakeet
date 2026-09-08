@@ -103,12 +103,12 @@ struct BulkTranscriptionSelectionBar: View {
 
     private var actionCluster: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: 6) {
                 utilityActions
                 destructiveActions
             }
 
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            VStack(alignment: .leading, spacing: 6) {
                 utilityActions
                 destructiveActions
             }
@@ -116,7 +116,7 @@ struct BulkTranscriptionSelectionBar: View {
     }
 
     private var utilityActions: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
+        HStack(spacing: 6) {
             cancelAction
             selectVisibleAction
             clearAction
@@ -126,7 +126,7 @@ struct BulkTranscriptionSelectionBar: View {
     }
 
     private var destructiveActions: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
+        HStack(spacing: 6) {
             if showsAudioAction {
                 deleteAudioAction
             }
@@ -135,7 +135,7 @@ struct BulkTranscriptionSelectionBar: View {
     }
 
     private var actionFlow: some View {
-        FlowLayout(spacing: DesignSystem.Spacing.sm) {
+        FlowLayout(spacing: 6) {
             cancelAction
             selectVisibleAction
             clearAction
@@ -168,7 +168,7 @@ struct BulkTranscriptionSelectionBar: View {
         SelectionBarActionButton(
             title: "Select All",
             systemImage: "checkmark.circle",
-            tone: .utility,
+            tone: .secondary,
             isDisabled: areAllVisibleSelected || isPerformingOperation,
             action: onSelectVisible
         )
@@ -178,7 +178,7 @@ struct BulkTranscriptionSelectionBar: View {
         SelectionBarActionButton(
             title: "Clear",
             systemImage: "xmark.circle",
-            tone: .utility,
+            tone: .secondary,
             isDisabled: selectedCount == 0 || isPerformingOperation,
             action: onClear
         )
@@ -190,7 +190,7 @@ struct BulkTranscriptionSelectionBar: View {
             SelectionBarActionButton(
                 title: "Move to…",
                 systemImage: "folder",
-                tone: .utility,
+                tone: .secondary,
                 isDisabled: selectedCount == 0 || isPerformingOperation,
                 action: onMove
             )
@@ -203,7 +203,7 @@ struct BulkTranscriptionSelectionBar: View {
             SelectionBarActionButton(
                 title: "Export...",
                 systemImage: "arrow.down.doc",
-                tone: .utility,
+                tone: .secondary,
                 isDisabled: isExportDisabled,
                 action: onExport
             )
@@ -233,27 +233,10 @@ struct BulkTranscriptionSelectionBar: View {
     }
 }
 
-private enum SelectionBarActionTone {
-    case utility
-    case destructive
-    case subtle
-
-    var actionRole: ParakeetActionRole {
-        switch self {
-        case .utility:
-            return .secondary
-        case .destructive:
-            return .destructive
-        case .subtle:
-            return .subtle
-        }
-    }
-}
-
 private struct SelectionBarActionButton: View {
     let title: String
     let systemImage: String
-    let tone: SelectionBarActionTone
+    let tone: LibraryActionTone
     var isDisabled: Bool = false
     var usesEscapeShortcut: Bool = false
     var role: ButtonRole?
@@ -271,11 +254,13 @@ private struct SelectionBarActionButton: View {
     }
 
     private var baseButton: some View {
-        Button(role: role, action: action) {
-            Label(title, systemImage: systemImage)
-                .lineLimit(1)
-        }
-        .parakeetAction(tone.actionRole)
-        .disabled(isDisabled)
+        LibraryActionButton(
+            title: title,
+            systemImage: systemImage,
+            tone: tone,
+            isDisabled: isDisabled,
+            role: role,
+            action: action
+        )
     }
 }
