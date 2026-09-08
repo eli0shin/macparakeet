@@ -50,7 +50,7 @@ struct TranscriptionLibraryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
-            HStack {
+            HStack(spacing: DesignSystem.Spacing.sm) {
                 Text(title)
                     .font(DesignSystem.Typography.pageTitle)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -309,7 +309,7 @@ struct TranscriptionLibraryView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 6) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
                     Button("Library") { viewModel.selectLocation(.root) }
                         .buttonStyle(.plain)
                         .foregroundStyle(DesignSystem.Colors.accent)
@@ -338,7 +338,7 @@ struct TranscriptionLibraryView: View {
                         } label: {
                             Label("Delete Folder…", systemImage: "trash")
                         }
-                        .parakeetAction(.secondary)
+                        .parakeetAction(.destructive)
                         .help("Delete this folder tree and keep its Library items")
                     }
                 }
@@ -1389,43 +1389,17 @@ private struct LibraryFilterChip: View {
     }
 }
 
-/// The Library header's primary "New Transcription" CTA — a filled coral capsule
-/// with a create glyph and a soft coral shadow that lifts on hover. Filled (not
-/// outline) because it's the single highest-priority action on the surface, and
-/// it carries the same hover idiom (scale + pointing-hand cursor) as the other
-/// polished buttons so the header reads as one system.
+/// The Library header's highest-priority action. The shared semantic role owns
+/// its sizing, typography, color, and interaction states.
 private struct LibraryPrimaryActionButton: View {
     let title: String
     let action: () -> Void
 
-    @State private var isHovered = false
-
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .bold))
-                Text(title)
-                    .font(DesignSystem.Typography.bodySmall.weight(.semibold))
-            }
-            .foregroundStyle(DesignSystem.Colors.onAccent)
-            .padding(.horizontal, DesignSystem.Spacing.md)
-            .padding(.vertical, 9)
-            .background(Capsule().fill(DesignSystem.Colors.accent))
-            .shadow(
-                color: DesignSystem.Colors.accent.opacity(isHovered ? 0.45 : 0.26),
-                radius: isHovered ? 12 : 6,
-                x: 0,
-                y: isHovered ? 5 : 3
-            )
-            .scaleEffect(isHovered ? 1.035 : 1.0)
-            .animation(DesignSystem.Animation.hoverTransition, value: isHovered)
+            Label(title, systemImage: "plus")
         }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovered = hovering
-        }
-        .pointingHandCursor(isActive: isHovered)
+        .parakeetAction(.primaryProminent)
         .accessibilityLabel(title)
         .accessibilityHint("Starts a new transcription")
     }
@@ -1437,7 +1411,6 @@ private struct LibrarySelectManyButton: View {
     var body: some View {
         Button(action: action) {
             Label("Select", systemImage: "checklist")
-                .font(DesignSystem.Typography.bodySmall.weight(.semibold))
         }
         .parakeetAction(.secondary)
         .help("Select Library items")
