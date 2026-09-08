@@ -157,10 +157,27 @@ enum MeetingEchoSuppressionFactory {
         category: "MeetingEchoSuppression"
     )
 
+    static func usesInternalReferenceAlignment(modelName: String) -> Bool {
+        modelName.lowercased().hasPrefix("localvqe-v1.4-aec-")
+    }
+
+    /// The bundled CLI can have Contents/MacOS as its main bundle. Resolve the
+    /// containing app as well; standalone CLIs still use explicit asset paths.
+    static var runtimeBundle: Bundle {
+        if Bundle.main.bundleURL.pathExtension == "app" { return .main }
+        if let executable = Bundle.main.executableURL {
+            let appURL = executable.resolvingSymlinksInPath()
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            if appURL.pathExtension == "app", let bundle = Bundle(url: appURL) { return bundle }
+        }
+        return .main
+    }
+
     static func makeConditioner(
         configuration: MeetingEchoSuppressionConfiguration,
-        bundle: Bundle = .main,
-        fileManager: FileManager = .default
+        bundle: Bundle = runtimeBundle,
+        fileManager: FileManager = .default,
+        residualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() }
     ) -> any MicConditioning {
         switch configuration.mode {
         case .off:
@@ -176,7 +193,8 @@ enum MeetingEchoSuppressionFactory {
             return makeDynamicConditioner(
                 resolved: resolved,
                 configuration: configuration,
-                fileManager: fileManager
+                fileManager: fileManager,
+                residualSuppression: residualSuppression
             )
         case .dynamicLibrary:
             guard let resolved = resolveDynamicAssets(
@@ -189,7 +207,8 @@ enum MeetingEchoSuppressionFactory {
             return makeDynamicConditioner(
                 resolved: resolved,
                 configuration: configuration,
-                fileManager: fileManager
+                fileManager: fileManager,
+                residualSuppression: residualSuppression
             )
         }
     }
@@ -292,7 +311,8 @@ enum MeetingEchoSuppressionFactory {
     private static func makeDynamicConditioner(
         resolved: DynamicAssets,
         configuration: MeetingEchoSuppressionConfiguration,
-        fileManager: FileManager
+        fileManager: FileManager,
+        residualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression
     ) -> any MicConditioning {
         do {
             if let expectedSHA = configuration.modelSHA256 {
@@ -312,7 +332,8 @@ enum MeetingEchoSuppressionFactory {
                 libraryURL: resolved.libraryURL,
                 modelURL: resolved.modelURL,
                 sampleRate: configuration.sampleRate,
-                frameSize: configuration.frameSize
+                frameSize: configuration.frameSize,
+                residualSuppression: residualSuppression
             )
             // The processor may report its own sample rate, so the ms→samples
             // conversion happens here rather than in the configuration.
@@ -336,7 +357,11 @@ enum MeetingEchoSuppressionFactory {
                 )
             }
             let estimator: MeetingEchoDelayEstimator?
-            if configuration.adaptiveReferenceDelay, !referenceDelayWasCapped {
+            // The v1.4 DAF already aligns its reference. Moving that reference
+            // again after its GCC lock forces repeated filter re-convergence.
+            if configuration.adaptiveReferenceDelay, !referenceDelayWasCapped,
+                !processor.ownsReferenceAlignment
+            {
                 let maxLag = min(max(processor.sampleRate / 10, referenceDelaySamples), searchCeiling)
                 estimator = MeetingEchoDelayEstimator(maxLagSamples: max(1, maxLag))
             } else {
@@ -344,9 +369,11 @@ enum MeetingEchoSuppressionFactory {
             }
             return StreamingMeetingEchoSuppressor(
                 processor: processor,
-                referenceDelaySamples: referenceDelaySamples,
+                referenceDelaySamples: processor.ownsReferenceAlignment ? 0 : referenceDelaySamples,
                 estimator: estimator,
-                reestimateIntervalSamples: max(1, processor.sampleRate / 2)
+                reestimateIntervalSamples: max(1, processor.sampleRate / 2),
+                handlesMicrophoneGaps: processor.ownsReferenceAlignment,
+                buffersAcquisition: processor.ownsReferenceAlignment
             )
         } catch {
             return unavailableDynamicConditioner(reason: "load_failed", error: error)
@@ -426,6 +453,7 @@ final class DynamicLibraryMeetingEchoProcessor: MeetingEchoSuppressing, MeetingE
     private typealias FreeFunction = @convention(c) (ContextHandle) -> Void
     private typealias IntegerGetterFunction = @convention(c) (ContextHandle) -> Int32
     private typealias LastErrorFunction = @convention(c) (ContextHandle) -> UnsafePointer<CChar>?
+    private typealias NoiseGateFunction = @convention(c) (ContextHandle, Int32, Float) -> Int32
 
     let name = MeetingEchoSuppressionFactory.processorName
     let modelVersion: String
@@ -438,9 +466,19 @@ final class DynamicLibraryMeetingEchoProcessor: MeetingEchoSuppressing, MeetingE
     private let resetFunction: ResetFunction
     private let freeFunction: FreeFunction
     private let lastErrorFunction: LastErrorFunction?
+    private let noiseGateFunction: NoiseGateFunction?
+    private let residualSuppression: @Sendable () -> MeetingResidualEchoSuppression
+    private var appliedSuppression: MeetingResidualEchoSuppression?
     private let lock = NSLock()
 
-    init(libraryURL: URL, modelURL: URL, sampleRate: Int, frameSize: Int) throws {
+    var ownsReferenceAlignment: Bool {
+        MeetingEchoSuppressionFactory.usesInternalReferenceAlignment(modelName: modelVersion)
+    }
+
+    init(
+        libraryURL: URL, modelURL: URL, sampleRate: Int, frameSize: Int,
+        residualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() }
+    ) throws {
         let loadedHandle = libraryURL.withUnsafeFileSystemRepresentation { path -> UnsafeMutableRawPointer? in
             guard let path else { return nil }
             return dlopen(path, RTLD_NOW | RTLD_LOCAL)
@@ -482,6 +520,8 @@ final class DynamicLibraryMeetingEchoProcessor: MeetingEchoSuppressing, MeetingE
             self.resetFunction = reset
             self.freeFunction = free
             self.lastErrorFunction = lastError
+            self.noiseGateFunction = Self.loadOptionalSymbol("localvqe_set_noise_gate", from: handle)
+            self.residualSuppression = residualSuppression
             self.modelVersion = modelURL.lastPathComponent
             self.sampleRate = Self.validPositiveInt(sampleRateGetter?(context)) ?? sampleRate
             self.frameSize = Self.validPositiveInt(hopLengthGetter?(context)) ?? frameSize
@@ -517,6 +557,15 @@ final class DynamicLibraryMeetingEchoProcessor: MeetingEchoSuppressing, MeetingE
 
         lock.lock()
         defer { lock.unlock() }
+        let suppression = residualSuppression()
+        if suppression != appliedSuppression, let noiseGateFunction {
+            let result = noiseGateFunction(context, suppression.enabled ? 1 : 0, Float(suppression.thresholdDBFS))
+            guard result == 0 else {
+                throw DynamicLibraryMeetingEchoProcessorError.processingFailed(
+                    code: result, message: "Residual echo gate configuration failed")
+            }
+            appliedSuppression = suppression
+        }
         let result = microphone.withUnsafeBufferPointer { microphoneBuffer in
             reference.withUnsafeBufferPointer { referenceBuffer in
                 output.withUnsafeMutableBufferPointer { outputBuffer in
@@ -540,6 +589,7 @@ final class DynamicLibraryMeetingEchoProcessor: MeetingEchoSuppressing, MeetingE
                 message: message
             )
         }
+        if noiseGateFunction == nil { suppression.apply(to: &output) }
     }
 
     private static func loadSymbol<T>(

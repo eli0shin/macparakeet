@@ -255,17 +255,49 @@ final class MeetingEchoSuppressionRuntimeTests: XCTestCase {
 
         let microphone = [Float](repeating: 1.0, count: 256)
         let speaker = [Float](repeating: 0.25, count: 256)
-        let output = conditioner.condition(
+        var output = conditioner.condition(
             microphone: microphone,
             speaker: speaker,
             hasSpeakerReference: true
         )
+        output += conditioner.flush()
 
         XCTAssertEqual(conditioner.diagnostics.processorName, "localvqe")
         XCTAssertTrue(conditioner.diagnostics.loaded)
         XCTAssertEqual(output.count, microphone.count)
         XCTAssertEqual(output.first ?? .nan, 0.75, accuracy: 0.0001)
         XCTAssertEqual(conditioner.diagnostics.processedFrames, 1)
+    }
+
+    func testLivePreferencesChangeFallbackGateWithoutRecreatingConditioner() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let suite = "echo-runtime-test-\(UUID())"
+        let preferences = EchoTestPreferences(defaults: try XCTUnwrap(UserDefaults(suiteName: suite)))
+        defer { preferences.defaults.removePersistentDomain(forName: suite) }
+        preferences.defaults.set(false, forKey: MeetingResidualEchoSuppression.enabledKey)
+        let library = root.appendingPathComponent("liblocalvqe.dylib")
+        let model = root.appendingPathComponent(MeetingEchoSuppressionFactory.defaultModelName)
+        try Self.writeLocalVQEDylib(to: library)
+        try Data("stub model".utf8).write(to: model)
+        let conditioner = MeetingEchoSuppressionFactory.makeConditioner(
+            configuration: .init(mode: .dynamicLibrary, libraryURL: library, modelURL: model),
+            bundle: Bundle(for: Self.self),
+            residualSuppression: { .current(defaults: preferences.defaults) }
+        )
+        let quiet = Array(repeating: Float(0.001), count: 256)
+        let reference = Array(repeating: Float(0), count: 256)
+        var off = conditioner.condition(microphone: quiet, speaker: reference)
+        off += conditioner.flush()
+        XCTAssertEqual(off, quiet)
+        preferences.defaults.set(true, forKey: MeetingResidualEchoSuppression.enabledKey)
+        XCTAssertEqual(conditioner.condition(microphone: quiet, speaker: reference), reference)
+        preferences.defaults.set(-65.0, forKey: MeetingResidualEchoSuppression.thresholdKey)
+        XCTAssertEqual(conditioner.condition(microphone: quiet, speaker: reference), quiet)
+        XCTAssertEqual(conditioner.diagnostics.currentDelaySamples, 0)
+        XCTAssertEqual(conditioner.diagnostics.delayEstimateCount, 0)
+        XCTAssertEqual(conditioner.diagnostics.rejectedDelayEstimates, 0)
     }
 
     func testRealLocalVQERuntimeLoadsWhenTestAssetsAreProvided() throws {
@@ -290,11 +322,12 @@ final class MeetingEchoSuppressionRuntimeTests: XCTestCase {
 
         let microphone = (0..<256).map { Float($0 % 17) / 17.0 }
         let speaker = (0..<256).map { Float(($0 + 3) % 19) / 38.0 }
-        let output = conditioner.condition(
+        var output = conditioner.condition(
             microphone: microphone,
             speaker: speaker,
             hasSpeakerReference: true
         )
+        output += conditioner.flush()
 
         XCTAssertEqual(conditioner.diagnostics.processorName, "localvqe")
         XCTAssertTrue(conditioner.diagnostics.loaded)
@@ -511,6 +544,11 @@ final class MeetingEchoSuppressionRuntimeTests: XCTestCase {
 
         XCTAssertEqual(result.status, 0, result.output)
         XCTAssertTrue(result.output.contains("Meeting echo assets verified"))
+    }
+
+    // UserDefaults supports concurrent access; isolate the test suite from app preferences.
+    private struct EchoTestPreferences: @unchecked Sendable {
+        let defaults: UserDefaults
     }
 
     private static func makeEmptyAppBundle() throws -> URL {

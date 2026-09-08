@@ -227,6 +227,42 @@ public struct MeetingRecordingOutput: Sendable, Equatable {
         )
     }
 
+    /// Explicit retranscription always renders with the selected current settings.
+    /// Do not reuse a cleaned file made with an older gate or alignment policy.
+    func preparingEchoRetranscription(
+        suppression: MeetingResidualEchoSuppression,
+        conditionerFactory: (@Sendable () -> any MicConditioning)? = nil
+    ) -> MeetingRecordingOutput {
+        guard sourceAlignment.microphone != nil, sourceAlignment.system != nil else { return self }
+        let outputURL = folderURL.appendingPathComponent(MeetingCleanedMicRenderer.cleanedMicrophoneFileName)
+        let readiness = MeetingCleanedMicrophoneRenderScheduler.schedule(
+            outputURL: outputURL,
+            microphoneURL: microphoneAudioURL,
+            systemURL: systemAudioURL,
+            sourceAlignment: sourceAlignment,
+            sessionID: sessionID,
+            conditionerFactory: conditionerFactory ?? {
+                MeetingEchoSuppressionFactory.makeConditioner(
+                    configuration: .fromEnvironment(),
+                    residualSuppression: { suppression }
+                )
+            },
+            fileManager: .default,
+            eventName: "meeting_retranscription_cleaned_mic",
+            preserveExistingOutput: true
+        )
+        return MeetingRecordingOutput(
+            sessionID: sessionID, displayName: displayName, folderURL: folderURL,
+            mixedAudioURL: mixedAudioURL, microphoneAudioURL: microphoneAudioURL,
+            systemAudioURL: systemAudioURL, cleanedMicrophoneAudioURL: outputURL,
+            cleanedMicrophoneReadiness: readiness, durationSeconds: durationSeconds,
+            sourceAlignment: sourceAlignment, captureReport: captureReport,
+            speechEngine: speechEngine, speechEngineWasCaptured: speechEngineWasCaptured,
+            previewSpeechEngine: previewSpeechEngine, startContext: startContext,
+            userNotes: userNotes, calendarEventSnapshot: calendarEventSnapshot
+        )
+    }
+
     private static func probedDurationSeconds(
         at url: URL,
         fileManager: FileManager

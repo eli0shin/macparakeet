@@ -98,13 +98,16 @@ actor CaptureOrchestrator {
                     speaker: pair.systemSamples,
                     hasSpeakerReference: pair.hasSystemSignal
                 )
-                processedMicrophoneRms = chunkRms(for: processedMic)
+                // An empty result can mean acquisition is holding speech,
+                // not that the microphone is silent.
+                processedMicrophoneRms = processedMic.isEmpty ? nil : chunkRms(for: processedMic)
                 micSamples = processedMic
             } else {
                 // Synthetic silence bypasses the conditioner; drain any
                 // samples it is holding first so they cannot land behind
                 // this pair's zeros out of order.
                 let heldSamples = micConditioner.flush()
+                micConditioner.reset()
                 micSamples = heldSamples.isEmpty
                     ? pair.microphoneSamples
                     : heldSamples + pair.microphoneSamples

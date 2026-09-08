@@ -545,6 +545,7 @@ struct RetranscribeCommand: AsyncParsableCommand {
             mode,
             storedMode: defaults.string(forKey: UserDefaultsAppRuntimePreferences.processingModeKey)
         )
+        let residualSuppression = MeetingResidualEchoSuppression.current(defaults: defaults)
         return TranscriptionService(
             audioProcessor: AudioProcessor(),
             sttTranscriber: sttTranscriber,
@@ -557,7 +558,8 @@ struct RetranscribeCommand: AsyncParsableCommand {
             processingMode: { processingMode },
             shouldDiarize: { resolvedSpeakerDetection.enabled },
             shouldDiarizeMeetings: { resolvedSpeakerDetection.enabled },
-            diarizationService: TranscribeCommand.makeDiarizationService(for: resolvedSpeakerDetection)
+            diarizationService: TranscribeCommand.makeDiarizationService(for: resolvedSpeakerDetection),
+            meetingResidualSuppression: { residualSuppression }
         )
     }
 

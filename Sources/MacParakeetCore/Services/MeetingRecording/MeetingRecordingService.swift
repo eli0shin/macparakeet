@@ -359,6 +359,13 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 MeetingEchoSuppressionFactory.makeConditioner(
                     configuration: echoSuppressionConfiguration
                 )
+            },
+            cleanedMicConditionerFactory: {
+                let suppression = MeetingResidualEchoSuppression.current()
+                return MeetingEchoSuppressionFactory.makeConditioner(
+                    configuration: echoSuppressionConfiguration,
+                    residualSuppression: { suppression }
+                )
             }
         )
     }
@@ -1620,16 +1627,19 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             switch chunk.source {
             case .microphone:
                 let micRms = chunkRms(for: chunk.chunk.samples)
+                // Preserve the existing policy for unbuffered conditioners.
+                // Acquisition holds need the emitted chunk's level instead.
+                let dominanceMicRms = micConditioner.buffersAcquisition ? micRms : recentProcessedMicRms
                 if micRms <= Self.chunkSignalFloor {
                     captureHealthMetrics.microphoneLowSignalDrops += 1
                     logger.notice(
                         "mic_chunk_dropped reason=low_signal flushed=\(flushed, privacy: .public) rms=\(micRms, privacy: .public) floor=\(Self.chunkSignalFloor, privacy: .public)"
                     )
-                } else if shouldSuppressMicrophoneChunkTranscription() {
+                } else if shouldSuppressMicrophoneChunkTranscription(microphoneRms: dominanceMicRms) {
                     captureHealthMetrics.microphoneSystemDominantDrops += 1
-                    let ratio = recentSystemRms / max(recentProcessedMicRms, Self.rmsEpsilon)
+                    let ratio = recentSystemRms / max(dominanceMicRms, Self.rmsEpsilon)
                     logger.notice(
-                        "mic_chunk_dropped reason=system_dominant flushed=\(flushed, privacy: .public) sys_rms=\(self.recentSystemRms, privacy: .public) proc_mic_rms=\(self.recentProcessedMicRms, privacy: .public) ratio=\(ratio, privacy: .public) threshold=\(Self.systemDominanceRatio, privacy: .public)"
+                        "mic_chunk_dropped reason=system_dominant flushed=\(flushed, privacy: .public) sys_rms=\(self.recentSystemRms, privacy: .public) proc_mic_rms=\(dominanceMicRms, privacy: .public) ratio=\(ratio, privacy: .public) threshold=\(Self.systemDominanceRatio, privacy: .public)"
                     )
                 } else {
                     captureHealthMetrics.microphoneChunksEnqueued += 1
@@ -2078,13 +2088,19 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         return (previous * (1 - alpha)) + (sample * alpha)
     }
 
-    private func shouldSuppressMicrophoneChunkTranscription() -> Bool {
+    private func shouldSuppressMicrophoneChunkTranscription(microphoneRms: Float) -> Bool {
         guard recentSystemRms > Self.systemActiveFloor else { return false }
         guard let latestSystemSignalAt else { return false }
         guard latestSystemSignalAt.duration(to: clock.now) <= Self.systemSignalFreshnessWindow else { return false }
 
-        let ratio = recentSystemRms / max(recentProcessedMicRms, Self.rmsEpsilon)
-        return ratio >= Self.systemDominanceRatio
+        return Self.isSystemDominant(systemRms: recentSystemRms, microphoneRms: microphoneRms)
+    }
+
+    /// Use the emitted chunk, including flushes. A per-callback level average
+    /// lags behind speech held during echo acquisition and can reject that speech.
+    static func isSystemDominant(systemRms: Float, microphoneRms: Float) -> Bool {
+        let ratio = systemRms / max(microphoneRms, rmsEpsilon)
+        return ratio >= systemDominanceRatio
     }
 
     private func logJoinerDiagnostics(_ diagnostics: [MeetingAudioJoinerDiagnostic]) {

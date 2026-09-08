@@ -37,14 +37,16 @@ Pipeline (see `MeetingCleanedMicRenderer`, `MicConditioner`,
 1. The recorded system-audio track is the echo reference. It is captured
    anyway for the meeting, giving a perfect reference most AEC systems
    lack.
-2. Alignment: host-time recorded offset, plus periodic cross-correlation
-   bulk-delay estimation (scalar read-offset only; no sample mutation).
-3. Suppression: the LocalVQE neural model — echo-only variant (v1.4),
-   selected by a measured scoring gate (`MeetingAecModelScoringTests`,
-   issue #605 U5) — is the only stage that modifies samples. Echo-only
-   (no general denoising) minimizes distortion of the speech being
-   transcribed. No linear DSP pre-stage exists; adding one is deferred
-   until the double-talk metric (PR #669) demonstrates a measurable gap.
+2. Alignment: retain the recorded host-time offset. The selected v1.4
+   echo-only DAF model owns adaptive reference alignment; do not also shift
+   its reference with the outer delay estimator. Legacy models retain the
+   outer estimator. Cross-correlation remains available for the echo probe.
+3. Suppression: use the LocalVQE echo-only model, without general denoising
+   or a linear DSP pre-stage. Apply its optional residual noise gate at
+   −45 dBFS by default. Load `localvqe_set_noise_gate` when available; older
+   runtimes use an equivalent per-hop RMS gate after model output. Stronger
+   gating can cut quiet speech; this is a reversible user choice, not proof
+   of correct speaker attribution.
 4. Final meeting transcription prefers the cleaned mic for the "Me" track.
 
 Coordination (readiness gate, PR #671):
@@ -56,11 +58,42 @@ Coordination (readiness gate, PR #671):
 - Final transcription awaits render readiness (a Task handle, not file
   polling) with a bounded, duration-scaled deadline before choosing the
   microphone source.
+- GUI and CLI retranscription schedule a fresh cleaned-mic render from the
+  raw tracks with the current suppression setting. They do not silently
+  reuse a cleaned file made with unknown or older settings. Keep the prior
+  derived file until a candidate completes; failure or cancellation leaves
+  that file intact but uses raw audio for this attempt. Raw sources and
+  playback audio are never replaced by cleanup.
 - Fallback to raw is intentional and observable via a structured reason
   taxonomy: `cleanedUsed`, `rawTimeout`, `rawInvalidArtifact`,
-  `rawRenderFailed`, `rawMissingSystemReference`, `rawNoAECAssets`,
+  `rawRenderFailed`, `rawMissingSystemReference`, `rawNoAECAssets`, `rawNotPrepared`,
   `skippedNoEchoPath`, `predictedRenderTimeout`. Silent raw fallback is a
   defect.
+
+Live control and microphone gaps:
+
+- Meeting Settings and the live recording panel share a residual suppression
+  control: Off, Standard (−45 dBFS), or a custom threshold from −65 to −30 dBFS,
+  with Reset to Standard and a quiet-speech warning. Off disables the gate,
+  not echo cancellation. Preferences are local (`meetingResidualEchoSuppressionEnabled`
+  and `meetingResidualEchoSuppressionThresholdDBFS`).
+- Changes apply to incoming preview hops, not previous preview text. Each
+  final/recovery render fixes the setting when cleanup starts. Retranscription
+  fixes it when requested and processes the whole archived meeting again.
+- Reset cancellation state for synthetic microphone silence. For the DAF
+  model, also reset when microphone input returns after at least one second
+  of digital silence. Offline cleanup primes acquisition with up to eight
+  seconds of aligned buffered audio at startup and after these gaps, then
+  processes the same samples for output. No initial speech is dropped and
+  no output timestamps are shifted. Live capture holds up to eight seconds
+  of incoming audio for the same acquisition pass, then emits those samples
+  in order. This can briefly delay the preview after unmute. Stop or another
+  gap drains a shorter buffer rather than losing speech. Real-meeting checks
+  are still required for both live and final unmute quality.
+- Logic checks cover settings, sample counts, reset boundaries, and artifact
+  replacement. They do not establish echo quality. Use real meetings to
+  check residual echo and preservation of quiet local speech; do not add
+  recorded-audio fixtures as a substitute for that acceptance check.
 
 Render skip (echo probe, PR #676):
 

@@ -89,6 +89,17 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ## [Unreleased]
 
+### Meeting echo cleanup
+
+- Meeting `retranscribe` now regenerates the cleaned microphone from retained
+  raw microphone/system tracks using the app's current residual echo setting.
+  It no longer silently reuses old cleaned audio or skips cleanup when that
+  file is missing. Raw recordings and command/JSON shapes are unchanged.
+- The bundled CLI resolves LocalVQE assets from its containing app. Missing
+  assets and bounded render failures still fall back to raw microphone audio;
+  an unscheduled cleanup reports `rawNotPrepared`, not a false missing-assets
+  diagnosis. The prior derived file remains intact if regeneration fails.
+
 ### Vocabulary hints
 
 - Add `config get/set vocabulary-hints on|off`. Setting `on` consents to an
