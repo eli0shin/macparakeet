@@ -67,7 +67,7 @@ Minimum window width: 800pt.
 
 The sidebar uses NavigationSplitView with flat items (icon + label):
 
-- **Transcribe** (`waveform`) -- Capture hub: YouTube card + file drop card + Meeting Recording tile
+- **Transcribe** (`waveform`) -- Capture hub: primary Meeting Recording and file drop cards + compact media URL bar
 - **Library** (`square.grid.2x2`) -- All transcription source types in a Finder-like nested folder tree; each main-sidebar click opens Library root, while All Items remains a separate aggregate view
 - **Dictations** (`clock.arrow.circlepath`) -- Flat history list with bottom bar player
 - **Meetings** (`person.2.wave.2`) -- Workflow space for upcoming, live, and saved meeting work; visible when `AppFeatures.meetingRecordingEnabled` is true
@@ -92,22 +92,21 @@ Content transitions between tabs use `DesignSystem.Animation.contentSwap` (0.2s 
 ```
 +------------------------------------------------------------+
 |  +----------------------+  +--------------------------+    |
-|  |  > YouTube           |  |  Drop a file             |    |
-|  |  [Paste link]   [->] |  |  [Browse Files]          |    |
-|  |                      |  |  MP3, WAV, M4A, MP4...   |    |
+|  |  o Record a meeting |  |  Drop a file             |    |
+|  |                     |  |  [Browse Files]          |    |
+|  |       [Start]       |  |  MP3, WAV, M4A, MP4...   |    |
 |  +----------------------+  +--------------------------+    |
 |  +------------------------------------------------------+  |
-|  |  o  Record Meeting                          * Start  |  |
-|  |     Selected audio sources, transcribed locally         |  |
+|  | [link] Media URLs  [Paste video or podcast link] [->] |  |
 |  +------------------------------------------------------+  |
 +------------------------------------------------------------+
 ```
 
-Two big input cards on top (equal weight), one ~96pt strip below (lighter weight — meeting capture is a single-click action, doesn't need real estate for paste fields or drop areas). The Meeting Recording tile is gated behind `AppFeatures.meetingRecordingEnabled`; when disabled it's hidden and the layout collapses to two cards.
+Two large input cards on top give meeting recording and file transcription equal primary weight. A ~96pt full-width media URL bar below keeps URL paste, provider recognition, validation, and the Transcribe action available with lighter visual weight. Visual and keyboard focus order is meeting, file, then media URL. The Meeting Recording tile is gated behind `AppFeatures.meetingRecordingEnabled`; when disabled it is hidden and the file card remains available.
 
 ### Meeting Recording Tile
 
-A horizontal strip on the Transcribe tab. Mirrors the floating recording pill's visual language (flower-of-life rosette + stem + leaves) at a larger scale on a light surface — green strokes on `surfaceElevated` instead of the pill's white-on-black.
+The Transcribe tab uses a large meeting tile as its top-left primary action. The Meetings workspace keeps the compact horizontal strip. Both presentations mirror the floating recording pill's visual language (flower-of-life rosette + stem + leaves) on a light surface — green strokes on `surfaceElevated` instead of the pill's white-on-black.
 
 States, all bound to the long-lived `MeetingRecordingPillViewModel` shared with the floating pill:
 
