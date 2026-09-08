@@ -59,7 +59,8 @@ request grouping, readable exports, or stored formatting mappings.
   that one displayed turn.
 - Canonical rendered turns have at most one start time. Word timestamps are not
   emitted in readable output.
-- Paragraphs remain separate inside their canonical or displayed turn.
+- Paragraphs remain separate inside their canonical or displayed turn. The UI
+  renders exactly one blank line between displayed paragraphs.
 - Simultaneous contributions retain one explicit overlap marker and deterministic
   contribution order.
 - Word-based citations resolve to the containing Reading Turn and return that

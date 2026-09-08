@@ -22,6 +22,8 @@ enum MeetingReadingTurnLayout {
     static let bodyIndent: CGFloat = 13
     static let speakerMarkerSize: CGFloat = 7
     static let playbackFocusWidth: CGFloat = 2
+    /// `ReadingTurn.text` already uses a blank line between paragraphs.
+    static let bodyLineSpacing: CGFloat = 0
 }
 
 func readingTurnScrollTarget(
@@ -129,7 +131,7 @@ private struct MeetingReadingTurnCard<SpeakerLabelContent: View>: View {
             bodyText
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .textSelection(.enabled)
-                .lineSpacing(4)
+                .lineSpacing(MeetingReadingTurnLayout.bodyLineSpacing)
                 .padding(.leading, MeetingReadingTurnLayout.bodyIndent)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
