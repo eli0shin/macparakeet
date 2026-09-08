@@ -1195,13 +1195,22 @@ struct LibraryNewFolderDialog: View {
 
             HStack(spacing: DesignSystem.Spacing.sm) {
                 Spacer()
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-                    .parakeetAction(.secondary)
-                Button("Create", action: onCreate)
-                    .keyboardShortcut(.defaultAction)
-                    .parakeetAction(.primaryProminent)
-                    .disabled(isCreateDisabled)
+                LibraryActionButton(
+                    title: "Cancel",
+                    systemImage: "xmark",
+                    accessibilityHint: "Closes the New Folder sheet without creating a folder",
+                    action: onCancel
+                )
+                .keyboardShortcut(.cancelAction)
+
+                LibraryPrimaryActionButton(
+                    title: "Create",
+                    systemImage: "folder.badge.plus",
+                    isDisabled: isCreateDisabled,
+                    accessibilityHint: "Creates the folder at the current Library location",
+                    action: onCreate
+                )
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(DesignSystem.Spacing.xl)
@@ -1456,6 +1465,9 @@ private struct LibraryFilterChip: View {
 /// lifts on hover.
 private struct LibraryPrimaryActionButton: View {
     let title: String
+    var systemImage = "plus"
+    var isDisabled = false
+    var accessibilityHint = "Starts a new transcription"
     let action: () -> Void
 
     @State private var isHovered = false
@@ -1463,7 +1475,7 @@ private struct LibraryPrimaryActionButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: "plus")
+                Image(systemName: systemImage)
                     .font(.system(size: 12, weight: .bold))
                 Text(title)
                     .font(DesignSystem.Typography.bodySmall.weight(.semibold))
@@ -1482,12 +1494,19 @@ private struct LibraryPrimaryActionButton: View {
             .animation(DesignSystem.Animation.hoverTransition, value: isHovered)
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.48 : 1)
         .onHover { hovering in
-            isHovered = hovering
+            isHovered = hovering && !isDisabled
         }
-        .pointingHandCursor(isActive: isHovered)
+        .onChange(of: isDisabled) { _, disabled in
+            if disabled {
+                isHovered = false
+            }
+        }
+        .pointingHandCursor(isActive: isHovered && !isDisabled)
         .accessibilityLabel(title)
-        .accessibilityHint("Starts a new transcription")
+        .accessibilityHint(accessibilityHint)
     }
 }
 

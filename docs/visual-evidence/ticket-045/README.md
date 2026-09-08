@@ -4,8 +4,6 @@ Rendered from the production `LibraryNewFolderDialog` at its 440pt dialog width.
 
 ![New Folder dialog with focused full-width name field](new-folder-dialog.png)
 
-> The AppKit bitmap path does not composite the native button labels. Their white native control bounds are visible. This is a snapshot limitation; the production buttons are Cancel and Create.
-
 Please confirm visual approval before merge.
 
 Regenerate with:
