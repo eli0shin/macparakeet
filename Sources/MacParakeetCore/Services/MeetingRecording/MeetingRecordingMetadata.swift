@@ -58,6 +58,7 @@ public struct MeetingRecordingMetadata: Sendable, Codable, Equatable {
     public static let fileName = "meeting-recording-metadata.json"
 
     public let sourceAlignment: MeetingSourceAlignment
+    public private(set) var microphoneSpeakerDetection: Bool
     /// Final frame-derived capture truth. Absent or unreadable in legacy and
     /// malformed sidecars means unknown; it never invalidates core metadata.
     public let captureReport: MeetingCaptureReport?
@@ -73,6 +74,7 @@ public struct MeetingRecordingMetadata: Sendable, Codable, Equatable {
 
     public init(
         sourceAlignment: MeetingSourceAlignment,
+        microphoneSpeakerDetection: Bool = false,
         captureReport: MeetingCaptureReport? = nil,
         speechEngine: SpeechEngineSelection = SpeechEngineSelection(engine: .parakeet),
         speechEngineWasCaptured: Bool = true,
@@ -82,6 +84,7 @@ public struct MeetingRecordingMetadata: Sendable, Codable, Equatable {
         calendarEventSnapshot: MeetingCalendarSnapshot? = nil
     ) {
         self.sourceAlignment = sourceAlignment
+        self.microphoneSpeakerDetection = microphoneSpeakerDetection
         self.captureReport = captureReport
         self.speechEngine = speechEngine
         self.speechEngineWasCaptured = speechEngineWasCaptured
@@ -93,6 +96,7 @@ public struct MeetingRecordingMetadata: Sendable, Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case sourceAlignment
+        case microphoneSpeakerDetection
         case captureReport
         case speechEngine
         case previewSpeechEngine
@@ -104,6 +108,7 @@ public struct MeetingRecordingMetadata: Sendable, Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         sourceAlignment = try container.decode(MeetingSourceAlignment.self, forKey: .sourceAlignment)
+        microphoneSpeakerDetection = (try? container.decode(Bool.self, forKey: .microphoneSpeakerDetection)) ?? false
         captureReport =
             (try? container.decodeIfPresent(
                 MeetingCaptureReport.self,
@@ -131,6 +136,7 @@ public struct MeetingRecordingMetadata: Sendable, Codable, Equatable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(sourceAlignment, forKey: .sourceAlignment)
+        try container.encode(microphoneSpeakerDetection, forKey: .microphoneSpeakerDetection)
         try container.encodeIfPresent(captureReport, forKey: .captureReport)
         if speechEngineWasCaptured {
             try container.encode(speechEngine, forKey: .speechEngine)
@@ -139,6 +145,12 @@ public struct MeetingRecordingMetadata: Sendable, Codable, Equatable {
         try container.encodeIfPresent(startContext, forKey: .startContext)
         try container.encodeIfPresent(echoSuppression, forKey: .echoSuppression)
         try container.encodeIfPresent(calendarEventSnapshot, forKey: .calendarEventSnapshot)
+    }
+
+    public func withMicrophoneSpeakerDetection(_ enabled: Bool) -> Self {
+        var copy = self
+        copy.microphoneSpeakerDetection = enabled
+        return copy
     }
 
     public func withEchoSuppression(
@@ -153,7 +165,7 @@ public struct MeetingRecordingMetadata: Sendable, Codable, Equatable {
             startContext: startContext,
             echoSuppression: echoSuppression,
             calendarEventSnapshot: calendarEventSnapshot
-        )
+        ).withMicrophoneSpeakerDetection(microphoneSpeakerDetection)
     }
 
     public func withCaptureReport(
@@ -168,7 +180,7 @@ public struct MeetingRecordingMetadata: Sendable, Codable, Equatable {
             startContext: startContext,
             echoSuppression: echoSuppression,
             calendarEventSnapshot: calendarEventSnapshot
-        )
+        ).withMicrophoneSpeakerDetection(microphoneSpeakerDetection)
     }
 }
 

@@ -280,6 +280,14 @@ public enum SettingsSearchIndex {
             cardAnchor: "meeting"
         ),
         SettingsSearchEntry(
+            id: "meeting.microphoneSpeakerDetection",
+            tab: .capture,
+            title: "Detect speakers on microphone",
+            subtitle: "in Meeting Recording",
+            keywords: ["microphone", "in-person", "local speakers", "speaker detection", "diarization", "room"],
+            cardAnchor: "meeting"
+        ),
+        SettingsSearchEntry(
             id: "meeting.autoStop",
             tab: .capture,
             title: "Auto-stop meetings",

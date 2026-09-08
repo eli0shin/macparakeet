@@ -728,12 +728,23 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil
     ) async throws -> Transcription {
         guard original.sourceType == .meeting else { throw MeetingSpeakerCountCorrectionError.systemAudioUnavailable }
-        let constraint = try selection.remoteDiarizationConstraint(hasSystemAudio: recording.sourceAlignment.system != nil)
-        guard let words = original.wordTimestamps, !words.isEmpty else { throw MeetingSpeakerCountCorrectionError.timedWordsUnavailable }
-        guard let diarizationService, let systemTrack = recording.sourceAlignment.system else { throw MeetingSpeakerCountCorrectionError.systemAudioUnavailable }
+        let constraint = try selection.constraint(for: recording)
+        let source = selection.source
+        guard let words = original.wordTimestamps,
+            words.contains(where: { AudioSource.forSpeakerID($0.speakerId) == source })
+        else { throw MeetingSpeakerCountCorrectionError.timedWordsUnavailable }
+        guard let diarizationService, let track = recording.sourceAlignment.track(for: source) else {
+            throw MeetingSpeakerCountCorrectionError.unsupportedService
+        }
 
         onProgress?(.converting)
-        let wavURL = try await audioProcessor.convert(fileURL: recording.systemAudioURL)
+        let audioURL: URL
+        if source == .microphone {
+            audioURL = try await resolveMeetingMicrophoneSource(for: recording).url
+        } else {
+            audioURL = recording.systemAudioURL
+        }
+        let wavURL = try await audioProcessor.convert(fileURL: audioURL)
         defer { try? FileManager.default.removeItem(at: wavURL) }
         try Task.checkCancellation()
         onProgress?(.identifyingSpeakers)
@@ -741,8 +752,12 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         try Task.checkCancellation()
         guard !diarResult.segments.isEmpty else { throw MeetingSpeakerCountCorrectionError.noRemoteSpeechDetected }
 
-        let systemDiarization = mappedMeetingSystemDiarization(diarResult, systemStartOffsetMs: systemTrack.startOffsetMs)
-        let finalized = MeetingTranscriptFinalizer.reattributeSystemWords(words, systemDiarization: systemDiarization)
+        let diarization = mappedMeetingDiarization(diarResult, source: source, startOffsetMs: track.startOffsetMs)
+        let finalized = MeetingTranscriptFinalizer.reattributeWords(
+            words, source: source, diarization: diarization,
+            existingSpeakers: original.speakers ?? [], existingSegments: original.diarizationSegments ?? [],
+            microphoneSpeakerDetection: recording.microphoneSpeakerDetection
+        )
         let readableDocument = MeetingTranscriptPresentationBuilder.build(
             transcriptText: original.rawTranscript ?? finalized.rawTranscript,
             words: finalized.words,
@@ -1351,7 +1366,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
     ) async throws -> Transcription {
         let processingStartedAt = Date()
         var lifecycleStage: TelemetryTranscriptionStage = .audioConversion
-        let diarizationRequested = diarizationService != nil && shouldDiarizeMeetings() && recording.sourceAlignment.system != nil
+        let detectSystem = shouldDiarizeMeetings() && recording.sourceAlignment.system != nil
+        let detectMicrophone = recording.microphoneSpeakerDetection && recording.sourceAlignment.microphone != nil
+        let diarizationRequested = diarizationService != nil && (detectSystem || detectMicrophone)
         var temporaryWavURLs: [URL] = []
         var sourceWavURLs: [AudioSource: URL] = [:]
         defer {
@@ -1370,14 +1387,26 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 onProgress: onProgress
             )
 
-            let systemDiarization: MeetingTranscriptFinalizer.SystemDiarization?
+            let systemDiarization: MeetingTranscriptFinalizer.SourceDiarization?
+            let microphoneDiarization: MeetingTranscriptFinalizer.SourceDiarization?
             if diarizationRequested {
                 meetingFinalizationBenchmarkObserver?.stageDidStart(.diarization)
                 do {
-                    systemDiarization = try await diarizeMeetingSystemIfNeeded(
+                    systemDiarization = try await diarizeMeetingSourceIfNeeded(
+                        source: .system,
                         recording: recording,
                         sourceWavURLs: sourceWavURLs,
-                        requested: true,
+                        requested: detectSystem
+                            && sourceResults.contains { $0.source == .system && !$0.result.words.isEmpty },
+                        lifecycleStage: &lifecycleStage,
+                        onProgress: onProgress
+                    )
+                    microphoneDiarization = try await diarizeMeetingSourceIfNeeded(
+                        source: .microphone,
+                        recording: recording,
+                        sourceWavURLs: sourceWavURLs,
+                        requested: detectMicrophone
+                            && sourceResults.contains { $0.source == .microphone && !$0.result.words.isEmpty },
                         lifecycleStage: &lifecycleStage,
                         onProgress: onProgress
                     )
@@ -1388,12 +1417,15 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 }
             } else {
                 systemDiarization = nil
+                microphoneDiarization = nil
             }
 
             meetingFinalizationBenchmarkObserver?.stageDidStart(.finalizeMerge)
             let finalized = MeetingTranscriptFinalizer.finalize(
                 sourceTranscripts: sourceResults,
-                systemDiarization: systemDiarization
+                systemDiarization: systemDiarization,
+                microphoneDiarization: microphoneDiarization,
+                microphoneSpeakerDetection: detectMicrophone
             )
             meetingFinalizationBenchmarkObserver?.stageDidEnd(.finalizeMerge)
 
@@ -1432,7 +1464,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 rawText: finalized.rawTranscript,
                 processingStartedAt: processingStartedAt,
                 diarizationRequested: diarizationRequested,
-                diarizationApplied: systemDiarization != nil,
+                diarizationApplied: systemDiarization != nil || microphoneDiarization != nil,
                 onProgress: onProgress
             )
 
@@ -1565,23 +1597,25 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         return outputs
     }
 
-    private func diarizeMeetingSystemIfNeeded(
+    private func diarizeMeetingSourceIfNeeded(
+        source: AudioSource,
         recording: MeetingRecordingOutput,
         sourceWavURLs: [AudioSource: URL],
         requested: Bool,
         lifecycleStage: inout TelemetryTranscriptionStage,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)?
-    ) async throws -> MeetingTranscriptFinalizer.SystemDiarization? {
+    ) async throws -> MeetingTranscriptFinalizer.SourceDiarization? {
         guard requested, let diarizationService else { return nil }
-        guard let systemTrack = recording.sourceAlignment.system else { return nil }
-        guard let systemWavURL = sourceWavURLs[.system] else { return nil }
+        guard let track = recording.sourceAlignment.track(for: source) else { return nil }
+        guard let wavURL = sourceWavURLs[source] else { return nil }
 
         lifecycleStage = .diarization
         do {
             onProgress?(.identifyingSpeakers)
             Telemetry.send(.diarizationStarted(source: .meeting))
             let diarStartedAt = Date()
-            let diarResult = try await diarizationService.diarize(audioURL: systemWavURL)
+            let diarResult = try await diarizationService.diarize(audioURL: wavURL)
+            try Task.checkCancellation()
             let diarDuration = Date().timeIntervalSince(diarStartedAt)
             Telemetry.send(.diarizationCompleted(
                 source: .meeting,
@@ -1591,36 +1625,41 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
 
             guard !diarResult.segments.isEmpty else { return nil }
 
-            return mappedMeetingSystemDiarization(diarResult, systemStartOffsetMs: systemTrack.startOffsetMs)
+            return mappedMeetingDiarization(diarResult, source: source, startOffsetMs: track.startOffsetMs)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            logger.error("meeting_system_diarization_failed error=\(error.localizedDescription, privacy: .public)")
-            Telemetry.send(.diarizationFailed(
-                source: .meeting,
-                errorType: String(describing: type(of: error)),
-                errorDetail: TelemetryErrorClassifier.errorDetail(error)
-            ))
+            logger.error(
+                "meeting_diarization_failed source=\(source.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+            Telemetry.send(
+                .diarizationFailed(
+                    source: .meeting,
+                    errorType: String(describing: type(of: error)),
+                    errorDetail: TelemetryErrorClassifier.errorDetail(error)
+                ))
             return nil
         }
     }
 
-    private func mappedMeetingSystemDiarization(
+    private func mappedMeetingDiarization(
         _ diarResult: MacParakeetDiarizationResult,
-        systemStartOffsetMs: Int
-    ) -> MeetingTranscriptFinalizer.SystemDiarization {
+        source: AudioSource,
+        startOffsetMs: Int
+    ) -> MeetingTranscriptFinalizer.SourceDiarization {
+        let label = source == .microphone ? "Local Speaker" : source.displayLabel
         let mappedSpeakers = diarResult.speakers.enumerated().map { index, speaker in
-            SpeakerInfo(id: "\(AudioSource.system.rawValue):\(speaker.id)", label: "\(AudioSource.system.displayLabel) \(index + 1)")
+            SpeakerInfo(id: "\(source.rawValue):\(speaker.id)", label: "\(label) \(index + 1)")
         }
         let speakerIDMap = Dictionary(uniqueKeysWithValues: zip(diarResult.speakers.map(\.id), mappedSpeakers.map(\.id)))
         let mappedSegments = diarResult.segments.map { segment in
             SpeakerSegment(
-                speakerId: speakerIDMap[segment.speakerId] ?? "\(AudioSource.system.rawValue):\(segment.speakerId)",
-                startMs: segment.startMs + systemStartOffsetMs,
-                endMs: segment.endMs + systemStartOffsetMs
+                speakerId: speakerIDMap[segment.speakerId] ?? "\(source.rawValue):\(segment.speakerId)",
+                startMs: segment.startMs + startOffsetMs,
+                endMs: segment.endMs + startOffsetMs
             )
         }
-        return MeetingTranscriptFinalizer.SystemDiarization(speakers: mappedSpeakers, segments: mappedSegments)
+        return MeetingTranscriptFinalizer.SourceDiarization(speakers: mappedSpeakers, segments: mappedSegments)
     }
 
     private func resolveMeetingMicrophoneSource(

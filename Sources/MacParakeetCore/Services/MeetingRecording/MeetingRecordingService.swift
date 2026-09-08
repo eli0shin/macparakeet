@@ -185,6 +185,8 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         let startContext: MeetingStartContext?
         let calendarEventSnapshot: MeetingCalendarSnapshot?
 
+        let microphoneSpeakerDetection: Bool
+
         var supportsLiveChunkTranscription: Bool {
             speechPlan.preview != nil
         }
@@ -238,6 +240,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     private let liveChunkTranscriber: LiveChunkTranscriber
     private let lockFileStore: MeetingRecordingLockFileStoring
     private let speechEngineSessionManager: (any SpeechEngineSessionManaging)?
+    private let microphoneSpeakerDetection: @Sendable () -> Bool
     private let finalSpeechEngineSelection: @Sendable () -> SpeechEngineSelection?
     private let micConditionerFactory: @Sendable () -> any MicConditioning
     private let cleanedMicConditionerFactory: @Sendable () -> any MicConditioning
@@ -336,6 +339,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     }
 
     public init(
+        microphoneSpeakerDetection: @escaping @Sendable () -> Bool = { false },
         micProcessingMode: MeetingMicProcessingMode = .raw,
         audioCaptureService: any MeetingAudioCapturing,
         audioConverter: any AudioFileConverting = AudioFileConverter(),
@@ -347,6 +351,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         echoSuppressionConfiguration: MeetingEchoSuppressionConfiguration = .fromEnvironment()
     ) {
         self.init(
+            microphoneSpeakerDetection: microphoneSpeakerDetection,
             micProcessingMode: micProcessingMode,
             audioCaptureService: audioCaptureService,
             audioConverter: audioConverter,
@@ -371,6 +376,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     }
 
     init(
+        microphoneSpeakerDetection: @escaping @Sendable () -> Bool = { false },
         micProcessingMode: MeetingMicProcessingMode = .raw,
         audioCaptureService: any MeetingAudioCapturing,
         audioConverter: any AudioFileConverting = AudioFileConverter(),
@@ -399,10 +405,12 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 eventName: eventName
             )
         },
-        writerFinalizationReportTransform: @escaping @Sendable (
-            MeetingAudioStorageWriter.FinalizationReport
-        ) -> MeetingAudioStorageWriter.FinalizationReport = { $0 }
+        writerFinalizationReportTransform:
+            @escaping @Sendable (
+                MeetingAudioStorageWriter.FinalizationReport
+            ) -> MeetingAudioStorageWriter.FinalizationReport = { $0 }
     ) {
+        self.microphoneSpeakerDetection = microphoneSpeakerDetection
         self.requestedMicProcessingMode = micProcessingMode
         self.audioCaptureService = audioCaptureService
         self.audioConverter = audioConverter
@@ -653,7 +661,8 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             liveSpeechEngine: liveSpeechEngine,
             speechPlan: speechPlan,
             startContext: startContext,
-            calendarEventSnapshot: calendarEventSnapshot
+            calendarEventSnapshot: calendarEventSnapshot,
+            microphoneSpeakerDetection: microphoneSpeakerDetection()
         )
         self.writer = writer
         self.currentSession = session
@@ -668,7 +677,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 startContext: session.startContext,
                 calendarEventSnapshot: session.calendarEventSnapshot,
                 folderURL: session.folderURL
-            )
+            ).withMicrophoneSpeakerDetection(session.microphoneSpeakerDetection)
             try lockFileStore.write(initialLock, folderURL: session.folderURL)
             currentLockFile = initialLock
 
@@ -944,6 +953,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         )
         var recordingMetadata = MeetingRecordingMetadata(
             sourceAlignment: sourceAlignment,
+            microphoneSpeakerDetection: session.microphoneSpeakerDetection,
             captureReport: preliminaryCaptureReport,
             speechEngine: session.speechPlan.final,
             previewSpeechEngine: session.speechPlan.preview,
@@ -1083,6 +1093,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 calendarEventSnapshot: session.calendarEventSnapshot,
                 folderURL: session.folderURL
             ))
+            .withMicrophoneSpeakerDetection(session.microphoneSpeakerDetection)
             .withNotes(finalNotes)
             .withState(.awaitingTranscription)
         let lockStartedAt = Date()
@@ -1133,7 +1144,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             startContext: session.startContext,
             userNotes: finalNotes,
             calendarEventSnapshot: session.calendarEventSnapshot
-        )
+        ).withMicrophoneSpeakerDetection(session.microphoneSpeakerDetection)
 
         let cleanupStartedAt = Date()
         await liveChunkTranscriber.finishSession()
@@ -1189,7 +1200,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 calendarEventSnapshot: session.calendarEventSnapshot,
                 folderURL: session.folderURL
             )
-        let updated = base.withNotes(normalized)
+        let updated = base.withMicrophoneSpeakerDetection(session.microphoneSpeakerDetection).withNotes(normalized)
         do {
             try lockFileStore.write(updated, folderURL: session.folderURL)
             currentLockFile = updated

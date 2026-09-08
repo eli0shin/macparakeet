@@ -485,6 +485,8 @@ struct RetranscribeCommand: AsyncParsableCommand {
         sttTranscriber: STTTranscribing
     ) async throws -> RetranscribeResult {
         let mixedAudioURL = try Self.retainedAudioURL(path: original.filePath, kind: "meeting", id: original.id)
+        let archived = Self.archivedMeetingRecording(for: original, mixedAudioURL: mixedAudioURL)
+        let detectMicrophone = microphoneSpeakerDetectionEnabled(capturedEnabled: archived?.microphoneSpeakerDetection ?? false)
         let service = makeTranscriptionService(
             sttTranscriber: sttTranscriber,
             transcriptionRepo: transcriptionRepo,
@@ -496,15 +498,16 @@ struct RetranscribeCommand: AsyncParsableCommand {
             defaults: defaults,
             storedSpeakerDetection: defaults.object(
                 forKey: UserDefaultsAppRuntimePreferences.meetingSpeakerDiarizationKey
-            ) as? Bool
+            ) as? Bool,
+            microphoneSpeakerDetection: detectMicrophone
         )
         printErr("Retranscribing meeting \(original.fileName) with \(speechEngine.engine.rawValue)...")
         let progress = Self.progressHandler(prefix: "Retranscribing meeting")
         let updated: Transcription
-        if let archived = Self.archivedMeetingRecording(for: original, mixedAudioURL: mixedAudioURL) {
+        if let archived {
             updated = try await service.retranscribeMeeting(
                 existing: original,
-                recording: archived,
+                recording: archived.withMicrophoneSpeakerDetection(detectMicrophone),
                 speechEngineOverride: speechEngine,
                 onProgress: progress.transcriptionProgress
             )
@@ -522,6 +525,12 @@ struct RetranscribeCommand: AsyncParsableCommand {
         return RetranscribeResult(kind: .meeting, sourcePath: mixedAudioURL.path, transcription: preserved)
     }
 
+    /// Explicit CLI opt-out covers both tracks; a saved system preference does
+    /// not override the microphone choice captured with the meeting.
+    func microphoneSpeakerDetectionEnabled(capturedEnabled: Bool) -> Bool {
+        capturedEnabled && !noDiarize && speakerDetection != .off
+    }
+
     private func makeTranscriptionService(
         sttTranscriber: STTTranscribing,
         transcriptionRepo: TranscriptionRepository,
@@ -531,7 +540,8 @@ struct RetranscribeCommand: AsyncParsableCommand {
         customWordRepo: CustomWordRepository,
         snippetRepo: TextSnippetRepository,
         defaults: UserDefaults,
-        storedSpeakerDetection: Bool?
+        storedSpeakerDetection: Bool?,
+        microphoneSpeakerDetection: Bool = false
     ) -> TranscriptionService {
         let resolvedSpeakerDetection = TranscribeCommand.resolveSpeakerDetection(
             speakerDetection,
@@ -558,7 +568,8 @@ struct RetranscribeCommand: AsyncParsableCommand {
             processingMode: { processingMode },
             shouldDiarize: { resolvedSpeakerDetection.enabled },
             shouldDiarizeMeetings: { resolvedSpeakerDetection.enabled },
-            diarizationService: TranscribeCommand.makeDiarizationService(for: resolvedSpeakerDetection),
+            diarizationService: TranscribeCommand.makeDiarizationService(for: resolvedSpeakerDetection)
+                ?? (microphoneSpeakerDetection ? DiarizationService() : nil),
             meetingResidualSuppression: { residualSuppression }
         )
     }

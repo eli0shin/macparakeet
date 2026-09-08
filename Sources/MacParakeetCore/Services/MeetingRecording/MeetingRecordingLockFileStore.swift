@@ -19,6 +19,14 @@ public struct MeetingRecordingLockFile: Codable, Sendable, Equatable {
     public static let currentSchemaVersion = 2
     public static let fileName = "recording.lock"
 
+    public private(set) var microphoneSpeakerDetection = false
+
+    public func withMicrophoneSpeakerDetection(_ enabled: Bool) -> Self {
+        var copy = self
+        copy.microphoneSpeakerDetection = enabled
+        return copy
+    }
+
     public let schemaVersion: Int
     public let sessionId: UUID
     public let startedAt: Date
@@ -45,6 +53,7 @@ public struct MeetingRecordingLockFile: Codable, Sendable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion
+        case microphoneSpeakerDetection
         case sessionId
         case startedAt
         case pid
@@ -89,6 +98,7 @@ public struct MeetingRecordingLockFile: Codable, Sendable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        microphoneSpeakerDetection = (try? container.decode(Bool.self, forKey: .microphoneSpeakerDetection)) ?? false
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         sessionId = try container.decode(UUID.self, forKey: .sessionId)
         startedAt = try container.decode(Date.self, forKey: .startedAt)
@@ -119,6 +129,7 @@ public struct MeetingRecordingLockFile: Codable, Sendable, Equatable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(microphoneSpeakerDetection, forKey: .microphoneSpeakerDetection)
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(sessionId, forKey: .sessionId)
         try container.encode(startedAt, forKey: .startedAt)
@@ -150,6 +161,7 @@ public struct MeetingRecordingLockFile: Codable, Sendable, Equatable {
             notes: notes,
             folderURL: folderURL
         )
+        .withMicrophoneSpeakerDetection(microphoneSpeakerDetection)
     }
 
     public func withState(_ state: MeetingRecordingLockState) -> MeetingRecordingLockFile {
@@ -167,7 +179,7 @@ public struct MeetingRecordingLockFile: Codable, Sendable, Equatable {
             calendarEventSnapshot: calendarEventSnapshot,
             notes: notes,
             folderURL: folderURL
-        )
+        ).withMicrophoneSpeakerDetection(microphoneSpeakerDetection)
     }
 
     public func withNotes(_ notes: String?) -> MeetingRecordingLockFile {
@@ -185,7 +197,7 @@ public struct MeetingRecordingLockFile: Codable, Sendable, Equatable {
             calendarEventSnapshot: calendarEventSnapshot,
             notes: notes,
             folderURL: folderURL
-        )
+        ).withMicrophoneSpeakerDetection(microphoneSpeakerDetection)
     }
 
     public func withFinalizationOwner(
@@ -206,7 +218,7 @@ public struct MeetingRecordingLockFile: Codable, Sendable, Equatable {
             calendarEventSnapshot: calendarEventSnapshot,
             notes: notes,
             folderURL: folderURL
-        )
+        ).withMicrophoneSpeakerDetection(microphoneSpeakerDetection)
     }
 }
 

@@ -89,6 +89,17 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ## [Unreleased]
 
+### Microphone speaker detection
+
+- Archived meeting retranscription preserves the microphone speaker-detection
+  choice captured by the app at recording start. It is independent of the saved
+  system-audio detection preference. Explicit `--speaker-detection off` and
+  `--no-diarize` disable both tracks for that run.
+- Enabled recordings use `microphone:<id>` local speaker IDs and
+  `microphone:unknown` for unattributed local speech in existing JSON speaker
+  fields. Legacy `microphone` / `Me` and system speaker IDs remain unchanged.
+  No live detection or cross-track identity matching is added.
+
 ### Meeting echo cleanup
 
 - Meeting `retranscribe` now regenerates the cleaned microphone from retained

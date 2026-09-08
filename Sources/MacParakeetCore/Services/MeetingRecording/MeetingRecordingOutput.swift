@@ -2,6 +2,14 @@ import AVFoundation
 import Foundation
 
 public struct MeetingRecordingOutput: Sendable, Equatable {
+    public private(set) var microphoneSpeakerDetection = false
+
+    public func withMicrophoneSpeakerDetection(_ enabled: Bool) -> Self {
+        var copy = self
+        copy.microphoneSpeakerDetection = enabled
+        return copy
+    }
+
     public let sessionID: UUID
     public let displayName: String
     public let folderURL: URL
@@ -225,6 +233,7 @@ public struct MeetingRecordingOutput: Sendable, Equatable {
             startContext: metadata.startContext,
             calendarEventSnapshot: metadata.calendarEventSnapshot
         )
+        .withMicrophoneSpeakerDetection(metadata.microphoneSpeakerDetection)
     }
 
     /// Explicit retranscription always renders with the selected current settings.
@@ -261,6 +270,7 @@ public struct MeetingRecordingOutput: Sendable, Equatable {
             previewSpeechEngine: previewSpeechEngine, startContext: startContext,
             userNotes: userNotes, calendarEventSnapshot: calendarEventSnapshot
         )
+        .withMicrophoneSpeakerDetection(microphoneSpeakerDetection)
     }
 
     private static func probedDurationSeconds(
@@ -299,7 +309,8 @@ public struct MeetingRecordingOutput: Sendable, Equatable {
     }
 
     public static func == (lhs: MeetingRecordingOutput, rhs: MeetingRecordingOutput) -> Bool {
-        lhs.sessionID == rhs.sessionID
+        lhs.microphoneSpeakerDetection == rhs.microphoneSpeakerDetection
+            && lhs.sessionID == rhs.sessionID
             && lhs.displayName == rhs.displayName
             && lhs.folderURL == rhs.folderURL
             && lhs.mixedAudioURL == rhs.mixedAudioURL
