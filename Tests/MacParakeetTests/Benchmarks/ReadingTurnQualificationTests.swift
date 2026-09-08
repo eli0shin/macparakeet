@@ -295,7 +295,13 @@ final class ReadingTurnQualificationTests: XCTestCase {
     nonisolated private static func exerciseFormatting(
         _ document: MeetingTranscriptPresentationDocument
     ) async -> MeetingReadingTurnFormattingResult {
-        await MeetingReadingTurnFormatter().format(document) { $0 }
+        await MeetingReadingTurnFormatter().format(document) { batch in
+            let payload: [String: Any] = [
+                "entries": batch.entries.map { ["id": $0.id, "text": $0.text] }
+            ]
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            return String(decoding: data, as: UTF8.self)
+        }
     }
 
     private func makeTranscription(

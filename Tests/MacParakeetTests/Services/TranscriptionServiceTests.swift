@@ -1914,7 +1914,20 @@ final class TranscriptionServiceTests: XCTestCase {
             }
         ))
         let llm = MockLLMService()
-        llm.formatTranscriptTransform = { $0.uppercased() }
+        llm.formatTranscriptTransform = { input in
+            let data = Data(input.utf8)
+            let request = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let entries = try XCTUnwrap(request["entries"] as? [[String: String]])
+            let response: [String: Any] = [
+                "entries": entries.map { entry in
+                    ["id": entry["id"]!, "text": entry["text"]!.uppercased()]
+                }
+            ]
+            return String(
+                decoding: try JSONSerialization.data(withJSONObject: response),
+                as: UTF8.self
+            )
+        }
         let service = TranscriptionService(
             audioProcessor: mockAudio,
             sttTranscriber: mockSTT,
@@ -1933,24 +1946,28 @@ final class TranscriptionServiceTests: XCTestCase {
             onProgress: { update in progress.withLock { $0.append(update) } }
         )
 
-        XCTAssertEqual(llm.formatTranscriptCallCount, 3)
-        XCTAssertTrue(llm.formattedTranscripts.allSatisfy {
-            $0.count <= AIFormatter.maxTranscriptionInputChars
-        })
+        XCTAssertEqual(llm.formatTranscriptCallCount, 2)
+        let requestedEntries = try llm.formattedTranscripts.flatMap { input -> [[String: String]] in
+            let object = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(input.utf8)) as? [String: Any]
+            )
+            return try XCTUnwrap(object["entries"] as? [[String: String]])
+        }
+        XCTAssertEqual(requestedEntries.compactMap { $0["text"] }, turnTexts)
         XCTAssertEqual(result.meetingReadingTurnFormatting?.count, 3)
         XCTAssertEqual(result.cleanTranscript, turnTexts.map { $0.uppercased() }.joined(separator: "\n\n"))
         XCTAssertEqual(result.rawTranscript, turnTexts.joined(separator: " "))
         XCTAssertEqual(result.wordTimestamps?.map(\.word), turnTexts)
         XCTAssertTrue(progress.withLock { updates in
             updates.contains { update in
-                if case .formatting(completed: 3, total: 3) = update { return true }
+                if case .formatting(completed: 2, total: 2) = update { return true }
                 return false
             }
         })
 
         let persisted = try XCTUnwrap(transcriptionRepo.fetch(id: result.id))
         XCTAssertEqual(persisted.meetingReadingTurnFormatting, result.meetingReadingTurnFormatting)
-        XCTAssertEqual(try llmRunRepo.fetchForTranscription(id: result.id).count, 3)
+        XCTAssertEqual(try llmRunRepo.fetchForTranscription(id: result.id).count, 2)
     }
 
     func testMeetingCancellationDuringFormattingThrowsAndPersistsCancelledStatus() async throws {

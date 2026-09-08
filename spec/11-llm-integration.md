@@ -428,17 +428,26 @@ transcription formatting continues to use the fallback formatter prompt. The
 transcripts-side formatter has its own "Use for transcripts" toggle (default
 on). File/URL formatting keeps the whole-input length cap used to avoid
 unrealistic provider timeouts (#493). Completed meetings instead derive stable
-Reading Turns first and send serial requests bounded by that same character
-cap. Requests never cross a turn or split a deterministic paragraph. A turn is
-published only after all of its requests pass non-empty, protected-value,
-content-change, and output-size validation; otherwise only that turn uses its
-deterministic text. Cancellation propagates through the meeting workflow, which
-marks the operation cancelled and publishes no partial formatting overrides.
-These validated text overrides are
-keyed to turn identity and deterministic source text, so the model cannot alter
-speaker labels, overlap, playback timing, paragraphs, or raw word evidence.
-Formatting runs only through the provider and prompt already selected by the
-user and only when the existing transcript formatter toggle is enabled.
+Reading Turns, then pack complete verbatim paragraphs across turns and speakers
+into serial batches. Every provider gets at most 20,000 characters of transcript
+text per batch; instructions, transport IDs, and JSON do not reduce that budget.
+A fitting paragraph is never split. An oversized paragraph is split at sentence
+endings, with a hard request bound and no discarded input. Provider adapters do
+not truncate formatter input or apply an LM Studio-specific cleanup cap.
+
+Each JSON entry is cleaned independently and keeps a transport ID. Responses
+map by ID even when entries arrive out of order; speaker labels, overlap,
+playback timing, paragraph evidence, and raw words stay outside model control.
+A request failure or malformed, missing, unknown, or duplicate ID is retried
+twice. After three failed attempts, only that batch uses its verbatim source
+text. Mapped output is not rejected for content changes, protected-value
+changes, output size, or a generation-length stop reason. Cancellation stops
+later batches and propagates through the meeting workflow, which marks the
+operation cancelled and publishes no partial formatting overrides. Durable
+turn overrides remain keyed to turn identity and deterministic source text, so
+stale overrides fail closed. Formatting runs only through the selected
+provider, model, and formatter prompt when the transcript formatter toggle is
+enabled.
 
 Browser hostname/domain matching is intentionally deferred. In V1, Gmail in
 Chrome can match an exact Chrome profile or the coarse `browser` category, but
