@@ -228,7 +228,6 @@ struct TranscribeView: View {
                         .textFieldStyle(.plain)
                         .font(DesignSystem.Typography.body)
                         .accessibilityLabel("Media URL")
-                        .accessibilityValue(viewModel.isValidURL ? "Valid media URL" : "")
                         .onSubmit {
                             if viewModel.isValidURL {
                                 viewModel.transcribeURL()
