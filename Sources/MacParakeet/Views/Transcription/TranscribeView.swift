@@ -132,7 +132,17 @@ struct TranscribeView: View {
 
                 VStack(spacing: DesignSystem.Spacing.xl) {
                     HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
-                        youTubeCard
+                        if AppFeatures.meetingRecordingEnabled {
+                            MeetingRecordingTile(
+                                viewModel: meetingPillViewModel,
+                                permissionState: meetingPermissionState,
+                                presentation: .primary,
+                                onTap: onRecordMeeting,
+                                onPauseToggle: onPauseToggleMeeting
+                            )
+                            .accessibilitySortPriority(3)
+                        }
+
                         PortalDropZone(
                             isDragging: $viewModel.isDragging,
                             onDrop: { providers in
@@ -142,18 +152,13 @@ struct TranscribeView: View {
                             },
                             onBrowse: { openFilePicker() }
                         )
+                        .accessibilitySortPriority(2)
                     }
                     .padding(.horizontal, DesignSystem.Spacing.xl)
 
-                    if AppFeatures.meetingRecordingEnabled {
-                        MeetingRecordingTile(
-                            viewModel: meetingPillViewModel,
-                            permissionState: meetingPermissionState,
-                            onTap: onRecordMeeting,
-                            onPauseToggle: onPauseToggleMeeting
-                        )
+                    mediaURLBar
                         .padding(.horizontal, DesignSystem.Spacing.xl)
-                    }
+                        .accessibilitySortPriority(1)
 
                     // Error banner
                     if let error = viewModel.errorMessage {
@@ -178,115 +183,124 @@ struct TranscribeView: View {
         }
     }
 
-    // MARK: - YouTube Card
+    // MARK: - Media URL Bar
 
-    private var youTubeCard: some View {
-        ZStack {
-            // Card background — matches PortalDropZone styling
+    private var mediaURLBar: some View {
+        HStack(spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill((recognizedURLPlatform?.brandTint ?? DesignSystem.Colors.accent).opacity(0.12))
+                    .frame(width: 44, height: 44)
+
+                PlatformGlyph(
+                    platform: recognizedURLPlatform,
+                    color: recognizedURLPlatform?.brandTint ?? DesignSystem.Colors.textSecondary
+                )
+                .frame(width: 24, height: 24)
+            }
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: recognizedURLPlatform)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(urlCardTitle)
+                    .font(DesignSystem.Typography.sectionTitle)
+                    .lineLimit(1)
+                    .contentTransition(.opacity)
+                    .animation(.easeInOut(duration: 0.2), value: recognizedURLPlatform)
+
+                Text(urlCardCaption)
+                    .font(DesignSystem.Typography.micro)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+                    .animation(.easeInOut(duration: 0.2), value: urlCardCaption)
+            }
+            .frame(minWidth: 150, idealWidth: 210, maxWidth: 240, alignment: .leading)
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                HStack(spacing: 8) {
+                    Image(systemName: viewModel.isValidURL ? "checkmark.circle.fill" : "link")
+                        .font(.system(size: 14))
+                        .foregroundStyle(viewModel.isValidURL ? DesignSystem.Colors.successGreen : .secondary)
+                        .contentTransition(.symbolEffect(.replace))
+                        .accessibilityHidden(true)
+
+                    TextField("Paste a video or podcast link", text: $viewModel.urlInput)
+                        .textFieldStyle(.plain)
+                        .font(DesignSystem.Typography.body)
+                        .accessibilityLabel("Media URL")
+                        .accessibilityValue(viewModel.isValidURL ? "Valid media URL" : "")
+                        .onSubmit {
+                            if viewModel.isValidURL {
+                                viewModel.transcribeURL()
+                            }
+                        }
+
+                    Button {
+                        if let clip = NSPasteboard.general.string(forType: .string) {
+                            viewModel.urlInput = clip.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                    } label: {
+                        Text("Paste")
+                            .font(DesignSystem.Typography.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(DesignSystem.Colors.cardBackground))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Paste from clipboard")
+                    .accessibilityLabel("Paste URL from clipboard")
+                    .accessibilityHint("Pastes clipboard text into the link field")
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
+                        .fill(DesignSystem.Colors.cardBackground)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
+                        .strokeBorder(
+                            viewModel.isValidURL
+                                ? DesignSystem.Colors.successGreen.opacity(0.35) : DesignSystem.Colors.border,
+                            lineWidth: 0.8
+                        )
+                )
+
+                Button {
+                    viewModel.transcribeURL()
+                } label: {
+                    Label("Transcribe", systemImage: "arrow.right")
+                        .font(DesignSystem.Typography.caption.weight(.semibold))
+                        .foregroundStyle(DesignSystem.Colors.onAccent)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(
+                            RoundedRectangle(cornerRadius: DesignSystem.Layout.buttonCornerRadius)
+                                .fill(
+                                    viewModel.isValidURL
+                                        ? DesignSystem.Colors.accent : DesignSystem.Colors.accent.opacity(0.35))
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!viewModel.isValidURL)
+                .accessibilityLabel("Start media URL transcription")
+                .accessibilityHint("Starts transcribing the media link")
+            }
+            .frame(minWidth: 280)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.lg)
+        .padding(.vertical, DesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, minHeight: 96)
+        .background(
             RoundedRectangle(cornerRadius: DesignSystem.Layout.dropZoneCornerRadius)
                 .fill(DesignSystem.Colors.surfaceElevated)
                 .cardShadow(DesignSystem.Shadows.cardRest)
-
-            VStack(spacing: DesignSystem.Spacing.md) {
-                // Platform orbit hero — slowly rotating constellation that blooms
-                // the matched platform to focus as a link is pasted.
-                MediaPlatformOrbitView(matched: recognizedURLPlatform)
-                    .frame(width: 118, height: 118)
-                    .accessibilityHidden(true)
-
-                Text(urlCardTitle)
-                    .font(DesignSystem.Typography.pageTitle)
-                    .contentTransition(.opacity)
-                    // Key on the platform enum, not the LocalizedStringKey title:
-                    // it changes in lockstep with the title but is a reliable
-                    // Equatable change-signal (LSK equality is opaque/interpolated).
-                    .animation(.easeInOut(duration: 0.2), value: recognizedURLPlatform)
-
-                // URL input row
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    HStack(spacing: 8) {
-                        Image(systemName: viewModel.isValidURL ? "checkmark.circle.fill" : "link")
-                            .font(.system(size: 14))
-                            .foregroundStyle(viewModel.isValidURL ? DesignSystem.Colors.successGreen : .secondary)
-                            .contentTransition(.symbolEffect(.replace))
-
-                        TextField("Paste any video or podcast link", text: $viewModel.urlInput)
-                            .textFieldStyle(.plain)
-                            .font(DesignSystem.Typography.body)
-                            .onSubmit {
-                                if viewModel.isValidURL {
-                                    viewModel.transcribeURL()
-                                }
-                            }
-
-                        Button {
-                            if let clip = NSPasteboard.general.string(forType: .string) {
-                                viewModel.urlInput = clip.trimmingCharacters(in: .whitespacesAndNewlines)
-                            }
-                        } label: {
-                            Text("Paste")
-                                .font(DesignSystem.Typography.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .layoutPriority(1)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    Capsule()
-                                        .fill(DesignSystem.Colors.cardBackground)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .help("Paste from clipboard")
-                        .accessibilityLabel("Paste URL from clipboard")
-                        .accessibilityHint("Pastes clipboard text into the link field")
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                            .fill(DesignSystem.Colors.cardBackground)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                            .strokeBorder(
-                                viewModel.isValidURL ? DesignSystem.Colors.successGreen.opacity(0.35) : DesignSystem.Colors.border,
-                                lineWidth: 0.8
-                            )
-                    )
-
-                    Button {
-                        viewModel.transcribeURL()
-                    } label: {
-                        Label("Transcribe", systemImage: "arrow.right")
-                            .font(DesignSystem.Typography.caption.weight(.semibold))
-                            .foregroundStyle(DesignSystem.Colors.onAccent)
-                            .lineLimit(1)
-                            .layoutPriority(1)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 9)
-                            .background(
-                                RoundedRectangle(cornerRadius: DesignSystem.Layout.buttonCornerRadius)
-                                    .fill(viewModel.isValidURL ? DesignSystem.Colors.accent : DesignSystem.Colors.accent.opacity(0.35))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!viewModel.isValidURL)
-                    .accessibilityLabel("Start transcription")
-                    .accessibilityHint("Starts transcribing the media link")
-                }
-                .padding(.horizontal, DesignSystem.Spacing.md)
-
-                Text(urlCardCaption)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, DesignSystem.Spacing.md)
-                    .animation(.easeInOut(duration: 0.2), value: urlCardCaption)
-            }
-            .padding(.vertical, DesignSystem.Spacing.xl)
-        }
-        .frame(minHeight: 220)
+        )
     }
 
     /// The platform recognized from the current URL draft (drives the orbit hero).

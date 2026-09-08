@@ -2,14 +2,23 @@ import MacParakeetCore
 import MacParakeetViewModels
 import SwiftUI
 
-/// Capture tile for meeting recording, rendered below the YouTube + File
-/// drop cards on the Transcribe tab. Mirrors the floating recording pill's
-/// visual language (flower-of-life rosette + stem + leaves) at a larger
-/// scale, on a light surface. The tile body is informational; only the
-/// Start / Stop buttons fire the action. Mirrors the sibling YouTube
-/// card's "click the button, not the body" pattern, and gives Start and
-/// Stop symmetric tap targets so users learn one rule.
+/// Capture tile for meeting recording. The Transcribe tab uses the large
+/// primary presentation; the Meetings workspace keeps the compact strip.
+/// Both mirror the floating recording pill's visual language on a light
+/// surface. The tile body is informational; only the Start / Stop buttons
+/// fire the action, with symmetric tap targets so users learn one rule.
 struct MeetingRecordingTile: View {
+    enum Presentation: Equatable {
+        case compact
+        case primary
+    }
+
+    private enum PrimaryStatusIcon {
+        case progress
+        case success
+        case error
+    }
+
     enum PermissionState: Equatable {
         case ready(sourceMode: MeetingAudioSourceMode)
         case missing(microphone: Bool, screenRecording: Bool)
@@ -72,6 +81,7 @@ struct MeetingRecordingTile: View {
 
     @Bindable var viewModel: MeetingRecordingPillViewModel
     var permissionState: PermissionState = .ready(sourceMode: .microphoneAndSystem)
+    var presentation: Presentation = .compact
     var onTap: () -> Void
     /// Optional pause/resume handler. When `nil` the tile renders no pause
     /// control — keeps existing call sites unchanged.
@@ -87,12 +97,19 @@ struct MeetingRecordingTile: View {
     private var tileSurface: some View {
         ZStack {
             background
-            content
-                .padding(.horizontal, DesignSystem.Spacing.lg)
-                .padding(.vertical, DesignSystem.Spacing.md)
+            Group {
+                if presentation == .primary {
+                    primaryContent
+                } else {
+                    content
+                }
+            }
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+            .padding(.vertical, presentation == .primary ? DesignSystem.Spacing.lg : DesignSystem.Spacing.md)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 96)
+        .frame(maxWidth: .infinity, maxHeight: presentation == .primary ? .infinity : nil)
+        .frame(minHeight: presentation == .primary ? 220 : 96)
+        .frame(height: presentation == .compact ? 96 : nil)
     }
 
     // MARK: - Background
@@ -135,6 +152,132 @@ struct MeetingRecordingTile: View {
             completedContent
         case .error(let message):
             errorContent(message: message)
+        }
+    }
+
+    @ViewBuilder
+    private var primaryContent: some View {
+        switch viewModel.state {
+        case .idle:
+            primaryIdleContent
+        case .recording, .paused:
+            primaryRecordingContent
+        case .completing, .transcribing:
+            primaryStatusContent(
+                icon: .progress,
+                title: viewModel.state == .completing ? "Wrapping up…" : "Transcribing…",
+                detail: "Processing entirely on this Mac."
+            )
+        case .completed:
+            primaryStatusContent(icon: .success, title: "Saved to Library", detail: "Audio saved")
+        case .error(let message):
+            primaryStatusContent(icon: .error, title: "Recording failed", detail: message)
+        }
+    }
+
+    private var primaryIdleContent: some View {
+        VStack(spacing: DesignSystem.Spacing.sm) {
+            if permissionState.isReady {
+                SacredFlowerTile(audioLevel: 0)
+            } else {
+                permissionIcon
+                    .frame(width: 64, height: 68)
+            }
+
+            Text(permissionState.title)
+                .font(DesignSystem.Typography.pageTitle)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .multilineTextAlignment(.center)
+
+            Text(permissionState.detail)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+
+            audioSavedConfirmationBadge
+            backgroundTranscriptionBadge
+
+            StartRecordingButton(permissionState: permissionState, onTap: onTap)
+                .padding(.top, DesignSystem.Spacing.xs)
+        }
+    }
+
+    private var primaryRecordingContent: some View {
+        let isPaused = viewModel.isPaused
+        return VStack(spacing: DesignSystem.Spacing.sm) {
+            ZStack {
+                SacredFlowerTile(
+                    audioLevel: isPaused ? 0 : max(viewModel.micLevel, viewModel.systemLevel)
+                )
+                .opacity(isPaused ? 0.45 : 1.0)
+
+                if isPaused {
+                    Image(systemName: "pause.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+            }
+
+            HStack(spacing: 6) {
+                if isPaused {
+                    Image(systemName: "pause.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(DesignSystem.Colors.textTertiary)
+                } else {
+                    BreathingDot()
+                }
+                Text(isPaused ? "Paused" : "Recording")
+                    .font(DesignSystem.Typography.sectionTitle)
+            }
+
+            Text(viewModel.formattedElapsed)
+                .font(.system(size: 15, weight: .semibold).monospacedDigit())
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+            if let warning = visibleSourceHealthWarning {
+                MeetingSourceHealthInlineBadge(chip: warning)
+            }
+            audioSavedConfirmationBadge
+            backgroundTranscriptionBadge
+
+            HStack(spacing: 8) {
+                if let onPauseToggle, viewModel.canTogglePause {
+                    TilePauseResumeButton(isPaused: isPaused, onToggle: onPauseToggle)
+                }
+                stopButton
+            }
+            .padding(.top, DesignSystem.Spacing.xs)
+        }
+    }
+
+    private func primaryStatusContent(icon: PrimaryStatusIcon, title: String, detail: String) -> some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            Group {
+                switch icon {
+                case .progress:
+                    SpinnerRingView(size: 34, revolutionDuration: 2.0, tintColor: DesignSystem.Colors.accent)
+                case .success:
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 44, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.successGreen)
+                case .error:
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 40, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.warningAmber)
+                }
+            }
+            .frame(width: 64, height: 64)
+
+            Text(title)
+                .font(DesignSystem.Typography.pageTitle)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .multilineTextAlignment(.center)
+            Text(detail)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
         }
     }
 
