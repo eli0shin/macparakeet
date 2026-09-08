@@ -9,7 +9,6 @@ final class MainWindowState {
     var requestedSettingsTab: SettingsTab?
     var requestedSettingsAnchor: String?
     var requestedSettingsTabRevision = 0
-    private(set) var libraryRootNavigationRevision = 0
     var showingProgressDetail = false
 
     func navigateToSettings(tab: SettingsTab? = nil, anchor: String? = nil) {
@@ -25,13 +24,17 @@ final class MainWindowState {
         selectedItem = item
     }
 
-    /// Handle an explicit click in the main sidebar. Each Library click emits
-    /// a new root request, even when Library is already selected.
-    func navigateFromSidebar(to item: SidebarItem) {
+    /// Handle an explicit click in the main sidebar. Each Library click opens
+    /// the root list, even when Library or a transcription detail is visible.
+    func navigateFromSidebar(
+        to item: SidebarItem,
+        libraryViewModel: TranscriptionLibraryViewModel,
+        transcriptionViewModel: TranscriptionViewModel
+    ) {
         selectedItem = item
-        if item == .library {
-            libraryRootNavigationRevision += 1
-        }
+        guard item == .library else { return }
+        transcriptionViewModel.showInputPortal()
+        libraryViewModel.selectLocation(.root)
     }
 
     func startNewTranscription() {

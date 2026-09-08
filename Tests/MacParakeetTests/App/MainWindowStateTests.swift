@@ -63,34 +63,63 @@ final class MainWindowStateTests: XCTestCase {
         state.navigate(to: .library)
 
         XCTAssertEqual(state.selectedItem, .library)
-        XCTAssertEqual(state.libraryRootNavigationRevision, 0)
     }
 
-    func testSidebarLibraryNavigationRequestsRootFromEveryPriorLocation() {
+    func testSidebarLibraryNavigationOpensRootAndClosesDetailEveryTime() {
         let state = MainWindowState()
+        let libraryViewModel = TranscriptionLibraryViewModel()
+        let transcriptionViewModel = TranscriptionViewModel()
+        let folderID = UUID()
+        let detail = Transcription(fileName: "detail.wav", status: .completed)
 
-        state.navigateFromSidebar(to: .library)
+        libraryViewModel.selectLocation(.folder(folderID))
+        transcriptionViewModel.currentTranscription = detail
+        state.navigateFromSidebar(
+            to: .library,
+            libraryViewModel: libraryViewModel,
+            transcriptionViewModel: transcriptionViewModel
+        )
         XCTAssertEqual(state.selectedItem, .library)
-        XCTAssertEqual(state.libraryRootNavigationRevision, 1)
+        XCTAssertEqual(libraryViewModel.location, .root)
+        XCTAssertNil(transcriptionViewModel.currentTranscription)
 
-        state.navigateFromSidebar(to: .settings)
-        state.navigateFromSidebar(to: .library)
+        state.navigate(to: .settings)
+        libraryViewModel.selectLocation(.allItems)
+        state.navigateFromSidebar(
+            to: .library,
+            libraryViewModel: libraryViewModel,
+            transcriptionViewModel: transcriptionViewModel
+        )
         XCTAssertEqual(state.selectedItem, .library)
-        XCTAssertEqual(state.libraryRootNavigationRevision, 2)
+        XCTAssertEqual(libraryViewModel.location, .root)
 
-        state.navigateFromSidebar(to: .library)
-        XCTAssertEqual(state.selectedItem, .library)
-        XCTAssertEqual(state.libraryRootNavigationRevision, 3)
+        libraryViewModel.selectLocation(.folder(folderID))
+        state.navigateFromSidebar(
+            to: .library,
+            libraryViewModel: libraryViewModel,
+            transcriptionViewModel: transcriptionViewModel
+        )
+        XCTAssertEqual(libraryViewModel.location, .root)
     }
 
-    func testSidebarNavigationOutsideLibraryDoesNotRequestLibraryRoot() {
+    func testSidebarNavigationOutsideLibraryPreservesLibraryLocationAndDetail() {
         let state = MainWindowState()
+        let libraryViewModel = TranscriptionLibraryViewModel()
+        let transcriptionViewModel = TranscriptionViewModel()
+        let folderID = UUID()
+        let detail = Transcription(fileName: "detail.wav", status: .completed)
+        libraryViewModel.selectLocation(.folder(folderID))
+        transcriptionViewModel.currentTranscription = detail
 
-        for item in SidebarItem.allCases where item != .library {
-            state.navigateFromSidebar(to: item)
-        }
+        state.navigateFromSidebar(
+            to: .settings,
+            libraryViewModel: libraryViewModel,
+            transcriptionViewModel: transcriptionViewModel
+        )
 
-        XCTAssertEqual(state.libraryRootNavigationRevision, 0)
+        XCTAssertEqual(state.selectedItem, .settings)
+        XCTAssertEqual(libraryViewModel.location, .folder(folderID))
+        XCTAssertEqual(transcriptionViewModel.currentTranscription?.id, detail.id)
     }
 
     func testEveryRemainingSidebarDestinationCanBeSelected() {

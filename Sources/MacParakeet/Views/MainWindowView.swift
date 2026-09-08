@@ -92,15 +92,14 @@ struct MainWindowView: View {
                 List(selection: $state.selectedItem) {
                     Section {
                         ForEach(SidebarItem.primaryItems) { item in
-                            SidebarItemLabel(item: item)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                                .tag(item)
-                                .simultaneousGesture(
-                                    TapGesture().onEnded {
-                                        state.navigateFromSidebar(to: item)
-                                    }
+                            MainSidebarItemRow(item: item) {
+                                state.navigateFromSidebar(
+                                    to: item,
+                                    libraryViewModel: libraryViewModel,
+                                    transcriptionViewModel: transcriptionViewModel
                                 )
+                            }
+                            .tag(item)
                         }
                     }
 
@@ -306,10 +305,6 @@ struct MainWindowView: View {
                 state.selectedItem = .library
             }
         }
-        .onChange(of: state.libraryRootNavigationRevision) {
-            transcriptionViewModel.showInputPortal()
-            libraryViewModel.selectLocation(.root)
-        }
         .onChange(of: state.selectedItem) { _, newItem in
             // Bulk-selection mode is a History-only affordance living on a
             // process-lifetime singleton, so tear it down at the navigation
@@ -498,6 +493,20 @@ private struct TransformEditorSheetHost: View {
             onCancel: onCancel,
             onReset: onReset
         )
+    }
+}
+
+struct MainSidebarItemRow: View {
+    let item: SidebarItem
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            Label(item.rawValue, systemImage: item.icon)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
