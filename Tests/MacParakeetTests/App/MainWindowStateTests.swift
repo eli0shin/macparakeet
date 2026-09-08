@@ -63,6 +63,34 @@ final class MainWindowStateTests: XCTestCase {
         state.navigate(to: .library)
 
         XCTAssertEqual(state.selectedItem, .library)
+        XCTAssertEqual(state.libraryRootNavigationRevision, 0)
+    }
+
+    func testSidebarLibraryNavigationRequestsRootFromEveryPriorLocation() {
+        let state = MainWindowState()
+
+        state.navigateFromSidebar(to: .library)
+        XCTAssertEqual(state.selectedItem, .library)
+        XCTAssertEqual(state.libraryRootNavigationRevision, 1)
+
+        state.navigateFromSidebar(to: .settings)
+        state.navigateFromSidebar(to: .library)
+        XCTAssertEqual(state.selectedItem, .library)
+        XCTAssertEqual(state.libraryRootNavigationRevision, 2)
+
+        state.navigateFromSidebar(to: .library)
+        XCTAssertEqual(state.selectedItem, .library)
+        XCTAssertEqual(state.libraryRootNavigationRevision, 3)
+    }
+
+    func testSidebarNavigationOutsideLibraryDoesNotRequestLibraryRoot() {
+        let state = MainWindowState()
+
+        for item in SidebarItem.allCases where item != .library {
+            state.navigateFromSidebar(to: item)
+        }
+
+        XCTAssertEqual(state.libraryRootNavigationRevision, 0)
     }
 
     func testEveryRemainingSidebarDestinationCanBeSelected() {

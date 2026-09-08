@@ -9,6 +9,7 @@ final class MainWindowState {
     var requestedSettingsTab: SettingsTab?
     var requestedSettingsAnchor: String?
     var requestedSettingsTabRevision = 0
+    private(set) var libraryRootNavigationRevision = 0
     var showingProgressDetail = false
 
     func navigateToSettings(tab: SettingsTab? = nil, anchor: String? = nil) {
@@ -22,6 +23,15 @@ final class MainWindowState {
 
     func navigate(to item: SidebarItem) {
         selectedItem = item
+    }
+
+    /// Handle an explicit click in the main sidebar. Each Library click emits
+    /// a new root request, even when Library is already selected.
+    func navigateFromSidebar(to item: SidebarItem) {
+        selectedItem = item
+        if item == .library {
+            libraryRootNavigationRevision += 1
+        }
     }
 
     func startNewTranscription() {

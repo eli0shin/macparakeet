@@ -93,7 +93,14 @@ struct MainWindowView: View {
                     Section {
                         ForEach(SidebarItem.primaryItems) { item in
                             SidebarItemLabel(item: item)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                                 .tag(item)
+                                .simultaneousGesture(
+                                    TapGesture().onEnded {
+                                        state.navigateFromSidebar(to: item)
+                                    }
+                                )
                         }
                     }
 
@@ -298,6 +305,10 @@ struct MainWindowView: View {
             if newID != nil {
                 state.selectedItem = .library
             }
+        }
+        .onChange(of: state.libraryRootNavigationRevision) {
+            transcriptionViewModel.showInputPortal()
+            libraryViewModel.selectLocation(.root)
         }
         .onChange(of: state.selectedItem) { _, newItem in
             // Bulk-selection mode is a History-only affordance living on a
