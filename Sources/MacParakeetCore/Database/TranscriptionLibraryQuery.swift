@@ -1,5 +1,14 @@
 import Foundation
 
+public enum TranscriptionLibraryLocation: Sendable, Equatable {
+    /// Aggregate view across Library root and every folder.
+    case allItems
+    /// Items with no folder membership.
+    case root
+    /// Items directly in one folder. Descendant folders are separate locations.
+    case folder(UUID)
+}
+
 public enum TranscriptionLibrarySortOrder: Sendable, Equatable {
     case dateDescending
     case dateAscending
@@ -8,6 +17,7 @@ public enum TranscriptionLibrarySortOrder: Sendable, Equatable {
 
 public struct TranscriptionLibraryQuery: Sendable, Equatable {
     public var sourceType: Transcription.SourceType?
+    public var location: TranscriptionLibraryLocation
     public var favoritesOnly: Bool
     public var searchText: String?
     public var sortOrder: TranscriptionLibrarySortOrder
@@ -18,6 +28,7 @@ public struct TranscriptionLibraryQuery: Sendable, Equatable {
 
     public init(
         sourceType: Transcription.SourceType? = nil,
+        location: TranscriptionLibraryLocation = .allItems,
         favoritesOnly: Bool = false,
         searchText: String? = nil,
         sortOrder: TranscriptionLibrarySortOrder = .dateDescending,
@@ -27,6 +38,7 @@ public struct TranscriptionLibraryQuery: Sendable, Equatable {
         includeProcessingMeetings: Bool = false
     ) {
         self.sourceType = sourceType
+        self.location = location
         self.favoritesOnly = favoritesOnly
         self.searchText = searchText
         self.sortOrder = sortOrder

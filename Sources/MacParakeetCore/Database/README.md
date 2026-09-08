@@ -17,7 +17,8 @@ process.
   schema.
 - One repository per table:
   - `DictationRepository.swift` — dictation history + lifetime stats.
-  - `TranscriptionRepository.swift` — file/YouTube/meeting transcriptions.
+  - `TranscriptionRepository.swift` — file/YouTube/podcast/meeting transcriptions and their Library-folder membership.
+  - `LibraryFolderRepository.swift` — the nested Library folder hierarchy.
   - `SegmentRepository.swift` — derived transcript segments, FTS5 search, slicing, and deterministic rebuilds.
   - `CardRepository.swift` — derived per-recording knowledge cards, provenance staleness, deterministic joins, and card FTS sync.
   - `CustomWordRepository.swift` — vocabulary entries.

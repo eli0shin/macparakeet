@@ -36,6 +36,7 @@ public protocol TranscriptionRepositoryProtocol: Sendable {
     @discardableResult
     func clearStoredAudioPathsForMeetingTranscriptions(under directoryPath: String) throws -> [UUID]
     func updateFavorite(id: UUID, isFavorite: Bool) throws
+    func moveToLibraryFolder(ids: [UUID], folderID: UUID?) throws
     func fetchFavorites() throws -> [Transcription]
 }
 
@@ -79,6 +80,14 @@ extension TranscriptionRepositoryProtocol {
         }
         if let sourceType = query.sourceType {
             results = results.filter { $0.sourceType == sourceType }
+        }
+        switch query.location {
+        case .allItems:
+            break
+        case .root:
+            results = results.filter { $0.libraryFolderID == nil }
+        case .folder(let folderID):
+            results = results.filter { $0.libraryFolderID == folderID }
         }
         if query.favoritesOnly {
             results = results.filter(\.isFavorite)
@@ -139,6 +148,7 @@ extension TranscriptionRepositoryProtocol {
     public func updateFilePath(id: UUID, filePath: String?) throws {}
     public func updateMeetingArtifactFolderPath(id: UUID, folderPath: String?) throws {}
     public func updateFavorite(id: UUID, isFavorite: Bool) throws {}
+    public func moveToLibraryFolder(ids: [UUID], folderID: UUID?) throws {}
     public func fetchFavorites() throws -> [Transcription] { [] }
 }
 
@@ -175,6 +185,16 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
 
     public func save(_ transcription: Transcription) throws {
         try dbQueue.write { db in
+            var transcription = transcription
+            // Folder membership has its own mutation path. Long-running STT
+            // flows can save a stale transcription snapshot after the user
+            // moves the visible row; preserve the current database membership
+            // so completion cannot undo that move or restore a deleted folder.
+            if let existing = try Transcription.fetchOne(db, key: transcription.id) {
+                transcription.libraryFolderID = existing.libraryFolderID
+            } else {
+                transcription.libraryFolderID = nil
+            }
             try transcription.save(db)
         }
     }
@@ -218,6 +238,15 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
             if let sourceType = query.sourceType {
                 whereClauses.append("sourceType = ?")
                 arguments.append(sourceType.rawValue)
+            }
+            switch query.location {
+            case .allItems:
+                break
+            case .root:
+                whereClauses.append("libraryFolderID IS NULL")
+            case .folder(let folderID):
+                whereClauses.append("libraryFolderID = ?")
+                arguments.append(folderID)
             }
             if query.favoritesOnly {
                 whereClauses.append("isFavorite = 1")
@@ -723,6 +752,24 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
                 sql: "UPDATE transcriptions SET isFavorite = ?, updatedAt = ? WHERE id = ?",
                 arguments: [isFavorite, Date(), id]
             )
+        }
+    }
+
+    public func moveToLibraryFolder(ids: [UUID], folderID: UUID?) throws {
+        guard !ids.isEmpty else { return }
+        try dbQueue.write { db in
+            if let folderID, try LibraryFolder.fetchOne(db, key: folderID) == nil {
+                throw LibraryFolderError.folderNotFound
+            }
+            let now = Date()
+            for id in Set(ids) {
+                guard var transcription = try Transcription.fetchOne(db, key: id) else {
+                    throw LibraryFolderError.itemNotFound
+                }
+                transcription.libraryFolderID = folderID
+                transcription.updatedAt = now
+                try transcription.update(db)
+            }
         }
     }
 

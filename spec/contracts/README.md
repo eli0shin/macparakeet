@@ -41,3 +41,4 @@ Each contract document should include:
 - [CLI JSON v1](cli-json-v1.md)
 - [DAPT Export v1](dapt-export-v1.md)
 - [File Transcription Audio Tracks](file-transcription-audio-tracks.md)
+- [Library Folders v1](library-folders-v1.md)

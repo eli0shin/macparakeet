@@ -18,6 +18,11 @@ struct TranscriptionLibraryView: View {
     @State private var pendingRename: Transcription?
     @State private var renameTitleDraft = ""
     @State private var pendingDeleteAudio: Transcription?
+    @State private var showingCreateFolder = false
+    @State private var newFolderName = ""
+    @State private var pendingDeleteFolder: LibraryFolder?
+    @State private var pendingMoveTranscriptions: [Transcription] = []
+    @State private var showingMoveDestinations = false
     @State private var audioSaveErrorMessage: String?
     @State private var showingBulkExportOptions = false
     @AppStorage("com.macparakeet.libraryBulkExportFormat")
@@ -52,6 +57,17 @@ struct TranscriptionLibraryView: View {
 
                 Spacer()
 
+                if usesFolderNavigation {
+                    Button {
+                        newFolderName = ""
+                        showingCreateFolder = true
+                    } label: {
+                        Label("Folder", systemImage: "plus")
+                    }
+                    .parakeetAction(.secondary)
+                    .help("Create a folder at the current Library location")
+                }
+
                 if showsSelectManyButton {
                     LibrarySelectManyButton {
                         viewModel.beginBulkSelection()
@@ -66,8 +82,9 @@ struct TranscriptionLibraryView: View {
             .padding(.top, DesignSystem.Spacing.lg)
             .padding(.bottom, DesignSystem.Spacing.sm)
 
-            // Filter bar
-            if showsFilterBar {
+            // Dedicated Meetings keeps its focused filter behavior. The main
+            // Library uses the accepted Finder-like folder tree instead.
+            if showsFilterBar && !usesFolderNavigation {
                 HStack(spacing: 0) {
                     ForEach(visibleLibraryFilters, id: \.self) { filter in
                         LibraryFilterChip(
@@ -95,18 +112,10 @@ struct TranscriptionLibraryView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            // Content — date-grouped list for meetings, thumbnail grid otherwise.
-            // Reason: meetings have no thumbnail-worthy visual asset, so a list with
-            // preview text + speaker count is denser and more useful than a wall of
-            // waveform placeholders.
-            if viewModel.isLoading && viewModel.filteredTranscriptions.isEmpty {
-                loadingState
-            } else if viewModel.filteredTranscriptions.isEmpty {
-                emptyState
-            } else if isMeetingListMode {
-                meetingsList
+            if usesFolderNavigation {
+                folderWorkspace
             } else {
-                thumbnailGrid
+                libraryItemsContent
             }
         }
         .searchable(text: $viewModel.searchText, prompt: "Search transcriptions")
@@ -127,6 +136,7 @@ struct TranscriptionLibraryView: View {
             handleSelectionKeyPress(press)
         }
         .onAppear {
+            viewModel.loadFolders()
             viewModel.loadTranscriptions()
         }
         .alert(
@@ -150,6 +160,22 @@ struct TranscriptionLibraryView: View {
                 Text(singleDeleteMessage(for: pending))
             }
         }
+        .modifier(
+            LibraryFolderDialogs(
+                showingCreate: $showingCreateFolder,
+                newFolderName: $newFolderName,
+                createLocationMessage: createFolderLocationMessage,
+                pendingDelete: $pendingDeleteFolder,
+                showingMove: $showingMoveDestinations,
+                pendingMove: $pendingMoveTranscriptions,
+                folders: viewModel.folders,
+                moveTitle: moveDialogTitle,
+                folderLabel: folderDestinationLabel,
+                onCreate: { name in Task { await viewModel.createFolder(name: name) } },
+                onDelete: { folder in Task { await viewModel.deleteFolder(folder) } },
+                onMove: movePendingTranscriptions
+            )
+        )
         .alert(
             "Rename Transcription",
             isPresented: Binding(
@@ -251,6 +277,121 @@ struct TranscriptionLibraryView: View {
         }
     }
 
+    private var usesFolderNavigation: Bool {
+        viewModel.scope == .all
+    }
+
+    @ViewBuilder
+    private var libraryItemsContent: some View {
+        // Meetings have no thumbnail-worthy visual asset, so their focused
+        // workspace retains the denser date-grouped list.
+        if viewModel.isLoading && viewModel.filteredTranscriptions.isEmpty {
+            loadingState
+        } else if viewModel.filteredTranscriptions.isEmpty {
+            emptyState
+        } else if isMeetingListMode {
+            meetingsList
+        } else {
+            thumbnailGrid
+        }
+    }
+
+    private var folderWorkspace: some View {
+        HStack(spacing: 0) {
+            LibraryFolderSidebar(
+                nodes: viewModel.folderTree,
+                selectedLocation: viewModel.location,
+                onSelect: viewModel.selectLocation
+            )
+            .frame(width: 210)
+            .background(DesignSystem.Colors.surfaceElevated.opacity(0.7))
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
+                    Button("Library") { viewModel.selectLocation(.root) }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(DesignSystem.Colors.accent)
+
+                    ForEach(viewModel.currentFolderPath) { folder in
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Button(folder.name) { viewModel.selectLocation(.folder(folder.id)) }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(DesignSystem.Colors.accent)
+                    }
+
+                    if viewModel.location == .allItems {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Text("All Items")
+                    }
+
+                    Spacer()
+
+                    if let folder = viewModel.currentFolder {
+                        Button(role: .destructive) {
+                            pendingDeleteFolder = folder
+                        } label: {
+                            Label("Delete Folder…", systemImage: "trash")
+                        }
+                        .parakeetAction(.secondary)
+                        .help("Delete this folder tree and keep its Library items")
+                    }
+                }
+                .font(DesignSystem.Typography.bodySmall)
+                .padding(.horizontal, DesignSystem.Spacing.lg)
+                .padding(.vertical, DesignSystem.Spacing.sm)
+
+                Divider()
+                libraryItemsContent
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var createFolderLocationMessage: String {
+        if let folder = viewModel.currentFolder {
+            return "Create a folder inside \(folder.name)."
+        }
+        return "Create a folder at the top level of Library."
+    }
+
+    private var moveDialogTitle: String {
+        pendingMoveTranscriptions.count == 1
+            ? "Move Recording"
+            : "Move \(pendingMoveTranscriptions.count) Items"
+    }
+
+    private func requestMove(_ transcriptions: [Transcription]) {
+        guard !transcriptions.isEmpty else { return }
+        pendingMoveTranscriptions = transcriptions
+        showingMoveDestinations = true
+    }
+
+    private func movePendingTranscriptions(to folderID: UUID?) {
+        let targets = pendingMoveTranscriptions
+        pendingMoveTranscriptions = []
+        Task { await viewModel.moveTranscriptions(targets, to: folderID) }
+    }
+
+    private func folderDestinationLabel(_ folder: LibraryFolder) -> String {
+        var path = [folder.name]
+        var current = folder
+        var seen: Set<UUID> = [folder.id]
+        while let parentID = current.parentID,
+            let parent = viewModel.folders.first(where: { $0.id == parentID }),
+            seen.insert(parent.id).inserted
+        {
+            path.append(parent.name)
+            current = parent
+        }
+        return path.reversed().joined(separator: " / ")
+    }
+
     private var thumbnailGrid: some View {
         ScrollView {
             VStack(spacing: DesignSystem.Spacing.md) {
@@ -338,6 +479,14 @@ struct TranscriptionLibraryView: View {
             Label("Open", systemImage: "doc.text")
         }
 
+        if usesFolderNavigation, !viewModel.isBulkSelectionModeEnabled {
+            Button {
+                requestMove([transcription])
+            } label: {
+                Label("Move to Folder…", systemImage: "folder")
+            }
+        }
+
         if !viewModel.isBulkSelectionModeEnabled, transcription.sourceType == .file {
             Button {
                 beginRename(transcription)
@@ -350,7 +499,7 @@ struct TranscriptionLibraryView: View {
             Button {
                 viewModel.beginBulkSelection(startingWith: transcription)
             } label: {
-                Label("Select Many...", systemImage: "checklist")
+                Label("Select", systemImage: "checklist")
             }
         }
 
@@ -461,6 +610,9 @@ struct TranscriptionLibraryView: View {
             onSelectVisible: { viewModel.selectLoadedVisibleTranscriptions() },
             onClear: { viewModel.clearSelection() },
             onCancel: { viewModel.exitBulkSelection() },
+            onMove: usesFolderNavigation
+                ? { requestMove(viewModel.selectedLoadedTranscriptionsForExport) }
+                : nil,
             onExport: { showingBulkExportOptions = true },
             onDeleteAudioOnly: { viewModel.requestDeleteSelectedMeetingAudio() },
             onDeleteItems: { viewModel.requestDeleteSelectedItems() }
@@ -979,17 +1131,193 @@ struct TranscriptionLibraryView: View {
 
     private var emptyStateIcon: String {
         if !viewModel.searchText.isEmpty { return "magnifyingglass" }
+        if usesFolderNavigation, case .folder = viewModel.location { return "folder" }
         return isMeetingListMode ? "waveform.badge.mic" : "square.grid.2x2"
     }
 
     private var emptyStateTitle: String {
-        isMeetingListMode ? "No meetings recorded yet" : emptyTitle
+        if usesFolderNavigation, viewModel.location != .allItems { return "No items here" }
+        return isMeetingListMode ? "No meetings recorded yet" : emptyTitle
     }
 
     private var emptyStateMessage: String {
-        isMeetingListMode
+        if usesFolderNavigation {
+            switch viewModel.location {
+            case .allItems:
+                return emptyMessage
+            case .root:
+                return "Library items without a folder appear here."
+            case .folder:
+                return "Move Library items into this folder, or choose another location."
+            }
+        }
+        return isMeetingListMode
             ? "Press Record Meeting on the Transcribe tab to capture system audio and transcribe locally."
             : emptyMessage
+    }
+}
+
+// MARK: - Library folder dialogs
+
+private struct LibraryFolderDialogs: ViewModifier {
+    @Binding var showingCreate: Bool
+    @Binding var newFolderName: String
+    let createLocationMessage: String
+    @Binding var pendingDelete: LibraryFolder?
+    @Binding var showingMove: Bool
+    @Binding var pendingMove: [Transcription]
+    let folders: [LibraryFolder]
+    let moveTitle: String
+    let folderLabel: (LibraryFolder) -> String
+    let onCreate: (String) -> Void
+    let onDelete: (LibraryFolder) -> Void
+    let onMove: (UUID?) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .alert("New Folder", isPresented: $showingCreate) {
+                TextField("Folder name", text: $newFolderName)
+                Button("Cancel", role: .cancel) {}
+                Button("Create") { onCreate(newFolderName) }
+                    .disabled(newFolderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            } message: {
+                Text(createLocationMessage)
+            }
+            .alert(
+                "Delete Folder?",
+                isPresented: Binding(
+                    get: { pendingDelete != nil },
+                    set: { visible in
+                        if !visible { pendingDelete = nil }
+                    }
+                )
+            ) {
+                Button("Cancel", role: .cancel) { pendingDelete = nil }
+                Button("Delete Folder", role: .destructive) {
+                    guard let folder = pendingDelete else { return }
+                    pendingDelete = nil
+                    onDelete(folder)
+                }
+            } message: {
+                Text("This deletes the folder and all folders inside it. Library items are kept and moved to Library root. No recordings or managed files are deleted.")
+            }
+            .confirmationDialog(moveTitle, isPresented: $showingMove, titleVisibility: .visible) {
+                Button("Library") { onMove(nil) }
+                ForEach(folders) { folder in
+                    Button(folderLabel(folder)) { onMove(folder.id) }
+                }
+                Button("Cancel", role: .cancel) { pendingMove = [] }
+            } message: {
+                Text("Choose a folder. Moving does not delete or duplicate Library items.")
+            }
+    }
+}
+
+// MARK: - Library folder tree
+
+private struct LibraryFolderSidebar: View {
+    let nodes: [LibraryFolderNode]
+    let selectedLocation: LibraryLocation
+    let onSelect: (LibraryLocation) -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Library")
+                    .font(DesignSystem.Typography.micro.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 4)
+
+                locationButton(title: "Library", systemImage: "tray.full", location: .root)
+                locationButton(title: "All Items", systemImage: "square.grid.2x2", location: .allItems)
+
+                Divider()
+                    .padding(.vertical, 6)
+
+                ForEach(nodes) { node in
+                    LibraryFolderTreeNodeView(
+                        node: node,
+                        selectedLocation: selectedLocation,
+                        onSelect: onSelect
+                    )
+                }
+            }
+            .padding(10)
+        }
+        .accessibilityLabel("Library folders")
+    }
+
+    private func locationButton(title: String, systemImage: String, location: LibraryLocation) -> some View {
+        Button {
+            onSelect(location)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(DesignSystem.Typography.bodySmall.weight(selectedLocation == location ? .semibold : .regular))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(selectedLocation == location ? DesignSystem.Colors.accent.opacity(0.14) : .clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(selectedLocation == location ? "Selected" : "")
+    }
+}
+
+private struct LibraryFolderTreeNodeView: View {
+    let node: LibraryFolderNode
+    let selectedLocation: LibraryLocation
+    let onSelect: (LibraryLocation) -> Void
+
+    @State private var isExpanded = true
+
+    var body: some View {
+        if node.children.isEmpty {
+            folderButton
+        } else {
+            DisclosureGroup(isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(node.children) { child in
+                        LibraryFolderTreeNodeView(
+                            node: child,
+                            selectedLocation: selectedLocation,
+                            onSelect: onSelect
+                        )
+                    }
+                }
+                .padding(.leading, 12)
+            } label: {
+                folderButton
+            }
+            .disclosureGroupStyle(.automatic)
+        }
+    }
+
+    private var folderButton: some View {
+        let location = LibraryLocation.folder(node.id)
+        return Button {
+            onSelect(location)
+        } label: {
+            Label(node.folder.name, systemImage: "folder")
+                .font(DesignSystem.Typography.bodySmall.weight(selectedLocation == location ? .semibold : .regular))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(selectedLocation == location ? DesignSystem.Colors.accent.opacity(0.14) : .clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(node.folder.name)
+        .accessibilityValue(selectedLocation == location ? "Selected" : "")
     }
 }
 
@@ -1088,11 +1416,11 @@ private struct LibrarySelectManyButton: View {
 
     var body: some View {
         Button(action: action) {
-            Label("Select Many", systemImage: "checklist")
+            Label("Select", systemImage: "checklist")
                 .font(DesignSystem.Typography.bodySmall.weight(.semibold))
         }
         .parakeetAction(.secondary)
-        .help("Select multiple visible Library items")
+        .help("Select Library items")
         .accessibilityHint("Shows selection controls for bulk cleanup")
     }
 }
