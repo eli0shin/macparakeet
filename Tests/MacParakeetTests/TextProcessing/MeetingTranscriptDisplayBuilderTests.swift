@@ -37,7 +37,7 @@ final class MeetingTranscriptDisplayBuilderTests: XCTestCase {
         XCTAssertEqual(turn.paragraphs.map(\.text), ["First point.", "Another point.", "Final point."])
         XCTAssertEqual(
             turn.text,
-            "First point.\nAnother polished point.\nFinal point."
+            "First point.\n\nAnother polished point.\n\nFinal point."
         )
         XCTAssertEqual(turn.wordReferences, [0, 1, 2])
         XCTAssertEqual(formatted.turns.count, 3, "Display grouping must not change canonical turns")
@@ -95,7 +95,7 @@ final class MeetingTranscriptDisplayBuilderTests: XCTestCase {
         let turn = try XCTUnwrap(MeetingTranscriptDisplayBuilder.build(from: document).turns.only)
 
         XCTAssertNil(turn.timeRange)
-        XCTAssertEqual(turn.text, "Legacy first.\nLegacy second.")
+        XCTAssertEqual(turn.text, "Legacy first.\n\nLegacy second.")
         XCTAssertEqual(turn.paragraphs.count, 2)
     }
 

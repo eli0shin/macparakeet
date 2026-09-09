@@ -22,7 +22,7 @@ enum MeetingReadingTurnLayout {
     static let bodyIndent: CGFloat = 13
     static let speakerMarkerSize: CGFloat = 7
     static let playbackFocusWidth: CGFloat = 2
-    /// One newline plus this spacing renders one compact empty text row.
+    /// Leading between text lines; paragraph blank lines come from the text.
     static let bodyLineSpacing: CGFloat = 4
 }
 

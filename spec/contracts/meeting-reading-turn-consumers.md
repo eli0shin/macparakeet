@@ -60,7 +60,10 @@ request grouping, readable exports, or stored formatting mappings.
 - Canonical rendered turns have at most one start time. Word timestamps are not
   emitted in readable output.
 - Paragraphs remain separate inside their canonical or displayed turn. The UI
-  renders exactly one empty text row between displayed paragraphs. Optional AI
+  renders exactly one empty text row between displayed paragraphs. The display
+  builder preserves existing paragraph breaks and joins grouped contributions
+  with `\n\n`, not a single newline. Line spacing is not a blank-line substitute.
+  Validate visible spacing in the running app, not isolated test-host images. Optional AI
   cleanup sends all deterministic Reading Turn text in one request, separated by
   stable boundaries that map validated output back into source order without
   giving the model control of Reading Turn structure.

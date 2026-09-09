@@ -1,20 +1,15 @@
-# Ticket 047 visual evidence
+# Ticket 047 render artifacts — not release validation
 
-The production `MeetingReadingTurnContentView` was rendered in light mode at
-700 × 420 points with the same four canonical Reading Turns.
+These images came from an isolated test host, not the running release app.
+They do not validate paragraph spacing in the completed-meeting UI. The earlier
+claim that `after-one-empty-row.png` proved exactly one empty text row was wrong.
+The release UI removed blank lines despite that claim.
 
-- `before.png` renders the canonical turns directly and shows three consecutive
-  **Me** bylines and timestamps.
-- `after-one-empty-row.png` applies `MeetingTranscriptDisplayBuilder` and shows one **Me**
-  byline, one `10:00` seek target, and all three paragraphs in order with exactly
-  one empty text row between them. The intervening **Alex** contribution remains
-  separate.
+- `before.png` renders four fixture Reading Turns directly.
+- `after-one-empty-row.png` renders the former display grouping code, which
+  removed empty lines and joined contributions with a single newline.
 
-Regenerate both images with:
-
-```bash
-MEETING_TRANSCRIPT_GROUPING_EVIDENCE_DIR="$PWD/docs/visual-evidence/ticket-047" \
-  swift test --filter MeetingTranscriptGroupingVisualEvidenceTests
-```
-
-Explicit user visual approval is required before merge.
+The corrected display builder preserves paragraph breaks and joins consecutive
+same-speaker contributions with `\n\n`. Check spacing in the running app with
+wrapped paragraphs and the actual transcript font. Do not use these images or
+regenerated test-host screenshots as acceptance evidence.

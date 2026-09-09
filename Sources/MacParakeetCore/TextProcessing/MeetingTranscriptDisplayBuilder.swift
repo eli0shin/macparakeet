@@ -9,16 +9,15 @@ public enum MeetingTranscriptDisplayBuilder {
         var displayedTurns: [ReadingTurn] = []
 
         for turn in document.turns {
-            let displayedTurn = displayedTurn(from: turn)
             guard let previous = displayedTurns.last,
-                previous.source == displayedTurn.source,
-                previous.speakerId == displayedTurn.speakerId
+                previous.source == turn.source,
+                previous.speakerId == turn.speakerId
             else {
-                displayedTurns.append(displayedTurn)
+                displayedTurns.append(turn)
                 continue
             }
 
-            displayedTurns[displayedTurns.count - 1] = merge(previous, with: displayedTurn)
+            displayedTurns[displayedTurns.count - 1] = merge(previous, with: turn)
         }
 
         return MeetingTranscriptPresentationDocument(turns: displayedTurns)
@@ -43,31 +42,8 @@ public enum MeetingTranscriptDisplayBuilder {
             timeRange: timeRange,
             overlap: first.overlap,
             paragraphs: first.paragraphs + next.paragraphs,
-            formattedText: [first.text, next.text].filter { !$0.isEmpty }.joined(separator: "\n"),
+            formattedText: [first.text, next.text].filter { !$0.isEmpty }.joined(separator: "\n\n"),
             wordReferences: first.wordReferences + next.wordReferences
         )
-    }
-
-    private static func displayedTurn(from turn: ReadingTurn) -> ReadingTurn {
-        ReadingTurn(
-            id: turn.id,
-            speakerId: turn.speakerId,
-            speakerLabel: turn.speakerLabel,
-            source: turn.source,
-            timeRange: turn.timeRange,
-            overlap: turn.overlap,
-            paragraphs: turn.paragraphs,
-            formattedText: compactParagraphSpacing(in: turn.text),
-            wordReferences: turn.wordReferences
-        )
-    }
-
-    /// SwiftUI treats each newline as a visible line advance. Canonical Reading
-    /// Turns use an empty line between paragraphs, so remove empty separator
-    /// lines before the completed-meeting UI renders the text.
-    private static func compactParagraphSpacing(in text: String) -> String {
-        text.components(separatedBy: .newlines)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            .joined(separator: "\n")
     }
 }
