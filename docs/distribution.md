@@ -117,8 +117,12 @@ into `Info.plist` as:
 
 ### Owner-only development CI artifact
 
-Successful `main` pushes and manual CI runs publish the three-day artifact
-`MacParakeet-owner-development-build`. It contains exactly one Finder-mountable
+After successful `main` push or manual CI runs, the separate **Build Owner
+Development DMG** workflow publishes the three-day artifact
+`MacParakeet-owner-development-build`. It checks out the exact commit that passed
+CI. Its build, failure, or cancellation cannot delay CI completion or block
+**Publish GitHub Release**; both workflows start independently after CI succeeds.
+It contains exactly one Finder-mountable
 `MacParakeet-owner-development-build.dmg`. The DMG contains the complete app,
 including FFmpeg, yt-dlp, Node, the bundled CLI, SwiftPM
 resource bundles, and an Applications shortcut. CI verifies helper execution,
@@ -135,7 +139,8 @@ publish it to GitHub Releases.
 
 To install it for owner testing:
 
-1. Download `MacParakeet-owner-development-build` from the workflow run's
+1. Open **Actions -> Build Owner Development DMG** and select the run for the
+   required commit. Download `MacParakeet-owner-development-build` from its
    **Artifacts** section.
 2. Expand GitHub's artifact ZIP with Archive Utility. Open the one DMG inside.
 3. Drag `MacParakeet.app` onto the Applications shortcut.
