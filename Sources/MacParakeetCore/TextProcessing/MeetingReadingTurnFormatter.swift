@@ -92,6 +92,7 @@ public struct MeetingReadingTurnFormatter {
     public func format(
         _ document: MeetingTranscriptPresentationDocument,
         sourceDocument: MeetingTranscriptPresentationDocument? = nil,
+        isolation: isolated (any Actor)? = #isolation,
         using formatRequest: FormatRequest,
         onProgress: ProgressHandler? = nil
     ) async -> MeetingReadingTurnFormattingResult {
