@@ -45,11 +45,13 @@ struct MeetingTranscriptAssembler {
 
     private var wordsBySource: [AudioSource: [WordTimestamp]] = [:]
     private var detectedSpeakersBySource: [AudioSource: [SpeakerInfo]] = [:]
+    private var nextLiveDiarizationSequence: [AudioSource: Int] = [:]
     private var lastCommittedEndMs: [AudioSource: Int] = [:]
 
     mutating func reset() {
         wordsBySource = [:]
         detectedSpeakersBySource = [:]
+        nextLiveDiarizationSequence = [:]
         lastCommittedEndMs = [:]
     }
 
@@ -69,7 +71,15 @@ struct MeetingTranscriptAssembler {
         )
         let attributedWords: [WordTimestamp]
         if let diarization, !diarization.segments.isEmpty {
-            let mapped = Self.mappedDiarization(diarization, source: source, offsetMs: chunk.startMs)
+            let sequence = nextLiveDiarizationSequence[source, default: 0]
+            nextLiveDiarizationSequence[source] = sequence + 1
+            let mapped = Self.mappedDiarization(
+                diarization,
+                source: source,
+                offsetMs: chunk.startMs,
+                identityNamespace: "live-\(sequence)",
+                labelOffset: detectedSpeakersBySource[source]?.count ?? 0
+            )
             detectedSpeakersBySource[source] = Self.mergedSpeakers(
                 detectedSpeakersBySource[source] ?? [],
                 mapped.speakers
@@ -97,16 +107,19 @@ struct MeetingTranscriptAssembler {
     private static func mappedDiarization(
         _ diarization: MacParakeetDiarizationResult,
         source: AudioSource,
-        offsetMs: Int
+        offsetMs: Int,
+        identityNamespace: String,
+        labelOffset: Int
     ) -> MeetingTranscriptFinalizer.SourceDiarization {
         let label = source == .microphone ? "Local Speaker" : source.displayLabel
+        let idPrefix = "\(source.rawValue):\(identityNamespace):"
         let speakers = diarization.speakers.enumerated().map { index, speaker in
-            SpeakerInfo(id: "\(source.rawValue):\(speaker.id)", label: "\(label) \(index + 1)")
+            SpeakerInfo(id: "\(idPrefix)\(speaker.id)", label: "\(label) \(labelOffset + index + 1)")
         }
         let ids = Dictionary(uniqueKeysWithValues: zip(diarization.speakers.map(\.id), speakers.map(\.id)))
         let segments = diarization.segments.map { segment in
             SpeakerSegment(
-                speakerId: ids[segment.speakerId] ?? "\(source.rawValue):\(segment.speakerId)",
+                speakerId: ids[segment.speakerId] ?? "\(idPrefix)\(segment.speakerId)",
                 startMs: segment.startMs + offsetMs,
                 endMs: segment.endMs + offsetMs
             )

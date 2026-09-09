@@ -2119,14 +2119,14 @@ final class MeetingRecordingServiceTests: XCTestCase {
         let finalUpdate = try XCTUnwrap(finalUpdateCandidate)
 
         let firstSpeakers = Dictionary(uniqueKeysWithValues: firstPhase.words.map { ($0.word, $0.speakerId) })
-        XCTAssertEqual(firstSpeakers["sys-one"], "system:S1")
+        XCTAssertEqual(firstSpeakers["sys-one"], "system:live-0:S1")
         XCTAssertEqual(firstSpeakers["mic-one"], "microphone")
 
         let finalSpeakers = Dictionary(uniqueKeysWithValues: finalUpdate.words.map { ($0.word, $0.speakerId) })
-        XCTAssertEqual(finalSpeakers["sys-one"], "system:S1")
+        XCTAssertEqual(finalSpeakers["sys-one"], "system:live-0:S1")
         XCTAssertEqual(finalSpeakers["sys-two"], "system")
         XCTAssertEqual(finalSpeakers["mic-one"], "microphone")
-        XCTAssertEqual(finalSpeakers["mic-two"], "microphone:S1")
+        XCTAssertEqual(finalSpeakers["mic-two"], "microphone:live-0:S1")
 
         await service.cancelRecording()
     }

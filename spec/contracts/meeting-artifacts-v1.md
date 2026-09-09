@@ -11,7 +11,10 @@ preview chunks and that meeting's final transcript, and becomes the default for
 new meetings. Already displayed live words keep their attribution. A chunk
 whose speaker-detection work is in flight when the choice changes is reconciled
 to the latest successfully persisted choice before it is emitted, so a stale
-result cannot restore the previous attribution behavior.
+result cannot restore the previous attribution behavior. Each independent live
+diarization call namespaces its local speaker IDs because repeated local indices
+such as `S1` are not evidence of one identity across chunks. Live preview does
+not perform cross-chunk speaker matching.
 
 Missing or malformed `systemSpeakerDetection` values identify legacy artifacts
 and use the current meeting default during finalization or app-default archive
