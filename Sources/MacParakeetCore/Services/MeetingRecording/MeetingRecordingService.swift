@@ -350,7 +350,6 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     private var latestLevels = MeetingAudioLevels()
     private var sourceHealthLastBufferAt: [AudioSource: Date] = [:]
     private var sourceHealthLastBufferActiveSeconds: [AudioSource: TimeInterval] = [:]
-    private var activeMicrophoneStall: MeetingMicHealthMonitor.StallSignature?
     private var recentMicrophoneRms: Float = 0
     private var recentSystemRms: Float = 0
     private var recentProcessedMicRms: Float = 0
@@ -571,18 +570,9 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             microphoneStarted: captureHealthMetrics.microphoneStarted,
             interruptedSources: interruptedSources,
             recoveringSources: recoveringSources,
-            activeMicrophoneStall: activeMicrophoneStall,
-            microphoneBufferDeliveryTimedOut: microphoneBufferDeliveryTimedOut,
             systemBufferDeliveryTimedOut: systemBufferDeliveryTimedOut,
             captureFailed: captureFailed
         )
-    }
-
-    private var microphoneBufferDeliveryTimedOut: Bool {
-        guard captureHealthMetrics.microphoneStarted else {
-            return false
-        }
-        return sourceBufferDeliveryTimedOut(.microphone)
     }
 
     private var systemBufferDeliveryTimedOut: Bool {
@@ -776,7 +766,6 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             captureHealthMetrics = CaptureHealthMetrics()
             sourceHealthLastBufferAt = [:]
             sourceHealthLastBufferActiveSeconds = [:]
-            activeMicrophoneStall = nil
             recentMicrophoneRms = 0
             recentSystemRms = 0
             recentProcessedMicRms = 0
@@ -1584,8 +1573,6 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             handleSourceRecoveryStarted(source: source, error: error)
         case .sourceRecovered(let source):
             handleSourceRecovered(source: source)
-        case .microphoneHealth(let event):
-            handleMicrophoneHealthEvent(event)
         case .error(let error):
             guard !captureFailed else { return }
             await failCapture(error)
@@ -1612,15 +1599,6 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         )
     }
 
-    private func handleMicrophoneHealthEvent(_ event: MeetingMicHealthMonitor.HealthEvent) {
-        switch event {
-        case .stallSuspected(let signature, _):
-            activeMicrophoneStall = signature
-        case .recovered:
-            activeMicrophoneStall = nil
-        }
-    }
-
     private func handleSourceInterruption(source: AudioSource, error: Error) async {
         guard !interruptedSources.contains(source) else { return }
         recoveringSources.remove(source)
@@ -1638,7 +1616,6 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             recentMicrophoneRms = 0
             recentProcessedMicRms = 0
             microphoneMuted = false
-            activeMicrophoneStall = nil
         case .system:
             latestLevels.system = 0
             recentSystemRms = 0
@@ -1672,7 +1649,6 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         recentSystemRms = 0
         recentProcessedMicRms = 0
         microphoneMuted = false
-        activeMicrophoneStall = nil
         microphoneMutedHostTime = nil
         completedMicrophoneMuteHostTimeRanges = []
         logger.error(
@@ -2361,7 +2337,6 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         captureHealthMetrics = CaptureHealthMetrics()
         sourceHealthLastBufferAt = [:]
         sourceHealthLastBufferActiveSeconds = [:]
-        activeMicrophoneStall = nil
         interruptedSources = []
         recoveringSources = []
         recentMicrophoneRms = 0

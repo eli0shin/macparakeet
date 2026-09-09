@@ -2,6 +2,7 @@
 
 > Status: **PARTIAL IMPLEMENTATION** — mic-health detection, source-owned microphone callback-stall recovery, typed system-source recovery, actionable-only warning UI, and finalized writer-frame capture reporting are implemented. The separately proposed VAD transcript-gap repair in §2 remains unimplemented.
 > Date: 2026-06-14
+> Amendment (2026-09-09): The inferred microphone-stall result no longer feeds meeting source health or live UI. The microphone has no stalled source-health state. Source-owned callback recovery remains unchanged. This amendment supersedes the microphone warning proposals below.
 > Related: ADR-014 (meeting recording via ScreenCaptureKit system audio), ADR-015 (concurrent dictation/meeting), ADR-016 (centralized STT runtime + two-slot scheduler), ADR-019 (crash-resilient meeting recording)
 > Requirements: REQ-MEET-017 Phase A and direct callback-liveness recovery implemented; REQ-MEET-018 proposed
 

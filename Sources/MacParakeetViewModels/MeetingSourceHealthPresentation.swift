@@ -34,6 +34,7 @@ public struct MeetingSourceHealthChip: Identifiable, Sendable, Equatable {
         includeNotSelected: Bool
     ) -> [MeetingSourceHealthChip] {
         [summary.microphone, summary.system]
+            .filter(\.isPresentedInLiveMeetingUI)
             .filter { includeNotSelected || $0.status != .notSelected }
             .map(MeetingSourceHealthChip.init)
     }
@@ -41,21 +42,37 @@ public struct MeetingSourceHealthChip: Identifiable, Sendable, Equatable {
     public static func primaryDegraded(
         for summary: MeetingCaptureHealthSummary
     ) -> MeetingSourceHealthChip? {
-        summary.primaryDegradedSource.map(MeetingSourceHealthChip.init)
+        primaryChip(
+            in: [summary.microphone, summary.system],
+            where: { $0.status.isDegraded }
+        )
     }
 
     public static func actionableWarnings(
         for summary: MeetingCaptureHealthSummary
     ) -> [MeetingSourceHealthChip] {
         [summary.microphone, summary.system]
-            .filter { $0.status.isActionableWarning }
+            .filter { $0.isPresentedInLiveMeetingUI && $0.status.isActionableWarning }
             .map(MeetingSourceHealthChip.init)
     }
 
     public static func primaryActionableWarning(
         for summary: MeetingCaptureHealthSummary
     ) -> MeetingSourceHealthChip? {
-        summary.primaryActionableSource.map(MeetingSourceHealthChip.init)
+        primaryChip(
+            in: [summary.microphone, summary.system],
+            where: { $0.status.isActionableWarning }
+        )
+    }
+
+    private static func primaryChip(
+        in sources: [MeetingSourceHealth],
+        where predicate: (MeetingSourceHealth) -> Bool
+    ) -> MeetingSourceHealthChip? {
+        sources
+            .filter { $0.isPresentedInLiveMeetingUI && predicate($0) }
+            .min { $0.status.presentationPriority < $1.status.presentationPriority }
+            .map(MeetingSourceHealthChip.init)
     }
 
     private static func severity(for status: MeetingSourceHealth.Status) -> MeetingSourceHealthSeverity {
@@ -96,6 +113,31 @@ public struct MeetingSourceHealthChip: Identifiable, Sendable, Equatable {
             return "arrow.trianglehead.2.clockwise.rotate.90"
         case (.system, .starting), (.system, .muted):
             return "speaker.wave.2"
+        }
+    }
+}
+
+private extension MeetingSourceHealth {
+    var isPresentedInLiveMeetingUI: Bool {
+        source != .microphone || status != .stalled
+    }
+}
+
+private extension MeetingSourceHealth.Status {
+    var presentationPriority: Int {
+        switch self {
+        case .unavailable:
+            return 0
+        case .interrupted:
+            return 1
+        case .recovering:
+            return 2
+        case .muted:
+            return 3
+        case .silent:
+            return 4
+        case .notSelected, .starting, .live, .stalled:
+            return Int.max
         }
     }
 }

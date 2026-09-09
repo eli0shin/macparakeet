@@ -91,7 +91,7 @@ public struct MeetingSourceHealth: Sendable, Equatable, Codable {
         case (.system, .silent):
             return "System may be silent"
         case (.microphone, .stalled):
-            return "Mic may be stalled"
+            return "Mic unavailable"
         case (.system, .stalled):
             return "System may be stalled"
         case (.microphone, .recovering):
@@ -201,8 +201,6 @@ public struct MeetingCaptureHealthSummary: Sendable, Equatable, Codable {
         microphoneStarted: Bool,
         interruptedSources: Set<AudioSource>,
         recoveringSources: Set<AudioSource> = [],
-        activeMicrophoneStall: MeetingMicHealthMonitor.StallSignature?,
-        microphoneBufferDeliveryTimedOut: Bool,
         systemBufferDeliveryTimedOut: Bool,
         captureFailed: Bool
     ) -> MeetingCaptureHealthSummary {
@@ -215,8 +213,6 @@ public struct MeetingCaptureHealthSummary: Sendable, Equatable, Codable {
             microphoneStarted: microphoneStarted,
             interruptedSources: interruptedSources,
             recoveringSources: recoveringSources,
-            activeMicrophoneStall: activeMicrophoneStall,
-            microphoneBufferDeliveryTimedOut: microphoneBufferDeliveryTimedOut,
             systemBufferDeliveryTimedOut: systemBufferDeliveryTimedOut,
             captureFailed: captureFailed
         )
@@ -229,8 +225,6 @@ public struct MeetingCaptureHealthSummary: Sendable, Equatable, Codable {
             microphoneStarted: microphoneStarted,
             interruptedSources: interruptedSources,
             recoveringSources: recoveringSources,
-            activeMicrophoneStall: activeMicrophoneStall,
-            microphoneBufferDeliveryTimedOut: microphoneBufferDeliveryTimedOut,
             systemBufferDeliveryTimedOut: systemBufferDeliveryTimedOut,
             captureFailed: captureFailed
         )
@@ -250,8 +244,6 @@ public struct MeetingCaptureHealthSummary: Sendable, Equatable, Codable {
         microphoneStarted: Bool,
         interruptedSources: Set<AudioSource>,
         recoveringSources: Set<AudioSource>,
-        activeMicrophoneStall: MeetingMicHealthMonitor.StallSignature?,
-        microphoneBufferDeliveryTimedOut: Bool,
         systemBufferDeliveryTimedOut: Bool,
         captureFailed: Bool
     ) -> MeetingSourceHealth {
@@ -308,26 +300,6 @@ public struct MeetingCaptureHealthSummary: Sendable, Equatable, Codable {
                     level: 0,
                     lastBufferAt: lastBufferAt,
                     recoveryAction: .unmuteMicrophone
-                )
-            }
-
-            if activeMicrophoneStall != nil {
-                return MeetingSourceHealth(
-                    source: .microphone,
-                    status: .stalled,
-                    level: level,
-                    lastBufferAt: lastBufferAt,
-                    recoveryAction: .checkMicrophoneInput
-                )
-            }
-
-            if microphoneBufferDeliveryTimedOut {
-                return MeetingSourceHealth(
-                    source: .microphone,
-                    status: .stalled,
-                    level: 0,
-                    lastBufferAt: lastBufferAt,
-                    recoveryAction: .checkMicrophoneInput
                 )
             }
 

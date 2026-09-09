@@ -73,7 +73,7 @@ Current `main` feature gates in `Sources/MacParakeetCore/AppFeatures.swift`:
 | `calendarEnabled` | `true` | Shipping calendar reminders/auto-start; per-user auto-start defaults off |
 | `meetingAutoStopEnabled` | `true` | Shipping ADR-023 surface; per-user setting defaults off, so recordings stop manually until the user opts in |
 | `meetingCaptureReliabilityEnabled` | `true` | Default-on kill switch for ADR-025 signal-based mic-health monitoring; inherited event instrumentation is inert and direct source lifecycle recovery is independent |
-| `meetingSourceHealthUIEnabled` | `false` | Routine source-health chips/pill glyph/tile mirror stay hidden; actionable recovering, stalled, interrupted, or unavailable warnings bypass this presentation flag |
+| `meetingSourceHealthUIEnabled` | `false` | Routine source-health chips/pill glyph/tile mirror stay hidden; actionable recovering, system-stall, interrupted, or unavailable warnings bypass this presentation flag. The microphone has no stalled source-health state. |
 | `meetingActivityDetectionEnabled` | `false` | ADR-024 collectors/detector are compiled but runtime coordinator/UI remain gated |
 | `transformsEnabled` | `true` | Productized Transforms shipping surface |
 | `cohereEngineEnabled` | `true` | Settings exposes Cohere Transcribe as an opt-in, downloaded, batch-only local engine; no live preview/timestamps |

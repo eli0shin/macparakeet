@@ -169,6 +169,23 @@ final class MeetingRecordingPanelViewModelTests: XCTestCase {
         )
     }
 
+    func testVisibleWarningsNeverPresentStalledMicrophone() {
+        let viewModel = MeetingRecordingPanelViewModel()
+        viewModel.state = .recording
+        viewModel.captureHealth = makeCaptureHealth(
+            microphone: MeetingSourceHealth(source: .microphone, status: .stalled),
+            system: MeetingSourceHealth(source: .system, status: .live)
+        )
+
+        XCTAssertTrue(viewModel.visibleSourceHealthWarnings.isEmpty)
+
+        viewModel.captureHealth = makeCaptureHealth(
+            microphone: MeetingSourceHealth(source: .microphone, status: .live),
+            system: MeetingSourceHealth(source: .system, status: .stalled)
+        )
+        XCTAssertEqual(viewModel.visibleSourceHealthWarnings.map(\.label), ["System may be stalled"])
+    }
+
     func testWordCountUpdatesWhenExistingSegmentGrows() {
         let viewModel = MeetingRecordingPanelViewModel()
         let initialLines = [

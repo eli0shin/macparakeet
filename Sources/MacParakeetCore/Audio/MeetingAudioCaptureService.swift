@@ -5,7 +5,6 @@ import OSLog
 public enum MeetingAudioCaptureEvent: Sendable {
     case microphoneBuffer(AVAudioPCMBuffer, AVAudioTime)
     case systemBuffer(AVAudioPCMBuffer, AVAudioTime)
-    case microphoneHealth(MeetingMicHealthMonitor.HealthEvent)
     case sourceRecoveryStarted(source: AudioSource, error: MeetingAudioError)
     case sourceRecovered(source: AudioSource)
     case sourceInterrupted(source: AudioSource, error: MeetingAudioError)
@@ -269,14 +268,10 @@ public actor MeetingAudioCaptureService {
                             )
                             return
                         }
-                        let healthEvents =
-                            self?.micHealthObserver.observeMicrophoneBuffer(
-                                copy,
-                                attemptID: attemptID
-                            ) ?? []
-                        for healthEvent in healthEvents {
-                            eventTarget.emit(.microphoneHealth(healthEvent))
-                        }
+                        self?.micHealthObserver.observeMicrophoneBuffer(
+                            copy,
+                            attemptID: attemptID
+                        )
                         eventTarget.emit(.microphoneBuffer(copy, time))
                     },
                     onStall: { error in
@@ -440,13 +435,10 @@ public actor MeetingAudioCaptureService {
             // Stop or a newer recovery generation may win while the copy is in
             // progress. Never publish a late buffer from the retired stream.
             guard callbackGate.isActive(generation: generation) else { return }
-            let healthEvents = micHealthObserver.observeSystemBuffer(
+            micHealthObserver.observeSystemBuffer(
                 copy,
                 attemptID: attemptID
             )
-            for healthEvent in healthEvents {
-                eventTarget.emit(.microphoneHealth(healthEvent))
-            }
             eventTarget.emit(.systemBuffer(copy, time))
             recoverySignal?.recordFirstBuffer()
         }
@@ -1170,9 +1162,9 @@ private final class MeetingMicHealthTelemetryObserver: @unchecked Sendable {
     func observeMicrophoneBuffer(
         _ buffer: AVAudioPCMBuffer,
         attemptID: Int
-    ) -> [MeetingMicHealthMonitor.HealthEvent] {
-        guard shouldObserve(attemptID: attemptID) else { return [] }
-        return observe(
+    ) {
+        guard shouldObserve(attemptID: attemptID) else { return }
+        observe(
             micSignal: .init(isNonSilent: buffer.rmsLevel >= config.nonSilentLevelThreshold),
             systemSignal: nil,
             attemptID: attemptID
@@ -1182,9 +1174,9 @@ private final class MeetingMicHealthTelemetryObserver: @unchecked Sendable {
     func observeSystemBuffer(
         _ buffer: AVAudioPCMBuffer,
         attemptID: Int
-    ) -> [MeetingMicHealthMonitor.HealthEvent] {
-        guard shouldObserve(attemptID: attemptID) else { return [] }
-        return observe(
+    ) {
+        guard shouldObserve(attemptID: attemptID) else { return }
+        observe(
             micSignal: nil,
             systemSignal: .init(isNonSilent: buffer.rmsLevel >= config.nonSilentLevelThreshold),
             attemptID: attemptID
@@ -1199,7 +1191,7 @@ private final class MeetingMicHealthTelemetryObserver: @unchecked Sendable {
         micSignal: MeetingMicHealthMonitor.AudioSignal?,
         systemSignal: MeetingMicHealthMonitor.AudioSignal?,
         attemptID: Int
-    ) -> [MeetingMicHealthMonitor.HealthEvent] {
+    ) {
         let now = nowProvider()
         // Resolve emissions inside the lock (the monitor state and counters are both
         // mutated from the audio callback thread), then emit telemetry outside it so
@@ -1235,7 +1227,6 @@ private final class MeetingMicHealthTelemetryObserver: @unchecked Sendable {
         for emission in observed.emissions {
             send(emission)
         }
-        return observed.events
     }
 
     private func pendingSummaryLocked() -> StallSummary? {

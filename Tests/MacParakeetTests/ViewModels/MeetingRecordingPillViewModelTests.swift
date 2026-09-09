@@ -70,7 +70,7 @@ final class MeetingRecordingPillViewModelTests: XCTestCase {
         XCTAssertEqual(warning?.symbolName, "exclamationmark.triangle.fill")
     }
 
-    func testMirroredSourceHealthWarningAlsoShowsWhilePaused() {
+    func testMirroredSourceHealthWarningNeverPresentsStalledMicrophoneWhilePaused() {
         let viewModel = MeetingRecordingPillViewModel()
         viewModel.state = .paused
         viewModel.captureHealth = MeetingCaptureHealthSummary(
@@ -79,7 +79,7 @@ final class MeetingRecordingPillViewModelTests: XCTestCase {
             system: MeetingSourceHealth(source: .system, status: .live, level: 0.5)
         )
 
-        XCTAssertEqual(viewModel.mirroredSourceHealthWarning?.label, "Mic may be stalled")
+        XCTAssertNil(viewModel.mirroredSourceHealthWarning)
     }
 
     func testMirroredSourceHealthWarningHidesForHealthyOrNonRecordingStates() {
@@ -139,5 +139,17 @@ final class MeetingRecordingPillViewModelTests: XCTestCase {
             viewModel.mirroredVisibleSourceHealthWarning?.label,
             "System audio reconnecting"
         )
+    }
+
+    func testVisibleWarningNeverPresentsStalledMicrophone() {
+        let viewModel = MeetingRecordingPillViewModel()
+        viewModel.state = .recording
+        viewModel.captureHealth = MeetingCaptureHealthSummary(
+            sourceMode: .microphoneAndSystem,
+            microphone: MeetingSourceHealth(source: .microphone, status: .stalled),
+            system: MeetingSourceHealth(source: .system, status: .live)
+        )
+
+        XCTAssertNil(viewModel.mirroredVisibleSourceHealthWarning)
     }
 }
