@@ -54,6 +54,7 @@ final class TranscriptTextViewTests: XCTestCase {
         XCTAssertEqual(paragraphStyle.paragraphSpacing, 8)
     }
 
+    @MainActor
     func testLiveTranscriptShowsHeaderWhenDetectedSpeakerChangesWithinOneSource() {
         let view = TranscriptTextView(lines: [], autoScroll: true)
         let lines = [
