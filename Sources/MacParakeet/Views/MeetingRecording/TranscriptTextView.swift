@@ -3,6 +3,28 @@ import MacParakeetCore
 import MacParakeetViewModels
 import SwiftUI
 
+/// The viewport owns the document width. NSTextView's width tracking alone
+/// only ties the text container to the document, not to the visible scroll area.
+private final class TranscriptScrollView: NSScrollView {
+    override func tile() {
+        super.tile()
+        guard let textView = documentView as? NSTextView else { return }
+        let width = contentView.bounds.width
+        guard width > 0 else { return }
+
+        if textView.frame.width != width {
+            textView.setFrameSize(NSSize(width: width, height: textView.frame.height))
+        }
+        let containerWidth = max(0, width - 2 * textView.textContainerInset.width)
+        if textView.textContainer?.containerSize.width != containerWidth {
+            textView.textContainer?.containerSize = NSSize(
+                width: containerWidth,
+                height: CGFloat.greatestFiniteMagnitude
+            )
+        }
+    }
+}
+
 /// Native NSTextView wrapper for performant, fully-selectable transcript rendering.
 /// Supports drag-selection across the entire transcript with colored speaker headers.
 /// Uses incremental suffix updates so live transcript changes don't rebuild the full document.
@@ -22,8 +44,8 @@ struct TranscriptTextView: NSViewRepresentable {
         context: Context
     ) -> CGSize {
         CGSize(
-            width: proposal.width ?? max(nsView.bounds.width, Self.fallbackLayoutSize.width),
-            height: proposal.height ?? max(nsView.bounds.height, Self.fallbackLayoutSize.height)
+            width: proposal.width ?? Self.fallbackLayoutSize.width,
+            height: proposal.height ?? Self.fallbackLayoutSize.height
         )
     }
 
@@ -45,7 +67,9 @@ struct TranscriptTextView: NSViewRepresentable {
         )
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
+        // TranscriptScrollView sets an absolute viewport width on each resize.
+        // Do not apply relative autoresizing to the initial document frame.
+        textView.autoresizingMask = []
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(
             width: Self.fallbackLayoutSize.width,
@@ -58,7 +82,9 @@ struct TranscriptTextView: NSViewRepresentable {
             height: Self.fallbackLayoutSize.height
         )
 
-        let scrollView = NSScrollView()
+        let scrollView = TranscriptScrollView(frame: NSRect(origin: .zero, size: Self.fallbackLayoutSize))
+        scrollView.hasHorizontalScroller = false
+        scrollView.horizontalScrollElasticity = .none
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
@@ -191,6 +217,7 @@ struct TranscriptTextView: NSViewRepresentable {
             }
 
             let textPara = NSMutableParagraphStyle()
+            textPara.lineBreakMode = .byWordWrapping
             textPara.lineSpacing = 2
             textPara.paragraphSpacing = 8
             textPara.firstLineHeadIndent = 11
