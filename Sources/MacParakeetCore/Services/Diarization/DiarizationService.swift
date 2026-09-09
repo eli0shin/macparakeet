@@ -75,11 +75,17 @@ extension OfflineDiarizerManager: OfflineDiarizerManaging {
 // @unchecked Sendable: all access is serialized through DiarizationService actor isolation.
 extension OfflineDiarizerManager: @retroactive @unchecked Sendable {}
 
-public actor DiarizationService: DiarizationServiceProtocol {
+private struct NoopMeetingLiveDiarizer: MeetingLiveDiarizing {
+    func liveModelsAreReady() async -> Bool { true }
+    func hasCachedLiveModels() async -> Bool { true }
+}
+
+public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizing {
     private let manager: any OfflineDiarizerManaging
     private let constrainedManagerFactory: (@Sendable (SpeakerDiarizationConstraint) -> any OfflineDiarizerManaging)?
     private let finalManagerFactory: (@Sendable (SpeakerDiarizationConstraint?) -> any OfflineDiarizerManaging)?
     private let modelsDirectory: URL
+    private nonisolated let liveDiarizer: any MeetingLiveDiarizing
     private var modelsReady = false
 
     public init(
@@ -96,7 +102,10 @@ public actor DiarizationService: DiarizationServiceProtocol {
                 OfflineDiarizerManager(config: Self.offlineConfig(
                     speakerConstraint: constraint, preserveActivity: true, baseConfig: config
                 ))
-            }
+            },
+            liveDiarizer: MeetingLiveDiarizer(
+                modelsDirectory: modelsDirectory ?? AppPaths.fluidAudioModelsDirURL
+            )
         )
     }
 
@@ -114,12 +123,14 @@ public actor DiarizationService: DiarizationServiceProtocol {
         manager: any OfflineDiarizerManaging,
         constrainedManagerFactory: (@Sendable (SpeakerDiarizationConstraint) -> any OfflineDiarizerManaging)? = nil,
         modelsDirectory: URL,
-        finalManagerFactory: (@Sendable (SpeakerDiarizationConstraint?) -> any OfflineDiarizerManaging)? = nil
+        finalManagerFactory: (@Sendable (SpeakerDiarizationConstraint?) -> any OfflineDiarizerManaging)? = nil,
+        liveDiarizer: any MeetingLiveDiarizing = NoopMeetingLiveDiarizer()
     ) {
         self.finalManagerFactory = finalManagerFactory
         self.manager = manager
         self.constrainedManagerFactory = constrainedManagerFactory
         self.modelsDirectory = modelsDirectory.standardizedFileURL
+        self.liveDiarizer = liveDiarizer
     }
 
     public func diarize(audioURL: URL) async throws -> MacParakeetDiarizationResult {
@@ -208,6 +219,7 @@ public actor DiarizationService: DiarizationServiceProtocol {
     public func prepareModels(onProgress: (@Sendable (String) -> Void)? = nil) async throws {
         onProgress?("Downloading speaker models...")
         try await ensureModelsPrepared()
+        try await prepareLiveModels(onProgress: onProgress)
         onProgress?("Speaker models ready")
     }
 
@@ -218,11 +230,49 @@ public actor DiarizationService: DiarizationServiceProtocol {
     }
 
     public func isReady() async -> Bool {
-        modelsReady
+        guard modelsReady else { return false }
+        return await liveModelsAreReady()
     }
 
     public func hasCachedModels() async -> Bool {
-        Self.isModelCached(directory: modelsDirectory)
+        guard Self.isModelCached(directory: modelsDirectory) else { return false }
+        return await hasCachedLiveModels()
+    }
+
+    public func prepareLiveModels(onProgress: (@Sendable (String) -> Void)?) async throws {
+        try await liveDiarizer.prepareLiveModels(onProgress: onProgress)
+    }
+
+    public func liveModelsAreReady() async -> Bool {
+        await liveDiarizer.liveModelsAreReady()
+    }
+
+    public func hasCachedLiveModels() async -> Bool {
+        await liveDiarizer.hasCachedLiveModels()
+    }
+
+    public func startLiveSession(
+        id: UUID,
+        enabledSources: Set<AudioSource>,
+        onEvent: @escaping @Sendable (MeetingLiveDiarizationEvent) async -> Void
+    ) async throws {
+        try await liveDiarizer.startLiveSession(
+            id: id,
+            enabledSources: enabledSources,
+            onEvent: onEvent
+        )
+    }
+
+    public func setLiveSpeakerDetection(_ enabled: Bool, for source: AudioSource, sessionID: UUID) async throws {
+        try await liveDiarizer.setLiveSpeakerDetection(enabled, for: source, sessionID: sessionID)
+    }
+
+    public nonisolated func enqueueLiveAudio(samples: [Float], source: AudioSource, sessionID: UUID) {
+        liveDiarizer.enqueueLiveAudio(samples: samples, source: source, sessionID: sessionID)
+    }
+
+    public func finishLiveSession(id: UUID) async {
+        await liveDiarizer.finishLiveSession(id: id)
     }
 
     public nonisolated static func isModelCached(directory: URL? = nil) -> Bool {
@@ -235,7 +285,9 @@ public actor DiarizationService: DiarizationServiceProtocol {
     }
 
     public nonisolated static func clearModelCache(directory: URL? = nil) {
-        try? FileManager.default.removeItem(at: modelCacheDirectory(directory: directory))
+        let rootDirectory = directory ?? AppPaths.fluidAudioModelsDirURL
+        try? FileManager.default.removeItem(at: modelCacheDirectory(directory: rootDirectory))
+        MeetingLiveDiarizer.clearModelCache(directory: rootDirectory)
     }
 
     nonisolated static func modelCacheDirectory(directory: URL? = nil) -> URL {
@@ -278,7 +330,7 @@ extension OfflineDiarizationError {
     }
 }
 
-public actor MockDiarizationService: DiarizationServiceProtocol {
+public actor MockDiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizing {
     public var diarizeResult: MacParakeetDiarizationResult?
     public var diarizeError: Error?
     public var diarizeCalled = false

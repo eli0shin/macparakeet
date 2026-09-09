@@ -39,19 +39,25 @@ public struct MeetingRealtimeTranscript: Sendable, Equatable {
     }
 }
 
+enum MeetingLiveDiarizationState {
+    case disabled
+    case awaitingTimeline
+    case timeline(MeetingLiveDiarizationSnapshot)
+}
+
 struct MeetingTranscriptAssembler {
     private static let orderedSources: [AudioSource] = [.microphone, .system]
     private static let syntheticOverlapAnchorLength = 6
 
     private var wordsBySource: [AudioSource: [WordTimestamp]] = [:]
     private var detectedSpeakersBySource: [AudioSource: [SpeakerInfo]] = [:]
-    private var nextLiveDiarizationSequence: [AudioSource: Int] = [:]
+    private var pendingWordsBySource: [AudioSource: [WordTimestamp]] = [:]
     private var lastCommittedEndMs: [AudioSource: Int] = [:]
 
     mutating func reset() {
         wordsBySource = [:]
         detectedSpeakersBySource = [:]
-        nextLiveDiarizationSequence = [:]
+        pendingWordsBySource = [:]
         lastCommittedEndMs = [:]
     }
 
@@ -59,7 +65,7 @@ struct MeetingTranscriptAssembler {
         result: STTResult,
         chunk: AudioChunker.AudioChunk,
         source: AudioSource,
-        diarization: MacParakeetDiarizationResult? = nil
+        liveDiarization: MeetingLiveDiarizationState = .disabled
     ) -> MeetingTranscriptUpdate {
         let cutoff = lastCommittedEndMs[source]
         let offsetWords = Self.offsetWords(
@@ -69,62 +75,116 @@ struct MeetingTranscriptAssembler {
             committedWords: wordsBySource[source] ?? [],
             committedThroughMs: cutoff
         )
-        let attributedWords: [WordTimestamp]
-        if let diarization, !diarization.segments.isEmpty {
-            let sequence = nextLiveDiarizationSequence[source, default: 0]
-            nextLiveDiarizationSequence[source] = sequence + 1
-            let mapped = Self.mappedDiarization(
-                diarization,
-                source: source,
-                offsetMs: chunk.startMs,
-                identityNamespace: "live-\(sequence)",
-                labelOffset: detectedSpeakersBySource[source]?.count ?? 0
-            )
+        let candidates = Self.deduplicatedWords(
+            Self.reconciledPendingWords(
+                pendingWordsBySource[source] ?? [],
+                with: offsetWords
+            ),
+            committedThroughMs: cutoff
+        )
+        let committedCandidates: [WordTimestamp]
+        let timeline: MeetingLiveDiarizationSnapshot?
+        switch liveDiarization {
+        case .disabled:
+            committedCandidates = candidates
+            pendingWordsBySource[source] = []
+            timeline = nil
+        case .awaitingTimeline:
+            committedCandidates = []
+            pendingWordsBySource[source] = candidates
+            timeline = nil
+        case .timeline(let snapshot):
             detectedSpeakersBySource[source] = Self.mergedSpeakers(
                 detectedSpeakersBySource[source] ?? [],
-                mapped.speakers
+                snapshot.speakers
             )
-            attributedWords = SpeakerMerger.mergeWordTimestampsWithSpeakers(
-                words: offsetWords,
-                segments: mapped.segments
-            )
-        } else {
-            attributedWords = offsetWords
-        }
-        let deduplicated = attributedWords.filter { word in
-            guard let cutoff else { return true }
-            return word.endMs > cutoff
+            committedCandidates = candidates.filter { $0.endMs <= snapshot.committedThroughMs }
+            pendingWordsBySource[source] = candidates.filter { $0.endMs > snapshot.committedThroughMs }
+            timeline = snapshot
         }
 
-        if !deduplicated.isEmpty {
-            wordsBySource[source, default: []].append(contentsOf: deduplicated)
-            lastCommittedEndMs[source] = deduplicated.last?.endMs
+        let attributedWords = timeline.map {
+            SpeakerMerger.mergeWordTimestampsWithSpeakers(
+                words: committedCandidates,
+                segments: $0.segments
+            )
+        } ?? committedCandidates
+
+        if !attributedWords.isEmpty {
+            wordsBySource[source, default: []].append(contentsOf: attributedWords)
+            lastCommittedEndMs[source] = attributedWords.last?.endMs
         }
 
         return currentUpdate
     }
 
-    private static func mappedDiarization(
-        _ diarization: MacParakeetDiarizationResult,
-        source: AudioSource,
-        offsetMs: Int,
-        identityNamespace: String,
-        labelOffset: Int
-    ) -> MeetingTranscriptFinalizer.SourceDiarization {
-        let label = source == .microphone ? "Local Speaker" : source.displayLabel
-        let idPrefix = "\(source.rawValue):\(identityNamespace):"
-        let speakers = diarization.speakers.enumerated().map { index, speaker in
-            SpeakerInfo(id: "\(idPrefix)\(speaker.id)", label: "\(label) \(labelOffset + index + 1)")
+    mutating func advanceLiveDiarization(
+        _ snapshot: MeetingLiveDiarizationSnapshot,
+        source: AudioSource
+    ) -> MeetingTranscriptUpdate? {
+        let pending = pendingWordsBySource[source] ?? []
+        let committed = pending.filter { $0.endMs <= snapshot.committedThroughMs }
+        guard !committed.isEmpty else { return nil }
+
+        detectedSpeakersBySource[source] = Self.mergedSpeakers(
+            detectedSpeakersBySource[source] ?? [],
+            snapshot.speakers
+        )
+        let attributed = SpeakerMerger.mergeWordTimestampsWithSpeakers(
+            words: committed,
+            segments: snapshot.segments
+        )
+        wordsBySource[source, default: []].append(contentsOf: attributed)
+        lastCommittedEndMs[source] = attributed.last?.endMs
+        pendingWordsBySource[source] = pending.filter { $0.endMs > snapshot.committedThroughMs }
+        return currentUpdate
+    }
+
+    mutating func stopLiveDiarization(for source: AudioSource) -> MeetingTranscriptUpdate? {
+        let pending = pendingWordsBySource.removeValue(forKey: source) ?? []
+        guard !pending.isEmpty else { return nil }
+        wordsBySource[source, default: []].append(contentsOf: pending)
+        lastCommittedEndMs[source] = pending.last?.endMs
+        return currentUpdate
+    }
+
+    private static func reconciledPendingWords(
+        _ pending: [WordTimestamp],
+        with newWords: [WordTimestamp]
+    ) -> [WordTimestamp] {
+        guard !pending.isEmpty, !newWords.isEmpty else { return pending + newWords }
+        let pendingTokens = pending.map { normalizeOverlapToken($0.word) }
+        let newTokens = newWords.map { normalizeOverlapToken($0.word) }
+        var overlap = min(pending.count, newWords.count)
+        while overlap > 0 {
+            let oldStart = pending[pending.count - overlap].startMs
+            let newStart = newWords[0].startMs
+            if pendingTokens.suffix(overlap).elementsEqual(newTokens.prefix(overlap)),
+                abs(oldStart - newStart) <= 1_000
+            {
+                return Array(pending.dropLast(overlap)) + newWords
+            }
+            overlap -= 1
         }
-        let ids = Dictionary(uniqueKeysWithValues: zip(diarization.speakers.map(\.id), speakers.map(\.id)))
-        let segments = diarization.segments.map { segment in
-            SpeakerSegment(
-                speakerId: ids[segment.speakerId] ?? "\(idPrefix)\(segment.speakerId)",
-                startMs: segment.startMs + offsetMs,
-                endMs: segment.endMs + offsetMs
-            )
-        }
-        return MeetingTranscriptFinalizer.SourceDiarization(speakers: speakers, segments: segments)
+        return pending + newWords
+    }
+
+    private static func deduplicatedWords(
+        _ words: [WordTimestamp],
+        committedThroughMs: Int?
+    ) -> [WordTimestamp] {
+        var seen: Set<String> = []
+        return words
+            .filter { word in
+                committedThroughMs.map { cutoff in word.endMs > cutoff } ?? true
+            }
+            .filter { word in
+                let key = "\(word.startMs):\(word.endMs):\(word.word)"
+                return seen.insert(key).inserted
+            }
+            .sorted { lhs, rhs in
+                lhs.startMs == rhs.startMs ? lhs.endMs < rhs.endMs : lhs.startMs < rhs.startMs
+            }
     }
 
     private static func mergedSpeakers(_ existing: [SpeakerInfo], _ added: [SpeakerInfo]) -> [SpeakerInfo] {

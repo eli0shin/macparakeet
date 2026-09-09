@@ -11,8 +11,14 @@ struct CaptureOrchestratorPairMetadata: Sendable {
     let processedMicrophoneRms: Float?
 }
 
+struct CaptureOrchestratorAudioBlock: Sendable {
+    let source: AudioSource
+    let samples: [Float]
+}
+
 struct CaptureOrchestratorOutput: Sendable {
     var chunks: [CaptureOrchestratorChunk] = []
+    var liveDiarizationAudio: [CaptureOrchestratorAudioBlock] = []
     var diagnostics: [MeetingAudioJoinerDiagnostic] = []
     var pairMetadata: [CaptureOrchestratorPairMetadata] = []
 }
@@ -59,6 +65,9 @@ actor CaptureOrchestrator {
         var output = await processPairs(pairs, micConditioner: micConditioner)
         let heldSamples = micConditioner.flush()
         if !heldSamples.isEmpty {
+            output.liveDiarizationAudio.append(
+                CaptureOrchestratorAudioBlock(source: .microphone, samples: heldSamples)
+            )
             for micChunk in await microphoneChunker.addSamples(heldSamples) {
                 output.chunks.append(CaptureOrchestratorChunk(source: .microphone, chunk: micChunk))
             }
@@ -112,6 +121,15 @@ actor CaptureOrchestrator {
                     ? pair.microphoneSamples
                     : heldSamples + pair.microphoneSamples
             }
+
+            if !micSamples.isEmpty {
+                output.liveDiarizationAudio.append(
+                    CaptureOrchestratorAudioBlock(source: .microphone, samples: micSamples)
+                )
+            }
+            output.liveDiarizationAudio.append(
+                CaptureOrchestratorAudioBlock(source: .system, samples: pair.systemSamples)
+            )
 
             for micChunk in await microphoneChunker.addSamples(micSamples) {
                 output.chunks.append(CaptureOrchestratorChunk(source: .microphone, chunk: micChunk))
