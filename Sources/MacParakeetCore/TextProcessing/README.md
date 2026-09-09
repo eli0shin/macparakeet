@@ -41,15 +41,11 @@ mode.
   references without changing canonical transcript evidence. Normal completed-
   meeting surfaces always select `.cleaned`, independent of the dictation
   Raw/Clean preference. `.verbatim` remains available for evidence-focused use.
-- `MeetingTranscriptDisplayBuilder.swift` — pure completed-meeting UI projection
-  that collapses each consecutive same-speaker Reading Turn run into one displayed
-  turn. Canonical turns remain available to exports, AI context, and formatting.
 - `MeetingReadingTurnFormatter.swift` — optional AI formatting module for completed
-  meetings. It packs complete paragraphs across Reading Turns and speakers into
-  serial requests with a 20,000-character transcript-text budget. Stable entry
-  IDs map returned text to turn parts. A failed batch is retried twice and then
-  uses its verbatim source text. Cancellation is reported to the meeting
-  workflow, which aborts completion without publishing partial overrides.
+  meetings. It sends all deterministic Reading Turn text in one request, validates
+  content preservation, and maps valid output back to stable Reading Turns. A
+  failure leaves all turns deterministic. Cancellation is reported to the meeting
+  workflow without publishing partial overrides.
 - `MeetingTranscriptDocumentRenderer.swift` — shared completed-meeting boundary
   and plain-text/Markdown projections for copy, readable exports, meeting
   artifacts, rich AI context, and containing-turn navigation. It does not
@@ -129,26 +125,18 @@ seekable contribution while the surrounding stable statement stays one turn.
 Cross-source overlap of at least 200 ms, and same-source overlap backed by
 concurrent remote-speaker regions, receive one stable overlap-group identity.
 Same-speaker sentence utterances merge across gaps shorter than 2.5 seconds;
-long pauses and completed source exchanges stay as canonical boundaries. The
-completed-meeting UI then groups every consecutive run with the same capture
-source and resolved speaker ID, regardless of pause, formatting, or overlap
-metadata. It retains the first turn identity and start time, all paragraphs and
-word references, and no internal UI seek target. This local policy
+long pauses and completed source exchanges stay as boundaries. This local policy
 does not rewrite words or diarization regions.
 
 **Meeting AI formatting never owns transcript structure.** The formatter sends
-JSON entries containing verbatim paragraph text and transport IDs. It can batch
-entries across Reading Turns and speakers, but it never sends speaker labels,
-timestamps, overlap state, or word references. Complete paragraphs stay intact
-when they fit the 20,000-character transcript-text budget. Only an oversized
-paragraph is split, preferably at sentence endings, without dropping text. The
-provider must return each ID exactly once; entry order in the response does not
-matter. Malformed IDs and request failures are retried twice, then affected
-entries use verbatim source text. The batch path does not reject mapped output
-for content changes, protected-value changes, output size, or a generation
-length stop reason. Durable overrides still include turn identity and
-deterministic source text, so stale overrides fail closed. The existing toggle,
-provider, model, and prompt remain the only routing controls.
+all deterministic Reading Turn text in one complete request and never sends
+speaker labels, timestamps, overlap state, or word references. It does not split,
+select, or drop source text to meet a request bound. Output commits only when all
+turns are present, non-empty, preserve numbers/URLs/email-like values, and stay
+within the accepted lexical-change ratio. Durable overrides include the turn
+identity and deterministic source text; stale overrides fail closed. The existing
+transcript-formatter toggle, provider, model, and prompt remain the only routing
+controls, so this module adds no implicit network path.
 
 **Meetings have a separate deterministic cleanup boundary.** New finalized
 meetings and explicit meeting retranscriptions keep STT text, timed words,

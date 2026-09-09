@@ -749,23 +749,19 @@ final class PromptResultsViewModelTests: XCTestCase {
 
     // MARK: - ADR-020 §4–§6 — userNotes plumbing
 
-    func testGeneratePromptResultSubstitutesUserNotesIntoSystemPrompt() async throws {
+    func testGeneratePromptResultSubstitutesCompleteUserNotesIntoSystemPrompt() async throws {
         let transcriptionID = UUID()
-        // Seed the transcription with the user's in-meeting notes so the VM
-        // picks them up via fetchUserNotes(for:).
+        let notes =
+            "BEGIN_NOTES\n" + String(repeating: "middle notes ", count: 2_500) + "\nEND_NOTES"
         try transcriptionRepo.save(
             Transcription(
                 id: transcriptionID,
                 fileName: "meeting-playback.m4a",
                 sourceType: .meeting,
-                userNotes: "decision: ship Friday\nQA owns smoke tests"
+                userNotes: notes
             )
         )
 
-        // Custom prompt that exercises the {{userNotes}} substitution path.
-        // Named generically — the built-in "Memo-Steered Notes" prompt was
-        // reverted (ADR-020 2026-05-02 amendment) but the template renderer
-        // continues to support {{userNotes}} for custom prompts.
         let notesAwarePrompt = Prompt(
             name: "Notes-Aware Custom Prompt",
             content: "Notes:\n{{userNotes}}\n---\nProduce structured output.",
@@ -792,7 +788,7 @@ final class PromptResultsViewModelTests: XCTestCase {
 
         XCTAssertEqual(
             llm.lastSummarySystemPrompt,
-            "Notes:\ndecision: ship Friday\nQA owns smoke tests\n---\nProduce structured output."
+            "Notes:\n\(notes)\n---\nProduce structured output."
         )
     }
 
@@ -898,55 +894,6 @@ final class PromptResultsViewModelTests: XCTestCase {
         )
     }
 
-    func testTruncateNotesForPromptStaysUnderSoftCap() {
-        let shortNotes = "one two three four five"
-        XCTAssertEqual(
-            PromptResultsViewModel.truncateNotesForPrompt(shortNotes),
-            shortNotes,
-            "notes under the cap pass through unmodified"
-        )
-
-        let longNotes = String(repeating: "word ", count: PromptResultsViewModel.userNotesPromptWordCap + 100)
-            .trimmingCharacters(in: .whitespaces)
-        let truncated = PromptResultsViewModel.truncateNotesForPrompt(longNotes)
-        let truncatedWordCount = truncated
-            .split(whereSeparator: \.isWhitespace)
-            .filter { !$0.contains("[") && !$0.contains("words") && !$0.contains("(") }
-            .count
-        XCTAssertLessThanOrEqual(
-            truncatedWordCount,
-            PromptResultsViewModel.userNotesPromptWordCap + 25,
-            "truncated notes must be near the soft cap (allowing for the suffix banner)"
-        )
-        XCTAssertTrue(
-            truncated.contains("Notes truncated to \(PromptResultsViewModel.userNotesPromptWordCap) words"),
-            "truncation must include the explanatory suffix"
-        )
-    }
-
-    /// Regression: Gemini review of PR #143 flagged that `truncateNotesForPrompt`
-    /// used `split + join(" ")`, flattening newlines/tabs/indentation into
-    /// single spaces. That destroys the structural cues (bullet lists, section
-    /// headings, slash-command markers) the user typed *to steer* the summary.
-    func testTruncateNotesForPromptPreservesWhitespaceInKeptPortion() {
-        let cap = PromptResultsViewModel.userNotesPromptWordCap
-        // Build a structured prefix the kept portion must preserve verbatim.
-        let structuredPrefix = "## Roadmap\n\n**Action:** ship infra refactor\n\t- subtask: review staffing plan\n\n[6:02] confirmed"
-        let filler = String(repeating: " filler", count: cap + 50)
-        let input = structuredPrefix + filler
-
-        let truncated = PromptResultsViewModel.truncateNotesForPrompt(input)
-
-        XCTAssertTrue(
-            truncated.contains("## Roadmap\n\n**Action:** ship infra refactor\n\t- subtask: review staffing plan\n\n[6:02] confirmed"),
-            "Original whitespace (newlines, blank lines, tab indentation) must survive in the kept portion"
-        )
-        XCTAssertTrue(
-            truncated.contains("Notes truncated"),
-            "Truncation must still include the explanatory suffix"
-        )
-    }
-
     /// Regression: Gemini review of PR #143 flagged that `assembledSystemPrompt`
     /// didn't pass the transcript to `PromptTemplateRenderer`, so prompts
     /// containing `{{transcript}}` would render with an empty string instead
@@ -993,29 +940,6 @@ final class PromptResultsViewModelTests: XCTestCase {
         )
     }
 
-    /// Regression for the truncation-banner edge case caught in Codex
-    /// fresh-eye review of PR #143: `indexAfterNthWord` returned a non-nil
-    /// index whenever the n-th word was followed by trailing whitespace,
-    /// triggering a false `[Notes truncated...]` banner even though the
-    /// entire input fit under the cap.
-    func testTruncateNotesForPromptDoesNotBannerWhenInputFitsExactlyWithTrailingWhitespace() {
-        let cap = PromptResultsViewModel.userNotesPromptWordCap
-
-        // Exactly `cap` words, ending with trailing whitespace (newline).
-        let exactlyAtCap = String(repeating: "word ", count: cap) + "\n"
-        let resultExact = PromptResultsViewModel.truncateNotesForPrompt(exactlyAtCap)
-        XCTAssertFalse(
-            resultExact.contains("Notes truncated"),
-            "Input with exactly \(cap) words must NOT be banner-tagged even when followed by trailing whitespace."
-        )
-        XCTAssertEqual(resultExact, exactlyAtCap, "No truncation → input passes through verbatim.")
-
-        // Fewer than `cap` words, also ending with trailing whitespace.
-        let underCap = String(repeating: "word ", count: cap - 50) + "\n\n"
-        let resultUnder = PromptResultsViewModel.truncateNotesForPrompt(underCap)
-        XCTAssertFalse(resultUnder.contains("Notes truncated"))
-        XCTAssertEqual(resultUnder, underCap)
-    }
 }
 
 private struct PromptAutoRunFetchError: Error {}

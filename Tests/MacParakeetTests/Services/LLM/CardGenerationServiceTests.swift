@@ -212,7 +212,7 @@ final class CardGenerationServiceTests: XCTestCase {
         XCTAssertEqual(operation["retry_count"], "1")
     }
 
-    func testLLMServiceBoundsKnowledgeCardInputToProviderContext() async throws {
+    func testLLMServiceSendsCompleteKnowledgeCardInput() async throws {
         let client = MockLLMClient()
         client.responseContent = Self.validMeetingJSON
         let service = LLMService(
@@ -224,14 +224,17 @@ final class CardGenerationServiceTests: XCTestCase {
             )
         )
 
-        _ = try await service.generateKnowledgeCard(
-            transcript: String(repeating: "long meeting context ", count: 2_000),
-            source: .meeting
-        )
+        let transcript =
+            "BEGIN_SENTINEL "
+            + String(repeating: "long meeting context ", count: 2_000)
+            + " MIDDLE_SENTINEL "
+            + String(repeating: "long meeting context ", count: 2_000)
+            + " END_SENTINEL"
+        _ = try await service.generateKnowledgeCard(transcript: transcript, source: .meeting)
 
-        let totalCharacters = client.capturedMessages.reduce(0) { $0 + $1.content.count }
-        XCTAssertLessThanOrEqual(totalCharacters, LLMService.lmStudioContextBudget)
-        XCTAssertTrue(client.capturedMessages.last?.content.contains("[... content truncated ...]") == true)
+        let userMessage = try XCTUnwrap(client.capturedMessages.last?.content)
+        XCTAssertTrue(userMessage.contains(transcript))
+        XCTAssertFalse(userMessage.contains("content truncated"))
     }
 
     func testValidMeetingResponseUsesRichContextAndResolvesCitations() async throws {

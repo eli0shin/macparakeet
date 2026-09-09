@@ -941,7 +941,7 @@ Important constraints:
 - formatter runs for dictation, file/URL, and meeting transcription flows — every transcription finalization path shares `completeTranscription`, which invokes the formatter (`TelemetryFormatterSource` emits `.dictation` and `.transcription`; meetings report as `.transcription`)
 - formatter skips empty or whitespace-only input before prompt resolution or any provider call, so a model response can never become transcript content when STT produces no transcript text (#855)
 - formatter routing is per-surface: "Use for transcripts" (file/URL/meeting, default on) and "Use for dictation" (default off) toggles in AI settings, each ANDed with provider availability (#408, #493)
-- file/URL formatter input is capped at `AIFormatter.maxTranscriptionInputChars` (20k chars); meetings instead send serial cross-turn batches with up to 20k characters of transcript text each, retry failed batches twice, and use verbatim source text for a batch after all three attempts fail
+- transcript and dictation formatting send the complete source text; no length cap skips or reduces an enabled formatter request
 - dictation formatter prompts route through local exact-app profiles, local coarse-category profiles, built-in coarse-category smart defaults, and then the fallback formatter prompt
 - built-in smart defaults are user-controllable: a master switch plus per-category switches (UserDefaults-backed `AIFormatterSmartDefaultsPolicy`), and every built-in prompt is readable in Settings even when the master switch is off; with the tier off, zero-profile prompt selection is byte-for-byte the legacy fallback-prompt behavior
 - file/YouTube transcription formatter prompts continue to use the fallback formatter prompt in V1
@@ -1722,7 +1722,7 @@ final transcripts remain plain text without word timestamps or speaker labels.
 - [x] Tab labels render as plain nouns (`Notes`, `Transcript`, `Ask`); only the Ask tab carries an ambient indicator — a breathing dot while `chatViewModel.isStreaming`. `ViewThatFits` collapses the dot into the tooltip at the 360px panel-width floor (ADR-020 §1 amendments 2026-05-02)
 - [x] Notes auto-save serializes through `MeetingRecordingService.updateNotes(_:)` so all `recording.lock` writes share one writer
 - [x] Notes round-trip through crash recovery via lock-file `notes` (additive, decoded with `decodeIfPresent`, decoded independently so a malformed notes value doesn't block audio recovery)
-- [x] Soft-cap warning footer at 7,500 words; notes themselves are never truncated (cap applies only at prompt-assembly time)
+- [x] Notes are persisted and sent completely when an LLM operation uses them; users do not manage an application-side prompt budget
 - [x] `MeetingNotesViewModel.notesText` is `private(set)` and bound exclusively to the editor — code-level enforcement of the "notes are user-authored only" invariant (ADR-020 §11)
 - [x] Completed meeting detail uses **Copy Meeting** as its primary copy action, producing compact Markdown with title, non-empty personal notes, and the preferred transcript; its split menu retains **Copy Transcript**, while the live Transcript-tab Copy action remains transcript-only
 

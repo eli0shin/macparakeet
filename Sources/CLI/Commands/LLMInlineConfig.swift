@@ -22,7 +22,8 @@ func validateBaseURL(_ value: String) throws -> URL {
     guard let url = URL(string: value),
           let scheme = url.scheme?.lowercased(),
           ["http", "https"].contains(scheme),
-          url.host != nil else {
+        url.host != nil
+    else {
         throw ValidationError("--base-url must be an absolute http:// or https:// URL")
     }
     return url
@@ -67,10 +68,15 @@ func readInput(_ path: String) throws -> String {
 
 /// Shared options for CLI commands that call an LLM provider directly (no Keychain).
 struct LLMInlineOptions: ParsableArguments {
-    @Option(name: .long, help: "Provider: anthropic, openai, openaiCompatible, gemini, openrouter, ollama, lmstudio, cli.")
+    @Option(
+        name: .long, help: "Provider: anthropic, openai, openaiCompatible, gemini, openrouter, ollama, lmstudio, cli.")
     var provider: String
 
-    @Option(name: .long, help: "API key literal. Prefer --api-key-env or provider env vars to avoid exposing secrets in process arguments.")
+    @Option(
+        name: .long,
+        help:
+            "API key literal. Prefer --api-key-env or provider env vars to avoid exposing secrets in process arguments."
+    )
     var apiKey: String?
 
     @Option(name: .long, help: "Environment variable name containing the API key.")
@@ -84,14 +90,15 @@ struct LLMInlineOptions: ParsableArguments {
 
     @Flag(
         name: .long,
-        help: "Allow non-loopback http:// base URLs for non-local providers. Prompt content and API keys may be sent without TLS."
+        help:
+            "Allow non-loopback http:// base URLs for non-local providers. Prompt content and API keys may be sent without TLS."
     )
     var allowInsecureHTTP: Bool = false
 
     @Option(name: .long, help: "CLI command for cli provider (e.g. 'claude -p').")
     var command: String?
 
-    @Flag(name: .long, help: "Mark provider as local (smaller context budget).")
+    @Flag(name: .long, help: "Mark a custom provider as local.")
     var local: Bool = false
 
     private func providerID() throws -> LLMProviderID {
@@ -122,7 +129,8 @@ struct LLMInlineOptions: ParsableArguments {
     ) throws -> InlineLLMExecutionContext {
         let providerID = try providerID()
 
-        let overrideURL: URL? = if let urlStr = baseURL {
+        let overrideURL: URL? =
+            if let urlStr = baseURL {
             try validateBaseURL(
                 urlStr,
                 providerID: providerID,
@@ -191,7 +199,8 @@ struct LLMInlineOptions: ParsableArguments {
             providerConfig = .ollama(model: model ?? providerID.defaultModelName, baseURL: overrideURL)
         case .lmstudio:
             guard let rawModel = model?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !rawModel.isEmpty else {
+                !rawModel.isEmpty
+            else {
                 throw ValidationError("--model is required for LM Studio")
             }
             providerConfig = .lmstudio(
@@ -201,7 +210,8 @@ struct LLMInlineOptions: ParsableArguments {
             )
         case .localCLI:
             guard let rawCommand = command,
-                  !rawCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                !rawCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
                 throw ValidationError("--command is required for cli provider (e.g. 'claude -p')")
             }
             providerConfig = .localCLI()
@@ -225,7 +235,8 @@ struct LLMInlineOptions: ParsableArguments {
         if emitWarnings,
            allowInsecureHTTP,
            let overrideURL,
-           Self.usesNonLoopbackHTTP(overrideURL, providerID: providerID) {
+            Self.usesNonLoopbackHTTP(overrideURL, providerID: providerID)
+        {
             Self.emitInsecureHTTPWarning(url: overrideURL, providerID: providerID)
         }
 

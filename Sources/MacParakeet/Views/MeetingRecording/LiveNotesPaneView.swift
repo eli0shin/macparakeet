@@ -32,10 +32,6 @@ struct LiveNotesPaneView: View {
     var body: some View {
         VStack(spacing: 0) {
             editor
-            if viewModel.isApproachingSoftCap {
-                Divider()
-                softCapFooter
-            }
         }
         .background(DesignSystem.Colors.background)
         .task {
@@ -119,11 +115,15 @@ struct LiveNotesPaneView: View {
                     // Honor System Settings → Accessibility → Display →
                     // Reduce Motion: opacity-only transition with no slide
                     // and no easing curve.
-                    .transition(reduceMotion
+                    .transition(
+                        reduceMotion
                         ? .opacity
-                        : .opacity.combined(with: .move(edge: .bottom)))
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.15),
-                               value: viewModel.matchingCommands)
+                            : .opacity.combined(with: .move(edge: .bottom))
+                    )
+                    .animation(
+                        reduceMotion ? nil : .easeOut(duration: 0.15),
+                        value: viewModel.matchingCommands
+                    )
                     .allowsHitTesting(true)
             }
         }
@@ -193,7 +193,8 @@ struct LiveNotesPaneView: View {
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     Text(command.trigger)
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundStyle(isHighlighted
+                        .foregroundStyle(
+                            isHighlighted
                             ? DesignSystem.Colors.accent
                             : DesignSystem.Colors.textSecondary)
                     Text(command.label)
@@ -209,7 +210,8 @@ struct LiveNotesPaneView: View {
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isHighlighted
+                        .fill(
+                            isHighlighted
                             ? DesignSystem.Colors.accent.opacity(0.12)
                             : (isHovered ? DesignSystem.Colors.background.opacity(0.5) : .clear))
                 )
@@ -219,32 +221,5 @@ struct LiveNotesPaneView: View {
             .buttonStyle(.plain)
             .onHover { isHovered = $0 }
         }
-    }
-
-    /// Surfaces near the soft cap so users know summary generation will start
-    /// trimming around 8,000 words (ADR-020 §3). Notes themselves are never
-    /// truncated — the cap only applies to the prompt-assembly step.
-    private var softCapFooter: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.circle.fill")
-                .font(.system(size: 11))
-                .foregroundStyle(DesignSystem.Colors.warningAmber)
-                .accessibilityHidden(true)
-            Text("Summary will start trimming notes past ~8,000 words.")
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textTertiary)
-            Spacer(minLength: 0)
-            Text("\(viewModel.wordCount) words")
-                .font(.system(size: 11).monospacedDigit())
-                .foregroundStyle(DesignSystem.Colors.textTertiary.opacity(0.8))
-        }
-        .padding(.horizontal, DesignSystem.Spacing.md)
-        .padding(.vertical, DesignSystem.Spacing.xs + 2)
-        .background(DesignSystem.Colors.cardBackground)
-        // Combine into a single VoiceOver element so the warning + word
-        // count are announced together when the footer appears (otherwise
-        // VoiceOver users get no signal that the soft cap is active).
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Notes approaching soft cap: \(viewModel.wordCount) words. Summary will start trimming past 8,000 words.")
     }
 }

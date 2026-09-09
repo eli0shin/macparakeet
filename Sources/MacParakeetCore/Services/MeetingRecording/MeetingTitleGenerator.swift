@@ -3,7 +3,6 @@ import OSLog
 
 struct MeetingTitleGenerator: Sendable {
     private static let minimumTranscriptWords = 12
-    private static let maximumPromptTranscriptCharacters = 24_000
     private static let minimumTitleWords = 2
     private static let maximumTitleWords = 8
     private static let maximumTitleCharacters = 70
@@ -27,12 +26,11 @@ struct MeetingTitleGenerator: Sendable {
         guard shouldGenerate(), let llmService else { return nil }
         guard Self.shouldReplaceFallbackMeetingTitle(currentTitle) else { return nil }
 
-        let normalizedTranscript = Self.normalizedWhitespace(transcript)
-        guard Self.hasEnoughContext(normalizedTranscript) else { return nil }
+        guard Self.hasEnoughContext(transcript) else { return nil }
 
         do {
             let rawTitle = try await llmService.generatePromptResult(
-                transcript: Self.truncatedForPrompt(normalizedTranscript),
+                transcript: transcript,
                 systemPrompt: Self.systemPrompt
             )
             guard let title = Self.validatedTitle(from: rawTitle) else {
@@ -42,8 +40,18 @@ struct MeetingTitleGenerator: Sendable {
             return title
         } catch is CancellationError {
             throw CancellationError()
+        } catch let error as LLMError {
+            if case .contextTooLong = error {
+                throw error
+            }
+            logger.warning(
+                "meeting_title_generation_failed error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)"
+            )
+            return nil
         } catch {
-            logger.warning("meeting_title_generation_failed error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+            logger.warning(
+                "meeting_title_generation_failed error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)"
+            )
             return nil
         }
     }
@@ -60,12 +68,14 @@ struct MeetingTitleGenerator: Sendable {
         // deliberately omit a bare-year pattern: a real calendar/custom title like
         // "Meeting 2026 Budget Planning" must not be treated as a fallback and
         // silently overwritten.
-        let fallbackDatePattern = #"(?i)\b(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b"#
+        let fallbackDatePattern =
+            #"(?i)\b(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b"#
         return normalized.range(of: fallbackDatePattern, options: .regularExpression) != nil
     }
 
     static func validatedTitle(from rawTitle: String) -> String? {
-        let lines = rawTitle
+        let lines =
+            rawTitle
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -76,7 +86,8 @@ struct MeetingTitleGenerator: Sendable {
             .replacingOccurrences(of: #"^\d+[\.)]\s*"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         title = stripWrappingQuotes(from: title)
-        title = title.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".:;!?")))
+        title = title.trimmingCharacters(
+            in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".:;!?")))
         title = normalizedWhitespace(title)
 
         guard !title.isEmpty else { return nil }
@@ -116,12 +127,6 @@ struct MeetingTitleGenerator: Sendable {
 
     private static func hasEnoughContext(_ transcript: String) -> Bool {
         transcript.split(whereSeparator: \.isWhitespace).count >= minimumTranscriptWords
-    }
-
-    private static func truncatedForPrompt(_ transcript: String) -> String {
-        guard transcript.count > maximumPromptTranscriptCharacters else { return transcript }
-        let half = maximumPromptTranscriptCharacters / 2
-        return "\(transcript.prefix(half))\n\n[...]\n\n\(transcript.suffix(half))"
     }
 
     private static func normalizedWhitespace(_ text: String) -> String {

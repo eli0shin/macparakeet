@@ -5,6 +5,10 @@
 > Related: ADR-013 (prompt library + multi-summary), ADR-014 (meeting recording), ADR-017 (calendar auto-start), ADR-018 (live meeting Ask tab), ADR-019 (crash-resilient meeting recording)
 > Naming Note (2026-04-28): The persisted table remains `summaries`, but the current Swift names are `PromptResult`, `PromptResultRepository`, and `PromptResultsViewModel`.
 
+## Amendment (complete notes context)
+
+The 8,000-word prompt cap and its 7,500-word UI warning are withdrawn. Prompt results and Meeting Ask send complete applicable notes through the shared complete-context policy. If the configured model cannot accept the complete request, MacParakeet surfaces a context-limit error and does not retry with less context. Older cap descriptions below are historical and do not define current behavior.
+
 ## Amendment (2026-05-02, "Memo-Steered Notes" built-in prompt reverted)
 
 The "Memo-Steered Notes" built-in prompt described in §5 has been removed from `Prompt.builtInPrompts()` and `community-prompts.json`. The reconciler's existing "delete built-ins not in the canonical list" path removes the row on next launch for any DB that has it from the 2026-04-25 → 2026-05-02 window. The canonical UUID `1C5A1B4A-7E2C-4D38-B3EF-5C0F8A7E3E1A` is reserved and must not be reused for a different prompt — reissuing it would resurrect the removed prompt on installs that still have its row.

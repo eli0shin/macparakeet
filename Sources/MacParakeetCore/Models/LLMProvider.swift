@@ -243,7 +243,7 @@ public enum LLMProviderID: String, Codable, Sendable, CaseIterable {
         descriptor.displayName
     }
 
-    /// Whether the provider runs inference on-device (affects context budget).
+    /// Whether the provider runs inference on-device.
     /// Local CLI tools typically forward to cloud APIs, so this is `false`.
     public var isLocal: Bool {
         descriptor.isLocal

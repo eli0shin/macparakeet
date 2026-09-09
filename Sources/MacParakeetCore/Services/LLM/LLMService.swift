@@ -84,14 +84,11 @@ public extension LLMServiceProtocol {
 public final class LLMService: LLMServiceProtocol, Sendable {
     private let client: LLMClientProtocol
     private let contextResolver: any LLMExecutionContextResolving
+    /// One context path is used for all operations and providers. Source input,
+    /// instructions, notes, and history are passed through without reduction.
     private struct MessageAssembly {
         let messages: [ChatMessage]
-        let inputTruncated: Bool
-    }
-
-    private struct ChatSystemPromptBuild {
-        let prompt: String
-        let inputTruncated: Bool
+        let inputTruncated = false
     }
 
     private static let lmStudioFormatterSchema = ChatJSONSchema(
@@ -100,26 +97,6 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             "cleaned_text": ChatJSONSchemaProperty(type: "string")
         ],
         required: ["cleaned_text"],
-        additionalProperties: false
-    )
-
-    private static let meetingBatchFormatterSchema = ChatJSONSchema(
-        type: "object",
-        properties: [
-            "entries": ChatJSONSchemaProperty(
-                type: "array",
-                items: ChatJSONSchemaArrayItem(
-                    type: "object",
-                    properties: [
-                        "id": ChatJSONSchemaProperty(type: "string"),
-                        "text": ChatJSONSchemaProperty(type: "string"),
-                    ],
-                    required: ["id", "text"],
-                    additionalProperties: false
-                )
-            )
-        ],
-        required: ["entries"],
         additionalProperties: false
     )
 
@@ -167,16 +144,6 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             )
         )
     }()
-
-    // Context budgets (characters). Sized for 2026 model norms: every modern
-    // cloud provider ships at least a 200K-token context, and local models on
-    // Apple Silicon (Llama 4 / Qwen / Gemma / Mistral) routinely have 32K+
-    // tokens. We sit comfortably under those floors so first-token latency and
-    // per-turn cost stay reasonable while a multi-hour meeting can fit
-    // un-truncated. ~3.5 chars/token in English.
-    internal static let cloudContextBudget = 500_000  // ≈140K tokens
-    internal static let localContextBudget = 80_000  // ≈ 22K tokens
-    internal static let lmStudioContextBudget = 8_000  // ≈2K tokens; LM Studio defaults vary by loaded model
 
     public init(
         client: LLMClientProtocol = RoutingLLMClient(),
@@ -248,8 +215,7 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                 \(transcript)
                 </untrusted_transcript_data>
                 """,
-            systemPrompt: systemPrompt,
-            config: context.providerConfig
+            systemPrompt: systemPrompt
         )
         let responseFormat: ChatResponseFormat? =
             capability == .nativeJSONSchema ? Self.knowledgeCardResponseFormat : nil
@@ -417,7 +383,7 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             messageCount: 2
         )
         let config = context.providerConfig
-        let assembly = buildPromptResultMessages(transcript: transcript, systemPrompt: systemPrompt, config: config)
+        let assembly = buildPromptResultMessages(transcript: transcript, systemPrompt: systemPrompt)
         let messages = assembly.messages
         do {
             let response = try await client.chatCompletion(messages: messages, context: context, options: .default)
@@ -500,8 +466,7 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             question: question,
             transcript: transcript,
             userNotes: userNotes,
-            history: history,
-            config: config
+            history: history
         )
         let messages = assembly.messages
         do {
@@ -577,7 +542,7 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             messageCount: 2
         )
         let config = context.providerConfig
-        let assembly = buildTransformMessages(text: text, prompt: prompt, config: config)
+        let assembly = buildTransformMessages(text: text, prompt: prompt)
         let messages = assembly.messages
         do {
             let response = try await client.chatCompletion(messages: messages, context: context, options: .default)
@@ -662,10 +627,6 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             messageCount: 2
         )
         let config = context.providerConfig
-        // Formatter input is never truncated. File/URL callers apply their
-        // whole-input cap, while meeting callers batch transcript text before
-        // this provider boundary. Provider-specific context guesses must not
-        // remove text from a cleanup request.
         let inputTruncated = false
         let renderedPrompt = AIFormatter.renderPrompt(template: promptTemplate, transcript: transcript)
         let messages = [
@@ -676,7 +637,6 @@ public final class LLMService: LLMServiceProtocol, Sendable {
         do {
             let response: ChatCompletionResponse
             let output: String
-            let isMeetingBatch = promptTemplate.contains(AIFormatter.meetingBatchInstruction)
             if config.id == .lmstudio {
                 response = try await client.chatCompletion(
                     messages: messages,
@@ -684,30 +644,19 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                     options: ChatCompletionOptions(
                         temperature: 0.2,
                         responseFormat: .jsonSchema(
-                            name: isMeetingBatch ? "meeting_formatter_batch" : "formatter_output",
-                            schema: isMeetingBatch
-                                ? Self.meetingBatchFormatterSchema
-                                : Self.lmStudioFormatterSchema
+                            name: "formatter_output",
+                            schema: Self.lmStudioFormatterSchema
                         )
                     )
                 )
-                if !isMeetingBatch, response.finishReason?.lowercased() == "length" {
+                if response.finishReason?.lowercased() == "length" {
                     throw LLMError.formatterTruncated
                 }
-                let formatted =
-                    isMeetingBatch
-                    ? Self.firstNonemptyResponseContent(response)
-                    : (parseLMStudioFormattedTranscript(response) ?? response.content)
-                output =
-                    isMeetingBatch
-                    ? formatted
-                    : AIFormatter.normalizedFormattedOutput(formatted)
+                let formatted = parseLMStudioFormattedTranscript(response) ?? response.content
+                output = AIFormatter.normalizedFormattedOutput(formatted)
             } else {
                 response = try await client.chatCompletion(messages: messages, context: context, options: .default)
-                output =
-                    isMeetingBatch
-                    ? response.content
-                    : AIFormatter.normalizedFormattedOutput(response.content)
+                output = AIFormatter.normalizedFormattedOutput(response.content)
             }
 
             // An empty or whitespace-only response is a failure, not a
@@ -851,8 +800,7 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                     provider = config.id.rawValue
                     let assembly = self.buildPromptResultMessages(
                         transcript: transcript,
-                        systemPrompt: systemPrompt,
-                        config: config
+                        systemPrompt: systemPrompt
                     )
                     inputTruncated = assembly.inputTruncated
                     let messages = assembly.messages
@@ -954,8 +902,7 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                         question: question,
                         transcript: transcript,
                         userNotes: userNotes,
-                        history: history,
-                        config: config
+                        history: history
                     )
                     inputTruncated = assembly.inputTruncated
                     let messages = assembly.messages
@@ -1051,7 +998,7 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                     }
                     let config = context.providerConfig
                     provider = config.id.rawValue
-                    let assembly = self.buildTransformMessages(text: text, prompt: prompt, config: config)
+                    let assembly = self.buildTransformMessages(text: text, prompt: prompt)
                     inputTruncated = assembly.inputTruncated
                     let messages = assembly.messages
                     let stream = self.client.chatCompletionStream(
@@ -1152,74 +1099,39 @@ public final class LLMService: LLMServiceProtocol, Sendable {
         }
     }
 
-    private func contextBudget(for config: LLMProviderConfig) -> Int {
-        if config.id == .lmstudio {
-            return Self.lmStudioContextBudget
-        }
-        return config.isLocal ? Self.localContextBudget : Self.cloudContextBudget
-    }
-
-    private func transcriptBudget(totalBudget: Int, systemPrompt: String) -> Int {
-        max(0, totalBudget - systemPrompt.count)
-    }
-
     private func buildPromptResultMessages(
         transcript: String,
-        systemPrompt: String?,
-        config: LLMProviderConfig
+        systemPrompt: String?
     ) -> MessageAssembly {
-        let budget = contextBudget(for: config)
-        let resolvedPrompt = resolveSummaryPrompt(systemPrompt)
-        let promptWasTruncated = resolvedPrompt.count > budget
-        let boundedPrompt =
-            promptWasTruncated
-            ? Self.truncateMiddle(resolvedPrompt, limit: budget)
-            : resolvedPrompt
-        let transcriptBudget = transcriptBudget(totalBudget: budget, systemPrompt: boundedPrompt)
-        let truncated = Self.truncateMiddle(transcript, limit: transcriptBudget)
-        return MessageAssembly(
+        MessageAssembly(
             messages: [
-                ChatMessage(role: .system, content: boundedPrompt),
-                ChatMessage(role: .user, content: truncated),
-            ],
-            inputTruncated: promptWasTruncated || transcript.count > transcriptBudget
+                ChatMessage(role: .system, content: resolveSummaryPrompt(systemPrompt)),
+                ChatMessage(role: .user, content: transcript),
+            ]
         )
     }
 
     private func buildTransformMessages(
         text: String,
-        prompt: String,
-        config: LLMProviderConfig
+        prompt: String
     ) -> MessageAssembly {
-        let systemPrompt = Prompts.transform
         let instructionPrefix = "Transform the following text according to this instruction: "
         let separator = "\n\n---\n\n"
-        let available = max(
-            0,
-            contextBudget(for: config) - systemPrompt.count - instructionPrefix.count - separator.count
-        )
-        let promptBudget = prompt.count <= available ? prompt.count : available / 2
-        let boundedPrompt = Self.truncateMiddle(prompt, limit: promptBudget)
-        let textBudget = max(0, available - boundedPrompt.count)
-        let truncated = Self.truncateMiddle(text, limit: textBudget)
         return MessageAssembly(
             messages: [
-                ChatMessage(role: .system, content: systemPrompt),
-                ChatMessage(role: .user, content: "\(instructionPrefix)\(boundedPrompt)\(separator)\(truncated)"),
-            ],
-            inputTruncated: prompt.count > promptBudget || text.count > textBudget
+                ChatMessage(role: .system, content: Prompts.transform),
+                ChatMessage(role: .user, content: "\(instructionPrefix)\(prompt)\(separator)\(text)"),
+            ]
         )
     }
 
     private func resolveSummaryPrompt(_ systemPrompt: String?) -> String {
-        let trimmed = systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (trimmed?.isEmpty == false ? trimmed : nil) ?? Prompts.summary
-    }
-
-    private static func firstNonemptyResponseContent(_ response: ChatCompletionResponse) -> String {
-        [response.content, response.reasoningContent ?? ""]
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty } ?? ""
+        guard let systemPrompt,
+            systemPrompt.contains(where: { !$0.isWhitespace })
+        else {
+            return Prompts.summary
+        }
+        return systemPrompt
     }
 
     private func parseLMStudioFormattedTranscript(_ response: ChatCompletionResponse) -> String? {
@@ -1332,57 +1244,17 @@ public final class LLMService: LLMServiceProtocol, Sendable {
         question: String,
         transcript: String,
         userNotes: String?,
-        history: [ChatMessage],
-        config: LLMProviderConfig
+        history: [ChatMessage]
     ) -> MessageAssembly {
-        let budget = contextBudget(for: config)
-        let systemPromptBuild = Self.buildChatSystemPrompt(
-            transcript: transcript,
-            userNotes: userNotes,
-            question: question,
-            budget: budget
+        var messages = [
+            ChatMessage(
+                role: .system,
+                content: Self.buildChatSystemPrompt(transcript: transcript, userNotes: userNotes)
         )
-        let systemPrompt = systemPromptBuild.prompt
-
-        var messages = [ChatMessage(role: .system, content: systemPrompt)]
-
-        // Add history, dropping oldest turns if total exceeds budget.
-        // Trim at turn boundaries (user+assistant pairs) to avoid orphaned messages.
-        let historyBudget = max(0, budget - systemPrompt.count - question.count)
-        var historyChars = 0
-        var keptTurns: [[ChatMessage]] = []
-
-        // Group history into turns (pairs of consecutive messages) from newest to oldest
-        var i = history.count
-        while i > 0 {
-            // Walk backwards: take assistant then user (or single message if unpaired)
-            let end = i
-            i -= 1
-            // If this is an assistant message preceded by a user message, take both as a turn
-            if i > 0 && history[i].role == .assistant && history[i - 1].role == .user {
-                let userMessage = Self.requestMessage(from: history[i - 1])
-                let assistantMessage = Self.requestMessage(from: history[i])
-                let turnChars = userMessage.content.count + assistantMessage.content.count
-                if historyChars + turnChars > historyBudget { break }
-                historyChars += turnChars
-                keptTurns.insert([userMessage, assistantMessage], at: 0)
-                i -= 1
-            } else {
-                let message = Self.requestMessage(from: history[end - 1])
-                let turnChars = message.content.count
-                if historyChars + turnChars > historyBudget { break }
-                historyChars += turnChars
-                keptTurns.insert([message], at: 0)
-            }
-        }
-        let keptHistory = keptTurns.flatMap { $0 }
-        messages.append(contentsOf: keptHistory)
-
+        ]
+        messages.append(contentsOf: history.map(Self.requestMessage))
         messages.append(ChatMessage(role: .user, content: question))
-        return MessageAssembly(
-            messages: messages,
-            inputTruncated: systemPromptBuild.inputTruncated || keptHistory.count < history.count
-        )
+        return MessageAssembly(messages: messages)
     }
 
     private static func requestMessage(from message: ChatMessage) -> ChatMessage {
@@ -1391,81 +1263,18 @@ public final class LLMService: LLMServiceProtocol, Sendable {
 
     private static func buildChatSystemPrompt(
         transcript: String,
-        userNotes: String?,
-        question: String,
-        budget: Int
-    ) -> ChatSystemPromptBuild {
-        let trimmedNotes = userNotes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let transcriptHeader = "\n\n---\nTranscript:\n"
-        let notesHeader =
+        userNotes: String?
+    ) -> String {
+        let transcriptBlock = "\n\n---\nTranscript:\n" + transcript
+        guard let userNotes,
+            userNotes.contains(where: { !$0.isWhitespace })
+        else {
+            return Prompts.chat + transcriptBlock
+        }
+        let notesBlock =
             "\n\n---\nUser's notes from the meeting (treat these as what the user thinks matters; the transcript is the source of truth for facts):\n"
-        let historyReserve = min(8_000, max(0, budget / 10))
-        let contextBudget = max(0, budget - Prompts.chat.count - question.count - historyReserve)
-
-        let notesBlock: String
-        let notesWasTruncated: Bool
-        if trimmedNotes.isEmpty {
-            notesBlock = ""
-            notesWasTruncated = false
-        } else {
-            let notesTextBudget = max(0, min(trimmedNotes.count, contextBudget / 4))
-            notesBlock = notesHeader + truncateMiddle(trimmedNotes, limit: notesTextBudget)
-            notesWasTruncated = trimmedNotes.count > notesTextBudget
-        }
-
-        let transcriptBudget = max(0, contextBudget - notesBlock.count - transcriptHeader.count)
-        let transcriptBlock = transcriptHeader + truncateMiddle(transcript, limit: transcriptBudget)
-        let context = notesBlock + transcriptBlock
-        let boundedContext =
-            context.count > contextBudget
-            ? truncateMiddle(context, limit: contextBudget)
-            : context
-
-        return ChatSystemPromptBuild(
-            prompt: Prompts.chat + boundedContext,
-            inputTruncated: notesWasTruncated || transcript.count > transcriptBudget || context.count > contextBudget
-        )
-    }
-
-    /// Truncate text from the middle, keeping the head and tail within the limit.
-    /// Snaps to word boundaries to avoid slicing multi-byte Unicode characters.
-    internal static func truncateMiddle(_ text: String, limit: Int) -> String {
-        guard limit > 0 else { return "" }
-        guard text.count > limit else { return text }
-
-        let marker = "\n\n[... content truncated ...]\n\n"
-        guard limit > marker.count else {
-            return String(text.prefix(limit))
-        }
-
-        let contentBudget = limit - marker.count
-        let headBudget = contentBudget / 2
-        let tailBudget = contentBudget - headBudget
-
-        let head = snapToWordBoundary(text, fromStart: true, budget: headBudget)
-        let tail = snapToWordBoundary(text, fromStart: false, budget: tailBudget)
-
-        return head + marker + tail
-    }
-
-    private static func snapToWordBoundary(_ text: String, fromStart: Bool, budget: Int) -> String {
-        if fromStart {
-            let endIndex = text.index(text.startIndex, offsetBy: min(budget, text.count))
-            let substring = text[text.startIndex..<endIndex]
-            // Find last space to snap to word boundary
-            if let lastSpace = substring.lastIndex(of: " ") {
-                return String(text[text.startIndex...lastSpace])
-            }
-            return String(substring)
-        } else {
-            let startIndex = text.index(text.endIndex, offsetBy: -min(budget, text.count))
-            let substring = text[startIndex..<text.endIndex]
-            // Find first space to snap to word boundary
-            if let firstSpace = substring.firstIndex(of: " ") {
-                return String(text[firstSpace..<text.endIndex])
-            }
-            return String(substring)
-        }
+            + userNotes
+        return Prompts.chat + notesBlock + transcriptBlock
     }
 
     // MARK: - Prompt Templates

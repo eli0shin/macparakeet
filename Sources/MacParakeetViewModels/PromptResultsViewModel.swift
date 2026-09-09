@@ -62,11 +62,6 @@ public final class PromptResultsViewModel {
         }
     }
 
-    /// Soft cap on user notes for prompt-assembly only — full notes remain on
-    /// the Transcription row. ~11k tokens at typical English word→token ratio,
-    /// leaving headroom for transcript + system prompt + response (ADR-020 §3).
-    static let userNotesPromptWordCap = PromptSystemPromptAssembler.userNotesPromptWordCap
-
     public var promptResults: [PromptResult] = []
     public var pendingGenerations: [PendingGeneration] = []
     public var selectedPrompt: Prompt?
@@ -203,7 +198,8 @@ public final class PromptResultsViewModel {
         }
         currentProviderID = config.id
         if config.id == .localCLI {
-            let displayName = cliConfigStore
+            let displayName =
+                cliConfigStore
                 .flatMap { $0.load() }
                 .map { LocalCLITemplate.displayName(for: $0.commandTemplate) }
                 ?? "Custom CLI"
@@ -243,10 +239,12 @@ public final class PromptResultsViewModel {
         do {
             visiblePrompts = try promptRepo.fetchVisible(category: .result)
             if let selectedPrompt,
-               let refreshed = visiblePrompts.first(where: { $0.id == selectedPrompt.id }) {
+                let refreshed = visiblePrompts.first(where: { $0.id == selectedPrompt.id })
+            {
                 self.selectedPrompt = refreshed
             } else {
-                self.selectedPrompt = visiblePrompts.first(where: { $0.isAutoRun })
+                self.selectedPrompt =
+                    visiblePrompts.first(where: { $0.isAutoRun })
                     ?? visiblePrompts.first
             }
             errorMessage = nil
@@ -371,7 +369,9 @@ public final class PromptResultsViewModel {
         do {
             autoPrompts = try promptRepo?.fetchAutoRunPrompts(for: sourceType) ?? []
         } catch {
-            logger.warning("Skipping auto-run prompts because preferences could not be loaded: \(error.localizedDescription, privacy: .private)")
+            logger.warning(
+                "Skipping auto-run prompts because preferences could not be loaded: \(error.localizedDescription, privacy: .private)"
+            )
             return []
         }
         guard !autoPrompts.isEmpty else { return [] }
@@ -460,9 +460,11 @@ public final class PromptResultsViewModel {
     private func processNextQueuedGeneration() {
         guard streamingTask == nil, llmService != nil else { return }
         guard let currentTranscriptionID else { return }
-        guard let nextIndex = pendingGenerations.firstIndex(where: {
+        guard
+            let nextIndex = pendingGenerations.firstIndex(where: {
             $0.state == .queued && $0.transcriptionId == currentTranscriptionID
-        }) else { return }
+            })
+        else { return }
 
         pendingGenerations[nextIndex].state = .streaming
         let generation = pendingGenerations[nextIndex]
@@ -617,26 +619,14 @@ public final class PromptResultsViewModel {
         )
     }
 
-    /// Truncate user notes to the prompt-assembly soft cap (8,000 words).
-    /// Persisted notes are never modified — this only protects the LLM
-    /// context window at generation time (ADR-020 §3).
-    ///
-    /// Whitespace in the kept portion is preserved as-typed (newlines,
-    /// tabs, indentation, blank lines) so structural cues — bullet lists,
-    /// section headings, slash-command markers — survive truncation.
-    /// A naive `split + join(" ")` would flatten everything to single
-    /// spaces and strip the structure the user typed to *steer* the
-    /// summary in the first place, which defeats the point.
-    static func truncateNotesForPrompt(_ notes: String) -> String {
-        PromptSystemPromptAssembler.truncateNotesForPrompt(notes)
-    }
-
     private func fetchUserNotes(for transcriptionId: UUID) -> String? {
         guard let transcriptionRepo else { return nil }
         do {
             return try transcriptionRepo.fetch(id: transcriptionId)?.userNotes
         } catch {
-            logger.warning("Failed to fetch userNotes for transcription \(transcriptionId.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.warning(
+                "Failed to fetch userNotes for transcription \(transcriptionId.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
             return nil
         }
     }
@@ -660,7 +650,9 @@ public final class PromptResultsViewModel {
                 )
             }.value
         } catch {
-            logger.warning("Failed to refresh meeting artifact for prompt results \(transcriptionId.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.warning(
+                "Failed to refresh meeting artifact for prompt results \(transcriptionId.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 

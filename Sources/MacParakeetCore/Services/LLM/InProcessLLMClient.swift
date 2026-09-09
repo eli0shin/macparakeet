@@ -7,15 +7,11 @@ public typealias LocalLLMModelDirectoryResolver = @Sendable (LLMProviderConfig) 
 
 public final class InProcessLLMClient: LLMClientProtocol, Sendable {
     public static let modelDirectoryEnvironmentVariable = "MACPARAKEET_LOCAL_LLM_MODEL_DIR"
-    public static let defaultChunkCharacterThreshold = 24_000
-    public static let defaultChunkCharacterLimit = 12_000
     public static let defaultIdleUnloadDelaySeconds: TimeInterval = 300
     public static let defaultSmokeTestTimeoutSeconds: TimeInterval = 15
 
     private let runtime: any LocalLLMRuntime
     private let modelDirectoryResolver: LocalLLMModelDirectoryResolver
-    private let chunkCharacterThreshold: Int
-    private let chunkCharacterLimit: Int
     private let idleUnloadDelayNanoseconds: UInt64
     private let smokeTestTimeoutNanoseconds: UInt64
     private let lifetimeCoordinator = LocalLLMLifetimeCoordinator()
@@ -26,15 +22,11 @@ public final class InProcessLLMClient: LLMClientProtocol, Sendable {
         modelDirectoryResolver: @escaping LocalLLMModelDirectoryResolver = {
             try InProcessLLMClient.defaultModelDirectory(for: $0)
         },
-        chunkCharacterThreshold: Int = InProcessLLMClient.defaultChunkCharacterThreshold,
-        chunkCharacterLimit: Int = InProcessLLMClient.defaultChunkCharacterLimit,
         idleUnloadDelaySeconds: TimeInterval = InProcessLLMClient.defaultIdleUnloadDelaySeconds,
         smokeTestTimeoutSeconds: TimeInterval = InProcessLLMClient.defaultSmokeTestTimeoutSeconds
     ) {
         self.runtime = runtime
         self.modelDirectoryResolver = modelDirectoryResolver
-        self.chunkCharacterThreshold = max(1, chunkCharacterThreshold)
-        self.chunkCharacterLimit = max(1, chunkCharacterLimit)
         let boundedDelay = max(0, idleUnloadDelaySeconds)
         self.idleUnloadDelayNanoseconds = UInt64(boundedDelay * 1_000_000_000)
         let boundedSmokeTestTimeout = max(0, smokeTestTimeoutSeconds)
@@ -198,20 +190,11 @@ public final class InProcessLLMClient: LLMClientProtocol, Sendable {
             try Task.checkCancellation()
             try await loadRuntime(for: context.providerConfig)
 
-            let response: CollectedLocalLLMResponse
-            if shouldChunk(messages) {
-                response = try await generateChunked(
+            let response = try await generateSingle(
                     messages: messages,
                     options: options,
                     emit: emit
                 )
-            } else {
-                response = try await generateSingle(
-                    messages: messages,
-                    options: options,
-                    emit: emit
-                )
-            }
 
             log(metrics: response.metrics, inputCharacters: Self.inputCharacterCount(messages))
             return response
@@ -254,59 +237,6 @@ public final class InProcessLLMClient: LLMClientProtocol, Sendable {
         )
     }
 
-    private func generateChunked(
-        messages: [ChatMessage],
-        options: ChatCompletionOptions,
-        emit: (@Sendable (String) -> Void)?
-    ) async throws -> CollectedLocalLLMResponse {
-        guard Self.inputCharacterCount(messages) > chunkCharacterLimit else {
-            return try await generateSingle(messages: messages, options: options, emit: emit)
-        }
-
-        let promptBudget = Self.promptBudget(maxCharacters: chunkCharacterLimit)
-        let chunks = Self.splitForMapReduce(messages, maxCharacters: promptBudget.chunkCharacters)
-        guard chunks.count > 1 else {
-            return try await generateSingle(messages: messages, options: options, emit: emit)
-        }
-
-        var partials: [String] = []
-        var mergedMetrics: LLMGenerationMetrics?
-
-        for (offset, chunk) in chunks.enumerated() {
-            try Task.checkCancellation()
-            let mapMessages = Self.mapMessages(
-                originalMessages: messages,
-                chunk: chunk,
-                index: offset + 1,
-                total: chunks.count,
-                conversationContextMaxCharacters: promptBudget.contextCharacters
-            )
-            let response = try await generateSingle(
-                messages: mapMessages,
-                options: options,
-                emit: nil
-            )
-            partials.append(response.content)
-            mergedMetrics = Self.merge(mergedMetrics, response.metrics)
-        }
-
-        let reduceMessages = Self.reduceMessages(
-            originalMessages: messages,
-            partials: partials,
-            conversationContextMaxCharacters: promptBudget.contextCharacters,
-            partialResultsMaxCharacters: promptBudget.partialResultCharacters
-        )
-        let reduceResponse = try await generateSingle(
-            messages: reduceMessages,
-            options: options,
-            emit: emit
-        )
-        return CollectedLocalLLMResponse(
-            content: reduceResponse.content,
-            metrics: Self.merge(mergedMetrics, reduceResponse.metrics)
-        )
-    }
-
     private func generateSingle(
         messages: [ChatMessage],
         options: ChatCompletionOptions,
@@ -344,210 +274,20 @@ public final class InProcessLLMClient: LLMClientProtocol, Sendable {
         )
     }
 
-    private func shouldChunk(_ messages: [ChatMessage]) -> Bool {
-        Self.inputCharacterCount(messages) > chunkCharacterThreshold
-    }
-
     private func log(metrics: LLMGenerationMetrics?, inputCharacters: Int) {
         logger.info(
             "Local LLM generation completed inputCharacters=\(inputCharacters, privacy: .public) tokensPerSecond=\(metrics?.tokensPerSecond ?? -1, privacy: .public) promptTokensPerSecond=\(metrics?.promptTokensPerSecond ?? -1, privacy: .public) ttftMs=\(metrics?.timeToFirstTokenMs ?? -1, privacy: .public) peakRSSBytes=\(metrics?.peakRSSBytes ?? 0, privacy: .public)"
         )
     }
 
-    // MARK: - Chunking
-
     private static func inputCharacterCount(_ messages: [ChatMessage]) -> Int {
         messages.reduce(0) { $0 + $1.modelContent.count }
-    }
-
-    private static func splitForMapReduce(_ messages: [ChatMessage], maxCharacters: Int) -> [String] {
-        let joined =
-            messages
-            .map { "\($0.role.rawValue.uppercased()): \($0.modelContent)" }
-            .joined(separator: "\n\n")
-        return split(joined, maxCharacters: maxCharacters)
-    }
-
-    private static func split(_ text: String, maxCharacters: Int) -> [String] {
-        guard text.count > maxCharacters else { return [text] }
-
-        var chunks: [String] = []
-        var cursor = text.startIndex
-        while cursor < text.endIndex {
-            let hardEnd = text.index(cursor, offsetBy: maxCharacters, limitedBy: text.endIndex) ?? text.endIndex
-            let end =
-                hardEnd == text.endIndex
-                ? hardEnd
-                : preferredChunkBoundary(in: cursor..<hardEnd, text: text) ?? hardEnd
-            let chunk = String(text[cursor..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !chunk.isEmpty {
-                chunks.append(chunk)
-            }
-            cursor = skipLeadingWhitespace(from: end, in: text)
-        }
-        return chunks
-    }
-
-    private static func preferredChunkBoundary(
-        in range: Range<String.Index>,
-        text: String
-    ) -> String.Index? {
-        if let paragraphBreak = text.range(of: "\n\n", options: .backwards, range: range) {
-            return paragraphBreak.upperBound
-        }
-
-        var cursor = range.upperBound
-        while cursor > range.lowerBound {
-            let punctuationIndex = text.index(before: cursor)
-            if isSentenceTerminator(text[punctuationIndex]) {
-                let boundary = text.index(after: punctuationIndex)
-                if boundary == text.endIndex || boundary == range.upperBound || text[boundary].isWhitespace {
-                    return boundary
-                }
-            }
-            cursor = punctuationIndex
-        }
-        return nil
-    }
-
-    private static func isSentenceTerminator(_ character: Character) -> Bool {
-        character == "." || character == "!" || character == "?"
-    }
-
-    private static func skipLeadingWhitespace(from index: String.Index, in text: String) -> String.Index {
-        var cursor = index
-        while cursor < text.endIndex, text[cursor].isWhitespace {
-            cursor = text.index(after: cursor)
-        }
-        return cursor
-    }
-
-    private static func mapMessages(
-        originalMessages: [ChatMessage],
-        chunk: String,
-        index: Int,
-        total: Int,
-        conversationContextMaxCharacters: Int
-    ) -> [ChatMessage] {
-        let systemMessages = originalMessages.filter { $0.role == .system }
-        let originalConversationContext = compactConversationContext(
-            originalMessages,
-            maxCharacters: conversationContextMaxCharacters
-        )
-        return systemMessages + [
-            ChatMessage(
-                role: .user,
-                content: """
-                    Process chunk \(index) of \(total) for the user's request. Preserve facts exactly and do not infer missing details.
-
-                    Original conversation context, including user and assistant turns:
-                    \(originalConversationContext)
-
-                    Chunk:
-                    \(chunk)
-                    """
-            )
-        ]
-    }
-
-    private static func reduceMessages(
-        originalMessages: [ChatMessage],
-        partials: [String],
-        conversationContextMaxCharacters: Int,
-        partialResultsMaxCharacters: Int
-    ) -> [ChatMessage] {
-        let systemMessages = originalMessages.filter { $0.role == .system }
-        let originalConversationContext = compactConversationContext(
-            originalMessages,
-            maxCharacters: conversationContextMaxCharacters
-        )
-        let combined = partials.enumerated()
-            .map { "Chunk \($0.offset + 1):\n\($0.element)" }
-            .joined(separator: "\n\n")
-        let boundedCombined = middleTruncated(combined, maxCharacters: partialResultsMaxCharacters)
-        return systemMessages + [
-            ChatMessage(
-                role: .user,
-                content: """
-                    Combine the chunk results into one final answer for the original request. Preserve source facts exactly, remove duplication, and do not add unstated details.
-
-                    Original conversation context, including user and assistant turns:
-                    \(originalConversationContext)
-
-                    Chunk results:
-                    \(boundedCombined)
-                    """
-            )
-        ]
-    }
-
-    private static func compactConversationContext(
-        _ messages: [ChatMessage],
-        maxCharacters: Int = 6_000
-    ) -> String {
-        let context =
-            messages
-            .filter { $0.role != .system }
-            .map { "\($0.role.rawValue.uppercased()): \($0.modelContent)" }
-            .joined(separator: "\n\n")
-
-        guard !context.isEmpty else { return "(no user or assistant context)" }
-        return middleTruncated(context, maxCharacters: maxCharacters)
-    }
-
-    private static func middleTruncated(_ text: String, maxCharacters: Int) -> String {
-        guard text.count > maxCharacters else { return text }
-
-        let boundedLimit = max(1, maxCharacters)
-        let marker = "\n\n[...truncated for local model memory...]\n\n"
-        guard boundedLimit > marker.count + 2 else {
-            return String(text.prefix(boundedLimit))
-        }
-
-        let remainingCharacters = boundedLimit - marker.count
-        let headCount = remainingCharacters / 2
-        let tailCount = remainingCharacters - headCount
-        let headEnd = text.index(text.startIndex, offsetBy: headCount)
-        let tailStart = text.index(text.endIndex, offsetBy: -tailCount)
-        return "\(text[..<headEnd])\(marker)\(text[tailStart...])"
-    }
-
-    private static func promptBudget(maxCharacters: Int) -> LocalLLMPromptBudget {
-        let boundedLimit = max(1, maxCharacters)
-        let contextCharacters = max(1, boundedLimit / 3)
-        let payloadCharacters = max(1, boundedLimit - contextCharacters)
-        return LocalLLMPromptBudget(
-            chunkCharacters: payloadCharacters,
-            contextCharacters: contextCharacters,
-            partialResultCharacters: payloadCharacters
-        )
-    }
-
-    private static func merge(
-        _ lhs: LLMGenerationMetrics?,
-        _ rhs: LLMGenerationMetrics?
-    ) -> LLMGenerationMetrics? {
-        guard let lhs else { return rhs }
-        guard let rhs else { return lhs }
-
-        return LLMGenerationMetrics(
-            tokensPerSecond: rhs.tokensPerSecond ?? lhs.tokensPerSecond,
-            promptTokensPerSecond: rhs.promptTokensPerSecond ?? lhs.promptTokensPerSecond,
-            timeToFirstTokenMs: rhs.timeToFirstTokenMs ?? lhs.timeToFirstTokenMs,
-            peakRSSBytes: [lhs.peakRSSBytes, rhs.peakRSSBytes].compactMap { $0 }.max()
-        )
     }
 }
 
 private struct CollectedLocalLLMResponse: Sendable {
     let content: String
     let metrics: LLMGenerationMetrics?
-}
-
-private struct LocalLLMPromptBudget: Sendable {
-    let chunkCharacters: Int
-    let contextCharacters: Int
-    let partialResultCharacters: Int
 }
 
 private actor LocalLLMLifetimeCoordinator {
