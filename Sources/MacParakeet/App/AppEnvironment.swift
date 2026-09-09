@@ -186,6 +186,14 @@ final class AppEnvironment {
             isVadLiveChunkingEnabled: { AppFeatures.meetingVadLiveChunkingEnabled },
             liveDiarizationService: diarizationService
         )
+        if UserDefaultsAppRuntimePreferences.meetingSpeakerDiarizationEnabled()
+            || UserDefaultsAppRuntimePreferences.microphoneSpeakerDetectionEnabled()
+        {
+            let liveDiarizationPreparer = diarizationService
+            Task(priority: .utility) {
+                try? await liveDiarizationPreparer.prepareLiveModels(onProgress: nil)
+            }
+        }
         meetingRecordingSettlement = MeetingRecordingSettlement(
             lockFileStore: meetingRecordingLockFileStore,
             transcriptionRepo: transcriptionRepo

@@ -7,16 +7,12 @@ actor LiveChunkTranscriber {
         let id: UUID
         let chunkFolderURL: URL
         let speechEngine: SpeechEngineSelection
-        let systemSpeakerDetection: Bool
-        let microphoneSpeakerDetection: Bool
     }
 
     struct OrderedResult: Sendable {
         let source: AudioSource
         let chunk: AudioChunker.AudioChunk
         let result: STTResult
-        let diarization: MacParakeetDiarizationResult?
-        let speakerDetectionGeneration: Int
     }
 
     enum Event: Sendable {
@@ -32,36 +28,17 @@ actor LiveChunkTranscriber {
         let task: Task<Void, Never>
     }
 
-    private struct PendingAttributionResult: Sendable {
-        let sessionID: UUID
-        let source: AudioSource
-        let chunk: AudioChunker.AudioChunk
-        let result: STTResult
-    }
-
     private let logger = Logger(subsystem: "com.macparakeet.core", category: "LiveChunkTranscriber")
     private let sttTranscriber: STTTranscribing
-    private let diarizationService: (any DiarizationServiceProtocol)?
 
     private var sessionContext: SessionContext?
-    private var speakerDetection: [AudioSource: Bool] = [:]
-    private var speakerDetectionGeneration: [AudioSource: Int] = [:]
     private var eventHandler: EventHandler?
     private var pendingChunkTasks: [PendingChunkTask] = []
-    private var pendingAttributionResults: [PendingAttributionResult] = []
-    private var attributionDrainTask: Task<Void, Never>?
-    private var attributionDrainID: UUID?
     private var nextChunkSequence: [AudioSource: Int] = [:]
     private var chunkResultBuffer = MeetingChunkResultBuffer()
 
-    private static let maximumPendingAttributionResults = 12
-
-    init(
-        sttTranscriber: STTTranscribing,
-        diarizationService: (any DiarizationServiceProtocol)? = nil
-    ) {
+    init(sttTranscriber: STTTranscribing) {
         self.sttTranscriber = sttTranscriber
-        self.diarizationService = diarizationService
     }
 
     func startSession(
@@ -69,35 +46,19 @@ actor LiveChunkTranscriber {
         onEvent: @escaping EventHandler
     ) async {
         await cancelPendingTasks(waitForCancellation: true)
-        await cancelAttributionDrain(waitForCancellation: true)
         self.sessionContext = context
         self.eventHandler = onEvent
         self.pendingChunkTasks = []
-        self.pendingAttributionResults = []
         self.nextChunkSequence = [:]
-        self.speakerDetection = [
-            .system: context.systemSpeakerDetection,
-            .microphone: context.microphoneSpeakerDetection,
-        ]
-        self.speakerDetectionGeneration = [.system: 0, .microphone: 0]
         self.chunkResultBuffer.reset()
-    }
-
-    func setSpeakerDetection(_ enabled: Bool, for source: AudioSource) {
-        speakerDetection[source] = enabled
-        speakerDetectionGeneration[source, default: 0] += 1
     }
 
     func finishSession() async {
         await cancelPendingTasks(waitForCancellation: false)
-        await cancelAttributionDrain(waitForCancellation: false)
         self.sessionContext = nil
         self.eventHandler = nil
         self.pendingChunkTasks = []
-        self.pendingAttributionResults = []
         self.nextChunkSequence = [:]
-        self.speakerDetection = [:]
-        self.speakerDetectionGeneration = [:]
         self.chunkResultBuffer.reset()
     }
 
@@ -141,7 +102,7 @@ actor LiveChunkTranscriber {
 
     func waitForPendingTasksToDrain(timeout: Duration) async -> Bool {
         let startedAt = ContinuousClock.now
-        while !pendingChunkTasks.isEmpty || attributionDrainTask != nil {
+        while !pendingChunkTasks.isEmpty {
             if startedAt.duration(to: .now) > timeout {
                 return false
             }
@@ -226,32 +187,6 @@ actor LiveChunkTranscriber {
         try file.write(from: buffer)
     }
 
-    private func diarizeChunkIfEnabled(
-        _ chunk: AudioChunker.AudioChunk,
-        source: AudioSource
-    ) async -> MacParakeetDiarizationResult? {
-        guard speakerDetection[source] == true,
-            let context = sessionContext,
-            let diarizationService
-        else { return nil }
-
-        let audioURL = context.chunkFolderURL
-            .appendingPathComponent("diarization-\(source.rawValue)-\(UUID().uuidString).wav")
-        do {
-            try writeChunkAudio(samples: chunk.samples, to: audioURL)
-            defer { try? FileManager.default.removeItem(at: audioURL) }
-            let result = try await diarizationService.diarize(audioURL: audioURL)
-            return speakerDetection[source] == true ? result : nil
-        } catch is CancellationError {
-            return nil
-        } catch {
-            logger.error(
-                "meeting_live_diarization_failed source=\(source.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
-            )
-            return nil
-        }
-    }
-
     private func handleSuccess(
         _ result: STTResult,
         chunk: AudioChunker.AudioChunk,
@@ -274,9 +209,9 @@ actor LiveChunkTranscriber {
             result: result
         )
         guard !readyResults.isEmpty else { return }
-        if enqueueForAttribution(readyResults, source: source, sessionID: sessionID) {
-            await emit(.backpressureDrop)
-        }
+        await emit(.orderedResults(readyResults.map {
+            OrderedResult(source: source, chunk: $0.chunk, result: $0.result)
+        }))
     }
 
     private func handleFailure(
@@ -308,75 +243,9 @@ actor LiveChunkTranscriber {
 
         let readyResults = chunkResultBuffer.receiveFailure(sequence: sequence, source: source)
         guard !readyResults.isEmpty else { return }
-        if enqueueForAttribution(readyResults, source: source, sessionID: sessionID) {
-            await emit(.backpressureDrop)
-        }
-    }
-
-    /// Returns true when one or more newest results were dropped. Keeping the
-    /// older prefix preserves per-source transcript continuity while bounding
-    /// live diarization independently from the STT scheduler's queue.
-    private func enqueueForAttribution(
-        _ readyResults: [MeetingChunkResultBuffer.ChunkResult],
-        source: AudioSource,
-        sessionID: UUID
-    ) -> Bool {
-        var dropped = false
-        for ready in readyResults {
-            guard pendingAttributionResults.count < Self.maximumPendingAttributionResults else {
-                dropped = true
-                continue
-            }
-            pendingAttributionResults.append(
-                PendingAttributionResult(
-                    sessionID: sessionID,
-                    source: source,
-                    chunk: ready.chunk,
-                    result: ready.result
-                ))
-        }
-        startAttributionDrainIfNeeded()
-        return dropped
-    }
-
-    private func startAttributionDrainIfNeeded() {
-        guard attributionDrainTask == nil, !pendingAttributionResults.isEmpty else { return }
-        let drainID = UUID()
-        attributionDrainID = drainID
-        attributionDrainTask = Task { [weak self] in
-            await self?.drainAttributionResults(drainID: drainID)
-        }
-    }
-
-    private func drainAttributionResults(drainID: UUID) async {
-        while !Task.isCancelled, !pendingAttributionResults.isEmpty {
-            let pending = pendingAttributionResults.removeFirst()
-            let diarization = await diarizeChunkIfEnabled(pending.chunk, source: pending.source)
-            guard !Task.isCancelled, sessionContext?.id == pending.sessionID else { continue }
-            let result = OrderedResult(
-                source: pending.source,
-                chunk: pending.chunk,
-                result: pending.result,
-                diarization: diarization,
-                speakerDetectionGeneration: speakerDetectionGeneration[pending.source, default: 0]
-            )
-            await emit(.orderedResults([result]))
-        }
-        guard attributionDrainID == drainID else { return }
-        attributionDrainTask = nil
-        attributionDrainID = nil
-        startAttributionDrainIfNeeded()
-    }
-
-    private func cancelAttributionDrain(waitForCancellation: Bool) async {
-        let task = attributionDrainTask
-        attributionDrainTask = nil
-        attributionDrainID = nil
-        pendingAttributionResults = []
-        task?.cancel()
-        if waitForCancellation {
-            await task?.value
-        }
+        await emit(.orderedResults(readyResults.map {
+            OrderedResult(source: source, chunk: $0.chunk, result: $0.result)
+        }))
     }
 
     private func emit(_ event: Event) async {

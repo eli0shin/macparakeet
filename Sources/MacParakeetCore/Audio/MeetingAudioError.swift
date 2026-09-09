@@ -17,6 +17,7 @@ public enum MeetingAudioError: Error, LocalizedError, Sendable {
     case notRunning
     case noAudioCaptured
     case storageFailed(String)
+    case speakerDetectionUnavailable(String)
     case mixFailed(String)
     case captureRuntimeFailure(String)
     case systemAudioStalled(MeetingSystemAudioStall)
@@ -47,6 +48,8 @@ public enum MeetingAudioError: Error, LocalizedError, Sendable {
             return "No meeting audio was captured."
         case .storageFailed(let message):
             return "Failed to store meeting audio: \(message)"
+        case .speakerDetectionUnavailable(let message):
+            return "Live speaker detection is not ready: \(message)"
         case .mixFailed(let message):
             return "Failed to combine meeting audio: \(message)"
         case .captureRuntimeFailure(let message):

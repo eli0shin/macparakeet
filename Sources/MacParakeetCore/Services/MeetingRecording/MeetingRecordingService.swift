@@ -282,6 +282,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     private let isVadLiveChunkingEnabled: @Sendable () -> Bool
     private let requestedMicProcessingMode: MeetingMicProcessingMode
     private let liveChunkTranscriber: LiveChunkTranscriber
+    private let liveDiarizationService: (any MeetingLiveDiarizing)?
     private let lockFileStore: MeetingRecordingLockFileStoring
     private let speechEngineSessionManager: (any SpeechEngineSessionManaging)?
     private let systemSpeakerDetection: @Sendable () -> Bool
@@ -341,6 +342,8 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     /// then. See `configureLiveChunkers`.
     private var sharedVADService: MeetingVADService?
     private var transcriptAssembler = MeetingTranscriptAssembler()
+    private var latestLiveDiarizationBySource: [AudioSource: MeetingLiveDiarizationSnapshot] = [:]
+    private var liveDiarizationUnavailableSources = Set<AudioSource>()
     private var isTranscriptionLagging = false
     private var captureFailed = false
     private var interruptedSources: Set<AudioSource> = []
@@ -393,7 +396,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         fileManager: FileManager = .default,
         finalSpeechEngineSelection: @escaping @Sendable () -> SpeechEngineSelection? = { nil },
         isVadLiveChunkingEnabled: @escaping @Sendable () -> Bool = { false },
-        liveDiarizationService: (any DiarizationServiceProtocol)? = nil,
+        liveDiarizationService: (any MeetingLiveDiarizing)? = nil,
         echoSuppressionConfiguration: MeetingEchoSuppressionConfiguration = .fromEnvironment()
     ) {
         self.init(
@@ -434,7 +437,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         fileManager: FileManager = .default,
         finalSpeechEngineSelection: @escaping @Sendable () -> SpeechEngineSelection? = { nil },
         isVadLiveChunkingEnabled: @escaping @Sendable () -> Bool = { false },
-        liveDiarizationService: (any DiarizationServiceProtocol)? = nil,
+        liveDiarizationService: (any MeetingLiveDiarizing)? = nil,
         micConditionerFactory: @escaping @Sendable () -> any MicConditioning,
         cleanedMicConditionerFactory: (@Sendable () -> any MicConditioning)? = nil,
         wallClockNow: @escaping @Sendable () -> Date = { Date() },
@@ -475,10 +478,8 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         self.audioHostTimeNow = audioHostTimeNow
         self.cleanedMicrophoneReadinessScheduler = cleanedMicrophoneReadinessScheduler
         self.writerFinalizationReportTransform = writerFinalizationReportTransform
-        self.liveChunkTranscriber = LiveChunkTranscriber(
-            sttTranscriber: sttTranscriber,
-            diarizationService: liveDiarizationService
-        )
+        self.liveChunkTranscriber = LiveChunkTranscriber(sttTranscriber: sttTranscriber)
+        self.liveDiarizationService = liveDiarizationService
         self.speechEngineSessionManager = sttTranscriber as? any SpeechEngineSessionManaging
     }
 
@@ -757,6 +758,8 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             micConditioner = micConditionerFactory()
             micConditioner.reset()
             transcriptAssembler.reset()
+            latestLiveDiarizationBySource = [:]
+            liveDiarizationUnavailableSources = []
             isTranscriptionLagging = false
             captureFailed = false
             captureFailureSignaledSessionIDs.remove(session.id)
@@ -779,14 +782,37 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                     .init(
                         id: session.id,
                         chunkFolderURL: session.chunkFolderURL,
-                        speechEngine: previewSpeechEngine,
-                        systemSpeakerDetection: session.systemSpeakerDetection,
-                        microphoneSpeakerDetection: session.microphoneSpeakerDetection
+                        speechEngine: previewSpeechEngine
                     ),
                     onEvent: { [weak self] event in
                         await self?.handleLiveChunkTranscriberEvent(event, sessionID: session.id)
                     }
                 )
+
+                let enabledSources = Set([
+                    session.systemSpeakerDetection ? AudioSource.system : nil,
+                    session.microphoneSpeakerDetection ? AudioSource.microphone : nil,
+                ].compactMap { $0 })
+                if let liveDiarizationService {
+                    do {
+                        try await liveDiarizationService.startLiveSession(
+                            id: session.id,
+                            enabledSources: enabledSources,
+                            onEvent: { [weak self] event in
+                                await self?.handleLiveDiarizationEvent(event, sessionID: session.id)
+                            }
+                        )
+                    } catch {
+                        for source in enabledSources {
+                            await handleLiveDiarizationEvent(
+                                .unavailable(source: source, reason: error.localizedDescription),
+                                sessionID: session.id
+                            )
+                        }
+                    }
+                } else {
+                    liveDiarizationUnavailableSources.formUnion(enabledSources)
+                }
             }
             try await validateStartStillCurrent(session)
 
@@ -826,10 +852,18 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         }
     }
 
+    private func finishLiveServices() async {
+        let sessionID = currentSession?.id
+        await liveChunkTranscriber.finishSession()
+        if let sessionID {
+            await liveDiarizationService?.finishLiveSession(id: sessionID)
+        }
+    }
+
     private func cleanupFailedStart(folderURL: URL) async {
         processingTask?.cancel()
         processingTask = nil
-        await liveChunkTranscriber.finishSession()
+        await finishLiveServices()
         let writer = self.writer
         self.writer = nil
         _ = await finalizeWriter(writer)
@@ -968,7 +1002,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                     captureReport: nil
                 )
             )
-            await liveChunkTranscriber.finishSession()
+            await finishLiveServices()
             await releaseSpeechEngineLease()
             cleanupState()
             throw error
@@ -1000,7 +1034,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                     captureReport: nil
                 )
             )
-            await liveChunkTranscriber.finishSession()
+            await finishLiveServices()
             try? lockFileStore.delete(folderURL: session.folderURL)
             await releaseSpeechEngineLease()
             cleanupState()
@@ -1043,7 +1077,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             logger.error(
                 "meeting_metadata_save_failed session=\(session.id.uuidString, privacy: .public) phase=preliminary error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
             )
-            await liveChunkTranscriber.finishSession()
+            await finishLiveServices()
             await releaseSpeechEngineLease()
             cleanupState()
             serviceStopOutcome = "failure_metadata"
@@ -1080,7 +1114,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 )
             }
         } catch {
-            await liveChunkTranscriber.finishSession()
+            await finishLiveServices()
             await releaseSpeechEngineLease()
             cleanupState()
             serviceStopOutcome = "failure_playback"
@@ -1116,7 +1150,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 logger.error(
                     "meeting_metadata_save_failed session=\(session.id.uuidString, privacy: .public) phase=final error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
                 )
-                await liveChunkTranscriber.finishSession()
+                await finishLiveServices()
                 await releaseSpeechEngineLease()
                 cleanupState()
                 serviceStopOutcome = "failure_metadata_finalize"
@@ -1176,7 +1210,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             try lockFileStore.write(awaitingLock, folderURL: session.folderURL)
             appendStopStage("lock_write", startedAt: lockStartedAt)
         } catch {
-            await liveChunkTranscriber.finishSession()
+            await finishLiveServices()
             await releaseSpeechEngineLease()
             cleanupState()
             serviceStopOutcome = "failure_lock"
@@ -1225,7 +1259,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         )
 
         let cleanupStartedAt = Date()
-        await liveChunkTranscriber.finishSession()
+        await finishLiveServices()
         await releaseSpeechEngineLease()
         appendStopStage("cleanup", startedAt: cleanupStartedAt)
         logger.info(
@@ -1314,6 +1348,16 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             return activeSpeakerDetectionState
         }
 
+        do {
+            try await liveDiarizationService?.setLiveSpeakerDetection(
+                enabled,
+                for: source,
+                sessionID: session.id
+            )
+        } catch {
+            throw MeetingAudioError.speakerDetectionUnavailable(error.localizedDescription)
+        }
+
         let base =
             currentLockFile
             ?? MeetingRecordingLockFile(
@@ -1335,6 +1379,11 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         do {
             try lockFileStore.write(updated, folderURL: session.folderURL)
         } catch {
+            try? await liveDiarizationService?.setLiveSpeakerDetection(
+                !enabled,
+                for: source,
+                sessionID: session.id
+            )
             logger.error(
                 "meeting_speaker_detection_persist_failed session=\(session.id.uuidString, privacy: .public) source=\(source.rawValue, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public)"
             )
@@ -1344,7 +1393,15 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         session.speakerDetectionGeneration[source, default: 0] += 1
         currentSession = session
         currentLockFile = updated
-        await liveChunkTranscriber.setSpeakerDetection(enabled, for: source)
+        if enabled {
+            liveDiarizationUnavailableSources.remove(source)
+        } else {
+            latestLiveDiarizationBySource[source] = nil
+            liveDiarizationUnavailableSources.remove(source)
+            if let update = transcriptAssembler.stopLiveDiarization(for: source) {
+                yieldTranscriptUpdate(update)
+            }
+        }
         logger.info(
             "meeting_speaker_detection_updated session=\(session.id.uuidString, privacy: .public) source=\(source.rawValue, privacy: .public) enabled=\(enabled, privacy: .public) generation=\(session.speakerDetectionGeneration[source, default: 0], privacy: .public) speaker_detection_system=\(session.systemSpeakerDetection, privacy: .public) speaker_detection_microphone=\(session.microphoneSpeakerDetection, privacy: .public)"
         )
@@ -1434,7 +1491,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         await audioCaptureService.stop()
         await drainProcessingTaskAfterCaptureStop()
         await liveChunkTranscriber.cancelPendingTasks(waitForCancellation: true)
-        await liveChunkTranscriber.finishSession()
+        await finishLiveServices()
         let finalizedWriter = writer
         writer = nil
         _ = await finalizeWriter(finalizedWriter)
@@ -1762,6 +1819,14 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
 
         guard let session = currentSession, session.supportsLiveChunkTranscription else { return }
 
+        for block in output.liveDiarizationAudio {
+            liveDiarizationService?.enqueueLiveAudio(
+                samples: block.samples,
+                source: block.source,
+                sessionID: session.id
+            )
+        }
+
         for chunk in output.chunks {
             switch chunk.source {
             case .microphone:
@@ -1799,10 +1864,39 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         }
     }
 
+    private func handleLiveDiarizationEvent(
+        _ event: MeetingLiveDiarizationEvent,
+        sessionID: UUID
+    ) async {
+        guard let session = currentSession, session.id == sessionID else { return }
+        switch event {
+        case .timeline(let source, let snapshot):
+            let detectionEnabled = source == .system
+                ? session.systemSpeakerDetection
+                : session.microphoneSpeakerDetection
+            guard detectionEnabled else { return }
+            liveDiarizationUnavailableSources.remove(source)
+            latestLiveDiarizationBySource[source] = snapshot
+            if let update = transcriptAssembler.advanceLiveDiarization(snapshot, source: source) {
+                yieldTranscriptUpdate(update)
+            }
+        case .unavailable(let source, let reason):
+            latestLiveDiarizationBySource[source] = nil
+            liveDiarizationUnavailableSources.insert(source)
+            isTranscriptionLagging = true
+            if let update = transcriptAssembler.stopLiveDiarization(for: source) {
+                yieldTranscriptUpdate(update)
+            }
+            logger.error(
+                "Meeting live speaker detection unavailable source=\(source.rawValue, privacy: .public): \(reason, privacy: .public)"
+            )
+        }
+    }
+
     private func handleLiveChunkTranscriberEvent(
         _ event: LiveChunkTranscriber.Event,
         sessionID: UUID
-    ) {
+    ) async {
         guard currentSession?.id == sessionID else { return }
         switch event {
         case .orderedResults(let readyResults):
@@ -1812,16 +1906,19 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                     ready.source == .system
                     ? session.systemSpeakerDetection
                     : session.microphoneSpeakerDetection
-                let currentGeneration = session.speakerDetectionGeneration[ready.source, default: 0]
-                if detectionEnabled, ready.speakerDetectionGeneration != currentGeneration {
-                    isTranscriptionLagging = true
-                    continue
+                let diarizationState: MeetingLiveDiarizationState
+                if !detectionEnabled || liveDiarizationUnavailableSources.contains(ready.source) {
+                    diarizationState = .disabled
+                } else if let snapshot = latestLiveDiarizationBySource[ready.source] {
+                    diarizationState = .timeline(snapshot)
+                } else {
+                    diarizationState = .awaitingTimeline
                 }
                 let update = transcriptAssembler.apply(
                     result: ready.result,
                     chunk: ready.chunk,
                     source: ready.source,
-                    diarization: detectionEnabled ? ready.diarization : nil
+                    liveDiarization: diarizationState
                 )
                 yieldTranscriptUpdate(update)
             }
@@ -2347,6 +2444,8 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         syncLagWarningActive = false
         lastLoggedSyncLagBucketMs = nil
         transcriptAssembler.reset()
+        latestLiveDiarizationBySource = [:]
+        liveDiarizationUnavailableSources = []
         isTranscriptionLagging = false
         captureFailed = false
         transcriptContinuation?.finish()
