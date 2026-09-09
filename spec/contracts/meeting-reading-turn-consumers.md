@@ -5,8 +5,8 @@
 Reading Turns recognize `microphone:<id>` as microphone speech, not remote
 speech. Detected local speakers use their saved names; `microphone:unknown`
 is the neutral `Local Speakers` fallback. Legacy `microphone` stays `Me`.
-Speaker evidence is evaluated within each capture source. Same-source overlap
-requires concurrent evidence for two detected speakers from that source.
+Speaker evidence is evaluated within each capture source. Concurrent evidence
+can support speaker attribution, but does not create simultaneous-speech groups.
 All completed-meeting consumers retain this attribution without changing
 canonical word text, timing, confidence, or source.
 
@@ -35,7 +35,7 @@ request grouping, readable exports, or stored formatting mappings.
 
 - Completed-meeting displayed-turn blocks and their context copy actions. The
   visible reading surface omits overlap decoration and internal contribution
-  targets while canonical turns keep their overlap identity.
+  targets. Canonical turns do not receive overlap identities.
 - Full meeting and transcript clipboard actions.
 - TXT and Markdown exports.
 - `meeting.md` artifact rendering.
@@ -67,8 +67,11 @@ request grouping, readable exports, or stored formatting mappings.
   cleanup sends all deterministic Reading Turn text in one request, separated by
   stable boundaries that map validated output back into source order without
   giving the model control of Reading Turn structure.
-- Simultaneous contributions retain one explicit overlap marker and deterministic
-  contribution order.
+- Contributions follow word start time, with original evidence order breaking
+  ties. An intervening contribution splits the surrounding speaker's turn,
+  including during concurrent speech. No simultaneous-speech group or marker is
+  emitted by UI, copy, readable export, artifact, or rich AI-context consumers.
+  Live preview also orders words by start time before paragraph grouping.
 - Word-based citations resolve to the containing Reading Turn and return that
   turn's seekable time range. Time-based containment does not guess across gaps.
 - Untimed fallback text has no fabricated timestamp or speaker attribution.
@@ -112,5 +115,5 @@ meeting Markdown, and AI context with one derived Reading Turn document. Its
 dictation-Raw fixture proves that meeting cleanup and vocabulary replacement
 stay active across direct artifact, background AI, and CLI-readable export
 reconstruction. It also pins rename
-propagation, overlap rendering, paragraph preservation, containing navigation,
+propagation, chronological rendering, paragraph preservation, containing navigation,
 untimed fallback, verbatim availability, and SRT/VTT cue retention.

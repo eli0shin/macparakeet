@@ -121,11 +121,13 @@ diarization regions, with aggregate word labels only as a legacy fallback. An
 isolated remote-speaker run shorter than one second is absorbed when the same
 stable speaker surrounds it, unless at least 200 ms of concurrent diarization
 supports a genuine interjection. A supported interjection remains a separate,
-seekable contribution while the surrounding stable statement stays one turn.
-Cross-source overlap of at least 200 ms, and same-source overlap backed by
-concurrent remote-speaker regions, receive one stable overlap-group identity.
+seekable contribution. After attribution, words are ordered by start time with
+original evidence order as the tie-breaker. Intervening contributions split the
+surrounding speaker's turn; questions never move behind that speaker's later
+words. Reading Turns have no simultaneous-speech grouping or markers.
 Same-speaker sentence utterances merge across gaps shorter than 2.5 seconds;
-long pauses and completed source exchanges stay as boundaries. This local policy
+long pauses and completed source exchanges stay as boundaries. Live preview
+paragraphs also order words by start time before grouping. This local policy
 does not rewrite words or diarization regions.
 
 **Meeting AI formatting never owns transcript structure.** The formatter sends

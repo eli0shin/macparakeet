@@ -124,7 +124,7 @@ public enum CompletedMeetingReadingDocument {
 }
 
 /// Deterministic text projections of a Reading Turn document. All projections
-/// keep turn order, overlap membership, and paragraph boundaries.
+/// keep chronological turn order and paragraph boundaries.
 public enum MeetingTranscriptDocumentRenderer {
     public static func plainText(
         _ document: MeetingTranscriptPresentationDocument,
@@ -158,21 +158,13 @@ public enum MeetingTranscriptDocumentRenderer {
         includeSpeakerLabels: Bool,
         markdown: Bool
     ) -> String {
-        groups(in: document.turns).map { group in
-            var sections: [String] = []
-            if group.isOverlap {
-                sections.append(markdown ? "> Simultaneous speech" : "[Simultaneous speech]")
-            }
-            sections.append(
-                contentsOf: group.turns.map { turn in
-                    render(
-                        turn,
-                        includeTimestamps: includeTimestamps,
-                        includeSpeakerLabels: includeSpeakerLabels,
-                        markdown: markdown
-                    )
-                })
-            return sections.joined(separator: "\n\n")
+        document.turns.map { turn in
+            render(
+                turn,
+                includeTimestamps: includeTimestamps,
+                includeSpeakerLabels: includeSpeakerLabels,
+                markdown: markdown
+            )
         }
         .joined(separator: "\n\n")
     }
@@ -199,34 +191,6 @@ public enum MeetingTranscriptDocumentRenderer {
             sections.append(turn.text)
         }
         return sections.joined(separator: "\n\n")
-    }
-
-    private struct TurnGroup {
-        let isOverlap: Bool
-        let turns: [ReadingTurn]
-    }
-
-    private static func groups(in turns: [ReadingTurn]) -> [TurnGroup] {
-        let overlapMembers = Dictionary(
-            grouping: turns.compactMap { turn in turn.overlap.map { ($0, turn) } },
-            by: { $0.0 }
-        )
-        var emitted: Set<ReadingTurnOverlap> = []
-        var result: [TurnGroup] = []
-        for turn in turns {
-            guard let overlap = turn.overlap else {
-                result.append(TurnGroup(isOverlap: false, turns: [turn]))
-                continue
-            }
-            guard emitted.insert(overlap).inserted else { continue }
-            result.append(
-                TurnGroup(
-                    isOverlap: true,
-                    turns: overlapMembers[overlap, default: []].map(\.1)
-                )
-            )
-        }
-        return result
     }
 
     private static func normalized(_ text: String) -> String? {
