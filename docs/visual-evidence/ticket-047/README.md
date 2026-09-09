@@ -7,7 +7,8 @@ The production `MeetingReadingTurnContentView` was rendered in light mode at
   **Me** bylines and timestamps.
 - `after.png` applies `MeetingTranscriptDisplayBuilder` and shows one **Me**
   byline, one `10:00` seek target, and all three paragraphs in order with one
-  blank line between them. The intervening **Alex** contribution remains separate.
+  line break and no empty separator line. The intervening **Alex** contribution
+  remains separate.
 
 Regenerate both images with:
 
