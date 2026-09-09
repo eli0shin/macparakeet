@@ -24,7 +24,7 @@ final class MeetingTranscriptGroupingVisualEvidenceTests: XCTestCase {
         )
         try render(
             MeetingTranscriptDisplayBuilder.build(from: canonical),
-            to: URL(fileURLWithPath: outputDirectory).appendingPathComponent("after.png")
+            to: URL(fileURLWithPath: outputDirectory).appendingPathComponent("after-one-empty-row.png")
         )
     }
 

@@ -5,10 +5,10 @@ The production `MeetingReadingTurnContentView` was rendered in light mode at
 
 - `before.png` renders the canonical turns directly and shows three consecutive
   **Me** bylines and timestamps.
-- `after.png` applies `MeetingTranscriptDisplayBuilder` and shows one **Me**
-  byline, one `10:00` seek target, and all three paragraphs in order with one
-  line break and no empty separator line. The intervening **Alex** contribution
-  remains separate.
+- `after-one-empty-row.png` applies `MeetingTranscriptDisplayBuilder` and shows one **Me**
+  byline, one `10:00` seek target, and all three paragraphs in order with exactly
+  one empty text row between them. The intervening **Alex** contribution remains
+  separate.
 
 Regenerate both images with:
 

@@ -95,7 +95,7 @@ final class MeetingReadingTurnIdentityTests: XCTestCase {
         XCTAssertEqual(MeetingReadingTurnLayout.verticalPadding, 7)
         XCTAssertEqual(MeetingReadingTurnLayout.speakerMarkerSize, 7)
         XCTAssertEqual(MeetingReadingTurnLayout.playbackFocusWidth, 2)
-        XCTAssertEqual(MeetingReadingTurnLayout.bodyLineSpacing, 0)
+        XCTAssertEqual(MeetingReadingTurnLayout.bodyLineSpacing, 4)
         XCTAssertLessThan(MeetingReadingTurnLayout.verticalPadding, DesignSystem.Spacing.lg)
     }
 

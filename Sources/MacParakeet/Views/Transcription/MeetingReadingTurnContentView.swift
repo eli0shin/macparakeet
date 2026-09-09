@@ -22,8 +22,8 @@ enum MeetingReadingTurnLayout {
     static let bodyIndent: CGFloat = 13
     static let speakerMarkerSize: CGFloat = 7
     static let playbackFocusWidth: CGFloat = 2
-    /// `ReadingTurn.text` already uses a blank line between paragraphs.
-    static let bodyLineSpacing: CGFloat = 0
+    /// One newline plus this spacing renders one compact empty text row.
+    static let bodyLineSpacing: CGFloat = 4
 }
 
 func readingTurnScrollTarget(
