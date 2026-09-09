@@ -250,6 +250,7 @@ struct TranscriptResultView: View {
     @State private var cachedReadingDocument = MeetingTranscriptPresentationDocument(turns: [])
     /// The completed-meeting UI groups consecutive contributions by speaker.
     @State private var cachedReadingTurns: [IdentifiedReadingTurn] = []
+    @State private var cachedReadingTurnPlaybackIndex: ReadingTurnPlaybackIndex?
     @State private var cachedHasSpeakers: Bool = false
     @State private var cachedSpeakerColorMap: [String: Color] = [:]
     @State private var cachedSpeakerLabelMap: [String: String] = [:]
@@ -383,6 +384,12 @@ struct TranscriptResultView: View {
         .onChange(of: activeTranscription.wordTimestamps) {
             rebuildSegmentCache()
             reloadAIContext()
+            if findBarVisible { rebuildFindBlocks() }
+        }
+        .onChange(of: activeTranscription.readingDocument) {
+            rebuildSegmentCache()
+            reloadAIContext()
+            syncTranscriptDisplayMode()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: activeTranscription.diarizationSegments) {
@@ -1105,7 +1112,7 @@ struct TranscriptResultView: View {
     }
 
     private var usesMeetingReadingSurface: Bool {
-        activeTranscription.sourceType == .meeting
+        (activeTranscription.sourceType == .meeting || activeTranscription.readingDocument != nil)
             && activeTranscription.status == .completed
     }
 
@@ -3396,7 +3403,8 @@ struct TranscriptResultView: View {
             ? nil
             : readingTurnScrollTarget(
                 for: playerViewModel.currentTimeMs,
-                in: cachedReadingTurns
+                in: cachedReadingTurns,
+                playbackIndex: cachedReadingTurnPlaybackIndex
             )
         return MeetingReadingTurnContentView(
             turns: cachedReadingTurns,
@@ -3743,7 +3751,12 @@ struct TranscriptResultView: View {
     private func rebuildSegmentCache() {
         cachedSpeakerColorMap = buildSpeakerColorMap()
         cachedSpeakerLabelMap = buildSpeakerLabelMap()
-        let readingDocument = MeetingTranscriptPresentationBuilder.build(
+        let readingDocument = CompletedMeetingReadingDocument.build(
+            from: activeTranscription,
+            customWords: activeTranscription.hasWordTimestamps ? readingTurnCustomWords : [],
+            cleanup: meetingTranscriptCleanup
+        )
+            ?? MeetingTranscriptPresentationBuilder.build(
             transcriptText: activeTranscription.rawTranscript ?? "",
             words: activeTranscription.wordTimestamps,
             speakers: activeTranscription.speakers,
@@ -3754,9 +3767,14 @@ struct TranscriptResultView: View {
         )
         cachedReadingDocument = readingDocument
         cachedReadingTurns = identifiedReadingTurns(
-            MeetingTranscriptDisplayBuilder.build(from: readingDocument).turns
+            activeTranscription.readingDocument != nil
+                ? readingDocument.turns
+                : MeetingTranscriptDisplayBuilder.build(from: readingDocument).turns
         )
 
+        cachedReadingTurnPlaybackIndex = activeTranscription.wordTimestamps.map {
+            ReadingTurnPlaybackIndex(turns: cachedReadingTurns.map(\.turn), words: $0)
+        }
         guard let words = activeTranscription.wordTimestamps, !words.isEmpty else {
             cachedSegments = []
             cachedIdentifiedTurnCards = []
@@ -3822,7 +3840,9 @@ struct TranscriptResultView: View {
     /// Find the scroll target ID (segment startMs) for the given playback time.
     private func autoScrollTarget(for currentMs: Int) -> Int? {
         if usesMeetingReadingSurface {
-            return readingTurnScrollTarget(for: currentMs, in: cachedReadingTurns)
+            return readingTurnScrollTarget(
+                for: currentMs, in: cachedReadingTurns, playbackIndex: cachedReadingTurnPlaybackIndex
+            )
         }
         if cachedHasSpeakers {
             return speakerTurnCardScrollTarget(

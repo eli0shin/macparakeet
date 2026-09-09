@@ -41,19 +41,14 @@ final class MeetingSpeakerCountCorrectionTests: XCTestCase {
         let constraint = await fixture.diarization.lastSpeakerConstraint
         XCTAssertEqual(constraint, .exact(2))
         XCTAssertEqual(result.rawTranscript, fixture.original.rawTranscript)
-        XCTAssertEqual(result.cleanTranscript, fixture.original.cleanTranscript)
+        XCTAssertEqual(result.cleanTranscript, result.readingDocument?.turns.map(\.text).joined(separator: "\n\n"))
         XCTAssertEqual(result.wordTimestamps?.map(\.word), originalWords.map(\.word))
         XCTAssertEqual(result.wordTimestamps?.map(\.startMs), originalWords.map(\.startMs))
         XCTAssertEqual(result.wordTimestamps?.map(\.confidence), originalWords.map(\.confidence))
         XCTAssertEqual(result.wordTimestamps?.map(\.speakerId), ["microphone", "system:S1", "system:S2"])
         XCTAssertEqual(result.speakers?.map(\.label), ["Me", "Others 1", "Others 2"])
 
-        let readingTurns = MeetingTranscriptPresentationBuilder.build(
-            transcriptText: result.rawTranscript ?? "",
-            words: result.wordTimestamps,
-            speakers: result.speakers,
-            diarizationSegments: result.diarizationSegments
-        )
+        let readingTurns = try XCTUnwrap(CompletedMeetingReadingDocument.build(from: result))
         XCTAssertEqual(readingTurns.turns.map(\.speakerLabel), ["Me", "Others 1", "Others 2"])
     }
 

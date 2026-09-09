@@ -101,12 +101,42 @@ public enum CompletedMeetingReadingDocument {
         customWords: [CustomWord] = [],
         cleanup: MeetingTranscriptCleanup = .cleaned
     ) -> MeetingTranscriptPresentationDocument? {
-        guard transcription.sourceType == .meeting,
-            transcription.status == .completed,
+        guard transcription.status == .completed,
             !transcription.isTranscriptEdited
         else {
             return nil
         }
+        if let saved = transcription.readingDocument {
+            let labels = Dictionary((transcription.speakers ?? []).map { ($0.id, $0.label) },
+                                    uniquingKeysWith: { first, _ in first })
+            return MeetingTranscriptPresentationDocument(
+                turns: saved.turns.map { turn in
+                    let paragraphs: [ReadingTurnParagraph]
+                    if cleanup == .verbatim, let words = transcription.wordTimestamps {
+                        paragraphs = turn.paragraphs.map { paragraph in
+                            ReadingTurnParagraph(
+                                text: paragraph.wordReferences.compactMap {
+                                    words.indices.contains($0) ? words[$0].word : nil
+                                }.joined(separator: " "),
+                                wordReferences: paragraph.wordReferences
+                            )
+                        }
+                    } else {
+                        paragraphs = turn.paragraphs
+                    }
+                    return ReadingTurn(
+                        id: turn.id, speakerId: turn.speakerId,
+                        speakerLabel: labels[turn.speakerId] ?? turn.speakerLabel,
+                        source: turn.source, timeRange: turn.timeRange,
+                        paragraphs: paragraphs,
+                        formattedText: cleanup == .cleaned ? turn.formattedText : nil,
+                        wordReferences: turn.wordReferences
+                    )
+                },
+                activityGaps: saved.activityGaps
+            )
+        }
+        guard transcription.sourceType == .meeting else { return nil }
         let rawTranscript = transcription.rawTranscript ?? transcription.cleanTranscript ?? ""
         return MeetingTranscriptPresentationBuilder.build(
             transcriptText: rawTranscript,
@@ -124,7 +154,7 @@ public enum CompletedMeetingReadingDocument {
 }
 
 /// Deterministic text projections of a Reading Turn document. All projections
-/// keep chronological turn order and paragraph boundaries.
+/// keep saved reading order and paragraph boundaries; timestamps remain evidence.
 public enum MeetingTranscriptDocumentRenderer {
     public static func plainText(
         _ document: MeetingTranscriptPresentationDocument,

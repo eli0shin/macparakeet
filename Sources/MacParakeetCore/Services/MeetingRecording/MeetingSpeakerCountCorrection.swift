@@ -96,19 +96,22 @@ public struct MeetingSpeakerAttributionUpdate: Equatable, Sendable {
     public let speakerCount: Int?
     public let diarizationSegments: [DiarizationSegmentRecord]
     public let transcriptSegments: [TranscriptSegmentRecord]?
+    public let readingDocument: MeetingTranscriptPresentationDocument?
 
     public init(
         wordTimestamps: [WordTimestamp],
         speakers: [SpeakerInfo],
         speakerCount: Int?,
         diarizationSegments: [DiarizationSegmentRecord],
-        transcriptSegments: [TranscriptSegmentRecord]?
+        transcriptSegments: [TranscriptSegmentRecord]?,
+        readingDocument: MeetingTranscriptPresentationDocument? = nil
     ) {
         self.wordTimestamps = wordTimestamps
         self.speakers = speakers
         self.speakerCount = speakerCount
         self.diarizationSegments = diarizationSegments
         self.transcriptSegments = transcriptSegments
+        self.readingDocument = readingDocument
     }
 }
 

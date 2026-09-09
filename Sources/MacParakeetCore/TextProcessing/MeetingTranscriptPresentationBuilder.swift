@@ -25,7 +25,7 @@ public struct ReadingTurnIdentity: Codable, Sendable, Equatable, Hashable {
 /// Stable membership for contributions that happened at the same time. The
 /// earliest contribution supplies the group identity, so presentation order and
 /// accessibility order do not depend on dictionary or speaker-ID ordering.
-public struct ReadingTurnOverlap: Sendable, Equatable, Hashable {
+public struct ReadingTurnOverlap: Codable, Sendable, Equatable, Hashable {
     public let groupId: ReadingTurnIdentity
 
     public init(groupId: ReadingTurnIdentity) {
@@ -33,7 +33,7 @@ public struct ReadingTurnOverlap: Sendable, Equatable, Hashable {
     }
 }
 
-public struct ReadingTurnTimeRange: Sendable, Equatable {
+public struct ReadingTurnTimeRange: Codable, Sendable, Equatable {
     public let startMs: Int
     public let endMs: Int
 
@@ -45,7 +45,7 @@ public struct ReadingTurnTimeRange: Sendable, Equatable {
 
 /// A paragraph inside one Reading Turn. Word references are indexes into the
 /// unchanged `WordTimestamp` evidence supplied to the builder.
-public struct ReadingTurnParagraph: Sendable, Equatable {
+public struct ReadingTurnParagraph: Codable, Sendable, Equatable {
     public let text: String
     public let wordReferences: [Int]
 
@@ -56,7 +56,7 @@ public struct ReadingTurnParagraph: Sendable, Equatable {
 }
 
 /// The human-facing unit for a completed meeting transcript.
-public struct ReadingTurn: Sendable, Equatable, Identifiable {
+public struct ReadingTurn: Codable, Sendable, Equatable, Identifiable {
     public let id: ReadingTurnIdentity
     public let speakerId: String
     public let speakerLabel: String
@@ -107,11 +107,13 @@ public enum MeetingTranscriptCleanup: Sendable, Equatable {
     case verbatim
 }
 
-public struct MeetingTranscriptPresentationDocument: Sendable, Equatable {
+public struct MeetingTranscriptPresentationDocument: Codable, Sendable, Equatable {
     public let turns: [ReadingTurn]
+    public let activityGaps: [SpeechActivityGap]?
 
-    public init(turns: [ReadingTurn]) {
+    public init(turns: [ReadingTurn], activityGaps: [SpeechActivityGap]? = nil) {
         self.turns = turns
+        self.activityGaps = activityGaps
     }
 }
 
@@ -296,6 +298,27 @@ public enum MeetingTranscriptPresentationBuilder {
                 wordReferences: references
             )
         }
+    }
+
+    static func makeFinalTurn(
+        references: [Int], words: [WordTimestamp], speakers: [SpeakerInfo],
+        customWords: [CustomWord], cleanup: MeetingTranscriptCleanup
+    ) -> ReadingTurn {
+        let indexed = references.map { IndexedWord(index: $0, word: words[$0]) }
+        let speakerId = words[references[0]].speakerId ?? ""
+        let source = readingSource(for: words[references[0]].speakerId)
+        let label = speakers.first { $0.id == speakerId }?.label
+            ?? AudioSource.forSpeakerID(speakerId)?.displayLabel ?? speakerId
+        return ReadingTurn(
+            id: ReadingTurnIdentity(source: source, speakerId: speakerId, firstWordIndex: references[0]),
+            speakerId: speakerId, speakerLabel: label, source: source,
+            timeRange: ReadingTurnTimeRange(
+                startMs: indexed.map { $0.word.startMs }.min()!,
+                endMs: indexed.map { $0.word.endMs }.max()!
+            ),
+            paragraphs: makeParagraphs(from: indexed, customWords: customWords, cleanup: cleanup),
+            wordReferences: references
+        )
     }
 
     private static func makeTurns(
@@ -659,7 +682,7 @@ public enum MeetingTranscriptPresentationBuilder {
         return merged
     }
 
-    private static func applyFormatting(
+    static func applyFormatting(
         _ formatting: [MeetingReadingTurnFormatting],
         to turns: [ReadingTurn]
     ) -> [ReadingTurn] {
@@ -914,7 +937,7 @@ public enum MeetingTranscriptPresentationBuilder {
         return foundCompletedSpeech
     }
 
-    private static func readingSource(for speakerId: String?) -> ReadingTurnSource {
+    static func readingSource(for speakerId: String?) -> ReadingTurnSource {
         switch speakerId {
         case let id? where AudioSource.forSpeakerID(id) == .microphone:
             return .microphone
