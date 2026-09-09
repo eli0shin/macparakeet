@@ -10,7 +10,7 @@ final class MeetingReadingTurnConsumerTests: XCTestCase {
         let expectedMarkdown = MeetingTranscriptDocumentRenderer.markdown(document)
         let expectedPlainText = MeetingTranscriptDocumentRenderer.plainText(document)
 
-        XCTAssertTrue(expectedMarkdown.contains("> Simultaneous speech"))
+        XCTAssertFalse(expectedMarkdown.contains("Simultaneous speech"))
         XCTAssertTrue(expectedMarkdown.contains("**Dana · [0:00]**"))
         XCTAssertTrue(document.turns.contains { $0.paragraphs.count == 2 })
 

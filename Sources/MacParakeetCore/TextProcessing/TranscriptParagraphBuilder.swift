@@ -22,6 +22,12 @@ public enum TranscriptParagraphBuilder {
     private static let paragraphPauseMs = 2_500
 
     public static func build(from words: [WordTimestamp]) -> [TranscriptParagraph] {
+        // Live updates can contain source-contiguous batches. Capture arrival
+        // order must not move an interruption behind the other source's speech.
+        let words = words.enumerated().sorted {
+            if $0.element.startMs == $1.element.startMs { return $0.offset < $1.offset }
+            return $0.element.startMs < $1.element.startMs
+        }.map(\.element)
         guard let firstWord = words.first else { return [] }
 
         var paragraphs: [TranscriptParagraph] = []

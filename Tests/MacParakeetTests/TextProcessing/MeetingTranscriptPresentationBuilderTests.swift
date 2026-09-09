@@ -22,61 +22,10 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(
-            document,
-            MeetingTranscriptPresentationDocument(turns: [
-                ReadingTurn(
-                    id: ReadingTurnIdentity(
-                        source: .microphone,
-                        speakerId: "microphone",
-                        firstWordIndex: 0
-                    ),
-                    speakerId: "microphone",
-                    speakerLabel: "Me",
-                    source: .microphone,
-                    timeRange: ReadingTurnTimeRange(startMs: 0, endMs: 600),
-                    overlap: ReadingTurnOverlap(
-                        groupId: ReadingTurnIdentity(
-                            source: .microphone,
-                            speakerId: "microphone",
-                            firstWordIndex: 0
-                        )
-                    ),
-                    paragraphs: [
-                        ReadingTurnParagraph(
-                            text: "I will ship.",
-                            wordReferences: [0, 1, 2]
-                        )
-                    ],
-                    wordReferences: [0, 1, 2]
-                ),
-                ReadingTurn(
-                    id: ReadingTurnIdentity(
-                        source: .system,
-                        speakerId: "system:S1",
-                        firstWordIndex: 3
-                    ),
-                    speakerId: "system:S1",
-                    speakerLabel: "Avery",
-                    source: .system,
-                    timeRange: ReadingTurnTimeRange(startMs: 100, endMs: 750),
-                    overlap: ReadingTurnOverlap(
-                        groupId: ReadingTurnIdentity(
-                            source: .microphone,
-                            speakerId: "microphone",
-                            firstWordIndex: 0
-                        )
-                    ),
-                    paragraphs: [
-                        ReadingTurnParagraph(
-                            text: "Yes, that works.",
-                            wordReferences: [3, 4, 5]
-                        )
-                    ],
-                    wordReferences: [3, 4, 5]
-                ),
-            ])
-        )
+        XCTAssertEqual(document.turns.map(\.speakerLabel), ["Me", "Avery", "Me", "Avery", "Me", "Avery"])
+        XCTAssertEqual(document.turns.map(\.text), ["I", "Yes,", "Will", "That", "Ship.", "Works."])
+        XCTAssertEqual(document.turns.map(\.wordReferences), [[0], [3], [1], [4], [2], [5]])
+        XCTAssertTrue(document.turns.allSatisfy { $0.overlap == nil })
         XCTAssertEqual(words, originalWords, "Presentation must not rewrite raw evidence")
     }
 
@@ -127,7 +76,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         )
     }
 
-    func testOverlappingSourceSpeechDoesNotCreateACompletedExchangeBoundary() {
+    func testOverlappingSourceSpeechStaysChronological() {
         let words = [
             word("Question", 0, 400, "microphone"),
             word("Answer", 200, 700, "system"),
@@ -140,13 +89,10 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
             speakers: nil
         )
 
-        XCTAssertEqual(document.turns.map(\.speakerLabel), ["Me", "Others"])
-        XCTAssertEqual(document.turns.map(\.text), ["Question Thanks", "Answer"])
-        XCTAssertEqual(document.turns.map(\.wordReferences), [[0, 2], [1]])
-        XCTAssertEqual(
-            document.turns.compactMap(\.overlap).map(\.groupId),
-            Array(repeating: document.turns[0].id, count: 2)
-        )
+        XCTAssertEqual(document.turns.map(\.speakerLabel), ["Me", "Others", "Me"])
+        XCTAssertEqual(document.turns.map(\.text), ["Question", "Answer", "Thanks"])
+        XCTAssertEqual(document.turns.map(\.wordReferences), [[0], [1], [2]])
+        XCTAssertTrue(document.turns.allSatisfy { $0.overlap == nil })
     }
 
     func testRemoteBackchannelInsideOneSentenceBecomesItsOwnContribution() {
@@ -165,39 +111,11 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
                 segment("system:S2", 300, 500),
             ]
         )
-        let overlap = ReadingTurnOverlap(
-            groupId: ReadingTurnIdentity(
-                source: .system,
-                speakerId: "system:S1",
-                firstWordIndex: 0
-            )
-        )
-
-        XCTAssertEqual(
-            document,
-            MeetingTranscriptPresentationDocument(turns: [
-                readingTurn(
-                    source: .system,
-                    speakerId: "system:S1",
-                    speakerLabel: "Avery",
-                    wordIndexes: [0, 2, 3],
-                    text: "The plan works.",
-                    startMs: 0,
-                    endMs: 900,
-                    overlap: overlap
-                ),
-                readingTurn(
-                    source: .system,
-                    speakerId: "system:S2",
-                    speakerLabel: "Blake",
-                    wordIndexes: [1],
-                    text: "Right",
-                    startMs: 300,
-                    endMs: 500,
-                    overlap: overlap
-                ),
-            ])
-        )
+        XCTAssertEqual(document.turns.map(\.speakerId), ["system:S1", "system:S2", "system:S1"])
+        XCTAssertEqual(document.turns.map(\.text), ["The", "Right", "Plan works."])
+        XCTAssertEqual(document.turns.map(\.wordReferences), [[0], [1], [2, 3]])
+        XCTAssertEqual(document.turns.map { $0.timeRange?.startMs }, [0, 300, 350])
+        XCTAssertTrue(document.turns.allSatisfy { $0.overlap == nil })
     }
 
     func testRepeatedUnpunctuatedBackchannelsKeepSupportedOverlapSpeaker() {
@@ -218,42 +136,13 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
                 segment("system:S2", 620, 780),
             ]
         )
-        let overlap = ReadingTurnOverlap(
-            groupId: ReadingTurnIdentity(
-                source: .system,
-                speakerId: "system:S1",
-                firstWordIndex: 0
-            )
-        )
-
-        XCTAssertEqual(
-            document,
-            MeetingTranscriptPresentationDocument(turns: [
-                readingTurn(
-                    source: .system,
-                    speakerId: "system:S1",
-                    speakerLabel: "Avery",
-                    wordIndexes: [0, 2, 4],
-                    text: "We can ship.",
-                    startMs: 0,
-                    endMs: 1_000,
-                    overlap: overlap
-                ),
-                readingTurn(
-                    source: .system,
-                    speakerId: "system:S2",
-                    speakerLabel: "Blake",
-                    wordIndexes: [1, 3],
-                    text: "Yeah right",
-                    startMs: 250,
-                    endMs: 780,
-                    overlap: overlap
-                ),
-            ])
-        )
+        XCTAssertEqual(document.turns.map(\.speakerId), ["system:S1", "system:S2", "system:S1", "system:S2", "system:S1"])
+        XCTAssertEqual(document.turns.map(\.text), ["We", "Yeah", "Can", "Right", "Ship."])
+        XCTAssertEqual(document.turns.map(\.wordReferences), [[0], [1], [2], [3], [4]])
+        XCTAssertTrue(document.turns.allSatisfy { $0.overlap == nil })
     }
 
-    func testRemoteBackchannelRemainsVisibleWithoutSplittingSurroundingTurn() {
+    func testRemoteBackchannelSplitsSurroundingTurn() {
         let words = [
             word("The", 0, 250, "system:S1"),
             word("plan", 260, 500, "system:S1"),
@@ -273,42 +162,14 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
                 segment("system:S2", 650, 900),
             ]
         )
-        let overlap = ReadingTurnOverlap(
-            groupId: ReadingTurnIdentity(
-                source: .system,
-                speakerId: "system:S1",
-                firstWordIndex: 0
-            )
-        )
-
-        XCTAssertEqual(
-            document,
-            MeetingTranscriptPresentationDocument(turns: [
-                readingTurn(
-                    source: .system,
-                    speakerId: "system:S1",
-                    speakerLabel: "Avery",
-                    wordIndexes: [0, 1, 2, 4, 5, 6],
-                    text: "The plan works. We can ship.",
-                    startMs: 0,
-                    endMs: 1_500,
-                    overlap: overlap
-                ),
-                readingTurn(
-                    source: .system,
-                    speakerId: "system:S2",
-                    speakerLabel: "Blake",
-                    wordIndexes: [3],
-                    text: "Right.",
-                    startMs: 650,
-                    endMs: 900,
-                    overlap: overlap
-                ),
-            ])
-        )
+        XCTAssertEqual(document.turns.map(\.speakerId), ["system:S1", "system:S2", "system:S1"])
+        XCTAssertEqual(document.turns.map(\.text), ["The plan works.", "Right.", "We can ship."])
+        XCTAssertEqual(document.turns.map(\.wordReferences), [[0, 1, 2], [3], [4, 5, 6]])
+        XCTAssertEqual(document.turns.map { $0.timeRange?.startMs }, [0, 650, 820])
+        XCTAssertTrue(document.turns.allSatisfy { $0.overlap == nil })
     }
 
-    func testRepeatedRemoteBackchannelsKeepOneSurroundingTurn() {
+    func testRepeatedRemoteBackchannelsStayInChronologicalTurns() {
         let words = [
             word("Start.", 0, 1_200, "system:S1"),
             word("Yeah.", 400, 650, "system:S2"),
@@ -327,13 +188,13 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(document.turns.map(\.speakerId), ["system:S1", "system:S2", "system:S2"])
-        XCTAssertEqual(document.turns.map(\.text), ["Start. Middle. Finish.", "Yeah.", "Right."])
-        XCTAssertEqual(document.turns.map(\.wordReferences), [[0, 2, 4], [1], [3]])
-        XCTAssertEqual(Set(document.turns.compactMap(\.overlap)).count, 1)
+        XCTAssertEqual(document.turns.map(\.speakerId), ["system:S1", "system:S2", "system:S1", "system:S2", "system:S1"])
+        XCTAssertEqual(document.turns.map(\.text), ["Start.", "Yeah.", "Middle.", "Right.", "Finish."])
+        XCTAssertEqual(document.turns.map(\.wordReferences), [[0], [1], [2], [3], [4]])
+        XCTAssertTrue(document.turns.allSatisfy { $0.overlap == nil })
     }
 
-    func testSimultaneousRemoteSpeakersRequireDiarizationOverlapEvidence() {
+    func testConcurrentSpeakerEvidenceDoesNotCreateOverlapGroups() {
         let words = [
             word("Primary.", 0, 900, "system:S1"),
             word("Counterpoint.", 300, 1_100, "system:S2"),
@@ -358,7 +219,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         )
 
         XCTAssertEqual(overlapping.turns.map(\.speakerId), ["system:S1", "system:S2"])
-        XCTAssertEqual(overlapping.turns.compactMap(\.overlap).count, 2)
+        XCTAssertTrue(overlapping.turns.allSatisfy { $0.overlap == nil })
         XCTAssertEqual(sequentialEvidence.turns.map(\.overlap), [nil, nil])
     }
 
