@@ -2,7 +2,7 @@
 
 Date: 2026-09-06
 Scope: research for branch `028-add-custom-words`.
-Result: [ticket 028](../../.tickets/todo/028-add-custom-words.md), created after
+Result: [ticket 042](../../.tickets/todo/042-add-custom-words.md), created after
 three grilling rounds and user confirmation.
 Research baseline: `6bda8d75`. No model benchmarks or app smoke tests run.
 

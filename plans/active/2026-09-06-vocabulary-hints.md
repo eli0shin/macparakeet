@@ -1,6 +1,6 @@
 # Ticket 028 implementation
 
-Scope: `.tickets/todo/028-add-custom-words.md`. Agreed English Parakeet TDT final
+Scope: `.tickets/todo/042-add-custom-words.md`. Agreed English Parakeet TDT final
 recognition, one existing word store, opt-in download, bounded long audio,
 honest fallback, focused verification. No benchmark project.
 
