@@ -229,6 +229,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         var sourceMode: MeetingAudioSourceMode?
         var systemSpeakerDetection: Bool
         var microphoneSpeakerDetection: Bool
+        var speakerDetectionGeneration: [AudioSource: Int]
 
         var supportsLiveChunkTranscription: Bool {
             speechPlan.preview != nil
@@ -393,6 +394,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         fileManager: FileManager = .default,
         finalSpeechEngineSelection: @escaping @Sendable () -> SpeechEngineSelection? = { nil },
         isVadLiveChunkingEnabled: @escaping @Sendable () -> Bool = { false },
+        liveDiarizationService: (any DiarizationServiceProtocol)? = nil,
         echoSuppressionConfiguration: MeetingEchoSuppressionConfiguration = .fromEnvironment()
     ) {
         self.init(
@@ -406,6 +408,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             fileManager: fileManager,
             finalSpeechEngineSelection: finalSpeechEngineSelection,
             isVadLiveChunkingEnabled: isVadLiveChunkingEnabled,
+            liveDiarizationService: liveDiarizationService,
             micConditionerFactory: {
                 MeetingEchoSuppressionFactory.makeConditioner(
                     configuration: echoSuppressionConfiguration
@@ -432,6 +435,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         fileManager: FileManager = .default,
         finalSpeechEngineSelection: @escaping @Sendable () -> SpeechEngineSelection? = { nil },
         isVadLiveChunkingEnabled: @escaping @Sendable () -> Bool = { false },
+        liveDiarizationService: (any DiarizationServiceProtocol)? = nil,
         micConditionerFactory: @escaping @Sendable () -> any MicConditioning,
         cleanedMicConditionerFactory: (@Sendable () -> any MicConditioning)? = nil,
         wallClockNow: @escaping @Sendable () -> Date = { Date() },
@@ -472,7 +476,10 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         self.audioHostTimeNow = audioHostTimeNow
         self.cleanedMicrophoneReadinessScheduler = cleanedMicrophoneReadinessScheduler
         self.writerFinalizationReportTransform = writerFinalizationReportTransform
-        self.liveChunkTranscriber = LiveChunkTranscriber(sttTranscriber: sttTranscriber)
+        self.liveChunkTranscriber = LiveChunkTranscriber(
+            sttTranscriber: sttTranscriber,
+            diarizationService: liveDiarizationService
+        )
         self.speechEngineSessionManager = sttTranscriber as? any SpeechEngineSessionManaging
     }
 
@@ -508,6 +515,12 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         guard let startedAt = currentSession?.startedAt else { return 0 }
         return max(0, Int(activeRecordingSeconds(startedAt: startedAt, asOf: wallClockNow())))
     }
+
+    #if DEBUG
+    func testHook_waitForLiveTranscriptDrain(timeout: Duration = .seconds(5)) async -> Bool {
+        await liveChunkTranscriber.waitForPendingTasksToDrain(timeout: timeout)
+    }
+    #endif
 
     public var captureMode: CaptureMode {
         if currentSession == nil || captureFailed {
@@ -722,7 +735,8 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             calendarEventSnapshot: calendarEventSnapshot,
             sourceMode: sourceMode,
             systemSpeakerDetection: systemSpeakerDetection(),
-            microphoneSpeakerDetection: microphoneSpeakerDetection()
+            microphoneSpeakerDetection: microphoneSpeakerDetection(),
+            speakerDetectionGeneration: [.system: 0, .microphone: 0]
         )
         self.writer = writer
         self.currentSession = session
@@ -776,7 +790,9 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                     .init(
                         id: session.id,
                         chunkFolderURL: session.chunkFolderURL,
-                        speechEngine: previewSpeechEngine
+                        speechEngine: previewSpeechEngine,
+                        systemSpeakerDetection: session.systemSpeakerDetection,
+                        microphoneSpeakerDetection: session.microphoneSpeakerDetection
                     ),
                     onEvent: { [weak self] event in
                         await self?.handleLiveChunkTranscriberEvent(event, sessionID: session.id)
@@ -1332,8 +1348,10 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             throw MeetingAudioError.storageFailed(error.localizedDescription)
         }
 
+        session.speakerDetectionGeneration[source, default: 0] += 1
         currentSession = session
         currentLockFile = updated
+        await liveChunkTranscriber.setSpeakerDetection(enabled, for: source)
         return activeSpeakerDetectionState
     }
 
@@ -1803,10 +1821,21 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         switch event {
         case .orderedResults(let readyResults):
             for ready in readyResults {
+                guard let session = currentSession else { return }
+                let detectionEnabled =
+                    ready.source == .system
+                    ? session.systemSpeakerDetection
+                    : session.microphoneSpeakerDetection
+                let currentGeneration = session.speakerDetectionGeneration[ready.source, default: 0]
+                if detectionEnabled, ready.speakerDetectionGeneration != currentGeneration {
+                    isTranscriptionLagging = true
+                    continue
+                }
                 let update = transcriptAssembler.apply(
                     result: ready.result,
                     chunk: ready.chunk,
-                    source: ready.source
+                    source: ready.source,
+                    diarization: detectionEnabled ? ready.diarization : nil
                 )
                 yieldTranscriptUpdate(update)
             }

@@ -1541,13 +1541,14 @@ final class MeetingRecordingFlowCoordinator {
         let speakerLabels = Dictionary(uniqueKeysWithValues: update.speakers.map { ($0.id, $0.label) })
         let paragraphs = TranscriptParagraphBuilder.build(from: update.words)
         return paragraphs.map { paragraph in
-            let source = paragraph.speakerId.flatMap(AudioSource.init(rawValue:))
+            let source = paragraph.speakerId.flatMap(AudioSource.forSpeakerID)
             return MeetingRecordingPreviewLine(
                 id: "\(paragraph.startMs)-\(paragraph.speakerId ?? "unknown")",
                 timestamp: format(milliseconds: paragraph.startMs),
                 speakerLabel: speakerLabels[paragraph.speakerId ?? ""] ?? source?.displayLabel ?? "Speaker",
                 text: paragraph.text,
-                source: source
+                source: source,
+                speakerID: paragraph.speakerId
             )
         }
     }

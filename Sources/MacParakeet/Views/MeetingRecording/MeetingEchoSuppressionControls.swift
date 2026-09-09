@@ -14,7 +14,7 @@ struct MeetingInProgressAudioControls: View {
                 speakerToggle(
                     title: "System audio",
                     detail: viewModel.speakerDetectionState.canDetectSystemAudio
-                        ? "Detect remote speakers in the final transcript."
+                        ? "Detect remote speakers in live and final transcripts."
                         : "System audio is not recorded in this meeting.",
                     source: .system,
                     isOn: viewModel.speakerDetectionState.systemAudioEnabled,
@@ -31,7 +31,7 @@ struct MeetingInProgressAudioControls: View {
                 )
 
                 Text(
-                    "Changes apply to this meeting's final transcript and become the defaults for new meetings. Live preview does not change."
+                    "Changes apply to new live transcript text and this meeting's final transcript. Existing live text stays unchanged. They also become the defaults for new meetings."
                 )
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textTertiary)

@@ -6,9 +6,12 @@
 track-specific choices `systemSpeakerDetection` and
 `microphoneSpeakerDetection`. New recordings capture both defaults at start.
 The in-meeting audio-controls popover can change either choice independently;
-a successful change atomically rewrites `recording.lock`, applies to that
-meeting's final transcript, and becomes the default for new meetings. It does
-not change live preview text.
+a successful change atomically rewrites `recording.lock`, applies to later live
+preview chunks and that meeting's final transcript, and becomes the default for
+new meetings. Already displayed live words keep their attribution. A chunk
+whose speaker-detection work is in flight when the choice changes is reconciled
+to the latest successfully persisted choice before it is emitted, so a stale
+result cannot restore the previous attribution behavior.
 
 Missing or malformed `systemSpeakerDetection` values identify legacy artifacts
 and use the current meeting default during finalization or app-default archive

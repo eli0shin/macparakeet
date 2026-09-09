@@ -90,6 +90,45 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         XCTAssertTrue(update.speakers.isEmpty)
     }
 
+    func testApplyUsesLiveDiarizationForOnlyTheSelectedSource() {
+        var assembler = MeetingTranscriptAssembler()
+        let diarization = MacParakeetDiarizationResult(
+            segments: [
+                SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 500),
+                SpeakerSegment(speakerId: "S2", startMs: 500, endMs: 1_000),
+            ],
+            speakerCount: 2,
+            speakers: [
+                SpeakerInfo(id: "S1", label: "Speaker 1"),
+                SpeakerInfo(id: "S2", label: "Speaker 2"),
+            ]
+        )
+        let result = STTResult(
+            text: "one two",
+            words: [
+                TimestampedWord(word: "one", startMs: 100, endMs: 300, confidence: 0.9),
+                TimestampedWord(word: "two", startMs: 600, endMs: 800, confidence: 0.9),
+            ]
+        )
+
+        let detected = assembler.apply(
+            result: result,
+            chunk: AudioChunker.AudioChunk(samples: [0], startMs: 4_000, endMs: 5_000),
+            source: .system,
+            diarization: diarization
+        )
+        let plain = assembler.apply(
+            result: result,
+            chunk: AudioChunker.AudioChunk(samples: [0], startMs: 5_000, endMs: 6_000),
+            source: .microphone
+        )
+
+        XCTAssertEqual(detected.words.map(\.speakerId), ["system:S1", "system:S2"])
+        XCTAssertEqual(detected.speakers.map(\.label), ["Others 1", "Others 2"])
+        XCTAssertEqual(Array(plain.words.suffix(2)).map(\.speakerId), ["microphone", "microphone"])
+        XCTAssertTrue(plain.speakers.contains(SpeakerInfo(id: "microphone", label: "Me")))
+    }
+
     func testFinalizedTranscriptBuildsSpeakerMetadataAcrossSources() {
         var assembler = MeetingTranscriptAssembler()
 

@@ -2054,6 +2054,158 @@ final class MeetingRecordingServiceTests: XCTestCase {
         XCTAssertNotNil(output.sourceAlignment.microphone)
     }
 
+    func testLivePreviewAppliesLatestSpeakerDetectionIndependentlyByTrack() async throws {
+        let captureService = MockMeetingAudioCaptureService()
+        let diarization = MockDiarizationService()
+        await diarization.configure(
+            result: MacParakeetDiarizationResult(
+                segments: [SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 5_000)],
+                speakerCount: 1,
+                speakers: [SpeakerInfo(id: "S1", label: "Speaker 1")]
+            )
+        )
+        let sttClient = PrefixScriptedMeetingSTTClient(
+            microphoneSteps: [
+                .result(Self.liveResult(word: "mic-one")),
+                .result(Self.liveResult(word: "mic-before-extra")),
+                .result(Self.liveResult(word: "mic-two")),
+            ],
+            systemSteps: [
+                .result(Self.liveResult(word: "sys-one")),
+                .result(Self.liveResult(word: "sys-before-extra")),
+                .result(Self.liveResult(word: "sys-two")),
+            ]
+        )
+        let service = MeetingRecordingService(
+            systemSpeakerDetection: { false },
+            microphoneSpeakerDetection: { false },
+            audioCaptureService: captureService,
+            audioConverter: MockMeetingAudioFileConverter(),
+            sttTranscriber: sttClient,
+            liveDiarizationService: diarization
+        )
+        let updates = await service.transcriptUpdates
+        var iterator = updates.makeAsyncIterator()
+
+        try await service.startRecording(title: nil, sourceMode: .microphoneAndSystem)
+        _ = try await service.setSpeakerDetection(true, for: .system)
+        try await yieldLiveChunks(from: captureService, frameCount: 64_000, hostSeconds: 100)
+        try await yieldLiveChunks(from: captureService, frameCount: 16_000, hostSeconds: 104)
+        try await waitForLiveTranscriptionCalls(sttClient, count: 4)
+        let firstPhaseDrained = await service.testHook_waitForLiveTranscriptDrain()
+        XCTAssertTrue(firstPhaseDrained)
+        var firstPhaseCandidate: MeetingTranscriptUpdate?
+        for _ in 0..<4 {
+            guard let update = await iterator.next() else { break }
+            firstPhaseCandidate = update
+            let words = Set(update.words.map(\.word))
+            if words.contains("mic-one"), words.contains("sys-one") { break }
+        }
+        let firstPhase = try XCTUnwrap(firstPhaseCandidate)
+
+        _ = try await service.setSpeakerDetection(false, for: .system)
+        _ = try await service.setSpeakerDetection(true, for: .microphone)
+        try await yieldLiveChunks(from: captureService, frameCount: 64_000, hostSeconds: 105)
+        try await waitForLiveTranscriptionCalls(sttClient, count: 8)
+        let finalPhaseDrained = await service.testHook_waitForLiveTranscriptDrain()
+        XCTAssertTrue(finalPhaseDrained)
+        var finalUpdateCandidate: MeetingTranscriptUpdate?
+        for _ in 0..<4 {
+            guard let update = await iterator.next() else { break }
+            finalUpdateCandidate = update
+            let words = Set(update.words.map(\.word))
+            if words.contains("mic-two"), words.contains("sys-two") { break }
+        }
+        let finalUpdate = try XCTUnwrap(finalUpdateCandidate)
+
+        let firstSpeakers = Dictionary(uniqueKeysWithValues: firstPhase.words.map { ($0.word, $0.speakerId) })
+        XCTAssertEqual(firstSpeakers["sys-one"], "system:S1")
+        XCTAssertEqual(firstSpeakers["mic-one"], "microphone")
+
+        let finalSpeakers = Dictionary(uniqueKeysWithValues: finalUpdate.words.map { ($0.word, $0.speakerId) })
+        XCTAssertEqual(finalSpeakers["sys-one"], "system:S1")
+        XCTAssertEqual(finalSpeakers["sys-two"], "system")
+        XCTAssertEqual(finalSpeakers["mic-one"], "microphone")
+        XCTAssertEqual(finalSpeakers["mic-two"], "microphone:S1")
+
+        await service.cancelRecording()
+    }
+
+    func testLivePreviewDiscardsStaleInFlightDiarizationAfterDetectionTurnsOff() async throws {
+        let captureService = MockMeetingAudioCaptureService(
+            startReport: MeetingAudioCaptureStartReport(sourceMode: .systemOnly)
+        )
+        let diarization = MockDiarizationService()
+        await diarization.configure(
+            result: MacParakeetDiarizationResult(
+                segments: [SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 5_000)],
+                speakerCount: 1,
+                speakers: [SpeakerInfo(id: "S1", label: "Speaker 1")]
+            )
+        )
+        await diarization.configureDiarizeDelay(.milliseconds(300))
+        let service = MeetingRecordingService(
+            systemSpeakerDetection: { true },
+            audioCaptureService: captureService,
+            audioConverter: MockMeetingAudioFileConverter(),
+            sttTranscriber: PrefixScriptedMeetingSTTClient(
+                systemSteps: [.result(Self.liveResult(word: "pending"))]
+            ),
+            liveDiarizationService: diarization
+        )
+        let updates = await service.transcriptUpdates
+        var iterator = updates.makeAsyncIterator()
+
+        try await service.startRecording(title: nil, sourceMode: .systemOnly)
+        let buffer = try XCTUnwrap(makeMonoFloatBuffer(frameCount: 80_000, sampleValue: 0.5))
+        await captureService.yield(
+            .systemBuffer(buffer, AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: 100)))
+        )
+        for _ in 0..<100 where await !diarization.diarizeCalled {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        let diarizationStarted = await diarization.diarizeCalled
+        XCTAssertTrue(diarizationStarted)
+
+        _ = try await service.setSpeakerDetection(false, for: .system)
+        let updateCandidate = await iterator.next()
+        let update = try XCTUnwrap(updateCandidate)
+
+        XCTAssertEqual(update.words.map(\.speakerId), [AudioSource.system.rawValue])
+        XCTAssertEqual(update.speakers, [SpeakerInfo(id: "system", label: "Others")])
+        await service.cancelRecording()
+    }
+
+    private static func liveResult(word: String) -> STTResult {
+        STTResult(
+            text: word,
+            words: [TimestampedWord(word: word, startMs: 100, endMs: 400, confidence: 0.9)]
+        )
+    }
+
+    private func waitForLiveTranscriptionCalls(
+        _ client: PrefixScriptedMeetingSTTClient,
+        count: Int
+    ) async throws {
+        for _ in 0..<200 {
+            if await client.transcribeCallCountSnapshot() >= count { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("Expected at least \(count) live transcription calls")
+    }
+
+    private func yieldLiveChunks(
+        from captureService: MockMeetingAudioCaptureService,
+        frameCount: Int,
+        hostSeconds: TimeInterval
+    ) async throws {
+        let microphone = try XCTUnwrap(makeMonoFloatBuffer(frameCount: frameCount, sampleValue: 0.25))
+        let system = try XCTUnwrap(makeMonoFloatBuffer(frameCount: frameCount, sampleValue: 0.5))
+        let time = AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: hostSeconds))
+        await captureService.yield(.microphoneBuffer(microphone, time))
+        await captureService.yield(.systemBuffer(system, time))
+    }
+
     func testLivePreviewEmitsTextOnlyChunkResults() async throws {
         let captureService = MockMeetingAudioCaptureService()
         let audioConverter = MockMeetingAudioFileConverter()
@@ -4332,6 +4484,7 @@ private actor PrefixScriptedMeetingSTTClient: STTClientProtocol {
 
     private var microphoneSteps: [Step]
     private var systemSteps: [Step]
+    private var transcribeCallCount = 0
 
     init(
         microphoneSteps: [Step] = [],
@@ -4346,6 +4499,7 @@ private actor PrefixScriptedMeetingSTTClient: STTClientProtocol {
         job: STTJobKind,
         onProgress: (@Sendable (Int, Int) -> Void)?
     ) async throws -> STTResult {
+        defer { transcribeCallCount += 1 }
         let fileName = URL(fileURLWithPath: audioPath).lastPathComponent
         let step: Step
         if fileName.hasPrefix("microphone-"), !microphoneSteps.isEmpty {
@@ -4366,6 +4520,8 @@ private actor PrefixScriptedMeetingSTTClient: STTClientProtocol {
             throw STTSchedulerError.droppedDueToBackpressure(job: .meetingLiveChunk)
         }
     }
+
+    func transcribeCallCountSnapshot() -> Int { transcribeCallCount }
 
     func warmUp(onProgress: (@Sendable (String) -> Void)?) async throws {}
 

@@ -270,7 +270,7 @@ is the artifact and sidecar contract.
 | `CaptureOrchestrator` | Owns ingest/join/offset/chunk flow for live preview |
 | `MicConditioner` | Meeting-side seam for mic samples; passthrough is the default, and an optional `StreamingMeetingEchoSuppressor` can use paired system reference samples when the runtime/model are available |
 | `MeetingCleanedMicRenderer` | Post-stop offline derivation of `microphone-cleaned.m4a` from the raw mic + system sources through a freshly built suppressor; skips when no echo path/single-source and never throws into finalize |
-| `LiveChunkTranscriber` | Owns live chunk queueing, cancellation, ordering, STT invocation |
+| `LiveChunkTranscriber` | Owns live chunk queueing, cancellation, ordering, STT invocation, and optional track-specific local diarization using the latest persisted in-meeting choice |
 | `MeetingAudioStorageWriter` | Writes separate fragmented M4A files per source, preserves genuine recovery gaps as silence, distinguishes real captured frames from padded timeline frames, and reports per-source finalization failure |
 | `MeetingPlaybackArtifactBuilder` | Probes finalized sources, installs validated mixed playback atomically, or uses the longest aligned source as an explicit partial-playback fallback |
 | `MeetingCaptureReport` | Pure finalized truth for elapsed time, captured/timeline duration, per-source coverage/interruption, runtime failure, and canonical-playback fallback |
@@ -436,7 +436,8 @@ alter the pasted text. See `docs/research/live-dictation-streaming.md`.
 
 `CaptureOrchestrator` buffers audio into live-preview chunks and sends them through the scheduler using the meeting plan's preview route. The preview route is the captured Live Speech selection only when its capabilities provide the word timings required by the renderer; otherwise no live chunks are created and there is no fallback engine. The fixed cadence keeps the original 5s / 1s-overlap `AudioChunker`. When `AppFeatures.meetingVadLiveChunkingEnabled` is true, launch-time prep tries to cache the Silero VAD model; if it is cached and preview uses Parakeet, the live path cuts chunks at speech boundaries per source. Nemotron and Whisper preview use the fixed cadence. Cohere cannot preview. VAD unavailable/error cases fall back to fixed chunking, while the authoritative post-stop pass independently uses the plan's captured final route and durable audio. This provides:
 - Live transcript preview in the recording pill
-- Source-aware labels: mic chunks → "Me", system chunks → "Them"
+- Source-aware labels by default: mic chunks → "Me", system chunks → "Them"
+- Optional local speaker attribution per live chunk and capture track; setting changes affect later output without restarting capture, already displayed words stay unchanged, and in-flight results are reconciled to the latest persisted choice before emission
 - Raw mic capture plus a residual safeguard that suppresses clearly system-dominant mic chunks in live preview windows
 - Immediate transcript availability when recording stops
 

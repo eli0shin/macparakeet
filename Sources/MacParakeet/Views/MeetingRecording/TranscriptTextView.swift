@@ -88,7 +88,7 @@ struct TranscriptTextView: NSViewRepresentable {
             let renderedSuffix = buildRenderedSlice(
                 for: lines.suffix(from: firstChangedIndex),
                 startingIndex: firstChangedIndex,
-                previousSource: firstChangedIndex > 0 ? lines[firstChangedIndex - 1].source : nil,
+                previousSpeakerID: firstChangedIndex > 0 ? lines[firstChangedIndex - 1].speakerIdentity : nil,
                 isFirstInDocument: firstChangedIndex == 0
             )
             storage.replaceCharacters(
@@ -131,17 +131,17 @@ struct TranscriptTextView: NSViewRepresentable {
     }
 
     /// Build a rendered suffix for a slice of lines.
-    /// Tracks speaker changes relative to `previousSource` so headers appear correctly
+    /// Tracks speaker changes relative to `previousSpeakerID` so headers appear correctly
     /// even when replacing only the changed suffix.
     private func buildRenderedSlice(
         for lineSlice: ArraySlice<MeetingRecordingPreviewLine>,
         startingIndex: Int,
-        previousSource: AudioSource?,
+        previousSpeakerID: String?,
         isFirstInDocument: Bool
     ) -> RenderedSlice {
         let result = NSMutableAttributedString()
         var lineRanges: [NSRange] = []
-        var previousSource = previousSource
+        var previousSpeakerID = previousSpeakerID
         var isFirstLine = isFirstInDocument
 
         let bodyFontSize: CGFloat = 14
@@ -156,7 +156,7 @@ struct TranscriptTextView: NSViewRepresentable {
         for (offset, line) in lineSlice.enumerated() {
             let globalIndex = startingIndex + offset
             let lineStart = result.length
-            let speakerChanged = isFirstLine || line.source != previousSource
+            let speakerChanged = isFirstLine || line.speakerIdentity != previousSpeakerID
             isFirstLine = false
 
             if speakerChanged {
@@ -204,7 +204,7 @@ struct TranscriptTextView: NSViewRepresentable {
             result.append(text)
 
             lineRanges.append(NSRange(location: lineStart, length: result.length - lineStart))
-            previousSource = line.source
+            previousSpeakerID = line.speakerIdentity
         }
 
         return RenderedSlice(attributedString: result, lineRanges: lineRanges)
@@ -242,13 +242,13 @@ extension TranscriptTextView {
     func renderedAttributedStringForTesting(
         lines: ArraySlice<MeetingRecordingPreviewLine>,
         startingIndex: Int = 0,
-        previousSource: AudioSource? = nil,
+        previousSpeakerID: String? = nil,
         isFirstInDocument: Bool = true
     ) -> NSAttributedString {
         buildRenderedSlice(
             for: lines,
             startingIndex: startingIndex,
-            previousSource: previousSource,
+            previousSpeakerID: previousSpeakerID,
             isFirstInDocument: isFirstInDocument
         ).attributedString
     }

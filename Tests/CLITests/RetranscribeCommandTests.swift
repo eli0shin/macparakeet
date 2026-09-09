@@ -42,6 +42,19 @@ final class RetranscribeCommandTests: XCTestCase {
         }
     }
 
+    func testMeetingDiarizationServiceUsesCapturedSystemChoiceWhenGlobalDefaultIsOff() throws {
+        let command = try RetranscribeCommand.parse(["abcd", "--update", "--kind", "meeting"])
+        let resolvedGlobalDefault = ResolvedSpeakerDetection(enabled: false, constraint: nil)
+
+        XCTAssertNotNil(
+            command.makeMeetingDiarizationService(
+                resolvedSpeakerDetection: resolvedGlobalDefault,
+                systemSpeakerDetection: true,
+                microphoneSpeakerDetection: false
+            )
+        )
+    }
+
     func testRequiresExplicitUpdateConfirmation() {
         XCTAssertThrowsError(try RetranscribeCommand.parse(["abcd"])) { error in
             XCTAssertTrue(String(describing: error).contains("Pass --update"), String(describing: error))

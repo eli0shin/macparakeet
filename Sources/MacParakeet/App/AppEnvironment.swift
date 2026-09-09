@@ -167,6 +167,7 @@ final class AppEnvironment {
             // burst into a single warm-engine restart (issue #481).
             warmCaptureRefreshDebounce: 0.5
         )
+        diarizationService = DiarizationService()
         meetingRecordingLockFileStore = MeetingRecordingLockFileStore()
         meetingRecordingService = MeetingRecordingService(
             systemSpeakerDetection: { UserDefaultsAppRuntimePreferences.meetingSpeakerDiarizationEnabled() },
@@ -182,7 +183,8 @@ final class AppEnvironment {
             finalSpeechEngineSelection: { SpeechEngineSelection.finalTranscription() },
             // Wire the real feature flag here (the service defaults to fixed
             // chunking so tests stay deterministic regardless of the flag).
-            isVadLiveChunkingEnabled: { AppFeatures.meetingVadLiveChunkingEnabled }
+            isVadLiveChunkingEnabled: { AppFeatures.meetingVadLiveChunkingEnabled },
+            liveDiarizationService: diarizationService
         )
         meetingRecordingSettlement = MeetingRecordingSettlement(
             lockFileStore: meetingRecordingLockFileStore,
@@ -246,8 +248,6 @@ final class AppEnvironment {
         Task.detached(priority: .utility) {
             await binaryBootstrap.autoUpdateYtDlpIfNeeded()
         }
-        diarizationService = DiarizationService()
-
         let voiceReturnTriggersClosure: @Sendable () -> [String] = { [runtimePreferences] in
             runtimePreferences.voiceReturnTriggers
         }
