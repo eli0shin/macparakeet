@@ -14,16 +14,18 @@ canonical word text, timing, confidence, or source.
 
 ## Purpose
 
-A completed, unedited meeting has one derived Reading Turn document. The app
-uses projections of that document when a user reads, copies, exports,
-summarizes, or chats about the meeting. Consumer-specific decoration can differ,
-but speaker order, overlap membership, paragraph boundaries, and turn start
-ranges must not drift.
+A completed, unedited meeting has one canonical derived Reading Turn document.
+Copy, export, artifact, summary, and chat consumers use that document unchanged.
+The completed-meeting UI has a separate derived display document that collapses
+consecutive same-speaker runs. This display-only grouping does not change AI
+request grouping, readable exports, or stored formatting mappings.
 
 ## Producers
 
-- `MeetingTranscriptPresentationBuilder` derives Reading Turns from canonical
+- `MeetingTranscriptPresentationBuilder` derives canonical Reading Turns from
   transcript words, speaker metadata, and retained diarization evidence.
+- `MeetingTranscriptDisplayBuilder` groups canonical turns for the completed-
+  meeting UI by capture source and resolved speaker ID.
 - `CompletedMeetingReadingDocument` applies the completed-meeting and edited-text
   compatibility guards.
 - `MeetingTranscriptDocumentRenderer` produces Markdown and plain-text
@@ -31,9 +33,9 @@ ranges must not drift.
 
 ## Consumers
 
-- Completed-meeting transcript blocks and per-turn copy actions. The visible
-  reading surface can omit overlap decoration while each turn keeps its overlap
-  identity.
+- Completed-meeting displayed-turn blocks and their context copy actions. The
+  visible reading surface omits overlap decoration and internal contribution
+  targets while canonical turns keep their overlap identity.
 - Full meeting and transcript clipboard actions.
 - TXT and Markdown exports.
 - `meeting.md` artifact rendering.
@@ -45,11 +47,20 @@ ranges must not drift.
 - All normal reconstructed documents use deterministic cleaned meeting text and
   the current enabled vocabulary. The global dictation Raw/Clean preference does
   not change completed meetings. Raw timed words remain unchanged evidence.
-- Each rendered block follows Reading Turn order and uses the current speaker
-  label.
-- A rendered turn has at most one start time. Word timestamps are not emitted in
-  readable output.
-- Paragraphs remain separate inside their Reading Turn.
+- Canonical readable-output blocks follow Reading Turn order and use the current
+  speaker label.
+- The completed-meeting UI collapses every adjacent run with the same capture
+  source and resolved speaker ID. Labels do not define identity. Only a different
+  speaker ends a run; pauses, paragraph and AI-formatting boundaries, and overlap
+  metadata do not.
+- A displayed turn retains the first canonical turn identity and start time, all
+  paragraphs and word references in order, and no internal UI or accessibility
+  target. Playback focus, transcript find, and containing citation navigation use
+  that one displayed turn.
+- Canonical rendered turns have at most one start time. Word timestamps are not
+  emitted in readable output.
+- Paragraphs remain separate inside their canonical or displayed turn. The UI
+  renders exactly one empty text row between displayed paragraphs.
 - Simultaneous contributions retain one explicit overlap marker and deterministic
   contribution order.
 - Word-based citations resolve to the containing Reading Turn and return that
@@ -69,16 +80,18 @@ ranges must not drift.
 
 ## Versioning And Compatibility
 
-This is a semantic contract, not a serialized schema. Formatting marks can
-change when all readable consumers and tests change together. A change to turn
-formation, overlap order, paragraph boundaries, attribution, or navigation must
-update the builder, every projection, this contract, and the shared consumer
-fixture in one change.
+This is a semantic contract, not a serialized schema. UI display grouping is
+computed in memory for existing and new meetings and needs no migration.
+Formatting marks can change when all canonical readable consumers and tests
+change together. A change to canonical turn formation, overlap order, paragraph
+boundaries, attribution, or navigation must update the builder, every projection,
+this contract, and the shared consumer fixture in one change.
 
 ## Tests That Enforce This
 
 - `MeetingReadingTurnConsumerTests`
 - `MeetingTranscriptPresentationBuilderTests`
+- `MeetingTranscriptDisplayBuilderTests`
 - `TranscriptAIContextFormatterTests`
 - `MeetingMarkdownRendererClipboardTests`
 - `ExportServiceTests`

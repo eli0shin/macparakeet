@@ -41,6 +41,9 @@ mode.
   references without changing canonical transcript evidence. Normal completed-
   meeting surfaces always select `.cleaned`, independent of the dictation
   Raw/Clean preference. `.verbatim` remains available for evidence-focused use.
+- `MeetingTranscriptDisplayBuilder.swift` — pure completed-meeting UI projection
+  that collapses each consecutive same-speaker Reading Turn run into one displayed
+  turn. Canonical turns remain available to exports, AI context, and formatting.
 - `MeetingReadingTurnFormatter.swift` — optional AI formatting module for completed
   meetings. It makes serial requests from complete deterministic paragraphs,
   validates content preservation, and commits overrides one stable Reading Turn
@@ -126,7 +129,11 @@ seekable contribution while the surrounding stable statement stays one turn.
 Cross-source overlap of at least 200 ms, and same-source overlap backed by
 concurrent remote-speaker regions, receive one stable overlap-group identity.
 Same-speaker sentence utterances merge across gaps shorter than 2.5 seconds;
-long pauses and completed source exchanges stay as boundaries. This local policy
+long pauses and completed source exchanges stay as canonical boundaries. The
+completed-meeting UI then groups every consecutive run with the same capture
+source and resolved speaker ID, regardless of pause, formatting, or overlap
+metadata. It retains the first turn identity and start time, all paragraphs and
+word references, and no internal UI seek target. This local policy
 does not rewrite words or diarization regions.
 
 **Meeting AI formatting never owns transcript structure.** The formatter sends
