@@ -109,11 +109,11 @@ public enum MeetingTranscriptCleanup: Sendable, Equatable {
 
 public struct MeetingTranscriptPresentationDocument: Codable, Sendable, Equatable {
     public let turns: [ReadingTurn]
-    public let activityGaps: [SpeechActivityGap]?
 
-    public init(turns: [ReadingTurn], activityGaps: [SpeechActivityGap]? = nil) {
+    // Older documents may contain activityGaps. Codable ignores that obsolete
+    // field; reading an existing transcript does not rebuild its saved turns.
+    public init(turns: [ReadingTurn]) {
         self.turns = turns
-        self.activityGaps = activityGaps
     }
 }
 

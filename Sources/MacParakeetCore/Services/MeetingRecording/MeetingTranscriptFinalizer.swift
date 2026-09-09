@@ -45,15 +45,12 @@ struct MeetingTranscriptFinalizer {
         })
 
         let systemWords = shiftedWordsBySource[.system] ?? []
-        let sourceReconciliation = MeetingTranscriptSourceReconciler.reconcile(
-            microphoneWords: shiftedWordsBySource[.microphone] ?? [],
-            systemWords: systemWords
-        )
+        let sourceMicrophoneWords = shiftedWordsBySource[.microphone] ?? []
         let attributedMicrophoneWords =
             microphoneDiarization.map {
-                SpeakerMerger.mergeWordTimestampsWithSpeakers(
-                    words: sourceReconciliation.microphoneWords, segments: $0.segments)
-            } ?? sourceReconciliation.microphoneWords
+                SpeakerMerger.alignWordsToSpeakerTurns(
+                    words: sourceMicrophoneWords, segments: $0.segments)
+            } ?? sourceMicrophoneWords
         let microphoneWords = attributedMicrophoneWords.map { word in
             guard microphoneSpeakerDetection, word.speakerId == AudioSource.microphone.rawValue else { return word }
             return WordTimestamp(
@@ -62,7 +59,7 @@ struct MeetingTranscriptFinalizer {
         }
         let finalizedSystemWords: [WordTimestamp]
         if let systemDiarization {
-            finalizedSystemWords = SpeakerMerger.mergeWordTimestampsWithSpeakers(
+            finalizedSystemWords = SpeakerMerger.alignWordsToSpeakerTurns(
                 words: systemWords,
                 segments: systemDiarization.segments
             )
@@ -90,8 +87,7 @@ struct MeetingTranscriptFinalizer {
         )
         let rawTranscript = finalTranscriptText(
             from: normalized,
-            mergedWords: mergedWords,
-            forceMergedWordText: sourceReconciliation.removedMicrophoneWordCount > 0
+            mergedWords: mergedWords
         )
 
         return FinalizedTranscript(
@@ -118,7 +114,7 @@ struct MeetingTranscriptFinalizer {
                 word: $0.word, startMs: $0.startMs, endMs: $0.endMs, confidence: $0.confidence,
                 speakerId: source.rawValue)
         }
-        var attributed = SpeakerMerger.mergeWordTimestampsWithSpeakers(
+        var attributed = SpeakerMerger.alignWordsToSpeakerTurns(
             words: sourceWords, segments: diarization.segments
         ).makeIterator()
         let merged = words.map { word in
@@ -281,13 +277,8 @@ struct MeetingTranscriptFinalizer {
 
     private static func finalTranscriptText(
         from sourceTranscripts: [SourceTranscript],
-        mergedWords: [WordTimestamp],
-        forceMergedWordText: Bool = false
+        mergedWords: [WordTimestamp]
     ) -> String {
-        if forceMergedWordText {
-            return transcriptText(from: mergedWords)
-        }
-
         let textualSourceTranscripts = sourceTranscripts.compactMap { sourceTranscript -> (source: AudioSource, text: String, hasWords: Bool)? in
             let text = sourceTranscript.result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return nil }

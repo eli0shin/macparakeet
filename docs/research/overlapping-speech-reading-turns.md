@@ -1,5 +1,10 @@
 # Overlapping speech and Reading Turns
 
+> Historical design, superseded by the final-pipeline correction. The application
+> no longer scans source silence to infer Speech Blocks or recursively reorders
+> contained contributions. It persists consecutive same-speaker contributions in
+> finalized evidence order. See [the settings research](fluidaudio-offline-diarization-settings.md).
+
 ## Status and scope
 
 Research and decisions from a user-led design session. The product decisions below are agreed; implementation has not been authorized. Final meeting transcripts and imported recordings are in scope as one deliverable; live preview is deferred. No private audio or transcripts were read or sent to external services. No tests were run: this is source research, not a reproduced recording-level diagnosis.

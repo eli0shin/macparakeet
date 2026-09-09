@@ -132,8 +132,7 @@ public enum CompletedMeetingReadingDocument {
                         formattedText: cleanup == .cleaned ? turn.formattedText : nil,
                         wordReferences: turn.wordReferences
                     )
-                },
-                activityGaps: saved.activityGaps
+                }
             )
         }
         guard transcription.sourceType == .meeting else { return nil }

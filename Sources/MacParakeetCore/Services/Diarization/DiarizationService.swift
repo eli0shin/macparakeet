@@ -100,7 +100,7 @@ public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizin
             modelsDirectory: modelsDirectory ?? AppPaths.fluidAudioModelsDirURL,
             finalManagerFactory: { constraint in
                 OfflineDiarizerManager(config: Self.offlineConfig(
-                    speakerConstraint: constraint, preserveActivity: true, baseConfig: config
+                    speakerConstraint: constraint, finalTranscript: true, baseConfig: config
                 ))
             },
             liveDiarizer: MeetingLiveDiarizer(
@@ -301,16 +301,16 @@ public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizin
 
     nonisolated static func offlineConfig(
         speakerConstraint: SpeakerDiarizationConstraint?,
-        preserveActivity: Bool = false,
+        finalTranscript: Bool = false,
         baseConfig: OfflineDiarizerConfig = .default
     ) -> OfflineDiarizerConfig {
         var config = baseConfig
-        if preserveActivity {
-            // Final assembly needs concurrent regions and gaps. Live callers
-            // keep their existing exclusive post-processing policy.
-            config.exclusiveSegments = false
-            config.minGapDuration = 0
-            config.segmentationMinDurationOff = 0
+        if finalTranscript {
+            // FluidAudio's documented offline accuracy configuration. Keep
+            // embedding/clustering defaults and use its exclusive output.
+            config.segmentationStepRatio = 0.1
+            config.minSegmentDuration = 0
+            config.exclusiveSegments = true
         }
         guard let speakerConstraint else { return config }
 
