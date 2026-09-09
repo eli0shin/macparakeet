@@ -1970,6 +1970,53 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(try llmRunRepo.fetchForTranscription(id: result.id).count, 2)
     }
 
+    func testMeetingBatchPreservesStructurallyValidEmptyOutputThroughCompletedResult() async throws {
+        await mockSTT.configure(result: STTResult(
+            text: "Remove this filler.",
+            words: [
+                TimestampedWord(
+                    word: "Remove this filler.",
+                    startMs: 0,
+                    endMs: 500,
+                    confidence: 0.95
+                )
+            ]
+        ))
+        let llm = MockLLMService()
+        llm.formatTranscriptTransform = { input in
+            let request = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(input.utf8)) as? [String: Any]
+            )
+            let entries = try XCTUnwrap(request["entries"] as? [[String: String]])
+            let response: [String: Any] = [
+                "entries": entries.map { ["id": $0["id"]!, "text": ""] }
+            ]
+            return String(
+                decoding: try JSONSerialization.data(withJSONObject: response),
+                as: UTF8.self
+            )
+        }
+        let service = TranscriptionService(
+            audioProcessor: mockAudio,
+            sttTranscriber: mockSTT,
+            transcriptionRepo: transcriptionRepo,
+            llmService: llm,
+            llmRunRepo: llmRunRepo,
+            shouldUseAIFormatter: { true },
+            meetingAutomationHookRunner: nil
+        )
+        let recording = try makeOneSourceMeetingRecording(displayName: "Empty Cleanup")
+        defer { try? FileManager.default.removeItem(at: recording.folderURL) }
+
+        let result = try await service.transcribeMeeting(recording: recording)
+
+        XCTAssertEqual(result.cleanTranscript, "")
+        XCTAssertEqual(result.meetingReadingTurnFormatting?.first?.formattedText, "")
+        let persisted = try XCTUnwrap(transcriptionRepo.fetch(id: result.id))
+        XCTAssertEqual(persisted.cleanTranscript, "")
+        XCTAssertEqual(persisted.meetingReadingTurnFormatting?.first?.formattedText, "")
+    }
+
     func testMeetingCancellationDuringFormattingThrowsAndPersistsCancelledStatus() async throws {
         await mockSTT.configure(result: STTResult(
             text: "Cancel during formatting.",

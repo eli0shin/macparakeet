@@ -676,8 +676,8 @@ public final class LLMService: LLMServiceProtocol, Sendable {
         do {
             let response: ChatCompletionResponse
             let output: String
+            let isMeetingBatch = promptTemplate.contains(AIFormatter.meetingBatchInstruction)
             if config.id == .lmstudio {
-                let isMeetingBatch = promptTemplate.contains(AIFormatter.meetingBatchInstruction)
                 response = try await client.chatCompletion(
                     messages: messages,
                     context: context,
@@ -691,13 +691,20 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                         )
                     )
                 )
+                if !isMeetingBatch, response.finishReason?.lowercased() == "length" {
+                    throw LLMError.formatterTruncated
+                }
                 let formatted = isMeetingBatch
                     ? Self.firstNonemptyResponseContent(response)
                     : (parseLMStudioFormattedTranscript(response) ?? response.content)
-                output = AIFormatter.normalizedFormattedOutput(formatted)
+                output = isMeetingBatch
+                    ? formatted
+                    : AIFormatter.normalizedFormattedOutput(formatted)
             } else {
                 response = try await client.chatCompletion(messages: messages, context: context, options: .default)
-                output = AIFormatter.normalizedFormattedOutput(response.content)
+                output = isMeetingBatch
+                    ? response.content
+                    : AIFormatter.normalizedFormattedOutput(response.content)
             }
 
             // An empty or whitespace-only response is a failure, not a

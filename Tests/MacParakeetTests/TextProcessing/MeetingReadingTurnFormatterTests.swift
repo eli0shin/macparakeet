@@ -110,6 +110,20 @@ final class MeetingReadingTurnFormatterTests: XCTestCase {
         XCTAssertEqual(result.formatting.map(\.formattedText), ["FIRST", "SECOND", "THIRD"])
     }
 
+    func testFencedJSONWithEscapedParagraphBreaksMapsToFormattedText() async {
+        let document = makeDocument([["first second"]])
+
+        let result = await MeetingReadingTurnFormatter().format(document) { batch in
+            #"""
+            ```json
+            {"entries":[{"id":"\#(batch.entries[0].id)","text":"First.\n\nSecond."}]}
+            ```
+            """#
+        }
+
+        XCTAssertEqual(result.formatting.first?.formattedText, "First.\n\nSecond.")
+    }
+
     func testMalformedMissingAndDuplicateIDsRetryThenUseRawBatchText() async {
         let document = makeDocument([["raw first"], ["raw second"]])
         let attempts = OSAllocatedUnfairLock(initialState: 0)

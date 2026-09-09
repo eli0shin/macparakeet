@@ -647,9 +647,13 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertFalse(mockClient.capturedMessages[1].content.contains("[... content truncated ...]"))
     }
 
-    func testMeetingBatchForLMStudioUsesEntrySchemaAndPreservesJSONOutput() async throws {
+    func testMeetingBatchForLMStudioPreservesFencedJSONWithEscapedParagraphBreaks() async throws {
         mockConfigStore.config = .lmstudio(model: "qwen/qwen3-4b-2507")
-        let response = #"{"entries":[{"id":"entry-0","text":"First.\n\nSecond."}]}"#
+        let response = #"""
+            ```json
+            {"entries":[{"id":"entry-0","text":"First.\n\nSecond."}]}
+            ```
+            """#
         mockClient.responseContent = response
 
         let output = try await service.formatTranscript(
@@ -710,25 +714,40 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertEqual(result, "Intro line.\nSecond line in same paragraph.\n\nNew paragraph starts here.")
     }
 
-    func testFormatTranscriptForLMStudioAcceptsOutputWhenFinishReasonIsLength() async throws {
-        mockConfigStore.config = LLMProviderConfig(
-            id: .lmstudio,
-            baseURL: URL(string: "http://localhost:1234/v1")!,
-            apiKey: nil,
-            modelName: "qwen3.5-4b-mlx",
-            isLocal: true
-        )
+    func testFormatTranscriptForLMStudioRejectsNonBatchOutputWhenFinishReasonIsLength() async throws {
+        mockConfigStore.config = .lmstudio(model: "qwen3.5-4b-mlx")
         mockClient.responseContent = #"{"cleaned_text":"Partial output"}"#
         mockClient.responseFinishReason = "length"
 
+        do {
+            _ = try await service.formatTranscriptDetailed(
+                transcript: "long transcript content",
+                promptTemplate: AIFormatter.defaultPromptTemplate,
+                source: .dictation,
+                defaultPromptUsed: true
+            )
+            XCTFail("Expected truncated non-batch output to throw")
+        } catch let error as LLMError {
+            guard case .formatterTruncated = error else {
+                return XCTFail("Expected formatterTruncated, got \(error)")
+            }
+        }
+    }
+
+    func testMeetingBatchForLMStudioAcceptsOutputWhenFinishReasonIsLength() async throws {
+        mockConfigStore.config = .lmstudio(model: "qwen3.5-4b-mlx")
+        let response = #"{"entries":[{"id":"entry-0","text":"Partial output"}]}"#
+        mockClient.responseContent = response
+        mockClient.responseFinishReason = "length"
+
         let result = try await service.formatTranscriptDetailed(
-            transcript: "long transcript content",
-            promptTemplate: AIFormatter.defaultPromptTemplate,
-            source: .dictation,
+            transcript: #"{"entries":[{"id":"entry-0","text":"source"}]}"#,
+            promptTemplate: AIFormatter.meetingBatchPromptTemplate(AIFormatter.defaultPromptTemplate),
+            source: .transcription,
             defaultPromptUsed: true
         )
 
-        XCTAssertEqual(result.output, "Partial output")
+        XCTAssertEqual(result.output, response)
         XCTAssertEqual(result.result.stopReason, "length")
     }
 
