@@ -49,6 +49,23 @@ final class MicrophoneSpeakerDetectionTests: XCTestCase {
         XCTAssertEqual(result.wordTimestamps?.map(\.speakerId), ["microphone", "microphone"])
     }
 
+    func testCapturedSystemChoiceOverridesChangedGlobalDefaultDuringFinalization() async throws {
+        let fixture = try await makeFixture(system: true)
+        defer { fixture.cleanup() }
+        let recording = fixture.recording.withSpeakerDetection(
+            systemAudio: false,
+            microphone: true
+        )
+
+        let result = try await fixture.service.transcribeMeeting(recording: recording)
+
+        XCTAssertEqual(
+            Set(result.speakers?.map(\.id) ?? []),
+            ["microphone:S1", "microphone:S2", "system"]
+        )
+        XCTAssertFalse(result.speakers?.contains { $0.id.hasPrefix("system:") } ?? true)
+    }
+
     func testDetectionFailureKeepsTranscriptWithNeutralLocalFallback() async throws {
         let fixture = try await makeFixture()
         defer { fixture.cleanup() }
@@ -126,25 +143,35 @@ final class MicrophoneSpeakerDetectionTests: XCTestCase {
         let fixture = try await makeFixture()
         defer { fixture.cleanup() }
         let metadata = MeetingRecordingMetadata(
-            sourceAlignment: fixture.recording.sourceAlignment, microphoneSpeakerDetection: true)
+            sourceAlignment: fixture.recording.sourceAlignment,
+            systemSpeakerDetection: false,
+            microphoneSpeakerDetection: true
+        )
         try MeetingRecordingMetadataStore.save(metadata, folderURL: fixture.recording.folderURL)
         let archived = try MeetingRecordingOutput.loadArchived(
             displayName: "Room", mixedAudioURL: fixture.recording.mixedAudioURL, durationSeconds: 5
         )
+        XCTAssertEqual(archived.systemSpeakerDetection, false)
         XCTAssertTrue(archived.microphoneSpeakerDetection)
         let updated = metadata.withCaptureReport(nil).withEchoSuppression(.init(reasonCode: .rawMissingSystemReference))
+        XCTAssertEqual(updated.systemSpeakerDetection, false)
         XCTAssertTrue(updated.microphoneSpeakerDetection)
         let lock = MeetingRecordingLockFile(sessionId: UUID(), startedAt: Date(), displayName: "Room")
-            .withMicrophoneSpeakerDetection(true)
+            .withSpeakerDetection(systemAudio: false, microphone: true)
             .withNotes("Notes").withState(.awaitingTranscription).withFolderURL(fixture.recording.folderURL)
             .withFinalizationOwner(pid: 123, leaseID: UUID())
-        XCTAssertTrue(
-            try JSONDecoder().decode(MeetingRecordingLockFile.self, from: JSONEncoder().encode(lock))
-                .microphoneSpeakerDetection)
+        let decodedLock = try JSONDecoder().decode(
+            MeetingRecordingLockFile.self,
+            from: JSONEncoder().encode(lock)
+        )
+        XCTAssertEqual(decodedLock.systemSpeakerDetection, false)
+        XCTAssertTrue(decodedLock.microphoneSpeakerDetection)
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(metadata)) as? [String: Any])
+        json.removeValue(forKey: "systemSpeakerDetection")
         json.removeValue(forKey: "microphoneSpeakerDetection")
         let legacy = try JSONDecoder().decode(
             MeetingRecordingMetadata.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(legacy.systemSpeakerDetection)
         XCTAssertFalse(legacy.microphoneSpeakerDetection)
     }
 

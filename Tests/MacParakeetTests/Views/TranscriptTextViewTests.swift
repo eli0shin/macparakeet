@@ -54,6 +54,35 @@ final class TranscriptTextViewTests: XCTestCase {
         XCTAssertEqual(paragraphStyle.paragraphSpacing, 8)
     }
 
+    func testLiveTranscriptShowsHeaderWhenDetectedSpeakerChangesWithinOneSource() {
+        let view = TranscriptTextView(lines: [], autoScroll: true)
+        let lines = [
+            MeetingRecordingPreviewLine(
+                id: "1",
+                timestamp: "0:05",
+                speakerLabel: "Others 1",
+                text: "First remote speaker",
+                source: .system,
+                speakerID: "system:S1"
+            ),
+            MeetingRecordingPreviewLine(
+                id: "2",
+                timestamp: "0:06",
+                speakerLabel: "Others 2",
+                text: "Second remote speaker",
+                source: .system,
+                speakerID: "system:S2"
+            ),
+        ]
+
+        let rendered = MainActor.assumeIsolated {
+            view.renderedAttributedStringForTesting(lines: lines[...]).string
+        }
+
+        XCTAssertEqual(rendered.components(separatedBy: "Others 1").count - 1, 1)
+        XCTAssertEqual(rendered.components(separatedBy: "Others 2").count - 1, 1)
+    }
+
     private func assertColor(
         _ actual: NSColor,
         matches expected: NSColor,

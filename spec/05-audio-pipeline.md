@@ -270,7 +270,7 @@ is the artifact and sidecar contract.
 | `CaptureOrchestrator` | Owns ingest/join/offset/chunk flow for live preview |
 | `MicConditioner` | Meeting-side seam for mic samples; passthrough is the default, and an optional `StreamingMeetingEchoSuppressor` can use paired system reference samples when the runtime/model are available |
 | `MeetingCleanedMicRenderer` | Post-stop offline derivation of `microphone-cleaned.m4a` from the raw mic + system sources through a freshly built suppressor; skips when no echo path/single-source and never throws into finalize |
-| `LiveChunkTranscriber` | Owns live chunk queueing, cancellation, ordering, STT invocation |
+| `LiveChunkTranscriber` | Owns live chunk queueing, cancellation, ordering, STT invocation, and optional track-specific local diarization using the latest persisted in-meeting choice |
 | `MeetingAudioStorageWriter` | Writes separate fragmented M4A files per source, preserves genuine recovery gaps as silence, distinguishes real captured frames from padded timeline frames, and reports per-source finalization failure |
 | `MeetingPlaybackArtifactBuilder` | Probes finalized sources, installs validated mixed playback atomically, or uses the longest aligned source as an explicit partial-playback fallback |
 | `MeetingCaptureReport` | Pure finalized truth for elapsed time, captured/timeline duration, per-source coverage/interruption, runtime failure, and canonical-playback fallback |
@@ -294,7 +294,11 @@ User clicks "Start Meeting Recording"
     → Start MeetingAudioCaptureService with the selected source mode
     → Show recording pill (red dot + elapsed timer + stop button)
     → Consume AsyncStream<MeetingAudioCaptureEvent>, write buffers to M4A files
-      and keep `recording.lock` current with session state/notes/final speech engine
+      and keep `recording.lock` current with session state, notes, final speech
+      engine, and independent system/microphone speaker-detection choices
+    → The live panel audio-controls popover can update either speaker-detection
+      choice without stopping capture; successful writes affect finalization and
+      also become the defaults for new meetings
     → User clicks Stop
     → Stop capture and finalize the captured source file(s); if a written source
       cannot finalize, preserve the lock/source artifacts and abort settlement
@@ -310,7 +314,9 @@ User clicks "Start Meeting Recording"
     → Background queue converts each captured source M4A → 16kHz mono WAV via FFmpeg
     → Send each source WAV to the captured local STT engine
     → Merge fresh per-source STT using persisted source offsets
-    → Optionally refine the isolated system side with diarization
+    → Optionally refine each isolated source with local diarization according to
+      the track choices persisted for this meeting; legacy missing system choices
+      follow the current default
     → Update the existing Transcription row, then settle: MeetingRecordingSettlement
       verifies the completed row and deletes `recording.lock` (on failure the
       lock stays for recovery to re-settle; the queue still reports success)
@@ -347,8 +353,8 @@ the stopped meeting waits for that job to finish; once the slot is free,
     ├── system-raw.m4a        # System audio when captured (AAC, 48kHz mono)
     ├── microphone-cleaned.m4a  # Optional derived echo-cancelled mic (16kHz mono); STT input for the "Me" track only after readiness/decodability gates pass
     ├── meeting-playback.m4a       # Playback/export artifact (stereo dual-source when both tracks exist)
-    ├── meeting-recording-metadata.json  # Source timing/alignment + capture report + final engine + optional preview engine / echoSuppression provenance
-    ├── recording.lock     # Recovery state, notes, and captured final engine (schema v2 unchanged)
+    ├── meeting-recording-metadata.json  # Source timing/alignment + capture report + final engine + speaker choices + optional preview engine / echoSuppression provenance
+    ├── recording.lock     # Recovery state, notes, captured final engine, and speaker choices (schema v2 unchanged)
     └── chunks/            # Live-preview scratch chunks
 ```
 
@@ -430,7 +436,8 @@ alter the pasted text. See `docs/research/live-dictation-streaming.md`.
 
 `CaptureOrchestrator` buffers audio into live-preview chunks and sends them through the scheduler using the meeting plan's preview route. The preview route is the captured Live Speech selection only when its capabilities provide the word timings required by the renderer; otherwise no live chunks are created and there is no fallback engine. The fixed cadence keeps the original 5s / 1s-overlap `AudioChunker`. When `AppFeatures.meetingVadLiveChunkingEnabled` is true, launch-time prep tries to cache the Silero VAD model; if it is cached and preview uses Parakeet, the live path cuts chunks at speech boundaries per source. Nemotron and Whisper preview use the fixed cadence. Cohere cannot preview. VAD unavailable/error cases fall back to fixed chunking, while the authoritative post-stop pass independently uses the plan's captured final route and durable audio. This provides:
 - Live transcript preview in the recording pill
-- Source-aware labels: mic chunks → "Me", system chunks → "Them"
+- Source-aware labels by default: mic chunks → "Me", system chunks → "Them"
+- Optional local speaker attribution per live chunk and capture track; setting changes affect later output without restarting capture, already displayed words stay unchanged, and in-flight results are reconciled to the latest persisted choice before emission. Each independent diarization call gets a distinct live identity namespace because local labels such as `S1` provide no cross-chunk identity evidence; the preview does not infer speaker matching between chunks.
 - Raw mic capture plus a residual safeguard that suppresses clearly system-dominant mic chunks in live preview windows
 - Immediate transcript availability when recording stops
 

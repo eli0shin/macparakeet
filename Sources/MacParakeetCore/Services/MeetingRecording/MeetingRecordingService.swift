@@ -22,6 +22,32 @@ public enum CaptureMode: Sendable, Equatable {
     case stopped
 }
 
+public struct MeetingSpeakerDetectionState: Sendable, Equatable {
+    public let systemAudioEnabled: Bool
+    public let microphoneEnabled: Bool
+    public let canDetectSystemAudio: Bool
+    public let canDetectMicrophone: Bool
+
+    public init(
+        systemAudioEnabled: Bool,
+        microphoneEnabled: Bool,
+        canDetectSystemAudio: Bool,
+        canDetectMicrophone: Bool
+    ) {
+        self.systemAudioEnabled = systemAudioEnabled
+        self.microphoneEnabled = microphoneEnabled
+        self.canDetectSystemAudio = canDetectSystemAudio
+        self.canDetectMicrophone = canDetectMicrophone
+    }
+
+    public static let unavailable = MeetingSpeakerDetectionState(
+        systemAudioEnabled: false,
+        microphoneEnabled: false,
+        canDetectSystemAudio: false,
+        canDetectMicrophone: false
+    )
+}
+
 public struct MeetingMicrophoneMuteState: Sendable, Equatable {
     public let isMuted: Bool
     public let canMute: Bool
@@ -72,6 +98,10 @@ public protocol MeetingRecordingServiceProtocol: Sendable {
     /// (completion-path deletion is owned by `MeetingRecordingSettlement`) —
     /// so notes-saves cannot race with state-transition writes.
     func updateNotes(_ notes: String) async
+    /// Update one track without changing the other track. The actor persists
+    /// the effective current-meeting choices before it returns success.
+    func setSpeakerDetection(_ enabled: Bool, for source: AudioSource) async throws -> MeetingSpeakerDetectionState
+    var activeSpeakerDetectionState: MeetingSpeakerDetectionState { get async }
     var isRecording: Bool { get async }
     var activeSessionID: UUID? { get async }
     /// Speech engine pinned to the active recording session. Consumers should
@@ -119,6 +149,17 @@ public extension MeetingRecordingServiceProtocol {
 
     var captureHealth: MeetingCaptureHealthSummary {
         get async { .notRecording }
+    }
+
+    var activeSpeakerDetectionState: MeetingSpeakerDetectionState {
+        get async { .unavailable }
+    }
+
+    func setSpeakerDetection(
+        _ enabled: Bool,
+        for source: AudioSource
+    ) async throws -> MeetingSpeakerDetectionState {
+        .unavailable
     }
 
     var activeSessionID: UUID? {
@@ -185,7 +226,10 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         let startContext: MeetingStartContext?
         let calendarEventSnapshot: MeetingCalendarSnapshot?
 
-        let microphoneSpeakerDetection: Bool
+        var sourceMode: MeetingAudioSourceMode?
+        var systemSpeakerDetection: Bool
+        var microphoneSpeakerDetection: Bool
+        var speakerDetectionGeneration: [AudioSource: Int]
 
         var supportsLiveChunkTranscription: Bool {
             speechPlan.preview != nil
@@ -240,6 +284,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     private let liveChunkTranscriber: LiveChunkTranscriber
     private let lockFileStore: MeetingRecordingLockFileStoring
     private let speechEngineSessionManager: (any SpeechEngineSessionManaging)?
+    private let systemSpeakerDetection: @Sendable () -> Bool
     private let microphoneSpeakerDetection: @Sendable () -> Bool
     private let finalSpeechEngineSelection: @Sendable () -> SpeechEngineSelection?
     private let micConditionerFactory: @Sendable () -> any MicConditioning
@@ -339,6 +384,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     }
 
     public init(
+        systemSpeakerDetection: @escaping @Sendable () -> Bool = { true },
         microphoneSpeakerDetection: @escaping @Sendable () -> Bool = { false },
         micProcessingMode: MeetingMicProcessingMode = .raw,
         audioCaptureService: any MeetingAudioCapturing,
@@ -348,9 +394,11 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         fileManager: FileManager = .default,
         finalSpeechEngineSelection: @escaping @Sendable () -> SpeechEngineSelection? = { nil },
         isVadLiveChunkingEnabled: @escaping @Sendable () -> Bool = { false },
+        liveDiarizationService: (any DiarizationServiceProtocol)? = nil,
         echoSuppressionConfiguration: MeetingEchoSuppressionConfiguration = .fromEnvironment()
     ) {
         self.init(
+            systemSpeakerDetection: systemSpeakerDetection,
             microphoneSpeakerDetection: microphoneSpeakerDetection,
             micProcessingMode: micProcessingMode,
             audioCaptureService: audioCaptureService,
@@ -360,6 +408,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             fileManager: fileManager,
             finalSpeechEngineSelection: finalSpeechEngineSelection,
             isVadLiveChunkingEnabled: isVadLiveChunkingEnabled,
+            liveDiarizationService: liveDiarizationService,
             micConditionerFactory: {
                 MeetingEchoSuppressionFactory.makeConditioner(
                     configuration: echoSuppressionConfiguration
@@ -376,6 +425,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     }
 
     init(
+        systemSpeakerDetection: @escaping @Sendable () -> Bool = { true },
         microphoneSpeakerDetection: @escaping @Sendable () -> Bool = { false },
         micProcessingMode: MeetingMicProcessingMode = .raw,
         audioCaptureService: any MeetingAudioCapturing,
@@ -385,6 +435,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         fileManager: FileManager = .default,
         finalSpeechEngineSelection: @escaping @Sendable () -> SpeechEngineSelection? = { nil },
         isVadLiveChunkingEnabled: @escaping @Sendable () -> Bool = { false },
+        liveDiarizationService: (any DiarizationServiceProtocol)? = nil,
         micConditionerFactory: @escaping @Sendable () -> any MicConditioning,
         cleanedMicConditionerFactory: (@Sendable () -> any MicConditioning)? = nil,
         wallClockNow: @escaping @Sendable () -> Date = { Date() },
@@ -410,6 +461,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 MeetingAudioStorageWriter.FinalizationReport
             ) -> MeetingAudioStorageWriter.FinalizationReport = { $0 }
     ) {
+        self.systemSpeakerDetection = systemSpeakerDetection
         self.microphoneSpeakerDetection = microphoneSpeakerDetection
         self.requestedMicProcessingMode = micProcessingMode
         self.audioCaptureService = audioCaptureService
@@ -424,7 +476,10 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         self.audioHostTimeNow = audioHostTimeNow
         self.cleanedMicrophoneReadinessScheduler = cleanedMicrophoneReadinessScheduler
         self.writerFinalizationReportTransform = writerFinalizationReportTransform
-        self.liveChunkTranscriber = LiveChunkTranscriber(sttTranscriber: sttTranscriber)
+        self.liveChunkTranscriber = LiveChunkTranscriber(
+            sttTranscriber: sttTranscriber,
+            diarizationService: liveDiarizationService
+        )
         self.speechEngineSessionManager = sttTranscriber as? any SpeechEngineSessionManaging
     }
 
@@ -461,6 +516,12 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         return max(0, Int(activeRecordingSeconds(startedAt: startedAt, asOf: wallClockNow())))
     }
 
+    #if DEBUG
+    func testHook_waitForLiveTranscriptDrain(timeout: Duration = .seconds(5)) async -> Bool {
+        await liveChunkTranscriber.waitForPendingTasksToDrain(timeout: timeout)
+    }
+    #endif
+
     public var captureMode: CaptureMode {
         if currentSession == nil || captureFailed {
             return .stopped
@@ -482,6 +543,16 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     public var microphoneMuteState: MeetingMicrophoneMuteState {
         let canMute = canMuteMicrophone
         return MeetingMicrophoneMuteState(isMuted: canMute && microphoneMuted, canMute: canMute)
+    }
+
+    public var activeSpeakerDetectionState: MeetingSpeakerDetectionState {
+        guard let session = currentSession else { return .unavailable }
+        return MeetingSpeakerDetectionState(
+            systemAudioEnabled: session.systemSpeakerDetection,
+            microphoneEnabled: session.microphoneSpeakerDetection,
+            canDetectSystemAudio: session.sourceMode?.capturesSystemAudio == true,
+            canDetectMicrophone: session.sourceMode?.capturesMicrophone == true
+        )
     }
 
     public var captureHealth: MeetingCaptureHealthSummary {
@@ -662,7 +733,10 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             speechPlan: speechPlan,
             startContext: startContext,
             calendarEventSnapshot: calendarEventSnapshot,
-            microphoneSpeakerDetection: microphoneSpeakerDetection()
+            sourceMode: sourceMode,
+            systemSpeakerDetection: systemSpeakerDetection(),
+            microphoneSpeakerDetection: microphoneSpeakerDetection(),
+            speakerDetectionGeneration: [.system: 0, .microphone: 0]
         )
         self.writer = writer
         self.currentSession = session
@@ -677,7 +751,10 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 startContext: session.startContext,
                 calendarEventSnapshot: session.calendarEventSnapshot,
                 folderURL: session.folderURL
-            ).withMicrophoneSpeakerDetection(session.microphoneSpeakerDetection)
+            ).withSpeakerDetection(
+                systemAudio: session.systemSpeakerDetection,
+                microphone: session.microphoneSpeakerDetection
+            )
             try lockFileStore.write(initialLock, folderURL: session.folderURL)
             currentLockFile = initialLock
 
@@ -713,7 +790,9 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                     .init(
                         id: session.id,
                         chunkFolderURL: session.chunkFolderURL,
-                        speechEngine: previewSpeechEngine
+                        speechEngine: previewSpeechEngine,
+                        systemSpeakerDetection: session.systemSpeakerDetection,
+                        microphoneSpeakerDetection: session.microphoneSpeakerDetection
                     ),
                     onEvent: { [weak self] event in
                         await self?.handleLiveChunkTranscriberEvent(event, sessionID: session.id)
@@ -725,6 +804,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             let captureStartReport = try await audioCaptureService.start(sourceMode: sourceMode)
             try await validateStartStillCurrent(session)
             captureHealthMetrics.sourceMode = captureStartReport.sourceMode
+            currentSession?.sourceMode = captureStartReport.sourceMode
             captureHealthMetrics.requestedMicMode = captureStartReport.microphone.requestedMode
             captureHealthMetrics.effectiveMicMode = captureStartReport.microphone.effectiveMode
             captureHealthMetrics.captureStartedAt = wallClockNow()
@@ -953,6 +1033,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         )
         var recordingMetadata = MeetingRecordingMetadata(
             sourceAlignment: sourceAlignment,
+            systemSpeakerDetection: session.systemSpeakerDetection,
             microphoneSpeakerDetection: session.microphoneSpeakerDetection,
             captureReport: preliminaryCaptureReport,
             speechEngine: session.speechPlan.final,
@@ -1093,7 +1174,10 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 calendarEventSnapshot: session.calendarEventSnapshot,
                 folderURL: session.folderURL
             ))
-            .withMicrophoneSpeakerDetection(session.microphoneSpeakerDetection)
+            .withSpeakerDetection(
+                systemAudio: session.systemSpeakerDetection,
+                microphone: session.microphoneSpeakerDetection
+            )
             .withNotes(finalNotes)
             .withState(.awaitingTranscription)
         let lockStartedAt = Date()
@@ -1144,7 +1228,10 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             startContext: session.startContext,
             userNotes: finalNotes,
             calendarEventSnapshot: session.calendarEventSnapshot
-        ).withMicrophoneSpeakerDetection(session.microphoneSpeakerDetection)
+        ).withSpeakerDetection(
+            systemAudio: session.systemSpeakerDetection,
+            microphone: session.microphoneSpeakerDetection
+        )
 
         let cleanupStartedAt = Date()
         await liveChunkTranscriber.finishSession()
@@ -1200,7 +1287,13 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 calendarEventSnapshot: session.calendarEventSnapshot,
                 folderURL: session.folderURL
             )
-        let updated = base.withMicrophoneSpeakerDetection(session.microphoneSpeakerDetection).withNotes(normalized)
+        let updated =
+            base
+            .withSpeakerDetection(
+                systemAudio: session.systemSpeakerDetection,
+                microphone: session.microphoneSpeakerDetection
+            )
+            .withNotes(normalized)
         do {
             try lockFileStore.write(updated, folderURL: session.folderURL)
             currentLockFile = updated
@@ -1211,6 +1304,55 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 "meeting_recording_notes_persist_failed session=\(session.id.uuidString, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
             )
         }
+    }
+
+    public func setSpeakerDetection(
+        _ enabled: Bool,
+        for source: AudioSource
+    ) async throws -> MeetingSpeakerDetectionState {
+        guard var session = currentSession else { throw MeetingAudioError.notRunning }
+
+        switch source {
+        case .system where session.sourceMode?.capturesSystemAudio == true:
+            session.systemSpeakerDetection = enabled
+        case .microphone where session.sourceMode?.capturesMicrophone == true:
+            session.microphoneSpeakerDetection = enabled
+        case .system, .microphone:
+            return activeSpeakerDetectionState
+        }
+
+        let base =
+            currentLockFile
+            ?? MeetingRecordingLockFile(
+                sessionId: session.id,
+                startedAt: session.startedAt,
+                pid: ProcessInfo.processInfo.processIdentifier,
+                displayName: session.displayName,
+                speechEngine: session.speechPlan.final,
+                startContext: session.startContext,
+                calendarEventSnapshot: session.calendarEventSnapshot,
+                notes: currentNotes,
+                folderURL: session.folderURL
+            )
+        let updated = base.withSpeakerDetection(
+            systemAudio: session.systemSpeakerDetection,
+            microphone: session.microphoneSpeakerDetection
+        )
+
+        do {
+            try lockFileStore.write(updated, folderURL: session.folderURL)
+        } catch {
+            logger.error(
+                "meeting_speaker_detection_persist_failed session=\(session.id.uuidString, privacy: .public) source=\(source.rawValue, privacy: .public) error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public)"
+            )
+            throw MeetingAudioError.storageFailed(error.localizedDescription)
+        }
+
+        session.speakerDetectionGeneration[source, default: 0] += 1
+        currentSession = session
+        currentLockFile = updated
+        await liveChunkTranscriber.setSpeakerDetection(enabled, for: source)
+        return activeSpeakerDetectionState
     }
 
     public func pauseRecording() async {
@@ -1679,10 +1821,21 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         switch event {
         case .orderedResults(let readyResults):
             for ready in readyResults {
+                guard let session = currentSession else { return }
+                let detectionEnabled =
+                    ready.source == .system
+                    ? session.systemSpeakerDetection
+                    : session.microphoneSpeakerDetection
+                let currentGeneration = session.speakerDetectionGeneration[ready.source, default: 0]
+                if detectionEnabled, ready.speakerDetectionGeneration != currentGeneration {
+                    isTranscriptionLagging = true
+                    continue
+                }
                 let update = transcriptAssembler.apply(
                     result: ready.result,
                     chunk: ready.chunk,
-                    source: ready.source
+                    source: ready.source,
+                    diarization: detectionEnabled ? ready.diarization : nil
                 )
                 yieldTranscriptUpdate(update)
             }

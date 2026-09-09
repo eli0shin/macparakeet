@@ -44,17 +44,22 @@ struct MeetingTranscriptAssembler {
     private static let syntheticOverlapAnchorLength = 6
 
     private var wordsBySource: [AudioSource: [WordTimestamp]] = [:]
+    private var detectedSpeakersBySource: [AudioSource: [SpeakerInfo]] = [:]
+    private var nextLiveDiarizationSequence: [AudioSource: Int] = [:]
     private var lastCommittedEndMs: [AudioSource: Int] = [:]
 
     mutating func reset() {
         wordsBySource = [:]
+        detectedSpeakersBySource = [:]
+        nextLiveDiarizationSequence = [:]
         lastCommittedEndMs = [:]
     }
 
     mutating func apply(
         result: STTResult,
         chunk: AudioChunker.AudioChunk,
-        source: AudioSource
+        source: AudioSource,
+        diarization: MacParakeetDiarizationResult? = nil
     ) -> MeetingTranscriptUpdate {
         let cutoff = lastCommittedEndMs[source]
         let offsetWords = Self.offsetWords(
@@ -64,7 +69,29 @@ struct MeetingTranscriptAssembler {
             committedWords: wordsBySource[source] ?? [],
             committedThroughMs: cutoff
         )
-        let deduplicated = offsetWords.filter { word in
+        let attributedWords: [WordTimestamp]
+        if let diarization, !diarization.segments.isEmpty {
+            let sequence = nextLiveDiarizationSequence[source, default: 0]
+            nextLiveDiarizationSequence[source] = sequence + 1
+            let mapped = Self.mappedDiarization(
+                diarization,
+                source: source,
+                offsetMs: chunk.startMs,
+                identityNamespace: "live-\(sequence)",
+                labelOffset: detectedSpeakersBySource[source]?.count ?? 0
+            )
+            detectedSpeakersBySource[source] = Self.mergedSpeakers(
+                detectedSpeakersBySource[source] ?? [],
+                mapped.speakers
+            )
+            attributedWords = SpeakerMerger.mergeWordTimestampsWithSpeakers(
+                words: offsetWords,
+                segments: mapped.segments
+            )
+        } else {
+            attributedWords = offsetWords
+        }
+        let deduplicated = attributedWords.filter { word in
             guard let cutoff else { return true }
             return word.endMs > cutoff
         }
@@ -75,6 +102,37 @@ struct MeetingTranscriptAssembler {
         }
 
         return currentUpdate
+    }
+
+    private static func mappedDiarization(
+        _ diarization: MacParakeetDiarizationResult,
+        source: AudioSource,
+        offsetMs: Int,
+        identityNamespace: String,
+        labelOffset: Int
+    ) -> MeetingTranscriptFinalizer.SourceDiarization {
+        let label = source == .microphone ? "Local Speaker" : source.displayLabel
+        let idPrefix = "\(source.rawValue):\(identityNamespace):"
+        let speakers = diarization.speakers.enumerated().map { index, speaker in
+            SpeakerInfo(id: "\(idPrefix)\(speaker.id)", label: "\(label) \(labelOffset + index + 1)")
+        }
+        let ids = Dictionary(uniqueKeysWithValues: zip(diarization.speakers.map(\.id), speakers.map(\.id)))
+        let segments = diarization.segments.map { segment in
+            SpeakerSegment(
+                speakerId: ids[segment.speakerId] ?? "\(idPrefix)\(segment.speakerId)",
+                startMs: segment.startMs + offsetMs,
+                endMs: segment.endMs + offsetMs
+            )
+        }
+        return MeetingTranscriptFinalizer.SourceDiarization(speakers: speakers, segments: segments)
+    }
+
+    private static func mergedSpeakers(_ existing: [SpeakerInfo], _ added: [SpeakerInfo]) -> [SpeakerInfo] {
+        var byID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
+        for speaker in added {
+            byID[speaker.id] = speaker
+        }
+        return byID.values.sorted { $0.id < $1.id }
     }
 
     private static func offsetWords(
@@ -220,9 +278,12 @@ struct MeetingTranscriptAssembler {
 
     private func activeSpeakers(for words: [WordTimestamp]) -> [SpeakerInfo] {
         let activeIDs = Set(words.compactMap(\.speakerId))
-        return Self.orderedSources.compactMap { source in
-            guard activeIDs.contains(source.rawValue) else { return nil }
-            return SpeakerInfo(id: source.rawValue, label: source.displayLabel)
+        return Self.orderedSources.flatMap { source in
+            var speakers = (detectedSpeakersBySource[source] ?? []).filter { activeIDs.contains($0.id) }
+            if activeIDs.contains(source.rawValue) {
+                speakers.append(SpeakerInfo(id: source.rawValue, label: source.displayLabel))
+            }
+            return speakers
         }
     }
 

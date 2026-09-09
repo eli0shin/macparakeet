@@ -8,7 +8,7 @@ struct MeetingRecordingPanelView: View {
     @AppStorage(UserDefaultsAppRuntimePreferences.transcriptAIContextModeKey)
     private var transcriptAIContextModeRaw = TranscriptAIContextMode.richTranscript.rawValue
     @State private var autoScroll = true
-    @State private var showsEchoControls = false
+    @State private var showsMeetingAudioControls = false
     /// Tab currently under the cursor — drives the hover-revealed `⌘N` chip
     /// next to the tab label. Discoverability for the keyboard shortcuts
     /// without permanent chrome on the tab bar.
@@ -234,21 +234,19 @@ struct MeetingRecordingPanelView: View {
                         .foregroundStyle(DesignSystem.Colors.textTertiary.opacity(0.8))
                 }
 
-                if viewModel.canToggleMicrophoneMute,
-                    viewModel.captureHealth.sourceMode == .microphoneAndSystem
-                {
+                if viewModel.showsMeetingAudioControls {
                     Button {
-                        showsEchoControls.toggle()
+                        showsMeetingAudioControls.toggle()
                     } label: {
                         Image(systemName: "slider.horizontal.3")
                     }
                     .parakeetAction(.secondary)
-                    .help("Adjust echo suppression for incoming audio")
-                    .accessibilityLabel("Echo suppression")
-                    .popover(isPresented: $showsEchoControls) {
-                        MeetingEchoSuppressionControls(isLive: true)
+                    .help("Adjust speaker detection and audio processing")
+                    .accessibilityLabel("Meeting audio controls")
+                    .popover(isPresented: $showsMeetingAudioControls) {
+                        MeetingInProgressAudioControls(viewModel: viewModel)
                             .padding()
-                            .frame(width: 340)
+                            .frame(width: 360)
                     }
                 }
 

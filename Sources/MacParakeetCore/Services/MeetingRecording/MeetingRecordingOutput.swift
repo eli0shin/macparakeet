@@ -2,12 +2,20 @@ import AVFoundation
 import Foundation
 
 public struct MeetingRecordingOutput: Sendable, Equatable {
+    /// `nil` identifies a legacy artifact that follows the current meeting
+    /// default. New sessions always capture an explicit system-track choice.
+    public private(set) var systemSpeakerDetection: Bool?
     public private(set) var microphoneSpeakerDetection = false
 
-    public func withMicrophoneSpeakerDetection(_ enabled: Bool) -> Self {
+    public func withSpeakerDetection(systemAudio: Bool?, microphone: Bool) -> Self {
         var copy = self
-        copy.microphoneSpeakerDetection = enabled
+        copy.systemSpeakerDetection = systemAudio
+        copy.microphoneSpeakerDetection = microphone
         return copy
+    }
+
+    public func withMicrophoneSpeakerDetection(_ enabled: Bool) -> Self {
+        withSpeakerDetection(systemAudio: systemSpeakerDetection, microphone: enabled)
     }
 
     public let sessionID: UUID
@@ -106,6 +114,7 @@ public struct MeetingRecordingOutput: Sendable, Equatable {
         userNotes: String? = nil,
         calendarEventSnapshot: MeetingCalendarSnapshot? = nil
     ) {
+        self.systemSpeakerDetection = nil
         self.sessionID = sessionID
         self.displayName = displayName
         self.folderURL = folderURL
@@ -233,7 +242,10 @@ public struct MeetingRecordingOutput: Sendable, Equatable {
             startContext: metadata.startContext,
             calendarEventSnapshot: metadata.calendarEventSnapshot
         )
-        .withMicrophoneSpeakerDetection(metadata.microphoneSpeakerDetection)
+        .withSpeakerDetection(
+            systemAudio: metadata.systemSpeakerDetection,
+            microphone: metadata.microphoneSpeakerDetection
+        )
     }
 
     /// Explicit retranscription always renders with the selected current settings.
@@ -270,7 +282,10 @@ public struct MeetingRecordingOutput: Sendable, Equatable {
             previewSpeechEngine: previewSpeechEngine, startContext: startContext,
             userNotes: userNotes, calendarEventSnapshot: calendarEventSnapshot
         )
-        .withMicrophoneSpeakerDetection(microphoneSpeakerDetection)
+        .withSpeakerDetection(
+            systemAudio: systemSpeakerDetection,
+            microphone: microphoneSpeakerDetection
+        )
     }
 
     private static func probedDurationSeconds(
@@ -309,7 +324,8 @@ public struct MeetingRecordingOutput: Sendable, Equatable {
     }
 
     public static func == (lhs: MeetingRecordingOutput, rhs: MeetingRecordingOutput) -> Bool {
-        lhs.microphoneSpeakerDetection == rhs.microphoneSpeakerDetection
+        lhs.systemSpeakerDetection == rhs.systemSpeakerDetection
+            && lhs.microphoneSpeakerDetection == rhs.microphoneSpeakerDetection
             && lhs.sessionID == rhs.sessionID
             && lhs.displayName == rhs.displayName
             && lhs.folderURL == rhs.folderURL

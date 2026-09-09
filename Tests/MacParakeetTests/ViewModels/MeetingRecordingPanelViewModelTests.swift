@@ -13,6 +13,50 @@ final class MeetingRecordingPanelViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.canStop)
     }
 
+    func testSpeakerDetectionRequestsChangeOnlySelectedAvailableTrack() {
+        let viewModel = MeetingRecordingPanelViewModel()
+        var changes: [(AudioSource, Bool)] = []
+        viewModel.state = .recording
+        viewModel.configureSpeakerDetection(
+            MeetingSpeakerDetectionState(
+                systemAudioEnabled: true,
+                microphoneEnabled: false,
+                canDetectSystemAudio: true,
+                canDetectMicrophone: true
+            )
+        )
+        viewModel.onSpeakerDetectionChange = { changes.append(($0, $1)) }
+
+        viewModel.requestSpeakerDetection(true, for: .microphone)
+
+        XCTAssertTrue(viewModel.speakerDetectionState.systemAudioEnabled)
+        XCTAssertTrue(viewModel.speakerDetectionState.microphoneEnabled)
+        XCTAssertEqual(changes.count, 1)
+        XCTAssertEqual(changes.first?.0, .microphone)
+        XCTAssertEqual(changes.first?.1, true)
+        XCTAssertTrue(viewModel.showsMeetingAudioControls)
+    }
+
+    func testSpeakerDetectionIgnoresUnavailableTrack() {
+        let viewModel = MeetingRecordingPanelViewModel()
+        var changeCount = 0
+        viewModel.state = .recording
+        viewModel.configureSpeakerDetection(
+            MeetingSpeakerDetectionState(
+                systemAudioEnabled: true,
+                microphoneEnabled: false,
+                canDetectSystemAudio: false,
+                canDetectMicrophone: true
+            )
+        )
+        viewModel.onSpeakerDetectionChange = { _, _ in changeCount += 1 }
+
+        viewModel.requestSpeakerDetection(false, for: .system)
+
+        XCTAssertTrue(viewModel.speakerDetectionState.systemAudioEnabled)
+        XCTAssertEqual(changeCount, 0)
+    }
+
     func testFormattedElapsedUsesMinutesAndSeconds() {
         let viewModel = MeetingRecordingPanelViewModel()
         viewModel.elapsedSeconds = 125

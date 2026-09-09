@@ -535,6 +535,8 @@ final class VocabCommandTests: XCTestCase {
     }
 
     private func capturingStdout(_ body: () async throws -> Void) async throws -> String {
+        // Do not redirect output buffered by tests that ran before this one.
+        fflush(stdout)
         let pipe = Pipe()
         let saved = dup(STDOUT_FILENO)
         defer { close(saved) }

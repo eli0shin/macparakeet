@@ -1,12 +1,29 @@
 # Meeting Artifacts v1
 
-## Microphone speaker detection
+## Meeting speaker detection
 
 `meeting-recording-metadata.json` and `recording.lock` include the additive
-Boolean `microphoneSpeakerDetection`, captured at recording start. Missing or
-malformed values decode as false. Lock rewrites, metadata updates, crash
-recovery, and archive loading preserve the choice. No database migration is
-needed; speaker IDs and timing evidence use the existing transcript fields.
+track-specific choices `systemSpeakerDetection` and
+`microphoneSpeakerDetection`. New recordings capture both defaults at start.
+The in-meeting audio-controls popover can change either choice independently;
+a successful change atomically rewrites `recording.lock`, applies to later live
+preview chunks and that meeting's final transcript, and becomes the default for
+new meetings. Already displayed live words keep their attribution. A chunk
+whose speaker-detection work is in flight when the choice changes is reconciled
+to the latest successfully persisted choice before it is emitted, so a stale
+result cannot restore the previous attribution behavior. Each independent live
+diarization call namespaces its local speaker IDs because repeated local indices
+such as `S1` are not evidence of one identity across chunks. Live preview does
+not perform cross-chunk speaker matching.
+
+Missing or malformed `systemSpeakerDetection` values identify legacy artifacts
+and use the current meeting default during finalization or app-default archive
+retranscription. Missing or malformed `microphoneSpeakerDetection` values
+decode as false. Lock rewrites, metadata updates, normal stop, crash recovery,
+and archive loading preserve captured choices. Explicit CLI on/off options and
+`--no-diarize` still override captured choices for that CLI run. No database
+migration is needed; speaker IDs and timing evidence use the existing
+transcript fields.
 
 Enabled recordings use `microphone:<id>` for detected local speakers and
 `microphone:unknown` for unattributed local speech. Default labels are
@@ -83,7 +100,9 @@ The v1 folder can contain these stable filenames:
   and playback remain unchanged. Removed with other managed audio by
   retention/detach.
 - `meeting-recording-metadata.json`: optional source-alignment and speech-route
-  sidecar. `speechEngine` is the authoritative final-transcription selection;
+  sidecar. It also keeps the optional captured `systemSpeakerDetection` choice
+  and the default-false `microphoneSpeakerDetection` choice described above.
+  `speechEngine` is the authoritative final-transcription selection;
   optional additive `previewSpeechEngine` records the live-preview route when
   one was supported. Missing preview provenance remains valid for legacy
   folders. It may also include additive `echoSuppression` provenance with

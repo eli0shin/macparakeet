@@ -83,6 +83,7 @@ final class MeetingRecordingFlowCoordinator {
     private let sttManager: (any STTRuntimeManaging)?
     private let speechEngineSelectionProvider: (@Sendable () async -> SpeechEngineSelection?)?
     private let meetingAudioSourceModeProvider: @MainActor @Sendable () -> MeetingAudioSourceMode
+    private let onSpeakerDetectionDefaultChanged: @MainActor @Sendable (AudioSource, Bool) -> Void
     private let shouldShowFloatingMeetingPill: @MainActor @Sendable () -> Bool
     private let frontmostApplicationProvider: any FrontmostApplicationProviding
     private let probableCalendarSnapshotProvider: @MainActor @Sendable () -> MeetingCalendarSnapshot?
@@ -147,6 +148,14 @@ final class MeetingRecordingFlowCoordinator {
         meetingAudioSourceModeProvider: @escaping @MainActor @Sendable () -> MeetingAudioSourceMode = {
             .microphoneAndSystem
         },
+        onSpeakerDetectionDefaultChanged: @escaping @MainActor @Sendable (AudioSource, Bool) -> Void = {
+            source, enabled in
+            let key =
+                source == .system
+                ? UserDefaultsAppRuntimePreferences.meetingSpeakerDiarizationKey
+                : UserDefaultsAppRuntimePreferences.microphoneSpeakerDetectionKey
+            UserDefaults.standard.set(enabled, forKey: key)
+        },
         shouldShowFloatingMeetingPill: @escaping @MainActor @Sendable () -> Bool = { true },
         frontmostApplicationProvider: any FrontmostApplicationProviding = NSWorkspaceFrontmostApplicationProvider(),
         probableCalendarSnapshotProvider: @escaping @MainActor @Sendable () -> MeetingCalendarSnapshot? = {
@@ -177,6 +186,7 @@ final class MeetingRecordingFlowCoordinator {
         self.sttManager = sttManager
         self.speechEngineSelectionProvider = speechEngineSelectionProvider
         self.meetingAudioSourceModeProvider = meetingAudioSourceModeProvider
+        self.onSpeakerDetectionDefaultChanged = onSpeakerDetectionDefaultChanged
         self.shouldShowFloatingMeetingPill = shouldShowFloatingMeetingPill
         self.frontmostApplicationProvider = frontmostApplicationProvider
         self.probableCalendarSnapshotProvider = probableCalendarSnapshotProvider
@@ -259,6 +269,30 @@ final class MeetingRecordingFlowCoordinator {
             self.pillViewModel.state = wantPause ? .paused : .recording
             self.pillController?.refreshState()
             self.panelViewModel?.isPaused = wantPause
+        }
+    }
+
+    func updateSpeakerDetection(_ enabled: Bool, for source: AudioSource) {
+        Task { @MainActor [meetingRecordingService, weak self] in
+            do {
+                let state = try await meetingRecordingService.setSpeakerDetection(enabled, for: source)
+                guard let self else { return }
+                self.panelViewModel?.configureSpeakerDetection(state)
+
+                let applied =
+                    source == .system
+                    ? state.systemAudioEnabled
+                    : state.microphoneEnabled
+                guard applied == enabled else { return }
+                onSpeakerDetectionDefaultChanged(source, enabled)
+            } catch {
+                guard let self else { return }
+                let state = await meetingRecordingService.activeSpeakerDetectionState
+                self.panelViewModel?.configureSpeakerDetection(state)
+                self.logger.error(
+                    "meeting_speaker_detection_update_failed source=\(source.rawValue, privacy: .public) error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)"
+                )
+            }
         }
     }
 
@@ -592,11 +626,22 @@ final class MeetingRecordingFlowCoordinator {
             panelVM.isPaused = false
             panelVM.isMicrophoneMuted = false
             panelVM.canToggleMicrophoneMute = initialSourceMode.capturesMicrophone
+            panelVM.configureSpeakerDetection(
+                MeetingSpeakerDetectionState(
+                    systemAudioEnabled: UserDefaultsAppRuntimePreferences.meetingSpeakerDiarizationEnabled(),
+                    microphoneEnabled: UserDefaultsAppRuntimePreferences.microphoneSpeakerDetectionEnabled(),
+                    canDetectSystemAudio: initialSourceMode.capturesSystemAudio,
+                    canDetectMicrophone: initialSourceMode.capturesMicrophone
+                )
+            )
             panelVM.updateLiveTranscriptStatus(.startingAudio)
             panelVM.updatePreviewLines([], isTranscriptionLagging: false)
             panelVM.onStop = { [weak self] in self?.toggleRecording() }
             panelVM.onPauseToggle = { [weak self] in self?.togglePause() }
             panelVM.onMicrophoneMuteToggle = { [weak self] in self?.toggleMicrophoneMute() }
+            panelVM.onSpeakerDetectionChange = { [weak self] source, enabled in
+                self?.updateSpeakerDetection(enabled, for: source)
+            }
             panelVM.onClose = { [weak self] in self?.hideMeetingPanel() }
             // Configure live Ask: in-memory mode (no transcriptionId/conversationRepo).
             // Promotion to a persisted ChatConversation happens after stop-time
@@ -754,6 +799,10 @@ final class MeetingRecordingFlowCoordinator {
                     self.startCaptureFailureObservation(generation: gen)
                     Telemetry.send(.meetingRecordingStarted(trigger: trigger))
                     self.onRecordingBegan()
+
+                    let activeSpeakerDetection = await meetingRecordingService.activeSpeakerDetectionState
+                    guard self.stateMachine.state == .recording else { return }
+                    self.panelViewModel?.configureSpeakerDetection(activeSpeakerDetection)
                 } catch {
                     guard self.ownsPendingStart(generation: gen) else {
                         self.recordIgnoredStartResult(generation: gen, outcome: "failure")
@@ -1492,13 +1541,14 @@ final class MeetingRecordingFlowCoordinator {
         let speakerLabels = Dictionary(uniqueKeysWithValues: update.speakers.map { ($0.id, $0.label) })
         let paragraphs = TranscriptParagraphBuilder.build(from: update.words)
         return paragraphs.map { paragraph in
-            let source = paragraph.speakerId.flatMap(AudioSource.init(rawValue:))
+            let source = paragraph.speakerId.flatMap(AudioSource.forSpeakerID)
             return MeetingRecordingPreviewLine(
                 id: "\(paragraph.startMs)-\(paragraph.speakerId ?? "unknown")",
                 timestamp: format(milliseconds: paragraph.startMs),
                 speakerLabel: speakerLabels[paragraph.speakerId ?? ""] ?? source?.displayLabel ?? "Speaker",
                 text: paragraph.text,
-                source: source
+                source: source,
+                speakerID: paragraph.speakerId
             )
         }
     }

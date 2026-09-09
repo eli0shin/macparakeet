@@ -48,6 +48,7 @@ public final class MeetingRecordingPanelViewModel {
     /// Meeting-local mic mute. Unlike pause, system audio keeps recording.
     public var isMicrophoneMuted: Bool = false
     public var canToggleMicrophoneMute: Bool = false
+    public private(set) var speakerDetectionState: MeetingSpeakerDetectionState = .unavailable
     public var previewLines: [MeetingRecordingPreviewLine] = []
     public var isTranscriptionLagging: Bool = false
     public private(set) var liveTranscriptStatus: LiveTranscriptStatus = .listening
@@ -65,6 +66,7 @@ public final class MeetingRecordingPanelViewModel {
     public var onStop: (() -> Void)?
     public var onPauseToggle: (() -> Void)?
     public var onMicrophoneMuteToggle: (() -> Void)?
+    public var onSpeakerDetectionChange: ((AudioSource, Bool) -> Void)?
     public var onClose: (() -> Void)?
 
     private var copiedResetTask: Task<Void, Never>?
@@ -168,6 +170,7 @@ public final class MeetingRecordingPanelViewModel {
         isPaused = false
         isMicrophoneMuted = false
         canToggleMicrophoneMute = false
+        speakerDetectionState = .unavailable
         previewLines = []
         previewLineWordCounts = []
         wordCount = 0
@@ -185,6 +188,38 @@ public final class MeetingRecordingPanelViewModel {
         let minutes = elapsedSeconds / 60
         let seconds = elapsedSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    public var showsMeetingAudioControls: Bool {
+        canStop
+            && (speakerDetectionState.canDetectSystemAudio
+                || speakerDetectionState.canDetectMicrophone)
+    }
+
+    public func configureSpeakerDetection(_ state: MeetingSpeakerDetectionState) {
+        speakerDetectionState = state
+    }
+
+    public func requestSpeakerDetection(_ enabled: Bool, for source: AudioSource) {
+        switch source {
+        case .system where speakerDetectionState.canDetectSystemAudio:
+            speakerDetectionState = MeetingSpeakerDetectionState(
+                systemAudioEnabled: enabled,
+                microphoneEnabled: speakerDetectionState.microphoneEnabled,
+                canDetectSystemAudio: true,
+                canDetectMicrophone: speakerDetectionState.canDetectMicrophone
+            )
+        case .microphone where speakerDetectionState.canDetectMicrophone:
+            speakerDetectionState = MeetingSpeakerDetectionState(
+                systemAudioEnabled: speakerDetectionState.systemAudioEnabled,
+                microphoneEnabled: enabled,
+                canDetectSystemAudio: speakerDetectionState.canDetectSystemAudio,
+                canDetectMicrophone: true
+            )
+        case .system, .microphone:
+            return
+        }
+        onSpeakerDetectionChange?(source, enabled)
     }
 
     public var canStop: Bool {
