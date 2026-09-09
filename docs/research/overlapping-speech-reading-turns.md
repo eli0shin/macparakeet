@@ -2,18 +2,7 @@
 
 ## Status and scope
 
-Research and decisions from a user-led design session. The user subsequently authorized implementation under ticket 051. Final meeting transcripts and imported recordings are in scope as one deliverable; live preview is deferred. No private audio or transcripts were read or sent to external services. The initial investigation was source research, not a reproduced recording-level diagnosis. Implementation verification is recorded below and in the ticket.
-
-## Implementation follow-up — ticket 051
-
-- New finalization and import paths save an optional authoritative Reading Turn document and exact word references. Legacy rows are not backfilled. Speaker correction replaces the saved structure; user-edited text remains protected.
-- Final diarization calls retain overlapping regions and avoid gap merging; live calls keep their previous configuration. Word-derived fallback regions stored under capture-source IDs are explicitly excluded from acoustic gap evidence.
-- Offline activity detection loads only the installed Silero model directly, on CPU. It reads raw frame probabilities, not live start/end events. Probabilities at or below 0.1 identify conservative quiet intervals; intermediate values remain uncertain. There is no recognition-window padding, maximum-duration split, or short-speech deletion. Cancellation is checked between inference frames.
-- The 256 ms inference-frame width supplies the containment uncertainty margin. These numerical choices are engineering starting points, not universal conversational pause durations or claims of real-meeting calibration.
-- UI playback uses a separate index over original word times and exact turn membership, because readable order and chronological playback order can differ after nested insertion.
-- Workflow/reload and shared-consumer tests cover ordering, exact references, original timing, imported recordings, legacy/edited/untimed behavior, and cancellation. An opt-in smoke test with the already cached model detected an inserted silence in OS-generated neutral speech. No model download or private recording was needed.
-- Review findings about duplicate vocabulary processing, internal action phrases, playback selection, and legacy UI vocabulary were corrected. The user explicitly excluded further work on terminal action handling in saved results; that remaining advisory finding is not addressed by this feature.
-- Quality on the user's affected real recordings remains unverified. This change cannot recover recognition output or speaker evidence the engines did not produce.
+Research and decisions from a user-led design session. The product decisions below are agreed; implementation has not been authorized. Final meeting transcripts and imported recordings are in scope as one deliverable; live preview is deferred. No private audio or transcripts were read or sent to external services. No tests were run: this is source research, not a reproduced recording-level diagnosis.
 
 ## Consolidated design agreement
 
