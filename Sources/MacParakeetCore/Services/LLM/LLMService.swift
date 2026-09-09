@@ -694,15 +694,18 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                 if !isMeetingBatch, response.finishReason?.lowercased() == "length" {
                     throw LLMError.formatterTruncated
                 }
-                let formatted = isMeetingBatch
+                let formatted =
+                    isMeetingBatch
                     ? Self.firstNonemptyResponseContent(response)
                     : (parseLMStudioFormattedTranscript(response) ?? response.content)
-                output = isMeetingBatch
+                output =
+                    isMeetingBatch
                     ? formatted
                     : AIFormatter.normalizedFormattedOutput(formatted)
             } else {
                 response = try await client.chatCompletion(messages: messages, context: context, options: .default)
-                output = isMeetingBatch
+                output =
+                    isMeetingBatch
                     ? response.content
                     : AIFormatter.normalizedFormattedOutput(response.content)
             }
