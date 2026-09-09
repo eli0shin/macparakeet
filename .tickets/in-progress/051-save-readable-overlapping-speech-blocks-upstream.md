@@ -182,7 +182,7 @@ This test-boundary choice follows the agreed upstream-save requirement and curre
 - 125 focused checks passed after resolving the in-scope review findings. An additional opt-in cached-model run passed all nine feature tests, including detection of a deliberate silence in locally generated speech. No private audio or new model download was used.
 - The remaining review finding about terminal action extraction across paragraph boundaries is explicitly excluded by the user. Do not expand this ticket to address it.
 - Broad final gate passed: 5,155 XCTest cases, 22 runtime skips, zero failures; 14 Swift Testing cases also passed. Eight desktop-window-opening test classes were excluded because a previous full-suite run froze the desktop. This gate ran once.
-- Implementation is complete; keep this ticket in progress while the PR is under review.
+- Implementation is complete; keep this ticket in progress while [PR #60](https://github.com/eli0shin/macparakeet/pull/60) is under review.
 
 ## Further Notes
 
