@@ -2,6 +2,9 @@ import FluidAudio
 import Foundation
 import OSLog
 
+// The model is loaded once and then owned exclusively by MeetingLiveDiarizer.
+extension LSEENDModel: @retroactive @unchecked Sendable {}
+
 public enum MeetingLiveDiarizationEvent: Sendable {
     case timeline(source: AudioSource, snapshot: MeetingLiveDiarizationSnapshot)
     case unavailable(source: AudioSource, reason: String)
