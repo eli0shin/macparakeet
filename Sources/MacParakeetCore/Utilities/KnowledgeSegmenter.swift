@@ -109,8 +109,23 @@ public enum KnowledgeSegmenter {
     ) -> [Segment] {
         guard transcription.status == .completed else { return [] }
 
+        // Saved reading structure owns readable indexing too. In particular an
+        // intentionally empty cleaned document must not revive raw evidence.
+        if transcription.readingDocument != nil,
+            let document = CompletedMeetingReadingDocument.build(from: transcription)
+        {
+            return document.turns.filter { usableText($0.text) != nil }.enumerated().map { seq, turn in
+                Segment(
+                    transcriptionId: transcription.id, seq: seq,
+                    startMs: turn.timeRange?.startMs, endMs: turn.timeRange?.endMs,
+                    speaker: normalizedSpeaker(turn.speakerLabel), text: turn.text,
+                    segmenterVersion: currentVersion
+                )
+            }
+        }
+
         let isEditedMeeting =
-            transcription.sourceType == .meeting
+            (transcription.sourceType == .meeting || transcription.readingDocument != nil)
             && transcription.isTranscriptEdited
         let shouldCleanMeetingEvidence =
             transcription.sourceType == .meeting

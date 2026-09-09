@@ -89,6 +89,19 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ## [Unreleased]
 
+### Saved final transcript order
+
+- New final meeting and imported transcripts save readable speaker blocks once.
+  Readable exports and AI context use that saved order instead of interleaving
+  overlapping words. Original word timestamps and timed subtitle output remain
+  evidence-focused; reading order need not be chronological word order.
+- Full transcription records can include optional `readingDocument` data with
+  ordered turns and exact word references. Durable transcript segments can
+  include optional `wordReferences`. Their existing `wordRange` remains an
+  enclosing interval, not an exact membership list for overlapping speech.
+- Existing records are not backfilled on read. Explicit reprocessing creates
+  the new structure; user-edited and untimed results retain plain-text behavior.
+
 ### Microphone speaker detection
 
 - Archived meeting retranscription preserves the microphone speaker-detection

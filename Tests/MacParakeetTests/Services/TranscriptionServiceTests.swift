@@ -1956,7 +1956,11 @@ final class TranscriptionServiceTests: XCTestCase {
             llmService: llm,
             llmRunRepo: llmRunRepo,
             shouldUseAIFormatter: { true },
-            meetingAutomationHookRunner: nil
+            meetingAutomationHookRunner: nil,
+            speechActivityDetector: FixtureSpeechActivity(ranges: [
+                ReadingTurnTimeRange(startMs: 1_000, endMs: 3_000),
+                ReadingTurnTimeRange(startMs: 5_000, endMs: 7_000),
+            ])
         )
         let recording = try makeOneSourceMeetingRecording(displayName: "Long Meeting")
         defer { try? FileManager.default.removeItem(at: recording.folderURL) }
@@ -2141,7 +2145,7 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(result.rawTranscript, "sync with acme kubernetes rollout")
         XCTAssertEqual(
             result.cleanTranscript,
-            "Sync with ACME Corporation Kubernetes (K8s) rollout"
+            "Sync with ACME Corporation\n\nKubernetes (K8s) rollout"
         )
 
         let words = try XCTUnwrap(result.wordTimestamps)
@@ -2191,7 +2195,7 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(try transcriptionRepo.fetch(id: result.id)?.fileName, "Product Roadmap Review")
         XCTAssertEqual(try transcriptionRepo.fetch(id: result.id)?.derivedTitle, "Product Roadmap Review")
         XCTAssertEqual(llm.summarizeCallCount, 1)
-        XCTAssertEqual(llm.lastSummaryTranscript, transcript)
+        XCTAssertEqual(llm.lastSummaryTranscript, result.readingDocument?.turns.map(\.text).joined(separator: "\n\n"))
         XCTAssertTrue(llm.lastSummarySystemPrompt?.contains("Generate a concise title") ?? false)
     }
 
@@ -3286,7 +3290,8 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(result.id, original.id)
         XCTAssertEqual(all[0].id, original.id)
         XCTAssertEqual(all[0].rawTranscript, "New transcript")
-        XCTAssertNil(all[0].cleanTranscript)
+        XCTAssertEqual(all[0].cleanTranscript, "New transcript")
+        XCTAssertEqual(all[0].readingDocument?.turns.map(\.text), ["New transcript"])
         XCTAssertEqual(all[0].wordTimestamps?.map(\.word), ["New", "transcript"])
         XCTAssertNil(all[0].speakerCount)
         XCTAssertNil(all[0].speakers)

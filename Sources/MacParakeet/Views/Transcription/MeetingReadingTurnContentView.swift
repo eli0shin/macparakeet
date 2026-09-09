@@ -28,12 +28,15 @@ enum MeetingReadingTurnLayout {
 
 func readingTurnScrollTarget(
     for currentMs: Int,
-    in turns: [IdentifiedReadingTurn]
+    in turns: [IdentifiedReadingTurn],
+    playbackIndex: ReadingTurnPlaybackIndex? = nil
 ) -> Int? {
-    turns.last { identified in
-        guard let startMs = identified.turn.timeRange?.startMs else { return false }
-        return startMs <= currentMs
-    }?.scrollID
+    if let playbackIndex {
+        guard let target = playbackIndex.turnID(at: currentMs) else { return nil }
+        return turns.first { $0.id == target }?.scrollID
+    }
+    return turns.filter { ($0.turn.timeRange?.startMs ?? .max) <= currentMs }
+        .max { ($0.turn.timeRange?.startMs ?? .min) < ($1.turn.timeRange?.startMs ?? .min) }?.scrollID
 }
 
 struct MeetingReadingTurnContentView<SpeakerLabelContent: View>: View {

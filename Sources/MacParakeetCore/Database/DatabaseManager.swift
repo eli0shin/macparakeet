@@ -1384,6 +1384,12 @@ public final class DatabaseManager: Sendable {
             )
         }
 
+        migrator.registerMigration("v0.33-saved-reading-document") { db in
+            try db.alter(table: "transcriptions") { t in
+                t.add(column: "readingDocument", .text)
+            }
+        }
+
         return migrator
     }
 

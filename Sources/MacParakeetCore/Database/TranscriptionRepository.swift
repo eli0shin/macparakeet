@@ -668,6 +668,11 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
                 in: update.transcriptSegments,
                 using: speakers
             )
+            transcription.readingDocument = update.readingDocument
+            transcription.meetingReadingTurnFormatting = nil
+            if !transcription.isTranscriptEdited, let document = update.readingDocument {
+                transcription.cleanTranscript = document.turns.map(\.text).joined(separator: "\n\n")
+            }
             transcription.updatedAt = Date()
             try transcription.update(db)
             return transcription

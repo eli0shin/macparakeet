@@ -34,6 +34,8 @@ public struct Transcription: Codable, Identifiable, Sendable {
     public var speakers: [SpeakerInfo]?
     public var diarizationSegments: [DiarizationSegmentRecord]?
     public var transcriptSegments: [TranscriptSegmentRecord]?
+    /// Authoritative offline reading order. Nil means a legacy record, not a request to backfill.
+    public var readingDocument: MeetingTranscriptPresentationDocument?
     /// Validated, presentation-only AI overrides keyed to stable Reading Turns.
     /// Raw words and deterministic text remain the recovery sources.
     public var meetingReadingTurnFormatting: [MeetingReadingTurnFormatting]?
@@ -113,6 +115,7 @@ public struct Transcription: Codable, Identifiable, Sendable {
         speakers: [SpeakerInfo]? = nil,
         diarizationSegments: [DiarizationSegmentRecord]? = nil,
         transcriptSegments: [TranscriptSegmentRecord]? = nil,
+        readingDocument: MeetingTranscriptPresentationDocument? = nil,
         meetingReadingTurnFormatting: [MeetingReadingTurnFormatting]? = nil,
         chatMessages: [ChatMessage]? = nil,
         status: TranscriptionStatus = .processing,
@@ -154,6 +157,7 @@ public struct Transcription: Codable, Identifiable, Sendable {
         self.speakers = speakers
         self.diarizationSegments = diarizationSegments
         self.transcriptSegments = transcriptSegments
+        self.readingDocument = readingDocument
         self.meetingReadingTurnFormatting = meetingReadingTurnFormatting
         self.chatMessages = chatMessages
         self.status = status
@@ -289,6 +293,9 @@ public struct TranscriptSegmentRecord: Codable, Sendable, Equatable, Identifiabl
     public var speakerLabel: String
     public var text: String
     public var wordRange: TranscriptSegmentWordRange
+    /// Exact evidence membership. Legacy records use wordRange; for new records
+    /// wordRange remains an enclosing interval for backward compatibility only.
+    public var wordReferences: [Int]?
 
     public init(
         id: UUID = UUID(),
@@ -297,7 +304,8 @@ public struct TranscriptSegmentRecord: Codable, Sendable, Equatable, Identifiabl
         speakerId: String?,
         speakerLabel: String,
         text: String,
-        wordRange: TranscriptSegmentWordRange
+        wordRange: TranscriptSegmentWordRange,
+        wordReferences: [Int]? = nil
     ) {
         self.id = id
         self.startMs = startMs
@@ -306,6 +314,7 @@ public struct TranscriptSegmentRecord: Codable, Sendable, Equatable, Identifiabl
         self.speakerLabel = speakerLabel
         self.text = text
         self.wordRange = wordRange
+        self.wordReferences = wordReferences
     }
 
     public static func updatingSpeakerLabels(
@@ -341,7 +350,7 @@ extension Transcription: FetchableRecord, PersistableRecord {
     public enum Columns: String, ColumnExpression {
         case id, createdAt, fileName, filePath, audioTrackOrdinal, meetingArtifactFolderPath, fileSizeBytes, durationMs
         case rawTranscript, cleanTranscript, wordTimestamps, language
-        case speakerCount, speakers, diarizationSegments, transcriptSegments, meetingReadingTurnFormatting, chatMessages
+        case speakerCount, speakers, diarizationSegments, transcriptSegments, readingDocument, meetingReadingTurnFormatting, chatMessages
         case status, errorMessage, exportPath, sourceURL
         case thumbnailURL, channelName, videoDescription, isFavorite, sourceType, recoveredFromCrash, isTranscriptEdited, userNotes, meetingStartContext, meetingCaptureReport, engine, engineVariant, titleOverride, libraryFolderID, derivedTitle, derivedSnippet, updatedAt
         case calendarEventSnapshot
@@ -389,6 +398,7 @@ extension Transcription: FetchableRecord, PersistableRecord {
 
         diarizationSegments = try container.decodeIfPresent([DiarizationSegmentRecord].self, forKey: .diarizationSegments)
         transcriptSegments = try container.decodeIfPresent([TranscriptSegmentRecord].self, forKey: .transcriptSegments)
+        readingDocument = try container.decodeIfPresent(MeetingTranscriptPresentationDocument.self, forKey: .readingDocument)
         meetingReadingTurnFormatting = try container.decodeIfPresent(
             [MeetingReadingTurnFormatting].self,
             forKey: .meetingReadingTurnFormatting

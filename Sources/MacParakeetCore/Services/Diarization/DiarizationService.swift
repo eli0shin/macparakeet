@@ -33,12 +33,17 @@ public enum SpeakerDiarizationConstraint: Equatable, Sendable {
 public protocol DiarizationServiceProtocol: Sendable {
     func diarize(audioURL: URL) async throws -> MacParakeetDiarizationResult
     func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult
+    func diarizeFinalTranscript(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult
     func prepareModels(onProgress: (@Sendable (String) -> Void)?) async throws
     func isReady() async -> Bool
     func hasCachedModels() async -> Bool
 }
 
 extension DiarizationServiceProtocol {
+    public func diarizeFinalTranscript(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint? = nil) async throws -> MacParakeetDiarizationResult {
+        try await diarize(audioURL: audioURL, speakerConstraint: speakerConstraint)
+    }
+
     public func diarize(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult {
         try await diarize(audioURL: audioURL)
     }
@@ -73,6 +78,7 @@ extension OfflineDiarizerManager: @retroactive @unchecked Sendable {}
 public actor DiarizationService: DiarizationServiceProtocol {
     private let manager: any OfflineDiarizerManaging
     private let constrainedManagerFactory: (@Sendable (SpeakerDiarizationConstraint) -> any OfflineDiarizerManaging)?
+    private let finalManagerFactory: (@Sendable (SpeakerDiarizationConstraint?) -> any OfflineDiarizerManaging)?
     private let modelsDirectory: URL
     private var modelsReady = false
 
@@ -85,7 +91,12 @@ public actor DiarizationService: DiarizationServiceProtocol {
             constrainedManagerFactory: { constraint in
                 OfflineDiarizerManager(config: Self.offlineConfig(speakerConstraint: constraint))
             },
-            modelsDirectory: modelsDirectory ?? AppPaths.fluidAudioModelsDirURL
+            modelsDirectory: modelsDirectory ?? AppPaths.fluidAudioModelsDirURL,
+            finalManagerFactory: { constraint in
+                OfflineDiarizerManager(config: Self.offlineConfig(
+                    speakerConstraint: constraint, preserveActivity: true, baseConfig: config
+                ))
+            }
         )
     }
 
@@ -102,8 +113,10 @@ public actor DiarizationService: DiarizationServiceProtocol {
     init(
         manager: any OfflineDiarizerManaging,
         constrainedManagerFactory: (@Sendable (SpeakerDiarizationConstraint) -> any OfflineDiarizerManaging)? = nil,
-        modelsDirectory: URL
+        modelsDirectory: URL,
+        finalManagerFactory: (@Sendable (SpeakerDiarizationConstraint?) -> any OfflineDiarizerManaging)? = nil
     ) {
+        self.finalManagerFactory = finalManagerFactory
         self.manager = manager
         self.constrainedManagerFactory = constrainedManagerFactory
         self.modelsDirectory = modelsDirectory.standardizedFileURL
@@ -123,8 +136,21 @@ public actor DiarizationService: DiarizationServiceProtocol {
             selectedManager = manager
         }
 
+        return try await process(audioURL: audioURL, manager: selectedManager)
+    }
+
+    public func diarizeFinalTranscript(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint? = nil) async throws -> MacParakeetDiarizationResult {
+        guard let finalManagerFactory else {
+            return try await diarize(audioURL: audioURL, speakerConstraint: speakerConstraint)
+        }
+        let manager = finalManagerFactory(speakerConstraint)
+        try await manager.prepareModels(at: modelsDirectory)
+        try Task.checkCancellation()
+        return try await process(audioURL: audioURL, manager: manager)
+    }
+
+    private func process(audioURL: URL, manager: any OfflineDiarizerManaging) async throws -> MacParakeetDiarizationResult {
         let fluidResult: DiarizationResult
-        let manager = selectedManager
         do {
             // Serialize Neural Engine inference on macOS 14 (no-op on macOS 15+):
             // offline diarization runs its own CoreML models outside the STT
@@ -222,9 +248,18 @@ public actor DiarizationService: DiarizationServiceProtocol {
     }
 
     nonisolated static func offlineConfig(
-        speakerConstraint: SpeakerDiarizationConstraint?
+        speakerConstraint: SpeakerDiarizationConstraint?,
+        preserveActivity: Bool = false,
+        baseConfig: OfflineDiarizerConfig = .default
     ) -> OfflineDiarizerConfig {
-        let config = OfflineDiarizerConfig.default
+        var config = baseConfig
+        if preserveActivity {
+            // Final assembly needs concurrent regions and gaps. Live callers
+            // keep their existing exclusive post-processing policy.
+            config.exclusiveSegments = false
+            config.minGapDuration = 0
+            config.segmentationMinDurationOff = 0
+        }
         guard let speakerConstraint else { return config }
 
         switch speakerConstraint {

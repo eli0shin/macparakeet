@@ -131,10 +131,12 @@ public final class ExportService: ExportServiceProtocol, Sendable {
         } else {
             configuredDocument = nil
         }
-        guard transcription.sourceType == .meeting,
+        let savedDocument = transcription.readingDocument == nil ? nil
+            : (configuredDocument ?? CompletedMeetingReadingDocument.build(from: transcription))
+        guard (transcription.sourceType == .meeting || transcription.readingDocument != nil),
             transcription.status == .completed,
             !transcription.isTranscriptEdited,
-            let document = suppliedMeetingReadingDocument
+            let document = savedDocument ?? suppliedMeetingReadingDocument
                 ?? configuredDocument
                 ?? CompletedMeetingReadingDocument.build(from: transcription),
             !document.turns.isEmpty
