@@ -60,7 +60,10 @@ request grouping, readable exports, or stored formatting mappings.
 - Canonical rendered turns have at most one start time. Word timestamps are not
   emitted in readable output.
 - Paragraphs remain separate inside their canonical or displayed turn. The UI
-  renders exactly one empty text row between displayed paragraphs.
+  renders exactly one empty text row between displayed paragraphs. Optional AI
+  cleanup can transport paragraph entries in 20,000-character cross-turn batches,
+  but IDs map each cleaned part back into source order without giving the model
+  control of Reading Turn structure.
 - Simultaneous contributions retain one explicit overlap marker and deterministic
   contribution order.
 - Word-based citations resolve to the containing Reading Turn and return that
@@ -68,6 +71,9 @@ request grouping, readable exports, or stored formatting mappings.
 - Untimed fallback text has no fabricated timestamp or speaker attribution.
 - Edited transcripts use the existing plain edited text because word alignment
   is no longer valid.
+- A meeting AI batch that still fails after three attempts uses verbatim source
+  text for its affected entries. Content-change, protected-value, output-size,
+  and generation-length heuristics do not reject structurally mapped output.
 - Plain AI-context mode remains the preferred stored `cleanTranscript`, with raw
   text only as a legacy fallback. Legacy meeting card snippets and rebuildable
   search segments derive deterministic cleanup in memory; segment index version

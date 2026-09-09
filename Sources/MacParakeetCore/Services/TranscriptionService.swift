@@ -2048,30 +2048,40 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 customWords: customWords,
                 cleanup: .cleaned
             )
-            let promptTemplate = aiFormatterPromptTemplate()
-            let transcriptFormatter = TranscriptFormatter(
-                llmService: llmService,
-                shouldUseAIFormatter: { true },
-                logger: logger
+            let sourceDocument = MeetingTranscriptPresentationBuilder.build(
+                transcriptText: transcription.rawTranscript ?? rawText,
+                words: transcription.wordTimestamps,
+                speakers: transcription.speakers,
+                diarizationSegments: transcription.diarizationSegments,
+                cleanup: .verbatim
             )
+            let selectedPromptTemplate = aiFormatterPromptTemplate()
+            let promptTemplate = AIFormatter.meetingBatchPromptTemplate(selectedPromptTemplate)
+            let defaultPromptUsed = AIFormatter.normalizedPromptTemplate(selectedPromptTemplate)
+                == AIFormatter.defaultPromptTemplate
             let runSource = persistResult
                 ? LLMRunSource(transcriptionId: transcription.id)
                 : nil
             let meetingFormatter = MeetingReadingTurnFormatter()
             let result = await meetingFormatter.format(
                 deterministicDocument,
-                using: { request in
-                    let outcome = try await transcriptFormatter.format(
-                        request,
-                        runSource: runSource,
-                        lane: .transcription,
-                        resolvePrompt: { (promptTemplate, nil) }
-                    )
-                    if let run = outcome.run { formatterRuns.append(run) }
-                    guard let text = outcome.text else {
+                sourceDocument: sourceDocument,
+                using: { batch in
+                    guard let llmService else {
                         throw MeetingReadingTurnFormattingError.requestFailed
                     }
-                    return text
+                    let formatterResult = try await llmService.formatTranscriptDetailed(
+                        transcript: try batch.encodedJSON(),
+                        promptTemplate: promptTemplate,
+                        source: .transcription,
+                        defaultPromptUsed: defaultPromptUsed
+                    )
+                    if let runSource {
+                        formatterRuns.append(
+                            LLMRun(formatterResult: formatterResult, source: runSource, feature: .formatterTranscription)
+                        )
+                    }
+                    return formatterResult.output
                 },
                 onProgress: { progress in
                     onProgress?(.formatting(

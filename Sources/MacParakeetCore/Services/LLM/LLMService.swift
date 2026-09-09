@@ -103,6 +103,26 @@ public final class LLMService: LLMServiceProtocol, Sendable {
         additionalProperties: false
     )
 
+    private static let meetingBatchFormatterSchema = ChatJSONSchema(
+        type: "object",
+        properties: [
+            "entries": ChatJSONSchemaProperty(
+                type: "array",
+                items: ChatJSONSchemaArrayItem(
+                    type: "object",
+                    properties: [
+                        "id": ChatJSONSchemaProperty(type: "string"),
+                        "text": ChatJSONSchemaProperty(type: "string"),
+                    ],
+                    required: ["id", "text"],
+                    additionalProperties: false
+                )
+            )
+        ],
+        required: ["entries"],
+        additionalProperties: false
+    )
+
     public static let knowledgeCardResponseFormat: ChatResponseFormat = {
         let citationProperties: [String: ChatJSONSchemaProperty] = [
             "text": ChatJSONSchemaProperty(type: "string"),
@@ -642,18 +662,12 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             messageCount: 2
         )
         let config = context.providerConfig
-        let budget = contextBudget(for: config)
-        let promptOverhead =
-            Prompts.formatter.count
-            + AIFormatter.renderPrompt(template: promptTemplate, transcript: "").count
-        let transcriptBudget = max(0, budget - promptOverhead)
-        // Compare original transcript length against the transcript-specific
-        // budget. The request also includes formatter instructions and the
-        // rendered template, so the transcript cannot consume the whole model
-        // context by itself.
-        let inputTruncated = transcript.count > transcriptBudget
-        let truncated = Self.truncateMiddle(transcript, limit: transcriptBudget)
-        let renderedPrompt = AIFormatter.renderPrompt(template: promptTemplate, transcript: truncated)
+        // Formatter input is never truncated. File/URL callers apply their
+        // whole-input cap, while meeting callers batch transcript text before
+        // this provider boundary. Provider-specific context guesses must not
+        // remove text from a cleanup request.
+        let inputTruncated = false
+        let renderedPrompt = AIFormatter.renderPrompt(template: promptTemplate, transcript: transcript)
         let messages = [
             ChatMessage(role: .system, content: Prompts.formatter),
             ChatMessage(role: .user, content: renderedPrompt),
@@ -662,6 +676,7 @@ public final class LLMService: LLMServiceProtocol, Sendable {
         do {
             let response: ChatCompletionResponse
             let output: String
+            let isMeetingBatch = promptTemplate.contains(AIFormatter.meetingBatchInstruction)
             if config.id == .lmstudio {
                 response = try await client.chatCompletion(
                     messages: messages,
@@ -669,19 +684,30 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                     options: ChatCompletionOptions(
                         temperature: 0.2,
                         responseFormat: .jsonSchema(
-                            name: "formatter_output",
-                            schema: Self.lmStudioFormatterSchema
+                            name: isMeetingBatch ? "meeting_formatter_batch" : "formatter_output",
+                            schema: isMeetingBatch
+                                ? Self.meetingBatchFormatterSchema
+                                : Self.lmStudioFormatterSchema
                         )
                     )
                 )
-                if response.finishReason?.lowercased() == "length" {
+                if !isMeetingBatch, response.finishReason?.lowercased() == "length" {
                     throw LLMError.formatterTruncated
                 }
-                let formatted = parseLMStudioFormattedTranscript(response) ?? response.content
-                output = AIFormatter.normalizedFormattedOutput(formatted)
+                let formatted =
+                    isMeetingBatch
+                    ? Self.firstNonemptyResponseContent(response)
+                    : (parseLMStudioFormattedTranscript(response) ?? response.content)
+                output =
+                    isMeetingBatch
+                    ? formatted
+                    : AIFormatter.normalizedFormattedOutput(formatted)
             } else {
                 response = try await client.chatCompletion(messages: messages, context: context, options: .default)
-                output = AIFormatter.normalizedFormattedOutput(response.content)
+                output =
+                    isMeetingBatch
+                    ? response.content
+                    : AIFormatter.normalizedFormattedOutput(response.content)
             }
 
             // An empty or whitespace-only response is a failure, not a
@@ -1188,6 +1214,12 @@ public final class LLMService: LLMServiceProtocol, Sendable {
     private func resolveSummaryPrompt(_ systemPrompt: String?) -> String {
         let trimmed = systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (trimmed?.isEmpty == false ? trimmed : nil) ?? Prompts.summary
+    }
+
+    private static func firstNonemptyResponseContent(_ response: ChatCompletionResponse) -> String {
+        [response.content, response.reasoningContent ?? ""]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? ""
     }
 
     private func parseLMStudioFormattedTranscript(_ response: ChatCompletionResponse) -> String? {

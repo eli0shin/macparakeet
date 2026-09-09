@@ -549,7 +549,7 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertEqual(result.messageCount, 2)
     }
 
-    func testFormatTranscriptDetailedSubtractsPromptOverheadFromTranscriptBudget() async throws {
+    func testFormatTranscriptDetailedDoesNotSubtractPromptFromTranscriptBudget() async throws {
         mockConfigStore.config = .ollama(model: "llama3.2")
         let transcript = "SENTINEL_TRANSCRIPT"
         let longPromptTemplate = String(repeating: "instruction ", count: 9_000)
@@ -562,9 +562,9 @@ final class LLMServiceTests: XCTestCase {
             defaultPromptUsed: false
         )
 
-        XCTAssertTrue(result.inputTruncated)
+        XCTAssertFalse(result.inputTruncated)
         XCTAssertEqual(mockClient.capturedMessages.count, 2)
-        XCTAssertFalse(mockClient.capturedMessages[1].content.contains(transcript))
+        XCTAssertTrue(mockClient.capturedMessages[1].content.contains(transcript))
     }
 
     // MARK: - Transform
@@ -630,6 +630,48 @@ final class LLMServiceTests: XCTestCase {
         )
     }
 
+    func testFormatTranscriptForLMStudioSendsTwentyThousandCharactersWithoutTruncation() async throws {
+        mockConfigStore.config = .lmstudio(model: "qwen/qwen3-4b-2507")
+        mockClient.responseContent = #"{"cleaned_text":"done"}"#
+        let transcript = String(repeating: "x", count: 20_000)
+
+        let result = try await service.formatTranscriptDetailed(
+            transcript: transcript,
+            promptTemplate: "Custom instruction:\n\(AIFormatter.transcriptPlaceholder)",
+            source: .transcription,
+            defaultPromptUsed: false
+        )
+
+        XCTAssertFalse(result.inputTruncated)
+        XCTAssertTrue(mockClient.capturedMessages[1].content.hasSuffix(transcript))
+        XCTAssertFalse(mockClient.capturedMessages[1].content.contains("[... content truncated ...]"))
+    }
+
+    func testMeetingBatchForLMStudioPreservesFencedJSONWithEscapedParagraphBreaks() async throws {
+        mockConfigStore.config = .lmstudio(model: "qwen/qwen3-4b-2507")
+        let response = #"""
+            ```json
+            {"entries":[{"id":"entry-0","text":"First.\n\nSecond."}]}
+            ```
+            """#
+        mockClient.responseContent = response
+
+        let output = try await service.formatTranscript(
+            transcript: #"{"entries":[{"id":"entry-0","text":"first second"}]}"#,
+            promptTemplate: AIFormatter.meetingBatchPromptTemplate(AIFormatter.defaultPromptTemplate),
+            source: .transcription,
+            defaultPromptUsed: true
+        )
+
+        XCTAssertEqual(output, response)
+        let responseFormat = try XCTUnwrap(mockClient.capturedOptions?.responseFormat)
+        guard case .jsonSchema(let name, let schema) = responseFormat else {
+            return XCTFail("Expected meeting batch JSON schema")
+        }
+        XCTAssertEqual(name, "meeting_formatter_batch")
+        XCTAssertEqual(schema.properties["entries"]?.type, "array")
+    }
+
     func testFormatTranscriptForLMStudioNormalizesEscapedParagraphBreaks() async throws {
         mockConfigStore.config = LLMProviderConfig(
             id: .lmstudio,
@@ -672,34 +714,41 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertEqual(result, "Intro line.\nSecond line in same paragraph.\n\nNew paragraph starts here.")
     }
 
-    func testFormatTranscriptForLMStudioThrowsWhenOutputIsTruncated() async throws {
-        mockConfigStore.config = LLMProviderConfig(
-            id: .lmstudio,
-            baseURL: URL(string: "http://localhost:1234/v1")!,
-            apiKey: nil,
-            modelName: "qwen3.5-4b-mlx",
-            isLocal: true
-        )
+    func testFormatTranscriptForLMStudioRejectsNonBatchOutputWhenFinishReasonIsLength() async throws {
+        mockConfigStore.config = .lmstudio(model: "qwen3.5-4b-mlx")
         mockClient.responseContent = #"{"cleaned_text":"Partial output"}"#
         mockClient.responseFinishReason = "length"
 
         do {
-            _ = try await service.formatTranscript(
+            _ = try await service.formatTranscriptDetailed(
                 transcript: "long transcript content",
                 promptTemplate: AIFormatter.defaultPromptTemplate,
                 source: .dictation,
                 defaultPromptUsed: true
             )
-            XCTFail("Expected truncated formatter output to throw")
+            XCTFail("Expected truncated non-batch output to throw")
         } catch let error as LLMError {
-            if case .formatterTruncated = error {
-                // Expected
-            } else {
-                XCTFail("Expected formatterTruncated, got \(error)")
+            guard case .formatterTruncated = error else {
+                return XCTFail("Expected formatterTruncated, got \(error)")
             }
-        } catch {
-            XCTFail("Unexpected error: \(error)")
         }
+    }
+
+    func testMeetingBatchForLMStudioAcceptsOutputWhenFinishReasonIsLength() async throws {
+        mockConfigStore.config = .lmstudio(model: "qwen3.5-4b-mlx")
+        let response = #"{"entries":[{"id":"entry-0","text":"Partial output"}]}"#
+        mockClient.responseContent = response
+        mockClient.responseFinishReason = "length"
+
+        let result = try await service.formatTranscriptDetailed(
+            transcript: #"{"entries":[{"id":"entry-0","text":"source"}]}"#,
+            promptTemplate: AIFormatter.meetingBatchPromptTemplate(AIFormatter.defaultPromptTemplate),
+            source: .transcription,
+            defaultPromptUsed: true
+        )
+
+        XCTAssertEqual(result.output, response)
+        XCTAssertEqual(result.result.stopReason, "length")
     }
 
     func testFormatTranscriptForLMStudioThrowsWhenResponseIsEmpty() async throws {
@@ -1185,7 +1234,7 @@ final class LLMServiceTests: XCTestCase {
         }, "Expected NO llmFormatterFailed (user-config errors should not pollute the failure bucket)")
     }
 
-    func testFormatTranscriptStillEmitsFormatterFailedOnRealFailure() async {
+    func testFormatTranscriptStillEmitsFormatterFailedOnEmptyResponse() async {
         let telemetry = LLMTelemetrySpy()
         Telemetry.configure(telemetry)
         mockConfigStore.config = LLMProviderConfig(
@@ -1195,8 +1244,8 @@ final class LLMServiceTests: XCTestCase {
             modelName: "qwen3.5-4b-mlx",
             isLocal: true
         )
-        mockClient.responseContent = "ignored"
-        mockClient.responseFinishReason = "length"
+        mockClient.responseContent = "   "
+        mockClient.responseFinishReason = "stop"
 
         do {
             _ = try await service.formatTranscript(
@@ -1212,7 +1261,7 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertTrue(events.contains { event in
             if case .llmFormatterFailed = event { return true }
             return false
-        }, "Real formatter failures (truncation, etc.) should still emit llmFormatterFailed")
+        }, "Empty formatter responses should still emit llmFormatterFailed")
         XCTAssertFalse(events.contains { event in
             if case .llmProviderUnavailable = event { return true }
             return false

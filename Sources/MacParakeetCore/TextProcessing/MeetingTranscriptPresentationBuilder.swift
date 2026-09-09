@@ -744,8 +744,7 @@ public enum MeetingTranscriptPresentationBuilder {
         )
         return turns.map { turn in
             guard let formatted = byIdentity[turn.id],
-                formatted.deterministicText == turn.deterministicText,
-                formatted.formattedText.contains(where: { !$0.isWhitespace })
+                formatted.deterministicText == turn.deterministicText
             else { return turn }
             return ReadingTurn(
                 id: turn.id,
