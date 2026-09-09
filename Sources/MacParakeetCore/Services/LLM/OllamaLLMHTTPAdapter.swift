@@ -14,7 +14,7 @@ struct OllamaLLMHTTPAdapter: LLMHTTPAdapter {
         config: LLMProviderConfig,
         options: ChatCompletionOptions
     ) async throws -> ChatCompletionResponse {
-        let request = try buildRequest(messages: messages, config: config, stream: false)
+        let request = try buildRequest(messages: messages, config: config, options: options, stream: false)
 
         let (data, response) = try await transport.data(for: request)
 
@@ -60,7 +60,7 @@ struct OllamaLLMHTTPAdapter: LLMHTTPAdapter {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let request = try buildRequest(messages: messages, config: config, stream: true)
+                    let request = try buildRequest(messages: messages, config: config, options: options, stream: true)
 
                     let (bytes, response) = try await transport.bytes(for: request)
 
@@ -141,6 +141,7 @@ struct OllamaLLMHTTPAdapter: LLMHTTPAdapter {
     func buildRequest(
         messages: [ChatMessage],
         config: LLMProviderConfig,
+        options: ChatCompletionOptions,
         stream: Bool
     ) throws -> URLRequest {
         // Use native /api/chat endpoint (strip /v1 suffix if present)
@@ -155,7 +156,8 @@ struct OllamaLLMHTTPAdapter: LLMHTTPAdapter {
         }
         let url = base.appendingPathComponent("api/chat")
 
-        var request = URLRequest(url: url, timeoutInterval: stream ? 600 : 300)
+        let timeout = options.requestTimeoutSeconds ?? (stream ? 600 : 300)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 

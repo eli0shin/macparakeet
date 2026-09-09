@@ -112,6 +112,11 @@ public final class LLMService: LLMServiceProtocol, Sendable {
         let inputTruncated = false
     }
 
+    /// Meeting cleanup sends every Reading Turn in one request. Providers can
+    /// need several minutes to process long recordings, so this path must not
+    /// use the short interactive request timeout.
+    static let meetingFormatterRequestTimeoutSeconds: TimeInterval = 1_800
+
     private static let lmStudioFormatterSchema = ChatJSONSchema(
         type: "object",
         properties: [
@@ -678,6 +683,10 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             ))
         }
 
+        let requestTimeoutSeconds = diagnosticID == nil
+            ? nil
+            : Self.meetingFormatterRequestTimeoutSeconds
+
         do {
             let response: ChatCompletionResponse
             let output: String
@@ -690,7 +699,8 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                         responseFormat: .jsonSchema(
                             name: "formatter_output",
                             schema: Self.lmStudioFormatterSchema
-                        )
+                        ),
+                        requestTimeoutSeconds: requestTimeoutSeconds
                     )
                 )
                 await recordResponse(response)
@@ -700,7 +710,14 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                 let formatted = parseLMStudioFormattedTranscript(response) ?? response.content
                 output = AIFormatter.normalizedFormattedOutput(formatted)
             } else {
-                response = try await client.chatCompletion(messages: messages, context: context, options: .default)
+                response = try await client.chatCompletion(
+                    messages: messages,
+                    context: context,
+                    options: ChatCompletionOptions(
+                        temperature: 0.7,
+                        requestTimeoutSeconds: requestTimeoutSeconds
+                    )
+                )
                 await recordResponse(response)
                 output = AIFormatter.normalizedFormattedOutput(response.content)
             }

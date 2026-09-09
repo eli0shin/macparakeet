@@ -133,15 +133,18 @@ public struct ChatCompletionOptions: Sendable, Equatable {
     public let temperature: Double?
     public let maxTokens: Int?
     public let responseFormat: ChatResponseFormat?
+    public let requestTimeoutSeconds: TimeInterval?
 
     public init(
         temperature: Double? = nil,
         maxTokens: Int? = nil,
-        responseFormat: ChatResponseFormat? = nil
+        responseFormat: ChatResponseFormat? = nil,
+        requestTimeoutSeconds: TimeInterval? = nil
     ) {
         self.temperature = temperature
         self.maxTokens = maxTokens
         self.responseFormat = responseFormat
+        self.requestTimeoutSeconds = requestTimeoutSeconds
     }
 
     public static let `default` = ChatCompletionOptions(temperature: 0.7, maxTokens: nil)

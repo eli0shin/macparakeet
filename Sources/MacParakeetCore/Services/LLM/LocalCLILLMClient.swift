@@ -18,7 +18,10 @@ public final class LocalCLILLMClient: LLMClientProtocol, Sendable {
         let (system, user) = Self.extractPrompts(from: messages)
 
         do {
-            let config = try localCLIConfig(from: context)
+            let config = Self.config(
+                try localCLIConfig(from: context),
+                applyingMinimumTimeout: options.requestTimeoutSeconds
+            )
             let output = try await executor.execute(
                 systemPrompt: system,
                 userPrompt: user,
@@ -69,6 +72,17 @@ public final class LocalCLILLMClient: LLMClientProtocol, Sendable {
 
     public func listModels(context: LLMExecutionContext) async throws -> [String] {
         []
+    }
+
+    static func config(
+        _ config: LocalCLIConfig,
+        applyingMinimumTimeout minimumTimeout: TimeInterval?
+    ) -> LocalCLIConfig {
+        guard let minimumTimeout else { return config }
+        return LocalCLIConfig(
+            commandTemplate: config.commandTemplate,
+            timeoutSeconds: max(config.timeoutSeconds, minimumTimeout)
+        )
     }
 
     // MARK: - Private

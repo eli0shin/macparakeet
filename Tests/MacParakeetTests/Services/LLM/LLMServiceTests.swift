@@ -686,6 +686,32 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertEqual(result, "Intro line.\nSecond line in same paragraph.\n\nNew paragraph starts here.")
     }
 
+    func testMeetingFormatterUsesLongRequestTimeout() async throws {
+        _ = try await service.formatTranscriptDetailed(
+            transcript: "Complete meeting transcript.",
+            promptTemplate: AIFormatter.defaultPromptTemplate,
+            source: .transcription,
+            defaultPromptUsed: true,
+            diagnosticID: UUID()
+        )
+
+        XCTAssertEqual(
+            mockClient.capturedOptions?.requestTimeoutSeconds,
+            LLMService.meetingFormatterRequestTimeoutSeconds
+        )
+    }
+
+    func testRegularFormatterKeepsProviderDefaultRequestTimeout() async throws {
+        _ = try await service.formatTranscriptDetailed(
+            transcript: "Short dictation.",
+            promptTemplate: AIFormatter.defaultPromptTemplate,
+            source: .dictation,
+            defaultPromptUsed: true
+        )
+
+        XCTAssertNil(mockClient.capturedOptions?.requestTimeoutSeconds)
+    }
+
     func testMeetingDiagnosticsCaptureProviderResponseBeforeRejectionOrNormalization() async throws {
         mockConfigStore.config = LLMProviderConfig(
             id: .lmstudio, baseURL: URL(string: "http://localhost:1234/v1")!,

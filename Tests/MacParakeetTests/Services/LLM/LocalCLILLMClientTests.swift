@@ -41,6 +41,28 @@ final class LocalCLILLMClientTests: XCTestCase {
 
     // MARK: - Chat Completion
 
+    func testRequestTimeoutRaisesConfiguredCLITimeout() {
+        let config = LocalCLIConfig(commandTemplate: "claude -p", timeoutSeconds: 300)
+
+        let effective = LocalCLILLMClient.config(
+            config,
+            applyingMinimumTimeout: 1_800
+        )
+
+        XCTAssertEqual(effective.timeoutSeconds, 1_800)
+    }
+
+    func testRequestTimeoutDoesNotShortenConfiguredCLITimeout() {
+        let config = LocalCLIConfig(commandTemplate: "claude -p", timeoutSeconds: 3_600)
+
+        let effective = LocalCLILLMClient.config(
+            config,
+            applyingMinimumTimeout: 1_800
+        )
+
+        XCTAssertEqual(effective.timeoutSeconds, 3_600)
+    }
+
     func testChatCompletionViaEcho() async throws {
         let config = LocalCLIConfig(commandTemplate: "printf 'summary result'", timeoutSeconds: 10)
 

@@ -242,6 +242,33 @@ final class LLMHTTPAdapterTests: XCTestCase {
         )
     }
 
+    func testHTTPAdaptersRespectRequestTimeoutOverride() throws {
+        let options = ChatCompletionOptions(requestTimeoutSeconds: 1_800)
+
+        let openAIRequest = try openAIAdapter.buildRequest(
+            messages: goldenMessages,
+            config: .openai(apiKey: "sk-test"),
+            options: options,
+            stream: false
+        )
+        let anthropicRequest = try anthropicAdapter.buildRequest(
+            messages: goldenMessages,
+            config: .anthropic(apiKey: "sk-test"),
+            options: options,
+            stream: false
+        )
+        let ollamaRequest = try ollamaAdapter.buildRequest(
+            messages: goldenMessages,
+            config: .ollama(),
+            options: options,
+            stream: false
+        )
+
+        XCTAssertEqual(openAIRequest.timeoutInterval, 1_800)
+        XCTAssertEqual(anthropicRequest.timeoutInterval, 1_800)
+        XCTAssertEqual(ollamaRequest.timeoutInterval, 1_800)
+    }
+
     func testOpenAICompatibleAdapterRejectsStrictEOFMissingDone() async throws {
         AdapterRequestURLProtocol.handler = { request in
             let body = "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n"

@@ -184,12 +184,13 @@ struct OpenAICompatibleLLMHTTPAdapter: LLMHTTPAdapter {
         let url = config.baseURL.appendingPathComponent("chat/completions")
 
         // Local models need longer timeouts for cold starts (model loading from disk)
-        let timeout: TimeInterval
+        let defaultTimeout: TimeInterval
         if config.isLocal {
-            timeout = stream ? 600 : 300
+            defaultTimeout = stream ? 600 : 300
         } else {
-            timeout = stream ? 120 : 30
+            defaultTimeout = stream ? 120 : 30
         }
+        let timeout = options.requestTimeoutSeconds ?? defaultTimeout
 
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
