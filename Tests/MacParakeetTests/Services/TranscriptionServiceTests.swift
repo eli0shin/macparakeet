@@ -1970,6 +1970,9 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(llm.formatTranscriptCallCount, 1)
         let completeRequest = try XCTUnwrap(llm.formattedTranscripts.first)
         XCTAssertTrue(sentinels.allSatisfy(completeRequest.contains))
+        XCTAssertTrue(llm.lastFormatterPromptTemplate?.contains(
+            "Preserve every <<<MACPARAKEET_READING_TURN_BOUNDARY>>> marker exactly"
+        ) == true)
         XCTAssertEqual(result.meetingReadingTurnFormatting?.count, 3)
         XCTAssertEqual(result.cleanTranscript, turnTexts.map { $0.uppercased() }.joined(separator: "\n\n"))
         XCTAssertEqual(result.rawTranscript, turnTexts.joined(separator: " "))

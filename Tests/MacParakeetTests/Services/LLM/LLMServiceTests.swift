@@ -686,6 +686,48 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertEqual(result, "Intro line.\nSecond line in same paragraph.\n\nNew paragraph starts here.")
     }
 
+    func testMeetingDiagnosticsCaptureProviderResponseBeforeRejectionOrNormalization() async throws {
+        mockConfigStore.config = LLMProviderConfig(
+            id: .lmstudio, baseURL: URL(string: "http://localhost:1234/v1")!,
+            apiKey: nil, modelName: "local-model", isLocal: true
+        )
+        let cases: [(String, String?, String, Bool)] = [
+            (#"{"cleaned_text":"Partial output"}"#, nil, "length", true),
+            ("", #"{"cleaned_text":"   \n  "}"#, "stop", true),
+            (#"{"cleaned_text":"Hello.\\nWorld."}"#, nil, "stop", false),
+        ]
+        for (content, reasoning, stop, shouldFail) in cases {
+            let id = UUID()
+            mockClient.responseContent = content
+            mockClient.responseReasoningContent = reasoning
+            mockClient.responseFinishReason = stop
+            do {
+                _ = try await service.formatTranscriptDetailed(
+                    transcript: "Complete source transcript.",
+                    promptTemplate: AIFormatter.defaultPromptTemplate,
+                    source: .transcription, defaultPromptUsed: true, diagnosticID: id
+                )
+                XCTAssertFalse(shouldFail)
+            } catch {
+                XCTAssertTrue(shouldFail, "\(error)")
+            }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+                "MacParakeetTests/meeting-ai-cleanup-\(ProcessInfo.processInfo.processIdentifier).jsonl"
+            )
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let events = try String(contentsOf: url, encoding: .utf8).split(separator: "\n").map {
+                try decoder.decode(MeetingFormattingDiagnostic.self, from: Data($0.utf8))
+            }
+            let event = try XCTUnwrap(events.first { $0.id == id })
+            XCTAssertEqual(event.outcome, "provider_response")
+            XCTAssertEqual(event.output, content)
+            XCTAssertEqual(event.reasoningContent, reasoning)
+            XCTAssertTrue(event.input.contains("Complete source transcript."))
+            XCTAssertTrue(event.reason?.contains("stop_reason=\(stop)") == true)
+        }
+    }
+
     func testFormatTranscriptForLMStudioThrowsWhenOutputIsTruncated() async throws {
         mockConfigStore.config = LLMProviderConfig(
             id: .lmstudio,

@@ -215,7 +215,7 @@ extension TranscriptionServiceProtocol {
 }
 
 private enum MeetingReadingTurnFormattingError: Error {
-    case requestFailed
+    case requestFailed(String)
 }
 
 private struct TranscriptionOperationContext: Sendable {
@@ -2375,6 +2375,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 ? LLMRunSource(transcriptionId: transcription.id)
                 : nil
             let meetingFormatter = MeetingReadingTurnFormatter()
+            let diagnosticID = UUID()
             let result = await meetingFormatter.format(
                 deterministicDocument,
                 using: { request in
@@ -2382,13 +2383,16 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                         request,
                         runSource: runSource,
                         lane: .transcription,
-                        resolvePrompt: { (promptTemplate, nil) }
+                        diagnosticID: diagnosticID,
+                        resolvePrompt: { (MeetingReadingTurnFormatter.promptTemplate(promptTemplate), nil) }
                     )
                     if let run = outcome.run { formatterRuns.append(run) }
-                    guard let text = outcome.text else {
-                        throw MeetingReadingTurnFormattingError.requestFailed
+                    if let failure = outcome.failureDetail {
+                        throw MeetingReadingTurnFormattingError.requestFailed(failure)
                     }
-                    return text
+                    // Empty output must reach the validator so its rejection is
+                    // recorded with the full input and the empty response.
+                    return outcome.text ?? ""
                 },
                 onProgress: { progress in
                     onProgress?(
@@ -2396,7 +2400,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                         completed: progress.completedRequests,
                         total: progress.totalRequests
                     ))
-                }
+                },
+                diagnosticID: diagnosticID
             )
             guard !result.wasCancelled else { throw CancellationError() }
             transcription.meetingReadingTurnFormatting =

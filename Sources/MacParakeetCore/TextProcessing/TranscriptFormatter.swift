@@ -5,6 +5,7 @@ struct FormatterOutcome: Sendable {
     let text: String?
     let run: LLMRun?
     let resolution: AIFormatterPromptResolution?
+    var failureDetail: String? = nil
 
     static let skipped = FormatterOutcome(text: nil, run: nil, resolution: nil)
 }
@@ -18,6 +19,7 @@ struct TranscriptFormatter: Sendable {
         _ text: String,
         runSource: LLMRunSource?,
         lane: Lane,
+        diagnosticID: UUID? = nil,
         resolvePrompt: @Sendable () async -> (template: String, resolution: AIFormatterPromptResolution?)
     ) async throws -> FormatterOutcome {
         guard shouldUseAIFormatter(), let llmService else {
@@ -65,7 +67,8 @@ struct TranscriptFormatter: Sendable {
                 transcript: text,
                 promptTemplate: promptTemplate,
                 source: lane.telemetrySource,
-                defaultPromptUsed: defaultPromptUsed
+                defaultPromptUsed: defaultPromptUsed,
+                diagnosticID: diagnosticID
             )
             let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
             let run = runSource.map {
@@ -113,7 +116,7 @@ struct TranscriptFormatter: Sendable {
             // claim "Formatted with the '<profile>' prompt" for text that was
             // never formatted by it. The failed `run` still records the attempt
             // for telemetry.
-            return FormatterOutcome(text: nil, run: run, resolution: nil)
+            return FormatterOutcome(text: nil, run: run, resolution: nil, failureDetail: String(reflecting: error))
         }
     }
 }

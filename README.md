@@ -281,6 +281,7 @@ All speech recognition runs locally. Parakeet uses the Neural Engine; optional N
 - **No cloud STT.** The model runs on-device. No audio is transmitted.
 - **No accounts.** No login, no email, no registration.
 - **No telemetry uploads.** Operation events are stored in a local JSONL diagnostic log. Fork builds do not upload analytics, crash reports, audio, or transcripts. Diagnostic files stay on the Mac unless the user explicitly shares them.
+- **Meeting AI cleanup diagnostics.** Local `~/Library/Logs/MacParakeet/meeting-ai-cleanup.jsonl` records full cleanup input/output text and exact acceptance or rejection reasons. These records contain transcript content; inspect them before sharing logs. They are not uploaded automatically.
 - **Temp files cleaned up.** Audio deleted after transcription unless you save it. Saved meeting audio follows your retention setting (kept by default).
 
 **What does use the network:** AI summaries, chat/Meeting Ask, AI Formatter, and Transforms connect to configured LLM providers, or to whatever service a configured CLI tool chooses to use, when you choose them. Each AI request includes its complete relevant text context; transcript audio is never sent. Media URL transcription downloads via yt-dlp; Apple Podcasts links query the public iTunes lookup API to find the episode audio, then download it. Model downloads and explicit feedback delivery also use the network. Core dictation and transcription stay fully offline.

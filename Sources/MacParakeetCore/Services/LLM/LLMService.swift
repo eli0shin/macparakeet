@@ -39,9 +39,30 @@ public protocol LLMServiceProtocol: Sendable {
         source: TelemetryFormatterSource,
         defaultPromptUsed: Bool
     ) async throws -> LLMFormatterResult
+    /// Opt-in local response evidence, captured before parsing or validation.
+    func formatTranscriptDetailed(
+        transcript: String,
+        promptTemplate: String,
+        source: TelemetryFormatterSource,
+        defaultPromptUsed: Bool,
+        diagnosticID: UUID?
+    ) async throws -> LLMFormatterResult
 }
 
 public extension LLMServiceProtocol {
+    func formatTranscriptDetailed(
+        transcript: String,
+        promptTemplate: String,
+        source: TelemetryFormatterSource,
+        defaultPromptUsed: Bool,
+        diagnosticID: UUID?
+    ) async throws -> LLMFormatterResult {
+        try await formatTranscriptDetailed(
+            transcript: transcript, promptTemplate: promptTemplate,
+            source: source, defaultPromptUsed: defaultPromptUsed
+        )
+    }
+
     func generatePromptResult(transcript: String) async throws -> String {
         try await generatePromptResult(transcript: transcript, systemPrompt: nil)
     }
@@ -614,6 +635,19 @@ public final class LLMService: LLMServiceProtocol, Sendable {
         source: TelemetryFormatterSource,
         defaultPromptUsed: Bool
     ) async throws -> LLMFormatterResult {
+        try await formatTranscriptDetailed(
+            transcript: transcript, promptTemplate: promptTemplate,
+            source: source, defaultPromptUsed: defaultPromptUsed, diagnosticID: nil
+        )
+    }
+
+    public func formatTranscriptDetailed(
+        transcript: String,
+        promptTemplate: String,
+        source: TelemetryFormatterSource,
+        defaultPromptUsed: Bool,
+        diagnosticID: UUID?
+    ) async throws -> LLMFormatterResult {
         let operationID = Observability.operationID()
         let startedAt = Date()
         let inputChars = transcript.count
@@ -633,6 +667,16 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             ChatMessage(role: .system, content: Prompts.formatter),
             ChatMessage(role: .user, content: renderedPrompt),
         ]
+        func recordResponse(_ response: ChatCompletionResponse) async {
+            guard let diagnosticID else { return }
+            await MeetingFormattingDiagnosticLog.shared.append(MeetingFormattingDiagnostic(
+                id: diagnosticID, createdAt: Date(), outcome: "provider_response",
+                reason: "provider=\(config.id.rawValue) model=\(response.model ?? "unknown") stop_reason=\(response.finishReason ?? "unknown")",
+                input: "System:\n\(Prompts.formatter)\n\nUser:\n\(renderedPrompt)",
+                output: response.content, expectedTurns: nil, actualTurns: nil,
+                reasoningContent: response.reasoningContent
+            ))
+        }
 
         do {
             let response: ChatCompletionResponse
@@ -649,6 +693,7 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                         )
                     )
                 )
+                await recordResponse(response)
                 if response.finishReason?.lowercased() == "length" {
                     throw LLMError.formatterTruncated
                 }
@@ -656,6 +701,7 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                 output = AIFormatter.normalizedFormattedOutput(formatted)
             } else {
                 response = try await client.chatCompletion(messages: messages, context: context, options: .default)
+                await recordResponse(response)
                 output = AIFormatter.normalizedFormattedOutput(response.content)
             }
 

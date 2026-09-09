@@ -138,7 +138,20 @@ turns are present, non-empty, preserve numbers/URLs/email-like values, and stay
 within the accepted lexical-change ratio. Durable overrides include the turn
 identity and deterministic source text; stale overrides fail closed. The existing
 transcript-formatter toggle, provider, model, and prompt remain the only routing
-controls, so this module adds no implicit network path.
+controls, so this module adds no implicit network path. The meeting prompt explicitly
+requires every Reading Turn boundary to survive cleanup, including short turns.
+
+Each meeting AI cleanup attempt writes an awaited local diagnostic to
+`~/Library/Logs/MacParakeet/meeting-ai-cleanup.jsonl`. It includes the complete
+input and output text, acceptance/rejection/cancellation outcome, turn counts,
+and exact rejection reason with the failed turn and validation values. Text is
+not redacted. A `provider_response` record with the same diagnostic ID stores
+the full rendered prompt, original response content, reasoning content, provider,
+model, and stop reason before parsing or validation. This preserves truncated
+and empty responses too. Provider errors retain their error detail; credentials
+and request headers are not collected. System logs also record the outcome and diagnostic
+path. `llm_formatter_used` records provider completion, not validation acceptance;
+use the cleanup diagnostic to determine whether the result was accepted.
 
 **Meetings have a separate deterministic cleanup boundary.** New finalized
 meetings and explicit meeting retranscriptions keep STT text, timed words,

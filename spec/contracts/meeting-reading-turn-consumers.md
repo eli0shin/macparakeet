@@ -80,7 +80,16 @@ request grouping, readable exports, or stored formatting mappings.
 - Meeting AI cleanup publishes formatting only when the complete response maps
   to every requested Reading Turn and passes content-preservation checks. A
   failed or malformed request leaves all turns deterministic. It is not retried
-  with chunked or reduced context.
+  with chunked or reduced context. The prompt explicitly requires preservation
+  of all boundary markers and short contributions. Every acceptance, rejection,
+  cancellation, or empty-document skip writes a local JSONL diagnostic in
+  `~/Library/Logs/MacParakeet/meeting-ai-cleanup.jsonl`. Diagnostics retain full
+  input/output text, turn counts, and exact rejection reasons (failed turn,
+  observed values, and validation limits), without redaction. Provider failure
+  details are retained when available. A correlated `provider_response` record
+  preserves the full prompt and original content/reasoning before parsing,
+  normalization, or truncated/empty-response rejection. Provider completion is not evidence that
+  the meeting cleanup passed validation.
 - Plain AI-context mode remains the preferred stored `cleanTranscript`, with raw
   text only as a legacy fallback. Legacy meeting card snippets and rebuildable
   search segments derive deterministic cleanup in memory; segment index version
