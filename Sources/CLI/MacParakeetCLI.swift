@@ -45,7 +45,7 @@ struct CLI: AsyncParsableCommand {
     }
 
     static func main(_ arguments: [String]?) async {
-        Telemetry.configure(NoOpTelemetryService())
+        Telemetry.configure(LoggerTelemetryService(surface: "cli", appVersionOverride: cliVersion))
         do {
             var command = try parseAsRoot(arguments)
             if var asyncCommand = command as? AsyncParsableCommand {

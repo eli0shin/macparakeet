@@ -1,10 +1,9 @@
 import Foundation
 
-/// Compatibility boundary for the inherited telemetry call sites.
+/// Boundary for operation and feature events.
 ///
-/// Fork builds do not provide a network-backed implementation. Production
-/// composition roots leave this boundary unconfigured, so all events are
-/// discarded in process.
+/// Production composition roots write events to a local JSONL log. Fork builds
+/// have no network-backed implementation.
 public protocol TelemetryServiceProtocol: Sendable {
     func send(_ event: TelemetryEventSpec)
     @discardableResult
@@ -14,7 +13,7 @@ public protocol TelemetryServiceProtocol: Sendable {
     func flushForTermination()
 }
 
-/// Inert compatibility wrapper for inherited event instrumentation.
+/// Process-wide wrapper for the configured local event sink.
 public enum Telemetry {
     private final class ServiceStore: @unchecked Sendable {
         private let lock = NSLock()
@@ -35,8 +34,8 @@ public enum Telemetry {
 
     private static let serviceStore = ServiceStore()
 
-    /// Retained for tests that inspect local event construction. Fork
-    /// production code does not call this method.
+    /// Installs the process-wide event sink. Production uses
+    /// `LoggerTelemetryService`; tests can install a spy or no-op service.
     public static func configure(_ service: TelemetryServiceProtocol) {
         serviceStore.set(service)
     }

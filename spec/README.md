@@ -1,7 +1,7 @@
 # MacParakeet Spec Index
 
 > Status: **ACTIVE** - Authoritative, current
-> Runtime Note: FluidAudio CoreML is the active architecture. Core STT is local; LLM provider use is opt-in, and fork builds do not collect or upload telemetry or crash reports.
+> Runtime Note: FluidAudio CoreML is the active architecture. Core STT is local; LLM provider use is opt-in, and fork builds log telemetry locally without uploading it.
 
 **MacParakeet** is a voice toolkit for macOS with on-device STT, optional AI features, and no remote telemetry transport.
 

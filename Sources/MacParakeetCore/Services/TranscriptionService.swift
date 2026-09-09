@@ -1408,11 +1408,23 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
     ) async throws -> Transcription {
         let processingStartedAt = Date()
         var lifecycleStage: TelemetryTranscriptionStage = .audioConversion
-        let detectSystem =
-            (recording.systemSpeakerDetection ?? shouldDiarizeMeetings())
-            && recording.sourceAlignment.system != nil
-        let detectMicrophone = recording.microphoneSpeakerDetection && recording.sourceAlignment.microphone != nil
+        let systemDetectionEnabled = recording.systemSpeakerDetection ?? shouldDiarizeMeetings()
+        let microphoneDetectionEnabled = recording.microphoneSpeakerDetection
+        let detectSystem = systemDetectionEnabled && recording.sourceAlignment.system != nil
+        let detectMicrophone = microphoneDetectionEnabled && recording.sourceAlignment.microphone != nil
         let diarizationRequested = diarizationService != nil && (detectSystem || detectMicrophone)
+        recordMeetingDiarizationDiagnostic(
+            "meeting_diarization_plan",
+            fields: [
+                "session=\(recording.sessionID.uuidString)",
+                "service_available=\(diarizationService != nil)",
+                "system_setting=\(systemDetectionEnabled)",
+                "system_setting_captured=\(recording.systemSpeakerDetection != nil)",
+                "system_track_available=\(recording.sourceAlignment.system != nil)",
+                "microphone_setting=\(microphoneDetectionEnabled)",
+                "microphone_track_available=\(recording.sourceAlignment.microphone != nil)",
+            ]
+        )
         var temporaryWavURLs: [URL] = []
         var sourceWavURLs: [AudioSource: URL] = [:]
         defer {
@@ -1431,37 +1443,40 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 onProgress: onProgress
             )
 
+            let systemSourceTranscript = sourceResults.first { $0.source == .system }
+            let microphoneSourceTranscript = sourceResults.first { $0.source == .microphone }
             let systemDiarization: MeetingTranscriptFinalizer.SourceDiarization?
             let microphoneDiarization: MeetingTranscriptFinalizer.SourceDiarization?
             if diarizationRequested {
                 meetingFinalizationBenchmarkObserver?.stageDidStart(.diarization)
-                do {
-                    systemDiarization = try await diarizeMeetingSourceIfNeeded(
-                        source: .system,
-                        recording: recording,
-                        sourceWavURLs: sourceWavURLs,
-                        requested: detectSystem
-                            && sourceResults.contains { $0.source == .system && !$0.result.words.isEmpty },
-                        lifecycleStage: &lifecycleStage,
-                        onProgress: onProgress
-                    )
-                    microphoneDiarization = try await diarizeMeetingSourceIfNeeded(
-                        source: .microphone,
-                        recording: recording,
-                        sourceWavURLs: sourceWavURLs,
-                        requested: detectMicrophone
-                            && sourceResults.contains { $0.source == .microphone && !$0.result.words.isEmpty },
-                        lifecycleStage: &lifecycleStage,
-                        onProgress: onProgress
-                    )
+            }
+            do {
+                systemDiarization = try await diarizeMeetingSourceIfNeeded(
+                    source: .system,
+                    recording: recording,
+                    sourceWavURLs: sourceWavURLs,
+                    detectionEnabled: systemDetectionEnabled,
+                    sourceTranscript: systemSourceTranscript,
+                    lifecycleStage: &lifecycleStage,
+                    onProgress: onProgress
+                )
+                microphoneDiarization = try await diarizeMeetingSourceIfNeeded(
+                    source: .microphone,
+                    recording: recording,
+                    sourceWavURLs: sourceWavURLs,
+                    detectionEnabled: microphoneDetectionEnabled,
+                    sourceTranscript: microphoneSourceTranscript,
+                    lifecycleStage: &lifecycleStage,
+                    onProgress: onProgress
+                )
+                if diarizationRequested {
                     meetingFinalizationBenchmarkObserver?.stageDidEnd(.diarization)
-                } catch {
-                    meetingFinalizationBenchmarkObserver?.stageDidEnd(.diarization)
-                    throw error
                 }
-            } else {
-                systemDiarization = nil
-                microphoneDiarization = nil
+            } catch {
+                if diarizationRequested {
+                    meetingFinalizationBenchmarkObserver?.stageDidEnd(.diarization)
+                }
+                throw error
             }
 
             meetingFinalizationBenchmarkObserver?.stageDidStart(.finalizeMerge)
@@ -1472,6 +1487,22 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 microphoneSpeakerDetection: detectMicrophone
             )
             meetingFinalizationBenchmarkObserver?.stageDidEnd(.finalizeMerge)
+            logMeetingDiarizationMergeOutcome(
+                sessionID: recording.sessionID,
+                source: .system,
+                detectionEnabled: systemDetectionEnabled,
+                sourceTranscript: systemSourceTranscript,
+                diarization: systemDiarization,
+                finalizedWords: finalized.words
+            )
+            logMeetingDiarizationMergeOutcome(
+                sessionID: recording.sessionID,
+                source: .microphone,
+                detectionEnabled: microphoneDetectionEnabled,
+                sourceTranscript: microphoneSourceTranscript,
+                diarization: microphoneDiarization,
+                finalizedWords: finalized.words
+            )
 
             // Raw text and timed words are canonical meeting evidence. Vocabulary
             // and readability cleanup are derived separately in post-processing.
@@ -1654,15 +1685,76 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         source: AudioSource,
         recording: MeetingRecordingOutput,
         sourceWavURLs: [AudioSource: URL],
-        requested: Bool,
+        detectionEnabled: Bool,
+        sourceTranscript: MeetingTranscriptFinalizer.SourceTranscript?,
         lifecycleStage: inout TelemetryTranscriptionStage,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)?
     ) async throws -> MeetingTranscriptFinalizer.SourceDiarization? {
-        guard requested, let diarizationService else { return nil }
-        guard let track = recording.sourceAlignment.track(for: source) else { return nil }
-        guard let wavURL = sourceWavURLs[source] else { return nil }
+        let sessionID = recording.sessionID
+        guard detectionEnabled else {
+            logMeetingDiarizationSkipped(
+                sessionID: sessionID,
+                source: source,
+                reason: "detection_disabled",
+                sourceTranscript: sourceTranscript
+            )
+            return nil
+        }
+        guard let track = recording.sourceAlignment.track(for: source) else {
+            logMeetingDiarizationSkipped(
+                sessionID: sessionID,
+                source: source,
+                reason: "source_track_unavailable",
+                sourceTranscript: sourceTranscript
+            )
+            return nil
+        }
+        guard let sourceTranscript else {
+            logMeetingDiarizationSkipped(
+                sessionID: sessionID,
+                source: source,
+                reason: "source_transcript_unavailable",
+                sourceTranscript: nil
+            )
+            return nil
+        }
+        guard !sourceTranscript.result.words.isEmpty else {
+            logMeetingDiarizationSkipped(
+                sessionID: sessionID,
+                source: source,
+                reason: "word_timestamps_unavailable",
+                sourceTranscript: sourceTranscript
+            )
+            return nil
+        }
+        guard let diarizationService else {
+            logMeetingDiarizationSkipped(
+                sessionID: sessionID,
+                source: source,
+                reason: "diarization_service_unavailable",
+                sourceTranscript: sourceTranscript
+            )
+            return nil
+        }
+        guard let wavURL = sourceWavURLs[source] else {
+            logMeetingDiarizationSkipped(
+                sessionID: sessionID,
+                source: source,
+                reason: "converted_audio_unavailable",
+                sourceTranscript: sourceTranscript
+            )
+            return nil
+        }
 
         lifecycleStage = .diarization
+        recordMeetingDiarizationDiagnostic(
+            "meeting_diarization_started",
+            fields: sourceDiagnosticFields(
+                sessionID: sessionID,
+                source: source,
+                sourceTranscript: sourceTranscript
+            ) + ["track_offset_ms=\(track.startOffsetMs)"]
+        )
         do {
             onProgress?(.identifyingSpeakers)
             Telemetry.send(.diarizationStarted(source: .meeting))
@@ -1670,6 +1762,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             let diarResult = try await diarizationService.diarize(audioURL: wavURL)
             try Task.checkCancellation()
             let diarDuration = Date().timeIntervalSince(diarStartedAt)
+            let durationMs = max(0, Int((diarDuration * 1_000).rounded()))
             Telemetry.send(
                 .diarizationCompleted(
                 source: .meeting,
@@ -1677,14 +1770,69 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 durationSeconds: diarDuration
             ))
 
-            guard !diarResult.segments.isEmpty else { return nil }
+            guard !diarResult.segments.isEmpty else {
+                recordMeetingDiarizationDiagnostic(
+                    "meeting_diarization_result",
+                    fields: sourceDiagnosticFields(
+                        sessionID: sessionID,
+                        source: source,
+                        sourceTranscript: sourceTranscript
+                    ) + [
+                        "outcome=no_segments",
+                        "duration_ms=\(durationMs)",
+                        "speaker_count=\(diarResult.speakerCount)",
+                        "segment_count=0",
+                        "overlapping_word_count=0",
+                    ]
+                )
+                return nil
+            }
+
+            let overlappingWordCount = Self.overlappingWordCount(
+                words: sourceTranscript.result.words,
+                segments: diarResult.segments
+            )
+            let wordStartMs = sourceTranscript.result.words.map(\.startMs).min() ?? -1
+            let wordEndMs = sourceTranscript.result.words.map(\.endMs).max() ?? -1
+            let segmentStartMs = diarResult.segments.map(\.startMs).min() ?? -1
+            let segmentEndMs = diarResult.segments.map(\.endMs).max() ?? -1
+            let outcome = overlappingWordCount > 0 ? "ready" : "no_word_overlap"
+            recordMeetingDiarizationDiagnostic(
+                "meeting_diarization_result",
+                fields: sourceDiagnosticFields(
+                    sessionID: sessionID,
+                    source: source,
+                    sourceTranscript: sourceTranscript
+                ) + [
+                    "outcome=\(outcome)",
+                    "duration_ms=\(durationMs)",
+                    "speaker_count=\(diarResult.speakerCount)",
+                    "segment_count=\(diarResult.segments.count)",
+                    "overlapping_word_count=\(overlappingWordCount)",
+                    "word_start_ms=\(wordStartMs)",
+                    "word_end_ms=\(wordEndMs)",
+                    "segment_start_ms=\(segmentStartMs)",
+                    "segment_end_ms=\(segmentEndMs)",
+                    "track_offset_ms=\(track.startOffsetMs)",
+                ]
+            )
 
             return mappedMeetingDiarization(diarResult, source: source, startOffsetMs: track.startOffsetMs)
         } catch is CancellationError {
+            recordMeetingDiarizationDiagnostic(
+                "meeting_diarization_cancelled",
+                fields: [
+                    "session=\(sessionID.uuidString)",
+                    "source=\(source.rawValue)",
+                ]
+            )
             throw CancellationError()
         } catch {
             logger.error(
-                "meeting_diarization_failed source=\(source.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "meeting_diarization_failed session=\(sessionID.uuidString, privacy: .public) source=\(source.rawValue, privacy: .public) error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+            )
+            AudioCaptureDiagnostics.append(
+                "meeting_diarization_failed session=\(sessionID.uuidString) source=\(source.rawValue) \(AudioCaptureDiagnostics.errorFields(error))"
             )
             Telemetry.send(
                 .diarizationFailed(
@@ -1694,6 +1842,99 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 ))
             return nil
         }
+    }
+
+    private func logMeetingDiarizationSkipped(
+        sessionID: UUID,
+        source: AudioSource,
+        reason: String,
+        sourceTranscript: MeetingTranscriptFinalizer.SourceTranscript?
+    ) {
+        recordMeetingDiarizationDiagnostic(
+            "meeting_diarization_skipped",
+            fields: sourceDiagnosticFields(
+                sessionID: sessionID,
+                source: source,
+                sourceTranscript: sourceTranscript
+            ) + ["reason=\(reason)"]
+        )
+    }
+
+    private func logMeetingDiarizationMergeOutcome(
+        sessionID: UUID,
+        source: AudioSource,
+        detectionEnabled: Bool,
+        sourceTranscript: MeetingTranscriptFinalizer.SourceTranscript?,
+        diarization: MeetingTranscriptFinalizer.SourceDiarization?,
+        finalizedWords: [WordTimestamp]
+    ) {
+        let sourceWords = finalizedWords.filter { AudioSource.forSpeakerID($0.speakerId) == source }
+        let identifiedWordCount = sourceWords.filter { word in
+            guard let speakerID = word.speakerId,
+                speakerID.hasPrefix("\(source.rawValue):")
+            else {
+                return false
+            }
+            return speakerID != AudioSource.unidentifiedMicrophoneSpeakerID
+        }.count
+        let sourceDefaultWordCount = sourceWords.filter { $0.speakerId == source.rawValue }.count
+        let unidentifiedMicrophoneWordCount = sourceWords.filter {
+            $0.speakerId == AudioSource.unidentifiedMicrophoneSpeakerID
+        }.count
+        recordMeetingDiarizationDiagnostic(
+            "meeting_diarization_merge",
+            fields: sourceDiagnosticFields(
+                sessionID: sessionID,
+                source: source,
+                sourceTranscript: sourceTranscript
+            ) + [
+                "detection_enabled=\(detectionEnabled)",
+                "diarization_available=\(diarization != nil)",
+                "final_source_word_count=\(sourceWords.count)",
+                "identified_word_count=\(identifiedWordCount)",
+                "source_default_word_count=\(sourceDefaultWordCount)",
+                "unidentified_microphone_word_count=\(unidentifiedMicrophoneWordCount)",
+                "segment_count=\(diarization?.segments.count ?? 0)",
+            ]
+        )
+    }
+
+    private func sourceDiagnosticFields(
+        sessionID: UUID,
+        source: AudioSource,
+        sourceTranscript: MeetingTranscriptFinalizer.SourceTranscript?
+    ) -> [String] {
+        [
+            "session=\(sessionID.uuidString)",
+            "source=\(source.rawValue)",
+            "word_count=\(sourceTranscript.map { String($0.result.words.count) } ?? "unavailable")",
+            "speech_engine=\(sourceTranscript?.result.engine.rawValue ?? "unavailable")",
+            "engine_variant=\(sourceTranscript?.result.engineVariant ?? "none")",
+        ]
+    }
+
+    private func recordMeetingDiarizationDiagnostic(_ event: String, fields: [String]) {
+        let message = ([event] + fields).joined(separator: " ")
+        logger.info("\(message, privacy: .public)")
+        AudioCaptureDiagnostics.append(message)
+    }
+
+    private static func overlappingWordCount(
+        words: [TimestampedWord],
+        segments: [SpeakerSegment]
+    ) -> Int {
+        let unattributedWords = words.map {
+            WordTimestamp(
+                word: $0.word,
+                startMs: $0.startMs,
+                endMs: $0.endMs,
+                confidence: $0.confidence
+            )
+        }
+        return SpeakerMerger.mergeWordTimestampsWithSpeakers(
+            words: unattributedWords,
+            segments: segments
+        ).filter { $0.speakerId != nil }.count
     }
 
     private func mappedMeetingDiarization(

@@ -63,7 +63,7 @@ final class AppEnvironment {
     let derivedFieldsBackfill: DerivedFieldsBackfillService
 
     init(databaseManager: DatabaseManager) throws {
-        Telemetry.configure(NoOpTelemetryService())
+        Telemetry.configure(LoggerTelemetryService())
         SpeechEnginePreference.migrateMaterializedFinalTranscriptionOverrideIfNeeded()
         self.databaseManager = databaseManager
 

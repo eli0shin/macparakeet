@@ -816,9 +816,11 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                     await self.handleCaptureEvent(event)
                 }
             }
-            logger.info("Meeting recording started: \(sessionID.uuidString, privacy: .public)")
+            logger.info(
+                "meeting_recording_started session=\(sessionID.uuidString, privacy: .public) speaker_detection_system=\(session.systemSpeakerDetection, privacy: .public) speaker_detection_microphone=\(session.microphoneSpeakerDetection, privacy: .public)"
+            )
             AudioCaptureDiagnostics.append(
-                "meeting_recording_started session=\(sessionID.uuidString) source_mode=\(String(describing: sourceMode)) requested_mic_mode=\(String(describing: captureStartReport.microphone.requestedMode)) effective_mic_mode=\(captureStartReport.microphone.effectiveMode.rawValue)"
+                "meeting_recording_started session=\(sessionID.uuidString) source_mode=\(String(describing: sourceMode)) requested_mic_mode=\(String(describing: captureStartReport.microphone.requestedMode)) effective_mic_mode=\(captureStartReport.microphone.effectiveMode.rawValue) speaker_detection_system=\(session.systemSpeakerDetection) speaker_detection_microphone=\(session.microphoneSpeakerDetection)"
             )
         } catch {
             AudioCaptureDiagnostics.append(
@@ -1237,9 +1239,11 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         await liveChunkTranscriber.finishSession()
         await releaseSpeechEngineLease()
         appendStopStage("cleanup", startedAt: cleanupStartedAt)
-        logger.info("Meeting recording finalized: \(session.id.uuidString, privacy: .public)")
+        logger.info(
+            "meeting_recording_stopped session=\(session.id.uuidString, privacy: .public) speaker_detection_system=\(session.systemSpeakerDetection, privacy: .public) speaker_detection_microphone=\(session.microphoneSpeakerDetection, privacy: .public)"
+        )
         AudioCaptureDiagnostics.append(
-            "meeting_recording_stopped session=\(session.id.uuidString) duration_s=\(String(format: "%.3f", durationSeconds))"
+            "meeting_recording_stopped session=\(session.id.uuidString) duration_s=\(String(format: "%.3f", durationSeconds)) speaker_detection_system=\(session.systemSpeakerDetection) speaker_detection_microphone=\(session.microphoneSpeakerDetection)"
         )
         AudioCaptureDiagnostics.append(
             captureHealthSummaryLine(
@@ -1352,6 +1356,12 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         currentSession = session
         currentLockFile = updated
         await liveChunkTranscriber.setSpeakerDetection(enabled, for: source)
+        logger.info(
+            "meeting_speaker_detection_updated session=\(session.id.uuidString, privacy: .public) source=\(source.rawValue, privacy: .public) enabled=\(enabled, privacy: .public) generation=\(session.speakerDetectionGeneration[source, default: 0], privacy: .public) speaker_detection_system=\(session.systemSpeakerDetection, privacy: .public) speaker_detection_microphone=\(session.microphoneSpeakerDetection, privacy: .public)"
+        )
+        AudioCaptureDiagnostics.append(
+            "meeting_speaker_detection_updated session=\(session.id.uuidString) source=\(source.rawValue) enabled=\(enabled) generation=\(session.speakerDetectionGeneration[source, default: 0]) speaker_detection_system=\(session.systemSpeakerDetection) speaker_detection_microphone=\(session.microphoneSpeakerDetection)"
+        )
         return activeSpeakerDetectionState
     }
 

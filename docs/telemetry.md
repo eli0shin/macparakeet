@@ -1,26 +1,17 @@
-# Telemetry and crash-report privacy
+# Local telemetry log
 
-MacParakeet fork builds do not collect or upload usage analytics, CLI operation
-data, or crash reports.
+MacParakeet writes every emitted `TelemetryEventSpec` to:
 
-The inherited event names and `Telemetry.send(...)` call sites remain temporarily
-as inert compatibility code. Production app and CLI composition roots do not
-configure a telemetry service, and the repository contains no HTTP telemetry
-transport or telemetry endpoint. Environment variables and persisted defaults
-cannot enable delivery.
+```text
+~/Library/Logs/MacParakeet/telemetry.jsonl
+```
 
-`CrashReporter` can write a local report to
-`~/Library/Application Support/MacParakeet/crash_report.txt`. The app does not
-upload or automatically delete this file. It stays on the Mac for
-user-requested diagnosis.
+Each line is one encoded `TelemetryEvent` JSON object. It contains the event
+name, event properties, app and OS versions, locale, chip type, a random
+process-session ID, the `gui` or `cli` surface, and a timestamp.
 
-Feedback is separate from telemetry. A feedback request is sent only after an
-explicit user action and keeps its existing attachment controls. MacParakeet
-does not silently attach the local crash report or diagnostic logs.
+The GUI and CLI use `LoggerTelemetryService`. The service has no network
+transport, and MacParakeet does not upload this file automatically.
 
-Local `os.Logger` output and audio diagnostic logs are not network telemetry.
-They remain available when a user chooses to supply diagnostics.
-
-The removed upstream Cloudflare Worker and D1 design is recorded as historical
-context in [ADR-012](../spec/adr/012-telemetry-system.md). It is not part of this
-fork's current architecture.
+`CrashReporter` separately writes local crash reports to
+`~/Library/Application Support/MacParakeet/crash_report.txt`.
