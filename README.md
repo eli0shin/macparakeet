@@ -172,7 +172,7 @@ Dev builds use the release echo-asset packager. The first build prepares the Loc
 
 ## Command line and agent automation
 
-`macparakeet-cli` is the public automation surface for MacParakeet: the canonical Swift-native interface to Parakeet TDT on Apple Silicon, plus the scriptable entry point for MacParakeet's local library, model cache, prompts, meetings, and JSON contracts. Use [`integrations/README.md`](integrations/README.md) for the agent-facing automation guide and [`Sources/CLI/CHANGELOG.md`](Sources/CLI/CHANGELOG.md) for compatibility notes.
+`macparakeet-cli` is the public automation surface for MacParakeet: the canonical Swift-native interface to Parakeet TDT on Apple Silicon, plus the scriptable entry point for MacParakeet's local library, model cache, prompts, meetings, and JSON contracts. Use `macparakeet-cli --help` for the command guide and [`Sources/CLI/CHANGELOG.md`](Sources/CLI/CHANGELOG.md) for compatibility notes.
 
 Discover the current machine-readable command catalog:
 
@@ -291,8 +291,7 @@ All speech recognition runs locally. Parakeet uses the Neural Engine; optional N
 - **Report bugs** — [Open an issue](https://github.com/moona3k/macparakeet/issues) with steps to reproduce and relevant logs or screenshots.
 - **Discuss new work first** — For features or behavior changes, open an issue before starting a PR so we can agree on scope and product fit.
 - **Submit scoped PRs** — Once the issue direction is clear, fork, make the scoped changes, run `swift test`, and link the issue in the PR.
-- **Read the specs** — Architecture decisions and feature specs live in `spec/`
-- **Using a coding agent?** Point it at [`AGENTS.md`](AGENTS.md) — the canonical build/test commands, code style, repo conventions, and links to deeper context for Claude Code, Codex, and friends.
+- **Using a coding agent?** Point it at [`AGENTS.md`](AGENTS.md) for the canonical build and test commands and repository rules.
 
 ## Support
 

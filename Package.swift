@@ -126,8 +126,8 @@ let package = Package(
             swiftSettings: mlxLocalLLMSwiftSettings
         ),
         // macparakeet-cli — versioned public surface (semver, Sources/CLI/CHANGELOG.md).
-        // Consumed by the macOS app, scripted callers, and downstream agent skills
-        // (see /AGENTS.md and integrations/README.md).
+        // Consumed by the macOS app, scripted callers, and downstream agent skills.
+        // See /AGENTS.md and `macparakeet-cli --help`.
         .executableTarget(
             name: "CLI",
             dependencies: [

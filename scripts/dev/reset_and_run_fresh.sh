@@ -22,8 +22,7 @@
 #   - PermissionService / TCC flows
 #   - First-run behavior gated on `onboarding.completedAtISO`
 #   - Meeting recording first-use permission flow
-#   - The optional Screen & System Audio Recording step (added in 2631b83,
-#     see plans/completed/2026-04-onboarding-screen-recording-permission.md)
+#   - The optional Screen & System Audio Recording step
 #   - Any new onboarding capability work from the broader issue #66 refactor
 #
 # Reach for this script whenever you're about to touch code in those areas.
