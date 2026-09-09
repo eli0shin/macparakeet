@@ -53,6 +53,20 @@ final class TranscriptChatViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.messages[1].isStreaming)
     }
 
+    func testSendMessagePreservesQuestionWhitespace() async throws {
+        let transcriptionId = UUID()
+        viewModel.loadTranscript("Transcript", transcriptionId: transcriptionId)
+        let question = "  BEGIN_SENTINEL\n    indented middle\nEND_SENTINEL  "
+        viewModel.inputText = question
+
+        viewModel.sendMessage()
+        try await Task.sleep(for: .milliseconds(200))
+
+        XCTAssertEqual(mockService.lastChatQuestion, question)
+        XCTAssertEqual(viewModel.messages.first?.content, question)
+        XCTAssertEqual(mockConversationRepo.conversations.first?.messages?.first?.content, question)
+    }
+
     func testSendMessageClearsInput() {
         let transcriptionId = UUID()
         viewModel.loadTranscript("Transcript", transcriptionId: transcriptionId)
@@ -228,7 +242,9 @@ final class TranscriptChatViewModelTests: XCTestCase {
 
     func testConfigureWithNilServiceStartsDisabled() {
         let vm = TranscriptChatViewModel()
-        vm.configure(llmService: nil, transcriptText: "Transcript", transcriptionRepo: mockRepo, conversationRepo: mockConversationRepo)
+        vm.configure(
+            llmService: nil, transcriptText: "Transcript", transcriptionRepo: mockRepo,
+            conversationRepo: mockConversationRepo)
         XCTAssertFalse(vm.canSendMessage)
     }
 
@@ -458,7 +474,8 @@ final class TranscriptChatViewModelTests: XCTestCase {
         try await Task.sleep(nanoseconds: 200_000_000)
 
         let historyUserMessages = mockService.lastChatHistory?.filter { $0.role == .user } ?? []
-        XCTAssertTrue(historyUserMessages.isEmpty, "First message history should be empty — question is passed separately")
+        XCTAssertTrue(
+            historyUserMessages.isEmpty, "First message history should be empty — question is passed separately")
         XCTAssertEqual(mockService.lastChatQuestion, "What happened?")
     }
 
@@ -1010,7 +1027,9 @@ final class TranscriptChatViewModelTests: XCTestCase {
         viewModel.regenerateLastResponse()
         try await Task.sleep(nanoseconds: 100_000_000)
 
-        XCTAssertEqual(mockService.chatCallCount, chatCallsBefore, "Regenerate must not re-issue when tail isn't an assistant turn")
+        XCTAssertEqual(
+            mockService.chatCallCount, chatCallsBefore, "Regenerate must not re-issue when tail isn't an assistant turn"
+        )
         XCTAssertEqual(viewModel.messages.count, 1)
     }
 

@@ -62,39 +62,21 @@ final class TranscriptFormatterTests: XCTestCase {
         XCTAssertEqual(mockLLMService.formatTranscriptCallCount, 0)
     }
 
-    func testTranscriptionLaneSkipsWhenInputExceedsMaxInputChars() async throws {
-        let mockLLMService = MockLLMService()
-        let formatter = makeFormatter(llmService: mockLLMService)
-        let longText = String(repeating: "a", count: AIFormatter.maxTranscriptionInputChars + 1)
+    func testEveryLaneFormatsCompleteInputBeyondFormerCap() async throws {
+        let longText = "BEGIN_SENTINEL " + String(repeating: "a", count: 25_000) + " END_SENTINEL"
 
-        let outcome = try await format(
-            formatter,
-            text: longText,
-            lane: .transcription
-        )
+        for lane in [TranscriptFormatter.Lane.transcription, .dictation] {
+            let mockLLMService = MockLLMService()
+            mockLLMService.formatTranscriptResult = "formatted long transcript"
+            let formatter = makeFormatter(llmService: mockLLMService)
 
-        XCTAssertNil(outcome.text)
-        XCTAssertNil(outcome.run)
-        XCTAssertNil(outcome.resolution)
-        XCTAssertEqual(mockLLMService.formatTranscriptCallCount, 0)
-    }
+            let outcome = try await format(formatter, text: longText, lane: lane)
 
-    func testDictationLaneFormatsLongInputWithoutCap() async throws {
-        let mockLLMService = MockLLMService()
-        mockLLMService.formatTranscriptResult = "  formatted long transcript  "
-        let formatter = makeFormatter(llmService: mockLLMService)
-        let longText = String(repeating: "a", count: AIFormatter.maxTranscriptionInputChars + 1)
-
-        let outcome = try await format(
-            formatter,
-            text: longText,
-            lane: .dictation
-        )
-
-        XCTAssertEqual(outcome.text, "formatted long transcript")
-        XCTAssertNotNil(outcome.run)
-        XCTAssertEqual(mockLLMService.formatTranscriptCallCount, 1)
-        XCTAssertEqual(mockLLMService.lastFormattedTranscript, longText)
+            XCTAssertEqual(outcome.text, "formatted long transcript")
+            XCTAssertNotNil(outcome.run)
+            XCTAssertEqual(mockLLMService.formatTranscriptCallCount, 1)
+            XCTAssertEqual(mockLLMService.lastFormattedTranscript, longText)
+        }
     }
 
     func testSuccessReturnsTrimmedTextRunAndResolution() async throws {

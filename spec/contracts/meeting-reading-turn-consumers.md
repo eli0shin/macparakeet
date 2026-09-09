@@ -61,9 +61,9 @@ request grouping, readable exports, or stored formatting mappings.
   emitted in readable output.
 - Paragraphs remain separate inside their canonical or displayed turn. The UI
   renders exactly one empty text row between displayed paragraphs. Optional AI
-  cleanup can transport paragraph entries in 20,000-character cross-turn batches,
-  but IDs map each cleaned part back into source order without giving the model
-  control of Reading Turn structure.
+  cleanup sends all deterministic Reading Turn text in one request, separated by
+  stable boundaries that map validated output back into source order without
+  giving the model control of Reading Turn structure.
 - Simultaneous contributions retain one explicit overlap marker and deterministic
   contribution order.
 - Word-based citations resolve to the containing Reading Turn and return that
@@ -71,9 +71,10 @@ request grouping, readable exports, or stored formatting mappings.
 - Untimed fallback text has no fabricated timestamp or speaker attribution.
 - Edited transcripts use the existing plain edited text because word alignment
   is no longer valid.
-- A meeting AI batch that still fails after three attempts uses verbatim source
-  text for its affected entries. Content-change, protected-value, output-size,
-  and generation-length heuristics do not reject structurally mapped output.
+- Meeting AI cleanup publishes formatting only when the complete response maps
+  to every requested Reading Turn and passes content-preservation checks. A
+  failed or malformed request leaves all turns deterministic. It is not retried
+  with chunked or reduced context.
 - Plain AI-context mode remains the preferred stored `cleanTranscript`, with raw
   text only as a legacy fallback. Legacy meeting card snippets and rebuildable
   search segments derive deterministic cleanup in memory; segment index version

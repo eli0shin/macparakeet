@@ -161,7 +161,7 @@ private extension CLISpecCommand {
         CLISpecParameter.option("--base-url", valueName: "URL", summary: "Provider base URL override."),
         CLISpecParameter.flag("--allow-insecure-http", summary: "Allow non-loopback http:// base URLs intentionally."),
         CLISpecParameter.option("--command", valueName: "COMMAND", summary: "CLI command for the cli provider."),
-        CLISpecParameter.flag("--local", summary: "Mark provider as local for context budgeting."),
+        CLISpecParameter.flag("--local", summary: "Mark a custom provider as local."),
     ]
 
     static let catalog: [CLISpecCommand] = [

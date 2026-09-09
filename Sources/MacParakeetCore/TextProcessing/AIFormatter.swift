@@ -2,11 +2,6 @@ import Foundation
 
 public enum AIFormatter {
     public static let transcriptPlaceholder = "{{TRANSCRIPT}}"
-
-    /// Whole-input cap for file/URL formatting and transcript-text budget for
-    /// each meeting cleanup batch. Prompt instructions, entry IDs, and JSON
-    /// structure do not consume this meeting text budget.
-    public static let maxTranscriptionInputChars = 20_000
     static let legacyDefaultPromptTemplateV1 = """
         You are a transcription cleanup assistant.
 
@@ -39,7 +34,7 @@ public enum AIFormatter {
         5. For medium-length monologues, favor multiple paragraphs over one dense block when the ideas naturally separate.
         6. Use real paragraph breaks in the cleaned text. If you need a new paragraph, put it in the text itself instead of writing the characters \\n.
         7. Fix obvious speech-to-text errors.
-        8. Remove repeated words and filler sounds.
+        8. Remove repeated words and filler sounds when unnecessary.
         9. Keep the original meaning, tone, and wording as close as possible.
         10. Do not summarize, shorten, or add content.
         11. Do not explain your edits.
@@ -50,56 +45,32 @@ public enum AIFormatter {
         """
 
     public static func normalizedPromptTemplate(_ promptTemplate: String) -> String {
-        let trimmed = promptTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return defaultPromptTemplate }
-        if trimmed == legacyDefaultPromptTemplateV1 {
+        guard promptTemplate.contains(where: { !$0.isWhitespace }) else {
             return defaultPromptTemplate
         }
-        return trimmed
+        if promptTemplate.trimmingCharacters(in: .whitespacesAndNewlines) == legacyDefaultPromptTemplateV1 {
+            return defaultPromptTemplate
+        }
+        return promptTemplate
     }
 
     public static func renderPrompt(template promptTemplate: String, transcript: String) -> String {
         let normalizedTemplate = normalizedPromptTemplate(promptTemplate)
-        let normalizedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard normalizedTemplate.contains(transcriptPlaceholder) else {
-            guard !normalizedTranscript.isEmpty else { return normalizedTemplate }
-            return normalizedTemplate + "\n\nRaw transcript:\n" + normalizedTranscript
+            guard !transcript.isEmpty else { return normalizedTemplate }
+            return normalizedTemplate + "\n\nRaw transcript:\n" + transcript
         }
 
         return normalizedTemplate.replacingOccurrences(
             of: transcriptPlaceholder,
-            with: normalizedTranscript
-        )
-    }
-
-    public static let meetingBatchInstruction =
-        "Clean each entry in the JSON batch independently. Preserve every entry ID exactly."
-
-    public static func meetingBatchPromptTemplate(_ promptTemplate: String) -> String {
-        let normalizedTemplate = normalizedPromptTemplate(promptTemplate)
-        let batchContract = """
-            \(meetingBatchInstruction)
-            Do not combine entries or move text between entries.
-            Return only JSON in this form: {"entries":[{"id":"entry ID","text":"cleaned text"}]}.
-            Include each input ID exactly once. Keep the entries separate even when adjacent entries have the same speaker.
-            """
-
-        guard normalizedTemplate.contains(transcriptPlaceholder) else {
-            return normalizedTemplate + "\n\n" + batchContract + "\n\nTranscript batch:\n" + transcriptPlaceholder
-        }
-        return normalizedTemplate.replacingOccurrences(
-            of: transcriptPlaceholder,
-            with: batchContract + "\n\nTranscript batch:\n" + transcriptPlaceholder
+            with: transcript
         )
     }
 
     public static func normalizedFormattedOutput(_ output: String) -> String {
         let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return trimmed }
-        if (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8))) != nil {
-            return trimmed
-        }
 
         var normalized = trimmed.replacingOccurrences(of: "\r\n", with: "\n")
         normalized = normalized.replacingOccurrences(of: "\\r\\n", with: "\\n")

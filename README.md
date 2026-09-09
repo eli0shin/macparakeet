@@ -261,6 +261,8 @@ AI features are entirely **opt-in** and separate from speech recognition — tra
 - **AI formatter** — Optionally run your dictation and file transcripts through your AI provider to clean up grammar, punctuation, and paragraphing. Toggle on/off, customize the prompt, or reset to default.
 - **Transforms** — Select text in any app and press a bound Transform hotkey, such as `Control-Option-1` for Polish, to rewrite the selection through your configured LLM provider.
 
+For every AI operation, MacParakeet sends the complete relevant text, applicable meeting notes, instructions, and chat history to the configured model. It does not silently truncate, select, summarize, retrieve, or chunk context. If the model's context window is too small, the operation stops with a clear error instead of retrying with less context.
+
 **Supported providers:**
 
 | Type | Options |
@@ -281,7 +283,7 @@ All speech recognition runs locally. Parakeet uses the Neural Engine; optional N
 - **No telemetry uploads.** Fork builds do not collect or upload usage analytics, crash reports, audio, or transcripts. Crash reports created for diagnosis stay on the Mac unless the user explicitly attaches information to feedback.
 - **Temp files cleaned up.** Audio deleted after transcription unless you save it. Saved meeting audio follows your retention setting (kept by default).
 
-**What does use the network:** AI summaries, chat/Meeting Ask, AI Formatter, and Transforms connect to configured LLM providers, or to whatever service a configured CLI tool chooses to use, when you choose them. Media URL transcription downloads via yt-dlp; Apple Podcasts links query the public iTunes lookup API to find the episode audio, then download it. Model downloads and explicit feedback delivery also use the network. Core dictation and transcription stay fully offline.
+**What does use the network:** AI summaries, chat/Meeting Ask, AI Formatter, and Transforms connect to configured LLM providers, or to whatever service a configured CLI tool chooses to use, when you choose them. Each AI request includes its complete relevant text context; transcript audio is never sent. Media URL transcription downloads via yt-dlp; Apple Podcasts links query the public iTunes lookup API to find the episode audio, then download it. Model downloads and explicit feedback delivery also use the network. Core dictation and transcription stay fully offline.
 
 ## Contributing
 

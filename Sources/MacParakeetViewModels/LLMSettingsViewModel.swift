@@ -1019,13 +1019,18 @@ public final class LLMSettingsViewModel {
         _ normalizedPrompt: String,
         previousCategoryDefault: AIFormatterSmartDefaults.CategoryDefault?
     ) -> Bool {
+        let comparisonPrompt = normalizedPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         if let previousCategoryDefault,
-            normalizedPrompt == AIFormatter.normalizedPromptTemplate(previousCategoryDefault.promptTemplate)
+            comparisonPrompt
+                == AIFormatter.normalizedPromptTemplate(previousCategoryDefault.promptTemplate)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
         {
             return true
         }
-        return normalizedPrompt == draft.normalizedAIFormatterPrompt
-            || normalizedPrompt == AIFormatter.defaultPromptTemplate
+        return comparisonPrompt
+            == draft.normalizedAIFormatterPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            || comparisonPrompt
+                == AIFormatter.defaultPromptTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     @discardableResult

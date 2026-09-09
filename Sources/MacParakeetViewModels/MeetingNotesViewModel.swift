@@ -25,11 +25,6 @@ public final class MeetingNotesViewModel {
     /// Idle window before persisting a change. ADR-020 §8.
     public static let debounceInterval: Duration = .milliseconds(250)
 
-    /// Soft cap that triggers the inline footer warning in the editor view.
-    /// ADR-020 §3 — notes themselves are not truncated; the warning lets the
-    /// user know summary generation will start trimming around 8,000 words.
-    public static let softCapWarningWordCount = 7_500
-
     /// User-typed notes. Read-only externally; mutated only by the editor
     /// binding, `restore(_:)`, `reset()`, and the slash-command insertion
     /// path (which is itself user-driven — no AI in the loop, ADR-020 §11).
@@ -60,21 +55,6 @@ public final class MeetingNotesViewModel {
         let q = slashQuery.lowercased()
         return Self.allCommands.filter { $0.trigger.dropFirst().lowercased().hasPrefix(q) }
     }
-
-    /// `true` once the user has crossed the soft-cap warning threshold. The
-    /// view uses this to surface a small footer notice without blocking input.
-    public var isApproachingSoftCap: Bool {
-        wordCount >= Self.softCapWarningWordCount
-    }
-
-    /// Word count derived from `notesText`. Cached as a stored property
-    /// and refreshed whenever `notesText` changes (via `applyEdit`,
-    /// `restore`, `reset`, or slash-command acceptance) — used by
-    /// `isApproachingSoftCap` per keystroke and by the soft-cap footer in
-    /// `LiveNotesPaneView`. With notes that can grow to 8,000+ words and
-    /// SwiftUI re-rendering on every observable change, re-walking the
-    /// string on every read would be real main-thread cost.
-    public private(set) var wordCount: Int = 0
 
     /// SwiftUI `TextEditor` binds to this. The setter both applies the new
     /// value and queues a debounced persist task.
@@ -110,7 +90,6 @@ public final class MeetingNotesViewModel {
     /// a documented entry point.
     public func restore(_ notes: String?) {
         notesText = notes ?? ""
-        wordCount = Self.wordCount(for: notesText)
     }
 
     /// Cancel any pending debounce and persist whatever was last typed
@@ -128,7 +107,6 @@ public final class MeetingNotesViewModel {
         debounceTask?.cancel()
         debounceTask = nil
         notesText = ""
-        wordCount = 0
         dismissSlashMenu()
     }
 
@@ -180,7 +158,6 @@ public final class MeetingNotesViewModel {
         // view's TextEditor binding observes the final post-substitution
         // text in one tick (no flicker of the typed `/word`).
         notesText = String(prefix) + insertion
-        wordCount = Self.wordCount(for: notesText)
         dismissSlashMenu()
         scheduleDebounce()
     }
@@ -195,7 +172,6 @@ public final class MeetingNotesViewModel {
 
     private func applyEdit(_ newValue: String) {
         notesText = newValue
-        wordCount = Self.wordCount(for: newValue)
         updateSlashMenuState(for: newValue)
         scheduleDebounce()
     }
@@ -265,25 +241,6 @@ public final class MeetingNotesViewModel {
             guard !Task.isCancelled, let self else { return }
             await self.persist?(self.notesText)
         }
-    }
-
-    /// Counts whitespace-delimited words without allocating a Substring array.
-    /// Called on every keystroke from `applyEdit`; a `split(whereSeparator:)`
-    /// implementation materializes one Substring per word — at 8,000 words
-    /// that is 8,000 heap allocations per keystroke on `@MainActor`, which
-    /// produces visible input latency on slower Macs.
-    private static func wordCount(for text: String) -> Int {
-        var count = 0
-        var inWord = false
-        for character in text {
-            if character.isWhitespace {
-                inWord = false
-            } else if !inWord {
-                inWord = true
-                count += 1
-            }
-        }
-        return count
     }
 
     /// The full slash-command catalog, in display order. ADR-020 §7 locks

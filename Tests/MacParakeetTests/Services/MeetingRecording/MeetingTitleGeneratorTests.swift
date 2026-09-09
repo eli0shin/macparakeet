@@ -2,6 +2,53 @@ import XCTest
 @testable import MacParakeetCore
 
 final class MeetingTitleGeneratorTests: XCTestCase {
+    func testGenerateTitleSendsCompleteTranscriptBeyondFormerCap() async throws {
+        let llm = MockLLMService()
+        llm.summarizeResult = "Complete Context Review"
+        let generator = MeetingTitleGenerator(
+            llmService: llm,
+            shouldGenerate: { true },
+            logger: .init(subsystem: "com.macparakeet.tests", category: "MeetingTitleGeneratorTests")
+        )
+        let transcript =
+            "BEGIN_SENTINEL "
+            + String(repeating: "meeting context ", count: 1_000)
+            + "MIDDLE_SENTINEL "
+            + String(repeating: "meeting context ", count: 1_000)
+            + "END_SENTINEL"
+
+        let title = try await generator.generateTitle(transcript: transcript, currentTitle: "Meeting")
+
+        XCTAssertEqual(title, "Complete Context Review")
+        XCTAssertEqual(llm.lastSummaryTranscript, transcript)
+        XCTAssertEqual(llm.summarizeCallCount, 1)
+    }
+
+    func testGenerateTitleReturnsClearContextLimitError() async {
+        let llm = MockLLMService()
+        llm.errorToThrow = LLMError.contextTooLong
+        let generator = MeetingTitleGenerator(
+            llmService: llm,
+            shouldGenerate: { true },
+            logger: .init(subsystem: "com.macparakeet.tests", category: "MeetingTitleGeneratorTests")
+        )
+
+        do {
+            _ = try await generator.generateTitle(
+                transcript: String(repeating: "enough context ", count: 20),
+                currentTitle: "Meeting"
+            )
+            XCTFail("Expected contextTooLong")
+        } catch let error as LLMError {
+            guard case .contextTooLong = error else {
+                return XCTFail("Expected contextTooLong, got \(error)")
+            }
+            XCTAssertTrue(error.localizedDescription.contains("complete text"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testShouldReplaceTimestampFallbackMeetingTitles() {
         XCTAssertTrue(MeetingTitleGenerator.shouldReplaceFallbackMeetingTitle("Meeting"))
         XCTAssertTrue(MeetingTitleGenerator.shouldReplaceFallbackMeetingTitle("Meeting Jun 17, 2026 at 09:59"))
@@ -42,6 +89,8 @@ final class MeetingTitleGeneratorTests: XCTestCase {
         XCTAssertNil(MeetingTitleGenerator.validatedTitle(from: "Meeting Jun 17, 2026"))
         XCTAssertNil(MeetingTitleGenerator.validatedTitle(from: "Product Review\nCustomer Followup"))
         XCTAssertNil(MeetingTitleGenerator.validatedTitle(from: "One"))
-        XCTAssertNil(MeetingTitleGenerator.validatedTitle(from: "This title has far too many words to be a usable meeting title"))
+        XCTAssertNil(
+            MeetingTitleGenerator.validatedTitle(from: "This title has far too many words to be a usable meeting title")
+        )
     }
 }

@@ -30,7 +30,8 @@ public enum LLMError: Error, LocalizedError, Sendable {
         case .modelNotFound(let model):
             return "Model not found: \(model)"
         case .contextTooLong:
-            return "Text exceeds the model's context limit."
+            return
+                "The complete text exceeds the configured model's context limit. Select a model with a larger context window."
         case .formatterTruncated:
             return "AI formatter output was incomplete."
         case .formatterEmptyResponse:

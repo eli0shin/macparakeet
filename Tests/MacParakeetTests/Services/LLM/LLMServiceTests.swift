@@ -237,7 +237,8 @@ final class LLMServiceTests: XCTestCase {
             _ = try await service.summarize(transcript: "Test")
             XCTFail("Expected LLMError.notConfigured")
         } catch let error as LLMError {
-            if case .notConfigured = error {} else {
+            if case .notConfigured = error {
+            } else {
                 XCTFail("Expected notConfigured, got \(error)")
             }
         } catch {
@@ -249,10 +250,12 @@ final class LLMServiceTests: XCTestCase {
         mockConfigStore.config = nil
 
         do {
-            _ = try await service.chat(question: "Q", transcript: "T", userNotes: nil, history: [], source: .transcriptChat)
+            _ = try await service.chat(
+                question: "Q", transcript: "T", userNotes: nil, history: [], source: .transcriptChat)
             XCTFail("Expected LLMError.notConfigured")
         } catch let error as LLMError {
-            if case .notConfigured = error {} else {
+            if case .notConfigured = error {
+            } else {
                 XCTFail("Expected notConfigured, got \(error)")
             }
         } catch {
@@ -267,7 +270,8 @@ final class LLMServiceTests: XCTestCase {
             _ = try await service.transform(text: "T", prompt: "P")
             XCTFail("Expected LLMError.notConfigured")
         } catch let error as LLMError {
-            if case .notConfigured = error {} else {
+            if case .notConfigured = error {
+            } else {
                 XCTFail("Expected notConfigured, got \(error)")
             }
         } catch {
@@ -287,7 +291,8 @@ final class LLMServiceTests: XCTestCase {
             )
             XCTFail("Expected LLMError.notConfigured")
         } catch let error as LLMError {
-            if case .notConfigured = error {} else {
+            if case .notConfigured = error {
+            } else {
                 XCTFail("Expected notConfigured, got \(error)")
             }
         } catch {
@@ -549,10 +554,11 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertEqual(result.messageCount, 2)
     }
 
-    func testFormatTranscriptDetailedDoesNotSubtractPromptFromTranscriptBudget() async throws {
+    func testFormatTranscriptDetailedPreservesTranscriptWithLargePrompt() async throws {
         mockConfigStore.config = .ollama(model: "llama3.2")
         let transcript = "SENTINEL_TRANSCRIPT"
-        let longPromptTemplate = String(repeating: "instruction ", count: 9_000)
+        let longPromptTemplate =
+            String(repeating: "instruction ", count: 9_000)
             + AIFormatter.transcriptPlaceholder
 
         let result = try await service.formatTranscriptDetailed(
@@ -565,6 +571,12 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertFalse(result.inputTruncated)
         XCTAssertEqual(mockClient.capturedMessages.count, 2)
         XCTAssertTrue(mockClient.capturedMessages[1].content.contains(transcript))
+        XCTAssertTrue(
+            mockClient.capturedMessages[1].content.contains(
+                longPromptTemplate.replacingOccurrences(
+                    of: AIFormatter.transcriptPlaceholder,
+                    with: transcript
+                )))
     }
 
     // MARK: - Transform
@@ -630,48 +642,6 @@ final class LLMServiceTests: XCTestCase {
         )
     }
 
-    func testFormatTranscriptForLMStudioSendsTwentyThousandCharactersWithoutTruncation() async throws {
-        mockConfigStore.config = .lmstudio(model: "qwen/qwen3-4b-2507")
-        mockClient.responseContent = #"{"cleaned_text":"done"}"#
-        let transcript = String(repeating: "x", count: 20_000)
-
-        let result = try await service.formatTranscriptDetailed(
-            transcript: transcript,
-            promptTemplate: "Custom instruction:\n\(AIFormatter.transcriptPlaceholder)",
-            source: .transcription,
-            defaultPromptUsed: false
-        )
-
-        XCTAssertFalse(result.inputTruncated)
-        XCTAssertTrue(mockClient.capturedMessages[1].content.hasSuffix(transcript))
-        XCTAssertFalse(mockClient.capturedMessages[1].content.contains("[... content truncated ...]"))
-    }
-
-    func testMeetingBatchForLMStudioPreservesFencedJSONWithEscapedParagraphBreaks() async throws {
-        mockConfigStore.config = .lmstudio(model: "qwen/qwen3-4b-2507")
-        let response = #"""
-            ```json
-            {"entries":[{"id":"entry-0","text":"First.\n\nSecond."}]}
-            ```
-            """#
-        mockClient.responseContent = response
-
-        let output = try await service.formatTranscript(
-            transcript: #"{"entries":[{"id":"entry-0","text":"first second"}]}"#,
-            promptTemplate: AIFormatter.meetingBatchPromptTemplate(AIFormatter.defaultPromptTemplate),
-            source: .transcription,
-            defaultPromptUsed: true
-        )
-
-        XCTAssertEqual(output, response)
-        let responseFormat = try XCTUnwrap(mockClient.capturedOptions?.responseFormat)
-        guard case .jsonSchema(let name, let schema) = responseFormat else {
-            return XCTFail("Expected meeting batch JSON schema")
-        }
-        XCTAssertEqual(name, "meeting_formatter_batch")
-        XCTAssertEqual(schema.properties["entries"]?.type, "array")
-    }
-
     func testFormatTranscriptForLMStudioNormalizesEscapedParagraphBreaks() async throws {
         mockConfigStore.config = LLMProviderConfig(
             id: .lmstudio,
@@ -681,7 +651,8 @@ final class LLMServiceTests: XCTestCase {
             isLocal: true
         )
         mockClient.responseContent = ""
-        mockClient.responseReasoningContent = #"{"cleaned_text":"First paragraph.\\nSecond paragraph.\\nThird paragraph."}"#
+        mockClient.responseReasoningContent =
+            #"{"cleaned_text":"First paragraph.\\nSecond paragraph.\\nThird paragraph."}"#
 
         let result = try await service.formatTranscript(
             transcript: "first paragraph second paragraph third paragraph",
@@ -702,7 +673,8 @@ final class LLMServiceTests: XCTestCase {
             isLocal: true
         )
         mockClient.responseContent = ""
-        mockClient.responseReasoningContent = #"{"cleaned_text":"Intro line.\nSecond line in same paragraph.\\nNew paragraph starts here."}"#
+        mockClient.responseReasoningContent =
+            #"{"cleaned_text":"Intro line.\nSecond line in same paragraph.\\nNew paragraph starts here."}"#
 
         let result = try await service.formatTranscript(
             transcript: "intro and follow-up then new paragraph",
@@ -714,41 +686,34 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertEqual(result, "Intro line.\nSecond line in same paragraph.\n\nNew paragraph starts here.")
     }
 
-    func testFormatTranscriptForLMStudioRejectsNonBatchOutputWhenFinishReasonIsLength() async throws {
-        mockConfigStore.config = .lmstudio(model: "qwen3.5-4b-mlx")
+    func testFormatTranscriptForLMStudioThrowsWhenOutputIsTruncated() async throws {
+        mockConfigStore.config = LLMProviderConfig(
+            id: .lmstudio,
+            baseURL: URL(string: "http://localhost:1234/v1")!,
+            apiKey: nil,
+            modelName: "qwen3.5-4b-mlx",
+            isLocal: true
+        )
         mockClient.responseContent = #"{"cleaned_text":"Partial output"}"#
         mockClient.responseFinishReason = "length"
 
         do {
-            _ = try await service.formatTranscriptDetailed(
+            _ = try await service.formatTranscript(
                 transcript: "long transcript content",
                 promptTemplate: AIFormatter.defaultPromptTemplate,
                 source: .dictation,
                 defaultPromptUsed: true
             )
-            XCTFail("Expected truncated non-batch output to throw")
+            XCTFail("Expected truncated formatter output to throw")
         } catch let error as LLMError {
-            guard case .formatterTruncated = error else {
-                return XCTFail("Expected formatterTruncated, got \(error)")
+            if case .formatterTruncated = error {
+                // Expected
+            } else {
+                XCTFail("Expected formatterTruncated, got \(error)")
             }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
         }
-    }
-
-    func testMeetingBatchForLMStudioAcceptsOutputWhenFinishReasonIsLength() async throws {
-        mockConfigStore.config = .lmstudio(model: "qwen3.5-4b-mlx")
-        let response = #"{"entries":[{"id":"entry-0","text":"Partial output"}]}"#
-        mockClient.responseContent = response
-        mockClient.responseFinishReason = "length"
-
-        let result = try await service.formatTranscriptDetailed(
-            transcript: #"{"entries":[{"id":"entry-0","text":"source"}]}"#,
-            promptTemplate: AIFormatter.meetingBatchPromptTemplate(AIFormatter.defaultPromptTemplate),
-            source: .transcription,
-            defaultPromptUsed: true
-        )
-
-        XCTAssertEqual(result.output, response)
-        XCTAssertEqual(result.result.stopReason, "length")
     }
 
     func testFormatTranscriptForLMStudioThrowsWhenResponseIsEmpty() async throws {
@@ -785,280 +750,108 @@ final class LLMServiceTests: XCTestCase {
         }
     }
 
-    // MARK: - Context Truncation
+    // MARK: - Complete Context
 
-    func testShortTextNotTruncated() {
-        let text = "Short text"
-        let result = LLMService.truncateMiddle(text, limit: 1000)
-        XCTAssertEqual(result, text)
-    }
-
-    func testEmptyTextNotTruncated() {
-        let result = LLMService.truncateMiddle("", limit: 100)
-        XCTAssertEqual(result, "")
-    }
-
-    func testLongTextTruncatedFromMiddle() {
-        let text = String(repeating: "word ", count: 200) // 1000 chars
-        let result = LLMService.truncateMiddle(text, limit: 100)
-        XCTAssertTrue(result.contains("\n\n[... content truncated ...]\n\n"))
-        XCTAssertLessThanOrEqual(result.count, 200) // head + tail + marker
-    }
-
-    func testTruncationSnapsToWordBoundary() {
-        let text = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima"
-        let result = LLMService.truncateMiddle(text, limit: 60)
-        XCTAssertTrue(result.contains("[... content truncated ...]"))
-        // Should not split mid-word
-        let parts = result.components(separatedBy: "\n\n[... content truncated ...]\n\n")
-        XCTAssertEqual(parts.count, 2)
-        guard parts.count == 2 else { return }
-        let head = parts[0]
-        let tail = parts[1]
-        XCTAssertFalse(head.isEmpty)
-        XCTAssertFalse(tail.isEmpty)
-        // Head should end with a space (snapped to word boundary)
-        XCTAssertTrue(head.hasSuffix(" "))
-    }
-
-    func testUnicodeTruncation() {
-        // Emoji and CJK characters
-        let text = "Hello 🌍 世界 こんにちは " + String(repeating: "x ", count: 100)
-        let result = LLMService.truncateMiddle(text, limit: 50)
-        // Should not crash or produce invalid Unicode
-        XCTAssertTrue(result.contains("[... content truncated ...]"))
-        XCTAssertTrue(result.utf8.count > 0)
-    }
-
-    func testCloudContextBudget() {
-        XCTAssertEqual(LLMService.cloudContextBudget, 500_000)
-    }
-
-    func testLocalContextBudget() {
-        XCTAssertEqual(LLMService.localContextBudget, 80_000)
-    }
-
-    func testLMStudioContextBudget() {
-        XCTAssertEqual(LLMService.lmStudioContextBudget, 8_000)
-    }
-
-    func testLocalProviderUsesLocalBudget() async throws {
-        mockConfigStore.config = .ollama(model: "llama3.2")
-
-        // Create text that exceeds local budget but not cloud budget
-        let text = String(repeating: "word ", count: 18_000) // 90_000 chars > 80_000 local budget
-        _ = try await service.summarize(transcript: text)
-
-        // The user message should be truncated
-        let userMessage = mockClient.capturedMessages.last!
-        XCTAssertTrue(userMessage.content.contains("[... content truncated ...]"))
-    }
-
-    func testLMStudioPromptResultUsesConservativeBudgetIncludingSystemPrompt() async throws {
-        mockConfigStore.config = .lmstudio(model: "qwen/qwen3-4b-2507")
-
-        let text = String(repeating: "word ", count: 3_000)
-        _ = try await service.generatePromptResultDetailed(
-            transcript: text,
-            systemPrompt: "Extract the action items."
-        )
-
-        let systemMessage = try XCTUnwrap(mockClient.capturedMessages.first)
-        let userMessage = try XCTUnwrap(mockClient.capturedMessages.last)
-        XCTAssertTrue(userMessage.content.contains("[... content truncated ...]"))
-        XCTAssertLessThanOrEqual(
-            userMessage.content.count,
-            LLMService.lmStudioContextBudget - systemMessage.content.count
-        )
-    }
-
-    func testLMStudioPromptResultBoundsRenderedSystemPromptContainingTranscript() async throws {
-        mockConfigStore.config = .lmstudio(model: "qwen/qwen3-4b-2507")
-
-        let transcript = String(repeating: "word ", count: 3_000)
-        _ = try await service.generatePromptResultDetailed(
-            transcript: transcript,
-            systemPrompt: "Read this inline transcript:\n\(transcript)"
-        )
-
-        let systemMessage = try XCTUnwrap(mockClient.capturedMessages.first)
-        let userMessage = try XCTUnwrap(mockClient.capturedMessages.last)
-        XCTAssertLessThanOrEqual(
-            systemMessage.content.count + userMessage.content.count,
-            LLMService.lmStudioContextBudget
-        )
-        XCTAssertTrue(systemMessage.content.contains("[... content truncated ...]"))
-        XCTAssertEqual(userMessage.content, "")
-    }
-
-    func testLMStudioStreamingPromptResultUsesConservativeBudgetIncludingSystemPrompt() async throws {
-        mockConfigStore.config = .lmstudio(model: "qwen/qwen3-4b-2507")
-        mockClient.streamTokens = ["done"]
-
-        let text = String(repeating: "word ", count: 3_000)
-        let stream = service.generatePromptResultStream(
-            transcript: text,
-            systemPrompt: "Extract the action items."
-        )
-        for try await _ in stream {}
-
-        let systemMessage = try XCTUnwrap(mockClient.capturedMessages.first)
-        let userMessage = try XCTUnwrap(mockClient.capturedMessages.last)
-        XCTAssertTrue(userMessage.content.contains("[... content truncated ...]"))
-        XCTAssertLessThanOrEqual(
-            userMessage.content.count,
-            LLMService.lmStudioContextBudget - systemMessage.content.count
-        )
-    }
-
-    func testLMStudioTransformSubtractsPromptOverheadFromTextBudget() async throws {
-        mockConfigStore.config = .lmstudio(model: "qwen/qwen3-4b-2507")
-
-        let text = String(repeating: "word ", count: 3_000)
-        _ = try await service.transformDetailed(text: text, prompt: "Make it concise.")
-
-        let totalMessageChars = mockClient.capturedMessages.reduce(0) { $0 + $1.content.count }
-        XCTAssertLessThanOrEqual(totalMessageChars, LLMService.lmStudioContextBudget)
-        XCTAssertTrue(mockClient.capturedMessages.last?.content.contains("[... content truncated ...]") == true)
-    }
-
-    func testLMStudioStreamingTransformSubtractsPromptOverheadFromTextBudget() async throws {
-        mockConfigStore.config = .lmstudio(model: "qwen/qwen3-4b-2507")
-        mockClient.streamTokens = ["done"]
-
-        let text = String(repeating: "word ", count: 3_000)
-        let stream = service.transformStream(text: text, prompt: "Make it concise.")
-        for try await _ in stream {}
-
-        let totalMessageChars = mockClient.capturedMessages.reduce(0) { $0 + $1.content.count }
-        XCTAssertLessThanOrEqual(totalMessageChars, LLMService.lmStudioContextBudget)
-        XCTAssertTrue(mockClient.capturedMessages.last?.content.contains("[... content truncated ...]") == true)
-    }
-
-    func testCloudProviderDoesNotTruncateWithinBudget() async throws {
-        mockConfigStore.config = .openai(apiKey: "sk-test")
-
-        // 30K chars is comfortably within cloud budget (500K)
-        let text = String(repeating: "word ", count: 6000)
-        _ = try await service.summarize(transcript: text)
-
-        let userMessage = mockClient.capturedMessages.last!
-        XCTAssertFalse(userMessage.content.contains("[... content truncated ...]"))
-    }
-
-    // MARK: - Chat History Overflow
-
-    func testChatDropsOldHistoryWhenOverBudget() async throws {
-        mockConfigStore.config = .ollama(model: "llama3.2") // local = 80K budget
-
-        // Create a long transcript that uses most of the budget
-        let transcript = String(repeating: "word ", count: 14_000) // 70K chars
-
-        // Create history with identifiable messages (~210 chars each)
-        let history = (0..<50).flatMap { i -> [ChatMessage] in
-            [
-                ChatMessage(role: .user, content: "Question \(i) " + String(repeating: "x", count: 200)),
-                ChatMessage(role: .assistant, content: "Answer \(i) " + String(repeating: "y", count: 200)),
+    func testFormerProviderBudgetsDoNotReducePromptResultInput() async throws {
+        let source = sentinelText(repeating: "source", count: 70_000)
+        let prompt = sentinelText(repeating: "instruction", count: 4_000)
+        let providers: [LLMProviderConfig] = [
+            .openai(apiKey: "sk-test"),
+            .ollama(model: "llama3.2"),
+            .lmstudio(model: "qwen/qwen3-4b-2507"),
             ]
+
+        for provider in providers {
+            mockConfigStore.config = provider
+            _ = try await service.generatePromptResultDetailed(transcript: source, systemPrompt: prompt)
+
+            XCTAssertEqual(mockClient.capturedMessages[0].content, prompt)
+            XCTAssertEqual(mockClient.capturedMessages[1].content, source)
+            XCTAssertFalse(mockClient.capturedMessages.contains { $0.content.contains("content truncated") })
+        }
         }
 
-        _ = try await service.chat(
-            question: "Latest question",
-            transcript: transcript,
-            userNotes: nil,
-            history: history,
-            source: .transcriptChat
-        )
-
-        let messages = mockClient.capturedMessages
-        XCTAssertEqual(messages.first?.role, .system)
-        XCTAssertEqual(messages.last?.role, .user)
-        XCTAssertEqual(messages.last?.content, "Latest question")
-        // Should have dropped most of the 100 history messages
-        XCTAssertLessThan(messages.count, history.count + 2)
-        XCTAssertGreaterThan(messages.count, 2, "Should keep at least some recent history")
-    }
-
-    func testChatWithNegativeHistoryBudgetDropsAllHistory() async throws {
-        mockConfigStore.config = .ollama(model: "llama3.2") // local = 80K budget
-
-        // The truncated transcript fills almost all available local context.
-        // System prompt prefix + truncated transcript + question leave little history budget.
-        // Make each history entry large enough (>8K each) so none fit.
-        let transcript = String(repeating: "word ", count: 40_000) // 200K chars
-
+    func testChatSendsCompleteTranscriptNotesQuestionAndOldHistory() async throws {
+        mockConfigStore.config = .lmstudio(model: "small-former-budget")
+        let transcript = sentinelText(repeating: "transcript", count: 12_000)
+        let notes = sentinelText(repeating: "notes", count: 4_000)
+        let question = sentinelText(repeating: "question", count: 2_000)
+        let oldestOverride = "OLD_OVERRIDE_SENTINEL " + String(repeating: "override ", count: 2_000)
         let history = [
-            ChatMessage(role: .user, content: String(repeating: "z", count: 10_000)),
-            ChatMessage(role: .assistant, content: String(repeating: "z", count: 10_000)),
+            ChatMessage(role: .user, content: "old label", modelPromptOverride: oldestOverride),
+            ChatMessage(role: .assistant, content: "OLD_ASSISTANT_SENTINEL"),
+            ChatMessage(role: .user, content: "RECENT_USER_SENTINEL"),
+            ChatMessage(role: .assistant, content: "RECENT_ASSISTANT_SENTINEL"),
         ]
-
-        _ = try await service.chat(
-            question: "New question",
-            transcript: transcript,
-            userNotes: nil,
-            history: history,
-            source: .transcriptChat
-        )
-
-        let messages = mockClient.capturedMessages
-        XCTAssertEqual(messages.first?.role, .system)
-        XCTAssertEqual(messages.last?.role, .user)
-        XCTAssertEqual(messages.last?.content, "New question")
-        // Each history entry is 10K chars, but only ~7-8K budget — none fit
-        XCTAssertEqual(messages.count, 2)
-    }
-
-    func testChatBudgetsUserNotesAndTranscriptTogether() async throws {
-        mockConfigStore.config = .ollama(model: "llama3.2")
-
-        let transcript = String(repeating: "transcript word ", count: 12_000)
-        let notes = String(repeating: "notes word ", count: 12_000)
-        let history = [
-            ChatMessage(role: .user, content: "Earlier question"),
-            ChatMessage(role: .assistant, content: "Earlier answer"),
-        ]
-        let question = "Latest question"
 
         _ = try await service.chat(
             question: question,
             transcript: transcript,
             userNotes: notes,
             history: history,
-            source: .transcriptChat
+            source: .meetingAsk
         )
 
-        let messages = mockClient.capturedMessages
-        let systemPrompt = try XCTUnwrap(messages.first?.content)
-        XCTAssertLessThanOrEqual(
-            systemPrompt.count + question.count,
-            LLMService.localContextBudget
-        )
-        XCTAssertTrue(systemPrompt.contains("User's notes from the meeting"))
-        XCTAssertTrue(systemPrompt.contains("Transcript:"))
-        XCTAssertEqual(messages.last?.content, question)
-        XCTAssertGreaterThan(messages.count, 2, "Small recent history should still fit after notes/transcript budgeting")
+        XCTAssertTrue(mockClient.capturedMessages[0].content.contains(transcript))
+        XCTAssertTrue(mockClient.capturedMessages[0].content.contains(notes))
+        XCTAssertEqual(
+            Array(mockClient.capturedMessages.dropFirst().dropLast()),
+            [
+                ChatMessage(role: .user, content: oldestOverride),
+                history[1], history[2], history[3],
+            ])
+        XCTAssertEqual(mockClient.capturedMessages.last?.content, question)
     }
 
-    func testChatHistoryUsesModelPromptOverrideForRichPromptTurns() async throws {
-        mockConfigStore.config = .openai(apiKey: "sk-test", model: "gpt-4")
+    func testFormatterAndTransformSendCompleteInputs() async throws {
+        mockConfigStore.config = .lmstudio(model: "small-former-budget")
+        mockClient.responseContent = #"{"cleaned_text":"formatted"}"#
+        let transcript = sentinelText(repeating: "formatter", count: 12_000)
+        let template =
+            "PROMPT_BEGIN\n" + String(repeating: "instruction ", count: 2_000)
+            + "\n{{TRANSCRIPT}}\nPROMPT_END"
 
-        let richPrompt = "Explain the unresolved risks in the meeting so far."
-        let history = [
-            ChatMessage(role: .user, content: "Tell me more", modelPromptOverride: richPrompt),
-            ChatMessage(role: .assistant, content: "The main risk is timeline compression."),
-        ]
-
-        _ = try await service.chat(
-            question: "What should we do next?",
-            transcript: "The team discussed delivery risks.",
-            userNotes: nil,
-            history: history,
-            source: .transcriptChat
+        _ = try await service.formatTranscriptDetailed(
+            transcript: transcript,
+            promptTemplate: template,
+            source: .transcription,
+            defaultPromptUsed: false
         )
+        XCTAssertTrue(mockClient.capturedMessages[1].content.contains(transcript))
+        XCTAssertTrue(mockClient.capturedMessages[1].content.contains("PROMPT_BEGIN"))
+        XCTAssertTrue(mockClient.capturedMessages[1].content.contains("PROMPT_END"))
 
-        let messages = mockClient.capturedMessages
-        XCTAssertTrue(messages.contains { $0.role == .user && $0.content == richPrompt })
-        XCTAssertFalse(messages.contains { $0.role == .user && $0.content == "Tell me more" })
+        let text = sentinelText(repeating: "transform", count: 12_000)
+        let prompt = sentinelText(repeating: "transform-prompt", count: 2_000)
+        _ = try await service.transformDetailed(text: text, prompt: prompt)
+        XCTAssertTrue(mockClient.capturedMessages[1].content.contains(text))
+        XCTAssertTrue(mockClient.capturedMessages[1].content.contains(prompt))
+    }
+
+    func testContextLimitErrorIsReturnedWithoutReducedRetry() async {
+        mockClient.chatCompletionError = LLMError.contextTooLong
+
+        do {
+            _ = try await service.summarize(transcript: sentinelText(repeating: "source", count: 70_000))
+            XCTFail("Expected contextTooLong")
+        } catch let error as LLMError {
+            guard case .contextTooLong = error else {
+                return XCTFail("Expected contextTooLong, got \(error)")
+            }
+            XCTAssertEqual(
+                error.localizedDescription,
+                "The complete text exceeds the configured model's context limit. Select a model with a larger context window."
+            )
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(mockClient.chatCompletionCallCount, 1)
+    }
+
+    private func sentinelText(repeating word: String, count: Int) -> String {
+        "BEGIN_SENTINEL " + String(repeating: "\(word) ", count: count / 2)
+            + "MIDDLE_SENTINEL " + String(repeating: "\(word) ", count: count / 2)
+            + "END_SENTINEL"
     }
 
     // MARK: - Streaming
@@ -1115,7 +908,8 @@ final class LLMServiceTests: XCTestCase {
             }
             XCTFail("Expected LLMError.notConfigured")
         } catch let error as LLMError {
-            if case .notConfigured = error {} else {
+            if case .notConfigured = error {
+            } else {
                 XCTFail("Expected notConfigured, got \(error)")
             }
         } catch {
@@ -1147,7 +941,8 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertEqual(operations.first?["streaming"], "true")
         XCTAssertEqual(operations.first?["outcome"], "cancelled")
         XCTAssertNil(operations.first?["error_type"])
-        XCTAssertFalse(events.contains { event in
+        XCTAssertFalse(
+            events.contains { event in
             if case .llmPromptResultFailed = event { return true }
             return false
         })
@@ -1155,7 +950,8 @@ final class LLMServiceTests: XCTestCase {
 
     func testChatStreamThrowsWhenNotConfigured() async {
         mockConfigStore.config = nil
-        let stream = service.chatStream(question: "Q", transcript: "T", userNotes: nil, history: [], source: .transcriptChat)
+        let stream = service.chatStream(
+            question: "Q", transcript: "T", userNotes: nil, history: [], source: .transcriptChat)
 
         do {
             for try await _ in stream {
@@ -1163,7 +959,8 @@ final class LLMServiceTests: XCTestCase {
             }
             XCTFail("Expected LLMError.notConfigured")
         } catch let error as LLMError {
-            if case .notConfigured = error {} else {
+            if case .notConfigured = error {
+            } else {
                 XCTFail("Expected notConfigured, got \(error)")
             }
         } catch {
@@ -1181,7 +978,8 @@ final class LLMServiceTests: XCTestCase {
             }
             XCTFail("Expected LLMError.notConfigured")
         } catch let error as LLMError {
-            if case .notConfigured = error {} else {
+            if case .notConfigured = error {
+            } else {
                 XCTFail("Expected notConfigured, got \(error)")
             }
         } catch {
@@ -1219,7 +1017,8 @@ final class LLMServiceTests: XCTestCase {
         } catch {}
 
         let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains { event in
+        XCTAssertTrue(
+            events.contains { event in
             if case .llmProviderUnavailable(let provider, let errorType, let feature, let source) = event {
                 return provider == "ollama"
                     && errorType == "LLMError.connectionFailed"
@@ -1228,13 +1027,14 @@ final class LLMServiceTests: XCTestCase {
             }
             return false
         }, "Expected llmProviderUnavailable in: \(events)")
-        XCTAssertFalse(events.contains { event in
+        XCTAssertFalse(
+            events.contains { event in
             if case .llmFormatterFailed = event { return true }
             return false
         }, "Expected NO llmFormatterFailed (user-config errors should not pollute the failure bucket)")
     }
 
-    func testFormatTranscriptStillEmitsFormatterFailedOnEmptyResponse() async {
+    func testFormatTranscriptStillEmitsFormatterFailedOnRealFailure() async {
         let telemetry = LLMTelemetrySpy()
         Telemetry.configure(telemetry)
         mockConfigStore.config = LLMProviderConfig(
@@ -1244,8 +1044,8 @@ final class LLMServiceTests: XCTestCase {
             modelName: "qwen3.5-4b-mlx",
             isLocal: true
         )
-        mockClient.responseContent = "   "
-        mockClient.responseFinishReason = "stop"
+        mockClient.responseContent = "ignored"
+        mockClient.responseFinishReason = "length"
 
         do {
             _ = try await service.formatTranscript(
@@ -1258,11 +1058,13 @@ final class LLMServiceTests: XCTestCase {
         } catch {}
 
         let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains { event in
+        XCTAssertTrue(
+            events.contains { event in
             if case .llmFormatterFailed = event { return true }
             return false
-        }, "Empty formatter responses should still emit llmFormatterFailed")
-        XCTAssertFalse(events.contains { event in
+        }, "Real formatter failures (truncation, etc.) should still emit llmFormatterFailed")
+        XCTAssertFalse(
+            events.contains { event in
             if case .llmProviderUnavailable = event { return true }
             return false
         })
@@ -1286,7 +1088,8 @@ final class LLMServiceTests: XCTestCase {
         } catch {}
 
         let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains { event in
+        XCTAssertTrue(
+            events.contains { event in
             if case .llmProviderUnavailable(let provider, let errorType, let feature, _) = event {
                 return provider == "ollama"
                     && errorType == "LLMError.modelNotFound"
@@ -1294,7 +1097,8 @@ final class LLMServiceTests: XCTestCase {
             }
             return false
         })
-        XCTAssertFalse(events.contains { event in
+        XCTAssertFalse(
+            events.contains { event in
             if case .llmPromptResultFailed = event { return true }
             return false
         })
@@ -1313,12 +1117,14 @@ final class LLMServiceTests: XCTestCase {
         mockClient.chatCompletionError = LLMError.cliError("not found")
 
         do {
-            _ = try await service.chat(question: "Q", transcript: "T", userNotes: nil, history: [], source: .transcriptChat)
+            _ = try await service.chat(
+                question: "Q", transcript: "T", userNotes: nil, history: [], source: .transcriptChat)
             XCTFail("Expected throw")
         } catch {}
 
         let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains { event in
+        XCTAssertTrue(
+            events.contains { event in
             if case .llmProviderUnavailable(let provider, let errorType, let feature, let source) = event {
                 return provider == "localCLI"
                     && errorType == "LLMError.cliError"
@@ -1327,7 +1133,8 @@ final class LLMServiceTests: XCTestCase {
             }
             return false
         })
-        XCTAssertFalse(events.contains { event in
+        XCTAssertFalse(
+            events.contains { event in
             if case .llmChatFailed = event { return true }
             return false
         })
@@ -1346,7 +1153,8 @@ final class LLMServiceTests: XCTestCase {
         } catch {}
 
         let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains { event in
+        XCTAssertTrue(
+            events.contains { event in
             if case .llmProviderUnavailable(let provider, let errorType, let feature, _) = event {
                 return provider == "anthropic"
                     && errorType == "LLMError.authenticationFailed"
@@ -1354,7 +1162,8 @@ final class LLMServiceTests: XCTestCase {
             }
             return false
         })
-        XCTAssertFalse(events.contains { event in
+        XCTAssertFalse(
+            events.contains { event in
             if case .llmTransformFailed = event { return true }
             return false
         })
@@ -1379,13 +1188,15 @@ final class LLMServiceTests: XCTestCase {
         } catch {}
 
         let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains { event in
+        XCTAssertTrue(
+            events.contains { event in
             if case .llmProviderUnavailable(let provider, _, let feature, _) = event {
                 return provider == "ollama" && feature == .promptResult
             }
             return false
         })
-        XCTAssertFalse(events.contains { event in
+        XCTAssertFalse(
+            events.contains { event in
             if case .llmPromptResultFailed = event { return true }
             return false
         })
@@ -1402,7 +1213,8 @@ final class LLMServiceTests: XCTestCase {
             isLocal: true
         )
         mockClient.chatCompletionError = LLMError.modelNotFound("missing")
-        let stream = service.chatStream(question: "Q", transcript: "T", userNotes: nil, history: [], source: .transcriptChat)
+        let stream = service.chatStream(
+            question: "Q", transcript: "T", userNotes: nil, history: [], source: .transcriptChat)
 
         do {
             for try await _ in stream {}
@@ -1410,13 +1222,15 @@ final class LLMServiceTests: XCTestCase {
         } catch {}
 
         let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains { event in
+        XCTAssertTrue(
+            events.contains { event in
             if case .llmProviderUnavailable(let provider, _, let feature, let source) = event {
                 return provider == "ollama" && feature == .chat && source == .transcriptChat
             }
             return false
         })
-        XCTAssertFalse(events.contains { event in
+        XCTAssertFalse(
+            events.contains { event in
             if case .llmChatFailed = event { return true }
             return false
         })
@@ -1436,13 +1250,15 @@ final class LLMServiceTests: XCTestCase {
         } catch {}
 
         let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains { event in
+        XCTAssertTrue(
+            events.contains { event in
             if case .llmProviderUnavailable(let provider, _, let feature, _) = event {
                 return provider == "anthropic" && feature == .transform
             }
             return false
         })
-        XCTAssertFalse(events.contains { event in
+        XCTAssertFalse(
+            events.contains { event in
             if case .llmTransformFailed = event { return true }
             return false
         })
@@ -1458,16 +1274,19 @@ final class LLMServiceTests: XCTestCase {
         mockClient.chatCompletionError = LLMError.providerError("500 Internal")
 
         do {
-            _ = try await service.chat(question: "Q", transcript: "T", userNotes: nil, history: [], source: .transcriptChat)
+            _ = try await service.chat(
+                question: "Q", transcript: "T", userNotes: nil, history: [], source: .transcriptChat)
             XCTFail("Expected throw")
         } catch {}
 
         let events = telemetry.snapshot()
-        XCTAssertTrue(events.contains { event in
+        XCTAssertTrue(
+            events.contains { event in
             if case .llmChatFailed = event { return true }
             return false
         })
-        XCTAssertFalse(events.contains { event in
+        XCTAssertFalse(
+            events.contains { event in
             if case .llmProviderUnavailable = event { return true }
             return false
         })

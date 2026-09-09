@@ -122,7 +122,8 @@ public final class TranscriptChatViewModel {
         }
         currentProviderID = config.id
         if config.id == .localCLI {
-            let displayName = cliConfigStore
+            let displayName =
+                cliConfigStore
                 .flatMap { $0.load() }
                 .map { LocalCLITemplate.displayName(for: $0.commandTemplate) }
                 ?? "Custom CLI"
@@ -170,11 +171,13 @@ public final class TranscriptChatViewModel {
     ///   more") but the actual prompt deserves to be more comprehensive. The
     ///   user-visible bubble and persisted history both show `inputText`.
     public func sendMessage(richPrompt: String? = nil) {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isStreaming, llmService != nil else { return }
+        let text = inputText
+        guard text.contains(where: { !$0.isWhitespace }), !isStreaming, llmService != nil else { return }
         let llmQuestion: String
-        if let rich = richPrompt?.trimmingCharacters(in: .whitespacesAndNewlines), !rich.isEmpty {
-            llmQuestion = rich
+        if let richPrompt,
+            richPrompt.contains(where: { !$0.isWhitespace })
+        {
+            llmQuestion = richPrompt
         } else {
             llmQuestion = text
         }
@@ -196,7 +199,7 @@ public final class TranscriptChatViewModel {
                 errorMessage = Self.storageUnavailableMessage
                 return
             }
-            let title = String(text.prefix(50))
+            let title = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(50))
             let conversation = ChatConversation(transcriptionId: transcriptionId, title: title)
             do {
                 try conversationRepo.save(conversation)
@@ -232,7 +235,8 @@ public final class TranscriptChatViewModel {
         guard !isStreaming, llmService != nil else { return }
         guard let last = messages.last,
               last.role == .assistant,
-              !last.isStreaming else { return }
+            !last.isStreaming
+        else { return }
         guard chatHistory.last?.role == .assistant else { return }
 
         // Pop the assistant turn from both the visible thread and persisted
@@ -246,7 +250,8 @@ public final class TranscriptChatViewModel {
         guard let trailingUser = chatHistory.last,
               trailingUser.role == .user,
               let visibleUser = messages.last,
-              visibleUser.role == .user else { return }
+            visibleUser.role == .user
+        else { return }
         let userPrompt = trailingUser.modelPromptOverride ?? visibleUser.modelPromptOverride ?? trailingUser.content
         let historyForRequest = Array(chatHistory.dropLast())
 
@@ -601,7 +606,8 @@ public final class TranscriptChatViewModel {
 
     private func discardEmptyCurrentConversation() {
         guard let current = currentConversation,
-              current.messages == nil || current.messages?.isEmpty == true else { return }
+            current.messages == nil || current.messages?.isEmpty == true
+        else { return }
 
         guard let conversationRepo else {
             logger.error("Missing conversationRepo in discardEmptyCurrentConversation")

@@ -172,7 +172,7 @@ Example: tapping "Tell me more" sends *"Expand on your previous response. Go dee
 
 For Ask to work mid-recording — before any `Transcription` row exists — `TranscriptChatViewModel.sendMessage(...)` skips the lazy `ChatConversation` creation when both `transcriptionId` and `conversationRepo` are `nil`. Messages still accumulate in `messages` and `chatHistory` normally; nothing is persisted until promotion.
 
-The transcript text is fed continuously via a new `updateTranscriptText(_:)` (does not clear history; distinct from the existing `updateTranscript(_:)` which does). `MeetingRecordingPanelViewModel` calls this on every transcript-preview tick with a clean speaker-labeled join (no bracketed timestamps — LLMs do better without them).
+The transcript text is fed continuously via a new `updateTranscriptText(_:)` (does not clear history; distinct from the existing `updateTranscript(_:)` which does). `MeetingRecordingPanelViewModel` calls this on every transcript-preview tick with the selected complete transcript projection. Rich context includes available timestamps and speaker labels. Plain context can omit timestamps but keeps all source text. Every Ask request sends the latest complete projection, complete applicable notes, and the full conversation history.
 
 ### 5. Live → persisted handoff at finalize
 

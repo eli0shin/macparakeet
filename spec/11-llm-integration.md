@@ -23,7 +23,7 @@ model option.
 1. Bundling any LLM runtime/model or making local LLMs the public default. The in-process MLX runtime remains a gated app-build target, and the verified model downloader/setup UI stays hidden behind a developer enable path while `AppFeatures.inProcessLocalLLMEnabled == false`.
 2. Bundled/default LLM processing in the dictation hot path. The AI formatter is opt-in, runs after deterministic cleanup, and falls back to the deterministic result if the provider fails.
 3. Building a hosted backend or proxy service.
-4. Automatic fallback between providers.
+4. Automatic fallback between providers or reduced-context retries.
 
 **Local MLX status (updated 2026-07-05):** The in-process provider, MLX runtime seam, verified model downloader, and one-click Settings card now exist as a developer-gated foundation. The public feature flag remains off, downloads are never automatic, and public one-click setup remains blocked by runtime capability gating, setup UX, release readiness, and Phase 0 quality evidence. The first plausible public scope is single-transcript cleanup/summarization/Q&A; cross-meeting or whole-library analysis remains future-gated. Cloud/frontier providers remain the recommended quality path per surface until local capability reaches parity there. See `plans/active/2026-06-27-on-device-local-llm.md`.
 
@@ -289,7 +289,7 @@ concise summary that captures the key points, decisions, and action items.
 Use bullet points for clarity. Keep the summary under 500 words.
 ```
 
-**Context assembly:** Full transcript text. If transcript exceeds the context budget, truncate from the middle with an ellipsis marker, preserving the head and tail within the limit. Truncation snaps to word boundaries to avoid slicing multi-byte Unicode. The transcript budget accounts for the rendered summary system prompt so the combined request stays inside the provider budget; if a custom prompt has already rendered transcript text into the system prompt, that rendered prompt is bounded too. **Budget:** 500,000 characters for cloud providers, 80,000 characters for most local providers (`isLocal == true`), and 8,000 characters for LM Studio because its effective context depends on the model loaded in the desktop server.
+**Context assembly:** The complete transcript and complete system prompt are sent without an application-side character budget. This policy is identical for every provider. If the configured model rejects the complete request because its context window is too small, the operation returns a clear context-limit error and stops. MacParakeet does not retry with reduced, summarized, selected, retrieved, or chunked context.
 
 ### 2. Chat with Transcript
 
@@ -313,7 +313,7 @@ the transcript, say so. Be concise and specific, citing relevant parts when help
 </transcript>
 ```
 
-**Context assembly:** System prompt with full transcript + conversation history. Same context budget as summary (500K cloud / 80K local, 8K LM Studio). Notes and transcript are budgeted together inside the system prompt with a small recent-history reserve; if the remaining context exceeds the budget, drop oldest conversation turns first (keep system prompt + recent turns).
+**Context assembly:** The system prompt contains the complete transcript and complete applicable meeting notes. Every request also includes every old user and assistant turn, in order, plus the complete current question or prompt override. No turn or source range is dropped. Rich transcript context retains useful timestamps and available speaker labels without synthetic turn numbers. An explicit Plain selection can omit that presentation metadata but still contains all source text.
 
 **User notes (meeting recordings, optional):** When the transcription has non-empty `userNotes`, the chat system prompt gains a `User's notes from the meeting:\n…` block before the transcript block. Empty / nil / whitespace-only notes are omitted entirely — chat behavior is byte-identical to a chat without notes. Threaded via `LLMService.chat / chatStream / chatDetailed`'s `userNotes: String?` parameter; the GUI calls `TranscriptChatViewModel.bindUserNotesProvider(_:)` with a closure that returns the latest notes at chat-send time (static for saved transcriptions, live for in-meeting Ask). See ADR-020's 2026-05-02 amendment for context on why this is safe even though the auto-run "Memo-Steered Notes" prompt was reverted.
 
@@ -338,7 +338,7 @@ the transcript, say so. Be concise and specific, citing relevant parts when help
 Respond with only the transformed text. Do not add explanations or preamble.
 ```
 
-**Context assembly:** Selected text is truncated after accounting for the transform system prompt, instruction wrapper, and custom prompt. Same provider budgets as summary/chat (500K cloud / 80K local, 8K LM Studio).
+**Context assembly:** The complete selected text and complete custom prompt are sent through the same complete-context path as every other LLM operation.
 
 ---
 
@@ -426,28 +426,17 @@ missing or points at MacParakeet itself.
 Profiles apply only to Dictation AI Formatter in V1. File/URL and meeting
 transcription formatting continues to use the fallback formatter prompt. The
 transcripts-side formatter has its own "Use for transcripts" toggle (default
-on). File/URL formatting keeps the whole-input length cap used to avoid
-unrealistic provider timeouts (#493). Completed meetings instead derive stable
-Reading Turns, then pack complete verbatim paragraphs across turns and speakers
-into serial batches. Every provider gets at most 20,000 characters of transcript
-text per batch; instructions, transport IDs, and JSON do not reduce that budget.
-A fitting paragraph is never split. An oversized paragraph is split at sentence
-endings, with a hard request bound and no discarded input. Provider adapters do
-not truncate formatter input or apply an LM Studio-specific cleanup cap.
-
-Each JSON entry is cleaned independently and keeps a transport ID. Responses
-map by ID even when entries arrive out of order; speaker labels, overlap,
-playback timing, paragraph evidence, and raw words stay outside model control.
-A request failure or malformed, missing, unknown, or duplicate ID is retried
-twice. After three failed attempts, only that batch uses its verbatim source
-text. Mapped output is not rejected for content changes, protected-value
-changes, output size, or a generation-length stop reason. Cancellation stops
-later batches and propagates through the meeting workflow, which marks the
-operation cancelled and publishes no partial formatting overrides. Durable
-turn overrides remain keyed to turn identity and deterministic source text, so
-stale overrides fail closed. Formatting runs only through the selected
-provider, model, and formatter prompt when the transcript formatter toggle is
-enabled.
+on). File/URL formatting sends the complete transcript in one request. Completed
+meetings derive stable Reading Turns first, then send all deterministic Reading
+Turn text in one complete request. The response is published only when every
+turn is present and passes non-empty, protected-value, content-change, and
+output-size validation; otherwise all turns use deterministic text.
+Cancellation propagates through the meeting workflow, which marks the operation
+cancelled and publishes no partial formatting overrides. Validated text
+overrides are keyed to turn identity and deterministic source text, so the model
+cannot alter speaker labels, overlap, playback timing, paragraphs, or raw word
+evidence. Formatting runs only through the provider and prompt already selected
+by the user and only when the existing transcript formatter toggle is enabled.
 
 Browser hostname/domain matching is intentionally deferred. In V1, Gmail in
 Chrome can match an exact Chrome profile or the coarse `browser` category, but
@@ -560,7 +549,7 @@ CLI LLM commands use ephemeral inline config (not shared with GUI UserDefaults/K
 
 1. **LLMClient**: Mock URLSession, verify request format (headers, body, auth) for each provider type.
 2. **LLMService**: Mock LLMClient, verify prompt assembly for summarize/chat/transform.
-3. **Context assembly**: Verify truncation behavior when transcript exceeds limits.
+3. **Context assembly**: Verify beginning, middle, ending, notes, prompt-override, and oldest-history sentinels all reach the client unchanged beyond the former provider budgets.
 4. **Provider config**: Verify Keychain storage/retrieval of API keys. Verify UserDefaults storage of provider config.
 5. **Error mapping**: Verify error mapping inspects response body JSON first (providers return `{"error": {"message": "...", "type": "..."}}`), then falls back to HTTP status codes.
 6. **Streaming**: Verify SSE parsing for streamed responses.
