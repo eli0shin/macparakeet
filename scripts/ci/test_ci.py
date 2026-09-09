@@ -254,8 +254,9 @@ class InterruptedReleaseRecoveryTests(unittest.TestCase):
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
         self.workflow = Path(".github/workflows/ci.yml").read_text()
-        self.release_job = self.workflow.split("\n  release:\n", 1)[1].split("\n  development-artifact:\n", 1)[0]
-        self.development_job = self.workflow.split("\n  development-artifact:\n", 1)[1].split("\n  signed-artifact:\n", 1)[0]
+        self.release_job = self.workflow.split("\n  release:\n", 1)[1].split("\n  signed-artifact:\n", 1)[0]
+        self.development_workflow = Path(".github/workflows/development-artifact.yml").read_text()
+        self.development_job = self.development_workflow.split("\n  development-artifact:\n", 1)[1]
         self.signed_job = self.workflow.split("\n  signed-artifact:\n", 1)[1].split("\n  # Preserve", 1)[0]
         self.prototype_job = self.workflow.split("\n  compact-transcript-prototype:\n", 1)[1].split("\n  debug-tests:\n", 1)[0]
         self.github_release_workflow = Path(".github/workflows/release.yml").read_text()
@@ -359,14 +360,31 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("unsigned-non-notarized", self.workflow)
 
     def test_development_publication_waits_for_complete_gate_on_main_and_manual_runs(self):
-        self.assertIn("needs: swift-test", self.development_job)
-        self.assertIn("needs.swift-test.result == 'success'", self.development_job)
-        self.assertIn("github.event_name == 'workflow_dispatch'", self.development_job)
-        self.assertIn("github.event_name == 'push'", self.development_job)
-        self.assertIn("github.ref == 'refs/heads/main'", self.development_job)
+        self.assertIn("workflows: [CI]", self.development_workflow)
+        self.assertIn("types: [completed]", self.development_workflow)
+        self.assertIn("branches: [main]", self.development_workflow)
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", self.development_job)
+        self.assertIn("github.event.workflow_run.event == 'workflow_dispatch'", self.development_job)
+        self.assertIn("github.event.workflow_run.event == 'push'", self.development_job)
+        self.assertIn("github.event.workflow_run.head_branch == 'main'", self.development_job)
+        self.assertIn("github.event.workflow_run.head_repository.full_name == 'eli0shin/macparakeet'", self.development_job)
+        self.assertIn("github.repository == 'eli0shin/macparakeet'", self.development_job)
+        self.assertIn("ref: ${{ github.event.workflow_run.head_sha }}", self.development_job)
+        self.assertIn("persist-credentials: false", self.development_job)
+        self.assertIn("permissions:\n  contents: read", self.development_workflow)
         self.assertNotIn("pull_request", self.development_job)
         self.assertNotIn("environment:", self.development_job)
         self.assertNotIn("secrets.", self.development_job)
+
+    def test_development_build_cannot_delay_or_cancel_release_ci(self):
+        self.assertNotIn("\n  development-artifact:\n", self.workflow)
+        self.assertNotIn("publish_development_artifact.sh", self.workflow)
+        self.assertNotIn("needs:", self.development_job)
+        self.assertIn("group: owner-development-artifact-main", self.development_workflow)
+        self.assertIn("cancel-in-progress: true", self.development_workflow)
+        self.assertNotIn("owner-development-artifact-main", self.workflow)
+        self.assertNotIn("owner-development-artifact-main", self.github_release_workflow)
+        self.assertNotIn("Development", self.github_release_workflow)
 
     def test_development_upload_is_unambiguous_fail_closed_and_short_lived(self):
         self.assertIn("bash scripts/ci/publish_development_artifact.sh", self.development_job)
