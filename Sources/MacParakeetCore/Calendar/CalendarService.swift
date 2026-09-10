@@ -192,17 +192,20 @@ public actor CalendarService {
         // Capture the user's status *before* filtering them out of the
         // participant list — otherwise we lose the signal needed to honor
         // declined events.
-        var userStatus: EventParticipant.ParticipantStatus?
-        if let attendees = ekEvent.attendees {
-            if let currentUser = attendees.first(where: { $0.isCurrentUser }) {
-                userStatus = mapStatus(currentUser.participantStatus)
+        let attendees = ekEvent.attendees ?? []
+        let currentUsers = attendees
+            .filter(\.isCurrentUser)
+            .map(convertParticipant)
+        let userStatus = attendees
+            .first(where: \.isCurrentUser)
+            .map { mapStatus($0.participantStatus) }
+        let participants = attendees.compactMap { attendee -> EventParticipant? in
+            guard !attendee.isCurrentUser else { return nil }
+            let participant = convertParticipant(attendee)
+            guard !currentUsers.contains(where: { $0.representsSamePerson(as: participant) }) else {
+                return nil
             }
-        }
-
-        let participants = (ekEvent.attendees ?? []).compactMap { attendee -> EventParticipant? in
-            if attendee.isCurrentUser { return nil }
-
-            return convertParticipant(attendee)
+            return participant
         }
         let organizer = ekEvent.organizer.map(convertParticipant)
 
@@ -231,21 +234,14 @@ public actor CalendarService {
     }
 
     private func convertParticipant(_ participant: EKParticipant) -> EventParticipant {
-        let email: String? = {
-            guard let urlString = (participant.value(forKey: "URL") as? URL)?.absoluteString else {
-                return nil
-            }
-            if urlString.hasPrefix("mailto:") {
-                return urlString.replacingOccurrences(of: "mailto:", with: "")
-            }
-            return nil
-        }()
-
-        return EventParticipant(
-            email: email,
+        let participantURL = participant.url
+        var converted = EventParticipant(
+            email: EventParticipant.emailAddress(from: participantURL),
             name: participant.name,
             status: mapStatus(participant.participantStatus)
         )
+        converted.sourceIdentifier = participantURL.absoluteString
+        return converted
     }
 
     private func mapStatus(_ status: EKParticipantStatus) -> EventParticipant.ParticipantStatus {

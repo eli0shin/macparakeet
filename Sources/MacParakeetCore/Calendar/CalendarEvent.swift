@@ -71,8 +71,8 @@ public struct CalendarEvent: Codable, Sendable, Identifiable {
         self.endTime = endTime
         self.location = location
         self.meetUrl = meetUrl
-        self.participants = participants
-        self.organizer = organizer
+        self.organizer = organizer?.normalized
+        self.participants = Self.uniqueParticipants(participants.map(\.normalized))
         self.isAllDay = isAllDay
         self.calendarName = calendarName
         self.calendarIdentifier = calendarIdentifier
@@ -87,10 +87,22 @@ public struct EventParticipant: Codable, Sendable, Hashable {
     public var name: String?
     public var status: ParticipantStatus
 
+    /// EventKit's supported participant URL, retained only in memory for
+    /// identity checks. It is intentionally omitted from Codable output so an
+    /// opaque calendar-provider principal does not become exported user data.
+    var sourceIdentifier: String? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case email
+        case name
+        case status
+    }
+
     public init(email: String? = nil, name: String? = nil, status: ParticipantStatus = .unknown) {
         self.email = email
         self.name = name
         self.status = status
+        self.sourceIdentifier = nil
     }
 
     public enum ParticipantStatus: String, Codable, Sendable {
@@ -99,6 +111,47 @@ public struct EventParticipant: Codable, Sendable, Hashable {
         case tentative
         case pending
         case unknown
+    }
+
+    /// Best available local label. EventKit providers do not always supply
+    /// both a name and an email address.
+    public var displayName: String {
+        name ?? email ?? "Participant"
+    }
+
+    static func emailAddress(from url: URL) -> String? {
+        guard url.scheme?.caseInsensitiveCompare("mailto") == .orderedSame else { return nil }
+        let address = url.path.trimmingCharacters(in: .whitespacesAndNewlines)
+        return address.isEmpty ? nil : address
+    }
+
+    fileprivate var normalized: EventParticipant {
+        var participant = EventParticipant(
+            email: Self.nonempty(email)?.lowercased(),
+            name: Self.nonempty(name),
+            status: status
+        )
+        participant.sourceIdentifier = Self.nonempty(sourceIdentifier)
+        return participant
+    }
+
+    func representsSamePerson(as other: EventParticipant) -> Bool {
+        let lhs = normalized
+        let rhs = other.normalized
+        if let lhsIdentifier = lhs.sourceIdentifier, let rhsIdentifier = rhs.sourceIdentifier {
+            return lhsIdentifier == rhsIdentifier
+        }
+        if let lhsEmail = lhs.email, let rhsEmail = rhs.email {
+            return lhsEmail == rhsEmail
+        }
+        return false
+    }
+
+    private static func nonempty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
     }
 }
 
@@ -132,6 +185,19 @@ public extension CalendarEvent {
         participants.count
     }
 
+    var participantDisplayNames: [String] {
+        participants
+            .filter { participant in
+                organizer?.representsSamePerson(as: participant) != true
+            }
+            .map(\.displayName)
+    }
+
+    var organizerDisplayName: String? {
+        guard let organizer else { return nil }
+        return organizer.name ?? organizer.email ?? "Organizer"
+    }
+
     /// Stable key for the coordinator's per-occurrence suppression sets
     /// (reminded / countdown-shown / dismissed). Combines `id` with the start
     /// time so rescheduling an event to a different time is treated as a fresh
@@ -148,6 +214,17 @@ public extension CalendarEvent {
 
     var userDeclined: Bool {
         userStatus == .declined
+    }
+
+    private static func uniqueParticipants(_ participants: [EventParticipant]) -> [EventParticipant] {
+        var unique: [EventParticipant] = []
+        for participant in participants {
+            if unique.contains(where: { $0.representsSamePerson(as: participant) }) { continue }
+            // People whose provider exposes no supported identity value stay
+            // in the list because equal names do not prove equal identities.
+            unique.append(participant)
+        }
+        return unique
     }
 }
 

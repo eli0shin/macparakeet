@@ -89,6 +89,12 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ## [Unreleased]
 
+### Calendar participant details
+
+- Human-readable `calendar upcoming` output now lists available organizer and
+  participant names, with email addresses used when names are unavailable.
+  JSON output keeps its existing schema.
+
 ### Saved final transcript order
 
 - New final meeting and imported transcripts combine consecutive same-speaker

@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@054-pull-and-present-calendar-participant-details
 Tags:
   - calendar
   - meetings
