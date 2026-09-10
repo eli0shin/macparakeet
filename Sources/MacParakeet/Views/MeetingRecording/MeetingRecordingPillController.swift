@@ -69,22 +69,30 @@ private class PillMenuDelegate: NSObject {
 @MainActor
 final class MeetingRecordingPillController {
     private var panel: NSPanel?
-    private var preservedFrameForNextShow: NSRect?
     private weak var pillView: MeetingRecordingAppKitPillView?
     private let pillViewModel: MeetingRecordingPillViewModel
+    private let frameAutosaveName: String
     var onClick: (() -> Void)?
     var onStopRecording: (() -> Void)?
     var onOpenApp: (() -> Void)?
     var onCancelRecording: (() -> Void)?
     var onPauseToggle: (() -> Void)?
-    var isVisible: Bool { panel != nil }
+    var isVisible: Bool { panel?.isVisible ?? false }
+    var managedWindow: NSWindow? { panel }
 
-    init(viewModel: MeetingRecordingPillViewModel) {
+    init(
+        viewModel: MeetingRecordingPillViewModel,
+        frameAutosaveName: String = "MeetingRecordingPill"
+    ) {
         self.pillViewModel = viewModel
+        self.frameAutosaveName = frameAutosaveName
     }
 
     func show() {
         if let panel {
+            if !Self.isRecoverable(panel.frame, on: NSScreen.screens.map(\.visibleFrame)) {
+                placeAtDefaultLocation(panel, width: panel.frame.width, height: panel.frame.height)
+            }
             panel.orderFront(nil)
             // Back-to-back recordings can reuse the saved-completion pill; push
             // the fresh state now instead of waiting for the 1 s view tick.
@@ -127,34 +135,40 @@ final class MeetingRecordingPillController {
         panel.hasShadow = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = true
         panel.contentView = contentView
 
-        if let preservedFrame = preservedFrameForNextShow {
-            panel.setFrame(preservedFrame, display: false)
-            preservedFrameForNextShow = nil
-        } else if let screen = NSScreen.main {
-            let frame = screen.visibleFrame
-            let x = frame.maxX - panelWidth
-            let y = frame.midY - panelHeight / 2
-            panel.setFrameOrigin(NSPoint(x: x, y: y))
+        let restoredFrame = panel.setFrameUsingName(frameAutosaveName)
+        panel.setFrameAutosaveName(frameAutosaveName)
+        if !restoredFrame || !Self.isRecoverable(panel.frame, on: NSScreen.screens.map(\.visibleFrame)) {
+            placeAtDefaultLocation(panel, width: panelWidth, height: panelHeight)
         }
 
         panel.orderFront(nil)
         self.panel = panel
     }
 
-    func hide(preserveFrameForNextShow: Bool = false) {
-        if preserveFrameForNextShow {
-            if let frame = panel?.frame {
-                preservedFrameForNextShow = frame
-            }
-        } else {
-            preservedFrameForNextShow = nil
+    func hide(preserveFrameForNextShow _: Bool = false) {
+        guard let panel else { return }
+        panel.saveFrame(usingName: frameAutosaveName)
+        panel.orderOut(nil)
+    }
+
+    static func isRecoverable(_ frame: NSRect, on visibleFrames: [NSRect]) -> Bool {
+        visibleFrames.contains { visibleFrame in
+            let intersection = frame.intersection(visibleFrame)
+            return intersection.width >= 44 && intersection.height >= 44
         }
-        panel?.orderOut(nil)
-        panel = nil
-        pillView = nil
+    }
+
+    private func placeAtDefaultLocation(_ panel: NSPanel, width: CGFloat, height: CGFloat) {
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let frame = screen.visibleFrame
+        let x = frame.maxX - width
+        let y = frame.midY - height / 2
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
+        panel.saveFrame(usingName: frameAutosaveName)
     }
 
     /// Forwards the coordinator's fast (~30 fps) audio level to the pill so the

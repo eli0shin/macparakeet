@@ -89,6 +89,7 @@ final class MeetingRecordingFlowCoordinator {
     private let probableCalendarSnapshotProvider: @MainActor @Sendable () -> MeetingCalendarSnapshot?
     private var llmService: LLMServiceProtocol?
     private let onMenuBarIconUpdate: (BreathWaveIcon.MenuBarState) -> Void
+    private let onOpenMainWindow: @MainActor @Sendable () -> Void
     private let onTranscriptionReady: (Transcription) -> Void
     private let onQueuedTranscriptionReady: (Transcription, Bool) -> Void
     private let onQueuedTranscriptionFailed: (UUID, TranscriptionCompletionNotifier.Content) -> Void
@@ -168,6 +169,7 @@ final class MeetingRecordingFlowCoordinator {
             MeetingRecordingLockFileStore(),
         meetingTranscriptionQueue: MeetingTranscriptionQueue? = nil,
         onMenuBarIconUpdate: @escaping (BreathWaveIcon.MenuBarState) -> Void,
+        onOpenMainWindow: @escaping @MainActor @Sendable () -> Void = {},
         onTranscriptionReady: @escaping (Transcription) -> Void,
         onQueuedTranscriptionReady: ((Transcription, Bool) -> Void)? = nil,
         onQueuedTranscriptionFailed: ((UUID, TranscriptionCompletionNotifier.Content) -> Void)? = nil,
@@ -201,6 +203,7 @@ final class MeetingRecordingFlowCoordinator {
                 finalizationOwnershipClaimer: finalizationOwnershipClaimer
             )
         self.onMenuBarIconUpdate = onMenuBarIconUpdate
+        self.onOpenMainWindow = onOpenMainWindow
         self.onTranscriptionReady = onTranscriptionReady
         self.onQueuedTranscriptionReady =
             onQueuedTranscriptionReady ?? { transcription, _ in
@@ -676,8 +679,7 @@ final class MeetingRecordingFlowCoordinator {
                 self?.stopRecording(trigger: .manual)
             }
             pillController?.onOpenApp = { [weak self] in
-                NSApp.activate(ignoringOtherApps: true)
-                self?.showMeetingPanel()
+                self?.onOpenMainWindow()
             }
             pillController?.onCancelRecording = { [weak self] in
                 self?.confirmAndCancelRecording()

@@ -1,7 +1,19 @@
 import AppKit
+import OSLog
 import SwiftUI
 import MacParakeetCore
 import MacParakeetViewModels
+
+@MainActor
+enum MainWindowPresentation {
+    static func open(_ window: NSWindow, activate: () -> Void) {
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+        activate()
+        window.makeKeyAndOrderFront(nil)
+    }
+}
 
 @MainActor
 final class AppWindowCoordinator: NSObject, NSWindowDelegate {
@@ -26,7 +38,7 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
     private let onPauseToggleMeeting: (() -> Void)?
     private let onHotkeyRecordingStateChanged: (Bool) -> Void
     private let onQuit: () -> Void
-    private let isOnboardingVisible: () -> Bool
+    private let logger = Logger(subsystem: "com.macparakeet.app", category: "MainWindow")
 
     private var mainWindow: NSWindow?
 
@@ -51,8 +63,7 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
         onRecordMeetingFromWorkspace: @escaping () -> Void,
         onPauseToggleMeeting: (() -> Void)? = nil,
         onHotkeyRecordingStateChanged: @escaping (Bool) -> Void,
-        onQuit: @escaping () -> Void,
-        isOnboardingVisible: @escaping () -> Bool
+        onQuit: @escaping () -> Void
     ) {
         self.mainWindowState = mainWindowState
         self.transcriptionViewModel = transcriptionViewModel
@@ -75,19 +86,17 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
         self.onPauseToggleMeeting = onPauseToggleMeeting
         self.onHotkeyRecordingStateChanged = onHotkeyRecordingStateChanged
         self.onQuit = onQuit
-        self.isOnboardingVisible = isOnboardingVisible
-    }
-
-    var hasVisiblePrimaryWindow: Bool {
-        (mainWindow?.isVisible ?? false) || isOnboardingVisible()
     }
 
     func openMainWindow() {
         if mainWindow == nil {
             createMainWindow()
         }
-        mainWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        guard let mainWindow else { return }
+        MainWindowPresentation.open(mainWindow) {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        logWindowEvent("open", window: mainWindow)
     }
 
     func openMainWindowToSettings(tab: SettingsTab? = nil) {
@@ -96,25 +105,24 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
     }
 
     func handleAppReopen() -> Bool {
-        if hasVisiblePrimaryWindow {
-            NSApp.activate(ignoringOtherApps: true)
-        } else {
-            openMainWindow()
-        }
+        // Dock reopen requests the main window. Another visible surface (for
+        // example onboarding or a live meeting) does not satisfy that request.
+        openMainWindow()
         return true
     }
 
     func applyActivationPolicyFromSettings() {
         let menuBarOnly = settingsViewModel.menuBarOnlyMode
-        let wasMainWindowVisible = mainWindow?.isVisible ?? false
+        let visibleWindows = NSApp.windows.filter(\.isVisible)
         let mode: NSApplication.ActivationPolicy = menuBarOnly ? .accessory : .regular
         NSApp.setActivationPolicy(mode)
 
-        // macOS hides all windows when switching to .accessory policy.
-        // Re-show the main window so the user isn't surprised by it disappearing.
-        if menuBarOnly && wasMainWindowVisible {
-            mainWindow?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+        // A policy change is an explicit user action. AppKit can order out app
+        // windows while changing policy, so restore each surface that was
+        // visible. `orderFront` preserves its assigned Space and does not
+        // activate the app or steal keyboard focus.
+        for window in visibleWindows {
+            window.orderFront(nil)
         }
     }
 
@@ -198,7 +206,9 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
             defer: false
         )
         window.title = "MacParakeet"
-        window.center()
+        if !window.setFrameUsingName("MainWindow") {
+            window.center()
+        }
         window.setFrameAutosaveName("MainWindow")
         window.minSize = NSSize(
             width: DesignSystem.Layout.sidebarMinWidth + DesignSystem.Layout.contentMinWidth,
@@ -213,29 +223,52 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
     }
 
     func windowDidBecomeMain(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window === mainWindow else { return }
-        showDockIconIfNeeded()
+        logMainWindowNotification("became-main", notification: notification)
+    }
+
+    func windowDidResignMain(_ notification: Notification) {
+        logMainWindowNotification("resigned-main", notification: notification)
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        logMainWindowNotification("became-key", notification: notification)
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        logMainWindowNotification("resigned-key", notification: notification)
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        logMainWindowNotification("moved", notification: notification)
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        logMainWindowNotification("resized", notification: notification)
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) {
+        logMainWindowNotification("miniaturized", notification: notification)
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        logMainWindowNotification("deminiaturized", notification: notification)
     }
 
     func windowWillClose(_ notification: Notification) {
+        // Retain the window and its hosting view. A later Open reuses both and
+        // AppKit restores the saved frame without rebuilding the SwiftUI tree.
+        logMainWindowNotification("will-close", notification: notification)
+    }
+
+    private func logMainWindowNotification(_ event: String, notification: Notification) {
         guard let window = notification.object as? NSWindow, window === mainWindow else { return }
-        window.contentView = nil
-        mainWindow = nil
-        // Delay slightly so macOS finishes closing the window before we check visibility.
-        Task { @MainActor [weak self] in
-            self?.hideDockIconIfNeeded()
-        }
+        logWindowEvent(event, window: window)
     }
 
-    private func showDockIconIfNeeded() {
-        guard settingsViewModel.menuBarOnlyMode else { return }
-        NSApp.setActivationPolicy(.regular)
-    }
-
-    private func hideDockIconIfNeeded() {
-        guard settingsViewModel.menuBarOnlyMode else { return }
-        // Only hide if no primary windows are visible.
-        guard !hasVisiblePrimaryWindow else { return }
-        NSApp.setActivationPolicy(.accessory)
+    private func logWindowEvent(_ event: String, window: NSWindow) {
+        let frame = window.frame
+        logger.debug(
+            "event=\(event, privacy: .public) visible=\(window.isVisible) key=\(window.isKeyWindow) main=\(window.isMainWindow) miniaturized=\(window.isMiniaturized) policy=\(NSApp.activationPolicy().rawValue) frame=(\(frame.origin.x),\(frame.origin.y),\(frame.width),\(frame.height))"
+        )
     }
 }

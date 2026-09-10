@@ -96,6 +96,7 @@ final class DictationOverlayController: DictationOverlayControlling {
         panel.hasShadow = false // SwiftUI handles shadows; system shadow creates visible outline
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
         panel.contentView = hosting
 
         // Mouse tracking overlay for hover tooltips
