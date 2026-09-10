@@ -8,6 +8,14 @@ public struct MeetingRecordingPreviewLine: Identifiable, Equatable, Sendable {
     public let source: AudioSource?
     public let speakerID: String?
 
+    /// Preserve the local “Me” heading, but do not present an undetected
+    /// system source as an “Others” speaker.
+    public var showsSpeakerHeading: Bool {
+        guard let identity = speakerIdentity else { return false }
+        return identity != AudioSource.system.rawValue
+            && identity != AudioSource.unidentifiedMicrophoneSpeakerID
+    }
+
     public var speakerIdentity: String? {
         speakerID ?? source?.rawValue
     }

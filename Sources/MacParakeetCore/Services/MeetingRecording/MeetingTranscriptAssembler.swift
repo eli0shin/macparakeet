@@ -98,13 +98,14 @@ struct MeetingTranscriptAssembler {
                 detectedSpeakersBySource[source] ?? [],
                 snapshot.speakers
             )
-            committedCandidates = candidates.filter { $0.endMs <= snapshot.committedThroughMs }
-            pendingWordsBySource[source] = candidates.filter { $0.endMs > snapshot.committedThroughMs }
+            let hasSpeaker = snapshot.segments.contains { $0.endMs > $0.startMs }
+            committedCandidates = candidates.filter { hasSpeaker && $0.endMs <= snapshot.committedThroughMs }
+            pendingWordsBySource[source] = candidates.filter { !hasSpeaker || $0.endMs > snapshot.committedThroughMs }
             timeline = snapshot
         }
 
         let attributedWords = timeline.map {
-            SpeakerMerger.mergeWordTimestampsWithSpeakers(
+            SpeakerMerger.alignWordsToSpeakerTurns(
                 words: committedCandidates,
                 segments: $0.segments
             )
@@ -122,6 +123,7 @@ struct MeetingTranscriptAssembler {
         _ snapshot: MeetingLiveDiarizationSnapshot,
         source: AudioSource
     ) -> MeetingTranscriptUpdate? {
+        guard snapshot.segments.contains(where: { $0.endMs > $0.startMs }) else { return nil }
         let pending = pendingWordsBySource[source] ?? []
         let committed = pending.filter { $0.endMs <= snapshot.committedThroughMs }
         guard !committed.isEmpty else { return nil }
@@ -130,7 +132,7 @@ struct MeetingTranscriptAssembler {
             detectedSpeakersBySource[source] ?? [],
             snapshot.speakers
         )
-        let attributed = SpeakerMerger.mergeWordTimestampsWithSpeakers(
+        let attributed = SpeakerMerger.alignWordsToSpeakerTurns(
             words: committed,
             segments: snapshot.segments
         )
@@ -341,7 +343,10 @@ struct MeetingTranscriptAssembler {
         return Self.orderedSources.flatMap { source in
             var speakers = (detectedSpeakersBySource[source] ?? []).filter { activeIDs.contains($0.id) }
             if activeIDs.contains(source.rawValue) {
-                speakers.append(SpeakerInfo(id: source.rawValue, label: source.displayLabel))
+                speakers.append(SpeakerInfo(
+                    id: source.rawValue,
+                    label: source == .system ? "System audio" : source.displayLabel
+                ))
             }
             return speakers
         }

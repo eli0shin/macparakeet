@@ -116,7 +116,7 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         XCTAssertEqual(transcript?.speakerCount, 2)
         XCTAssertEqual(transcript?.speakers, [
             SpeakerInfo(id: "microphone", label: "Me"),
-            SpeakerInfo(id: "system", label: "Others"),
+            SpeakerInfo(id: "system", label: "System audio"),
         ])
         XCTAssertEqual(transcript?.words.map(\.word), ["Hello", "there", "Sounds", "good"])
         XCTAssertEqual(transcript?.diarizationSegments.count, 2)

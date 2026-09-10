@@ -4,12 +4,11 @@ import Foundation
 /// Both inputs must be sorted by start time.
 public enum SpeakerMerger {
 
-    /// Align complete words to the exclusive speaker timeline for a final transcript.
-    /// Adjacent regions of the same speaker form one contribution. Between
-    /// different speakers, divide the timestamp gap at its midpoint instead of
-    /// introducing a source-default speaker. Original evidence times are unchanged.
-    /// Live previews still use the overlap-only merger below because their
-    /// speaker timeline may not yet cover the pending words.
+    /// Attribute complete words using speaker-region starts. Keep the current
+    /// speaker through uncovered time; a later speaker start wins, even during
+    /// overlap. A word crossing a change belongs to the new speaker. Leading
+    /// words belong to the first detected speaker. Evidence times are unchanged.
+    /// Live callers must hold words until the timeline covers their end times.
     public static func alignWordsToSpeakerTurns(
         words: [WordTimestamp], segments: [SpeakerSegment]
     ) -> [WordTimestamp] {
@@ -30,18 +29,18 @@ public enum SpeakerMerger {
             }
         }
         guard !turns.isEmpty else { return words }
-        let boundaries = zip(turns, turns.dropFirst()).map { previous, next in
-            // The final diarizer supplies exclusive regions. Clamp defensively
-            // if an injected or legacy region overlaps its successor.
-            (Double(min(previous.endMs, next.startMs)) + Double(next.startMs)) / 2
-        }
+        let boundaries = turns.dropFirst().map(\.startMs)
         return words.map { word in
-            let midpoint = (Double(word.startMs) + Double(word.endMs)) / 2
             var lower = 0
             var upper = boundaries.count
             while lower < upper {
                 let middle = lower + (upper - lower) / 2
-                if midpoint < boundaries[middle] { upper = middle } else { lower = middle + 1 }
+                // Intervals are half-open: a word ending at B's start remains A.
+                if word.endMs <= boundaries[middle], word.startMs < boundaries[middle] {
+                    upper = middle
+                } else {
+                    lower = middle + 1
+                }
             }
             var attributed = word
             attributed.speakerId = turns[lower].speakerId
