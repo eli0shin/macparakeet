@@ -24,17 +24,36 @@ final class MainWindowState {
         selectedItem = item
     }
 
-    /// Handle an explicit click in the main sidebar. Each Library click opens
-    /// the root list, even when Library or a transcription detail is visible.
+    /// Handle explicit sidebar intent, including a repeated click on the
+    /// selected section. Deep-link APIs remain separate and do not use this
+    /// root-reset path.
     func navigateFromSidebar(
         to item: SidebarItem,
         libraryViewModel: TranscriptionLibraryViewModel,
-        transcriptionViewModel: TranscriptionViewModel
+        transcriptionViewModel: TranscriptionViewModel,
+        historyViewModel: DictationHistoryViewModel
     ) {
         selectedItem = item
-        guard item == .library else { return }
+        switch item {
+        case .transcribe:
+            showingProgressDetail = false
         transcriptionViewModel.showInputPortal()
-        libraryViewModel.selectLocation(.root)
+        case .library:
+            transcriptionViewModel.showInputPortal()
+            libraryViewModel.resetNavigationToRoot()
+        case .dictations:
+            historyViewModel.selectedSubTab = .history
+            historyViewModel.searchText = ""
+            historyViewModel.exitBulkSelection()
+        case .settings:
+            requestedSettingsTab = .capture
+            requestedSettingsAnchor = "dictation"
+            requestedSettingsTabRevision += 1
+        case .meetings, .transforms, .vocabulary, .feedback:
+            // These section roots have no retained nested destination owned by
+            // MainWindowState. Active recording, drafts, and notes stay intact.
+            break
+        }
     }
 
     func startNewTranscription() {

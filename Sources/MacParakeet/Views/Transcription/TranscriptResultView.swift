@@ -7,6 +7,36 @@ import MacParakeetViewModels
 /// text block plus its rendering context. In Timed mode `id` is the segment
 /// `startMs`. In Text mode the matcher searches the full transcript as a
 /// single block so cross-paragraph text selection stays intact.
+private struct TranscriptDetailPreparationSnapshot: Sendable {
+    let readingDocument: MeetingTranscriptPresentationDocument
+    let readingTurns: [IdentifiedReadingTurn]
+    let playbackIndex: ReadingTurnPlaybackIndex?
+    let segments: [TranscriptSegment]
+    let identifiedTurnCards: [IdentifiedSpeakerTurn]
+    let hasSpeakers: Bool
+    let segmentStartMs: [Int]
+    let speakerLabels: [String: String]
+}
+
+@MainActor
+private final class TranscriptDetailSnapshotCache {
+    static let shared = TranscriptDetailSnapshotCache()
+    private var values: [String: TranscriptDetailPreparationSnapshot] = [:]
+    private var order: [String] = []
+
+    func value(for key: String) -> TranscriptDetailPreparationSnapshot? { values[key] }
+
+    func insert(_ value: TranscriptDetailPreparationSnapshot, for key: String) {
+        values[key] = value
+        order.removeAll { $0 == key }
+        order.append(key)
+        while order.count > 4, let oldest = order.first {
+            order.removeFirst()
+            values.removeValue(forKey: oldest)
+        }
+    }
+}
+
 private struct TranscriptFindBlock: Equatable, Identifiable {
     let id: Int
     let text: String
@@ -254,6 +284,7 @@ struct TranscriptResultView: View {
     @State private var cachedHasSpeakers: Bool = false
     @State private var cachedSpeakerColorMap: [String: Color] = [:]
     @State private var cachedSpeakerLabelMap: [String: String] = [:]
+    @State private var detailPreparationTask: Task<Void, Never>?
     @State private var cachedSegmentStartMs: [Int] = []  // sorted, for binary search
     @State private var autoScrollPaused = false
     @State private var scrollPauseTask: Task<Void, Never>?
@@ -313,12 +344,9 @@ struct TranscriptResultView: View {
                 }
             }
             rebuildSegmentCache()
-            viewModel.loadPersistedContent()
+            viewModel.loadPersistedContentAsync()
             syncTranscriptDisplayMode()
-            promptResultsViewModel.loadVisiblePrompts()
-            promptResultsViewModel.loadPromptResults(transcriptionId: transcription.id)
-            let text = currentAIContextText
-            chatViewModel.loadTranscript(text, transcriptionId: viewModel.currentTranscription?.id)
+            promptResultsViewModel.loadPersistedContentAsync(transcriptionId: transcription.id)
             // Feed the user's typed meeting notes (if any) into chat alongside
             // the transcript. The closure is re-evaluated on every chat-send so
             // a CLI edit to userNotes in another process is visible to the next
@@ -370,31 +398,25 @@ struct TranscriptResultView: View {
             findPausedAutoScroll = false
             viewModel.hasConversations = false
             viewModel.selectedTab = .transcript
-            viewModel.loadPersistedContent()
+            viewModel.loadPersistedContentAsync()
             syncTranscriptDisplayMode()
-            promptResultsViewModel.loadPromptResults(transcriptionId: transcription.id)
-            let text = currentAIContextText
-            chatViewModel.loadTranscript(text, transcriptionId: viewModel.currentTranscription?.id)
+            promptResultsViewModel.loadPersistedContentAsync(transcriptionId: transcription.id)
         }
         .onChange(of: activeTranscription.speakers) {
             rebuildSegmentCache()
-            reloadAIContext()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: activeTranscription.wordTimestamps) {
             rebuildSegmentCache()
-            reloadAIContext()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: activeTranscription.readingDocument) {
             rebuildSegmentCache()
-            reloadAIContext()
             syncTranscriptDisplayMode()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: activeTranscription.diarizationSegments) {
             rebuildSegmentCache()
-            reloadAIContext()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: activeTranscription.status) {
@@ -410,12 +432,10 @@ struct TranscriptResultView: View {
         }
         .onChange(of: transcriptText) {
             rebuildSegmentCache()
-            reloadAIContext()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: customWordsRevision) {
             rebuildSegmentCache()
-            reloadAIContext()
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: transcriptAIContextModeRaw) {
@@ -427,6 +447,8 @@ struct TranscriptResultView: View {
             }
         }
         .onDisappear {
+            detailPreparationTask?.cancel()
+            detailPreparationTask = nil
             playerViewModel.cleanup()
             if let monitor = scrollMonitor {
                 NSEvent.removeMonitor(monitor)
@@ -1121,10 +1143,8 @@ struct TranscriptResultView: View {
     }
 
     private var currentAIContextText: String {
-        if usesMeetingReadingSurface,
-            !activeTranscription.isTranscriptEdited,
-            !cachedReadingTurns.isEmpty
-        {
+        if usesMeetingReadingSurface, !activeTranscription.isTranscriptEdited {
+            guard !cachedReadingTurns.isEmpty else { return transcriptText }
             return TranscriptAIContextFormatter.format(
                 document: cachedReadingDocument,
                 plainTranscript: transcriptText,
@@ -3739,69 +3759,107 @@ struct TranscriptResultView: View {
         }
     }
 
-    private var meetingTranscriptCleanup: MeetingTranscriptCleanup { .cleaned }
-
-    private var readingTurnCustomWords: [CustomWord] {
-        MeetingTranscriptCleaner.applicableCustomWords(
-            customWords,
-            to: activeTranscription.rawTranscript ?? ""
-        )
-    }
-
     private func rebuildSegmentCache() {
+        let transcription = activeTranscription
+        let customWords = customWords
+        let key = detailPreparationKey(for: transcription, customWords: customWords)
         cachedSpeakerColorMap = buildSpeakerColorMap()
-        cachedSpeakerLabelMap = buildSpeakerLabelMap()
-        let readingDocument = CompletedMeetingReadingDocument.build(
-            from: activeTranscription,
-            customWords: activeTranscription.hasWordTimestamps ? readingTurnCustomWords : [],
-            cleanup: meetingTranscriptCleanup
-        )
-            ?? MeetingTranscriptPresentationBuilder.build(
-            transcriptText: activeTranscription.rawTranscript ?? "",
-            words: activeTranscription.wordTimestamps,
-            speakers: activeTranscription.speakers,
-            diarizationSegments: activeTranscription.diarizationSegments,
-            customWords: activeTranscription.hasWordTimestamps ? readingTurnCustomWords : [],
-            cleanup: meetingTranscriptCleanup,
-            formatting: activeTranscription.meetingReadingTurnFormatting ?? []
-        )
-        cachedReadingDocument = readingDocument
-        cachedReadingTurns = identifiedReadingTurns(
-            activeTranscription.readingDocument != nil
-                ? readingDocument.turns
-                : MeetingTranscriptDisplayBuilder.build(from: readingDocument).turns
-        )
 
-        cachedReadingTurnPlaybackIndex = activeTranscription.wordTimestamps.map {
-            ReadingTurnPlaybackIndex(turns: cachedReadingTurns.map(\.turn), words: $0)
-        }
-        guard let words = activeTranscription.wordTimestamps, !words.isEmpty else {
-            cachedSegments = []
-            cachedIdentifiedTurnCards = []
-            cachedHasSpeakers = false
-            cachedSegmentStartMs = []
+        if let cached = TranscriptDetailSnapshotCache.shared.value(for: key) {
+            applyDetailSnapshot(cached)
             return
         }
 
+        detailPreparationTask?.cancel()
+        detailPreparationTask = Task { @MainActor in
+            let snapshot = await Task.detached(priority: .userInitiated) {
+                Self.prepareDetailSnapshot(transcription: transcription, customWords: customWords)
+            }.value
+            guard !Task.isCancelled,
+                viewModel.currentTranscription?.id == transcription.id,
+                key == detailPreparationKey(for: activeTranscription, customWords: self.customWords)
+            else { return }
+            TranscriptDetailSnapshotCache.shared.insert(snapshot, for: key)
+            applyDetailSnapshot(snapshot)
+            detailPreparationTask = nil
+        }
+    }
+
+    private func detailPreparationKey(for transcription: Transcription, customWords: [CustomWord]) -> String {
+        let wordsRevision = customWords.map {
+            "\($0.id.uuidString)|\($0.updatedAt.timeIntervalSinceReferenceDate)|\($0.isEnabled)"
+        }.joined(separator: ",")
+        return "\(transcription.id.uuidString)|\(transcription.updatedAt.timeIntervalSinceReferenceDate)|\(wordsRevision)"
+    }
+
+    private nonisolated static func prepareDetailSnapshot(
+        transcription: Transcription,
+        customWords: [CustomWord]
+    ) -> TranscriptDetailPreparationSnapshot {
+        let speakerLabels = Dictionary(uniqueKeysWithValues: (transcription.speakers ?? []).map { ($0.id, $0.label) })
+        let applicableWords = transcription.hasWordTimestamps
+            ? MeetingTranscriptCleaner.applicableCustomWords(customWords, to: transcription.rawTranscript ?? "")
+            : []
+        let readingDocument = CompletedMeetingReadingDocument.build(
+            from: transcription,
+            customWords: applicableWords,
+            cleanup: .cleaned
+        ) ?? MeetingTranscriptPresentationBuilder.build(
+            transcriptText: transcription.rawTranscript ?? "",
+            words: transcription.wordTimestamps,
+            speakers: transcription.speakers,
+            diarizationSegments: transcription.diarizationSegments,
+            customWords: applicableWords,
+            cleanup: .cleaned,
+            formatting: transcription.meetingReadingTurnFormatting ?? []
+        )
+        let displayedTurns = transcription.readingDocument != nil
+            ? readingDocument.turns
+            : MeetingTranscriptDisplayBuilder.build(from: readingDocument).turns
+        let readingTurns = identifiedReadingTurns(displayedTurns)
+        let playbackIndex = transcription.wordTimestamps.map {
+            ReadingTurnPlaybackIndex(turns: displayedTurns, words: $0)
+        }
+        let words = transcription.wordTimestamps ?? []
         let segments = TranscriptSegmenter.groupIntoSegments(words: words)
         let hasSpeakers = words.contains { $0.speakerId != nil }
-
-        cachedSegments = segments
-        cachedHasSpeakers = hasSpeakers
-        cachedSegmentStartMs = segments.map(\.startMs)
-
+        let cards: [IdentifiedSpeakerTurn]
         if hasSpeakers {
             let turns = TranscriptSegmenter.groupIntoSpeakerTurns(
                 segments: segments,
                 speakerLabelProvider: { speakerID in
                     guard let speakerID else { return "Unknown" }
-                    return cachedSpeakerLabelMap[speakerID] ?? "Unknown"
+                    return speakerLabels[speakerID] ?? "Unknown"
                 }
             )
-            cachedIdentifiedTurnCards = identifiedSpeakerTurnCards(turns)
+            cards = identifiedSpeakerTurnCards(turns)
         } else {
-            cachedIdentifiedTurnCards = []
+            cards = []
         }
+        return TranscriptDetailPreparationSnapshot(
+            readingDocument: readingDocument,
+            readingTurns: readingTurns,
+            playbackIndex: playbackIndex,
+            segments: segments,
+            identifiedTurnCards: cards,
+            hasSpeakers: hasSpeakers,
+            segmentStartMs: segments.map(\.startMs),
+            speakerLabels: speakerLabels
+        )
+    }
+
+    private func applyDetailSnapshot(_ snapshot: TranscriptDetailPreparationSnapshot) {
+        cachedReadingDocument = snapshot.readingDocument
+        cachedReadingTurns = snapshot.readingTurns
+        cachedReadingTurnPlaybackIndex = snapshot.playbackIndex
+        cachedSegments = snapshot.segments
+        cachedIdentifiedTurnCards = snapshot.identifiedTurnCards
+        cachedHasSpeakers = snapshot.hasSpeakers
+        cachedSegmentStartMs = snapshot.segmentStartMs
+        cachedSpeakerLabelMap = snapshot.speakerLabels
+        syncTranscriptDisplayMode()
+        reloadAIContext()
+        if findBarVisible { rebuildFindBlocks() }
     }
 
     // MARK: - Binary Search Helpers

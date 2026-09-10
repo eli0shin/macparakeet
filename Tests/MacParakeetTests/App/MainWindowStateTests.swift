@@ -69,6 +69,7 @@ final class MainWindowStateTests: XCTestCase {
         let state = MainWindowState()
         let libraryViewModel = TranscriptionLibraryViewModel()
         let transcriptionViewModel = TranscriptionViewModel()
+        let historyViewModel = DictationHistoryViewModel()
         let folderID = UUID()
         let detail = Transcription(fileName: "detail.wav", status: .completed)
 
@@ -77,7 +78,8 @@ final class MainWindowStateTests: XCTestCase {
         state.navigateFromSidebar(
             to: .library,
             libraryViewModel: libraryViewModel,
-            transcriptionViewModel: transcriptionViewModel
+            transcriptionViewModel: transcriptionViewModel,
+            historyViewModel: historyViewModel
         )
         XCTAssertEqual(state.selectedItem, .library)
         XCTAssertEqual(libraryViewModel.location, .root)
@@ -88,7 +90,8 @@ final class MainWindowStateTests: XCTestCase {
         state.navigateFromSidebar(
             to: .library,
             libraryViewModel: libraryViewModel,
-            transcriptionViewModel: transcriptionViewModel
+            transcriptionViewModel: transcriptionViewModel,
+            historyViewModel: historyViewModel
         )
         XCTAssertEqual(state.selectedItem, .library)
         XCTAssertEqual(libraryViewModel.location, .root)
@@ -97,7 +100,8 @@ final class MainWindowStateTests: XCTestCase {
         state.navigateFromSidebar(
             to: .library,
             libraryViewModel: libraryViewModel,
-            transcriptionViewModel: transcriptionViewModel
+            transcriptionViewModel: transcriptionViewModel,
+            historyViewModel: historyViewModel
         )
         XCTAssertEqual(libraryViewModel.location, .root)
     }
@@ -106,6 +110,7 @@ final class MainWindowStateTests: XCTestCase {
         let state = MainWindowState()
         let libraryViewModel = TranscriptionLibraryViewModel()
         let transcriptionViewModel = TranscriptionViewModel()
+        let historyViewModel = DictationHistoryViewModel()
         let folderID = UUID()
         let detail = Transcription(fileName: "detail.wav", status: .completed)
         libraryViewModel.selectLocation(.folder(folderID))
@@ -114,12 +119,50 @@ final class MainWindowStateTests: XCTestCase {
         state.navigateFromSidebar(
             to: .settings,
             libraryViewModel: libraryViewModel,
-            transcriptionViewModel: transcriptionViewModel
+            transcriptionViewModel: transcriptionViewModel,
+            historyViewModel: historyViewModel
         )
 
         XCTAssertEqual(state.selectedItem, .settings)
         XCTAssertEqual(libraryViewModel.location, .folder(folderID))
         XCTAssertEqual(transcriptionViewModel.currentTranscription?.id, detail.id)
+    }
+
+    func testSettingsSidebarAlwaysRequestsCaptureDictationRoot() {
+        let state = MainWindowState()
+        let library = TranscriptionLibraryViewModel()
+        let transcription = TranscriptionViewModel()
+        let history = DictationHistoryViewModel()
+        state.navigateToSettings(tab: .ai)
+        state.consumeRequestedSettingsTab()
+
+        state.navigateFromSidebar(
+            to: .settings,
+            libraryViewModel: library,
+            transcriptionViewModel: transcription,
+            historyViewModel: history
+        )
+
+        XCTAssertEqual(state.requestedSettingsTab, .capture)
+        XCTAssertEqual(state.requestedSettingsAnchor, "dictation")
+        XCTAssertEqual(state.requestedSettingsTabRevision, 2)
+    }
+
+    func testDictationsSidebarReturnsToHistory() {
+        let state = MainWindowState()
+        let library = TranscriptionLibraryViewModel()
+        let transcription = TranscriptionViewModel()
+        let history = DictationHistoryViewModel()
+        history.selectedSubTab = .stats
+
+        state.navigateFromSidebar(
+            to: .dictations,
+            libraryViewModel: library,
+            transcriptionViewModel: transcription,
+            historyViewModel: history
+        )
+
+        XCTAssertEqual(history.selectedSubTab, .history)
     }
 
     func testEveryRemainingSidebarDestinationCanBeSelected() {

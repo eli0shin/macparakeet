@@ -124,10 +124,15 @@ final class MockLLMExecutionContextResolver: LLMExecutionContextResolving, @unch
 
 final class MockLLMConfigStore: LLMConfigStoreProtocol, @unchecked Sendable {
     var config: LLMProviderConfig?
+    var loadConfigCallCount = 0
+    var loadAPIKeyCallCount = 0
     /// Per-provider key storage for testing provider switching.
     var storedKeys: [LLMProviderID: String] = [:]
 
-    func loadConfig() throws -> LLMProviderConfig? { config }
+    func loadConfig() throws -> LLMProviderConfig? {
+        loadConfigCallCount += 1
+        return config
+    }
     func saveConfig(_ config: LLMProviderConfig) throws {
         self.config = config
         if let key = config.apiKey {
@@ -143,10 +148,14 @@ final class MockLLMConfigStore: LLMConfigStoreProtocol, @unchecked Sendable {
         config = nil
     }
     func loadAPIKey() throws -> String? {
+        loadAPIKeyCallCount += 1
         guard let config else { return nil }
         return storedKeys[config.id]
     }
-    func loadAPIKey(for provider: LLMProviderID) throws -> String? { storedKeys[provider] }
+    func loadAPIKey(for provider: LLMProviderID) throws -> String? {
+        loadAPIKeyCallCount += 1
+        return storedKeys[provider]
+    }
 
     func saveAPIKey(_ key: String) throws {
         guard let existing = config else { return }

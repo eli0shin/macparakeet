@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@052-fix-ui-responsiveness-for-library-and-settings-navigation
 Tags: []
 Parent:
 Blocked-By: []

@@ -150,7 +150,7 @@ final class DictationHistoryViewModelTests: XCTestCase {
         XCTAssertEqual(totalDictationCount(), 2, "Should match two dictations containing 'world'")
     }
 
-    func testClearSearchShowsAll() {
+    func testClearSearchShowsAll() async {
         mockRepo.dictations = [
             Dictation(durationMs: 1000, rawTranscript: "The quick brown fox"),
             Dictation(durationMs: 1000, rawTranscript: "Hello world"),
@@ -162,12 +162,13 @@ final class DictationHistoryViewModelTests: XCTestCase {
         XCTAssertEqual(totalDictationCount(), 1)
 
         viewModel.searchText = ""
+        await viewModel.waitForPendingSearch()
         XCTAssertEqual(totalDictationCount(), 2, "Clearing search should show all dictations")
     }
 
     func testSearchNoResults() {
         mockRepo.dictations = [
-            Dictation(durationMs: 1000, rawTranscript: "Hello world"),
+            Dictation(durationMs: 1000, rawTranscript: "Hello world")
         ]
 
         viewModel.configure(dictationRepo: mockRepo)
@@ -672,7 +673,8 @@ final class DictationHistoryViewModelTests: XCTestCase {
 
         viewModel.toggleDisplayRawTranscript(for: dictation)
 
-        XCTAssertTrue(mockRepo.setDisplayRawTranscriptCalls.isEmpty, "Should not call repo when there's no AI edit to undo")
+        XCTAssertTrue(
+            mockRepo.setDisplayRawTranscriptCalls.isEmpty, "Should not call repo when there's no AI edit to undo")
     }
 
     // MARK: - Helpers

@@ -421,6 +421,24 @@ final class LLMSettingsViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.isConfigured)
     }
 
+    func testRenderStatusGettersUseSavedConfigurationSnapshot() {
+        mockConfigStore.config = .openai(apiKey: "sk-test")
+        viewModel.configure(configStore: mockConfigStore, llmClient: mockClient)
+        let configLoads = mockConfigStore.loadConfigCallCount
+        let keyLoads = mockConfigStore.loadAPIKeyCallCount
+
+        for _ in 0..<20 {
+            _ = viewModel.isConfigured
+            _ = viewModel.setupStatus
+            _ = viewModel.hasUnsavedChanges
+            _ = viewModel.isAIFormatterAvailable
+            _ = viewModel.aiFormatterUnavailableReason
+        }
+
+        XCTAssertEqual(mockConfigStore.loadConfigCallCount, configLoads)
+        XCTAssertEqual(mockConfigStore.loadAPIKeyCallCount, keyLoads)
+    }
+
     // MARK: - Clear
 
     func testClearResetsState() {
@@ -448,7 +466,9 @@ final class LLMSettingsViewModelTests: XCTestCase {
 
     func testClearResetsAIFormatterPreferences() {
         defaults.set(true, forKey: UserDefaultsAppRuntimePreferences.aiFormatterEnabledKey)
-        defaults.set("Rewrite:\n\(AIFormatter.transcriptPlaceholder)", forKey: UserDefaultsAppRuntimePreferences.aiFormatterPromptKey)
+        defaults.set(
+            "Rewrite:\n\(AIFormatter.transcriptPlaceholder)",
+            forKey: UserDefaultsAppRuntimePreferences.aiFormatterPromptKey)
         mockConfigStore.config = .openai(apiKey: "sk-test")
         viewModel.configure(configStore: mockConfigStore, llmClient: mockClient)
 
@@ -568,7 +588,8 @@ final class LLMSettingsViewModelTests: XCTestCase {
     func testChangingCategoryProfileDraftPreservesCustomNameAndPrompt() {
         viewModel.startCreatingAIFormatterProfile(targetKind: .category)
         viewModel.updateAIFormatterProfileDraft(\.name, to: "My Messages")
-        viewModel.updateAIFormatterProfileDraft(\.promptTemplate, to: "Custom prompt \(AIFormatter.transcriptPlaceholder)")
+        viewModel.updateAIFormatterProfileDraft(
+            \.promptTemplate, to: "Custom prompt \(AIFormatter.transcriptPlaceholder)")
 
         viewModel.applyAIFormatterProfileDraftCategory(.email)
 
@@ -868,19 +889,22 @@ final class LLMSettingsViewModelTests: XCTestCase {
     func testProfilesAreListedInMatchPrecedenceOrder() throws {
         let dbManager = try DatabaseManager()
         let repo = AIFormatterProfileRepository(dbQueue: dbManager.dbQueue)
-        try repo.save(AIFormatterProfile.exactApp(
+        try repo.save(
+            AIFormatterProfile.exactApp(
             name: "zoom",
             bundleIdentifier: "us.zoom.xos",
             promptTemplate: "p",
             sortOrder: 1
         ))
-        try repo.save(AIFormatterProfile.exactApp(
+        try repo.save(
+            AIFormatterProfile.exactApp(
             name: "Apple Mail",
             bundleIdentifier: "com.apple.mail",
             promptTemplate: "p",
             sortOrder: 1
         ))
-        try repo.save(AIFormatterProfile.category(
+        try repo.save(
+            AIFormatterProfile.category(
             name: "browser",
             appCategory: .browser,
             promptTemplate: "p",
@@ -924,7 +948,8 @@ final class LLMSettingsViewModelTests: XCTestCase {
     func testDuplicateAIFormatterProfileSurfacesErrorAndKeepsDraft() throws {
         let dbManager = try DatabaseManager()
         let repo = AIFormatterProfileRepository(dbQueue: dbManager.dbQueue)
-        try repo.save(AIFormatterProfile.category(
+        try repo.save(
+            AIFormatterProfile.category(
             name: "Email",
             appCategory: .email,
             promptTemplate: "Email prompt"
@@ -1407,7 +1432,9 @@ final class LLMSettingsViewModelTests: XCTestCase {
 
     func testLoadsStoredAIFormatterPreferences() {
         defaults.set(true, forKey: UserDefaultsAppRuntimePreferences.aiFormatterEnabledKey)
-        defaults.set("Rewrite:\n\(AIFormatter.transcriptPlaceholder)", forKey: UserDefaultsAppRuntimePreferences.aiFormatterPromptKey)
+        defaults.set(
+            "Rewrite:\n\(AIFormatter.transcriptPlaceholder)",
+            forKey: UserDefaultsAppRuntimePreferences.aiFormatterPromptKey)
         mockConfigStore.config = .openai(apiKey: "sk-test")
 
         viewModel.configure(configStore: mockConfigStore, llmClient: mockClient)
@@ -1418,7 +1445,8 @@ final class LLMSettingsViewModelTests: XCTestCase {
     }
 
     func testLoadsLegacyDefaultAIFormatterPromptAsUpdatedDefault() {
-        defaults.set(AIFormatter.legacyDefaultPromptTemplateV1, forKey: UserDefaultsAppRuntimePreferences.aiFormatterPromptKey)
+        defaults.set(
+            AIFormatter.legacyDefaultPromptTemplateV1, forKey: UserDefaultsAppRuntimePreferences.aiFormatterPromptKey)
         mockConfigStore.config = .openai(apiKey: "sk-test")
 
         viewModel.configure(configStore: mockConfigStore, llmClient: mockClient)
