@@ -238,7 +238,8 @@ struct OpenAICompatibleLLMHTTPAdapter: LLMHTTPAdapter {
             max_tokens: maxTokens,
             max_completion_tokens: maxCompletionTokens,
             response_format: Self.responseFormat(from: options.responseFormat),
-            options: ollamaOptions
+            options: ollamaOptions,
+            reasoning_effort: options.reasoningEffort?.rawValue
         )
 
         request.httpBody = try JSONEncoder().encode(body)
@@ -402,6 +403,7 @@ struct OpenAIRequestBody: Encodable {
     let max_completion_tokens: Int?
     let response_format: OpenAIResponseFormat?
     let options: OllamaRequestOptions? // Ollama-specific: num_ctx etc.
+    let reasoning_effort: String?
 }
 
 struct OpenAIResponseFormat: Encodable {

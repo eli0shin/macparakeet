@@ -635,6 +635,8 @@ final class LLMServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(result, "Hello world. This is a test.")
+        XCTAssertEqual(mockClient.capturedOptions?.maxTokens, "hello world this is a test".count * 6)
+        XCTAssertEqual(mockClient.capturedOptions?.reasoningEffort, .disabled)
         XCTAssertEqual(
             mockClient.capturedOptions?.responseFormat,
             .jsonSchema(

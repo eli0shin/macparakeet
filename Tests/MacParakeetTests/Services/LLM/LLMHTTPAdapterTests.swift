@@ -76,6 +76,29 @@ final class LLMHTTPAdapterTests: XCTestCase {
         )
     }
 
+    func testLMStudioAdapterDisablesReasoningWhenRequested() async throws {
+        var capturedRequest: URLRequest?
+
+        AdapterRequestURLProtocol.handler = { request in
+            capturedRequest = request
+            return (self.okResponse(for: request), self.validOpenAIResponseData())
+        }
+
+        _ = try await openAIAdapter.chatCompletion(
+            messages: goldenMessages,
+            config: .lmstudio(model: "qwen3.5-4b-mlx"),
+            options: ChatCompletionOptions(maxTokens: 600, reasoningEffort: .disabled)
+        )
+
+        let request = try XCTUnwrap(capturedRequest)
+        XCTAssertEqual(
+            try canonicalJSONBody(from: request),
+            """
+            {"max_tokens":600,"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"qwen3.5-4b-mlx","reasoning_effort":"none","stream":false}
+            """
+        )
+    }
+
     func testOpenAIAdapterOmitsTemperatureForGPT5ReasoningTierModels() async throws {
         var capturedRequest: URLRequest?
 

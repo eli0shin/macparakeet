@@ -767,8 +767,10 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                     context: context,
                     options: ChatCompletionOptions(
                         temperature: 0.2,
+                        maxTokens: transcript.count * 6,
                         responseFormat: responseFormat,
-                        requestTimeoutSeconds: requestTimeoutSeconds
+                        requestTimeoutSeconds: requestTimeoutSeconds,
+                        reasoningEffort: .disabled
                     )
                 )
                 await recordResponse(response)

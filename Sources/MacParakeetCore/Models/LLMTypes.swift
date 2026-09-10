@@ -134,22 +134,29 @@ public enum LLMStructuredOutputCapability: Sendable, Equatable {
     case promptEmbeddedJSONSchema
 }
 
+public enum ChatReasoningEffort: String, Sendable, Equatable {
+    case disabled = "none"
+}
+
 public struct ChatCompletionOptions: Sendable, Equatable {
     public let temperature: Double?
     public let maxTokens: Int?
     public let responseFormat: ChatResponseFormat?
     public let requestTimeoutSeconds: TimeInterval?
+    public let reasoningEffort: ChatReasoningEffort?
 
     public init(
         temperature: Double? = nil,
         maxTokens: Int? = nil,
         responseFormat: ChatResponseFormat? = nil,
-        requestTimeoutSeconds: TimeInterval? = nil
+        requestTimeoutSeconds: TimeInterval? = nil,
+        reasoningEffort: ChatReasoningEffort? = nil
     ) {
         self.temperature = temperature
         self.maxTokens = maxTokens
         self.responseFormat = responseFormat
         self.requestTimeoutSeconds = requestTimeoutSeconds
+        self.reasoningEffort = reasoningEffort
     }
 
     public static let `default` = ChatCompletionOptions(temperature: 0.7, maxTokens: nil)
