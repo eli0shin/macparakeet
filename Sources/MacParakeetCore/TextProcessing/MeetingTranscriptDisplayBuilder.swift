@@ -9,6 +9,10 @@ public enum MeetingTranscriptDisplayBuilder {
         var displayedTurns: [ReadingTurn] = []
 
         for turn in document.turns {
+            // Cleanup can remove every word in a turn. Such a turn must not
+            // display a blank row or split the surrounding speaker run.
+            guard !turn.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+
             guard let previous = displayedTurns.last,
                 previous.source == turn.source,
                 previous.speakerId == turn.speakerId
