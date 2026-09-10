@@ -56,3 +56,11 @@ do not provide a useful action for joining or opening the meeting.
 - Calendar-event search.
 - Scheduled meeting auto-stop.
 - Remote calendar-provider sign-in outside EventKit.
+
+## Resolution
+
+Implemented by PR #68 and squash-merged as `be0e7561`. Required CI passed for
+head `3792ce20`; release and signed-artifact jobs were correctly skipped, and
+no generated source diff was produced. Real packaged-app notification delivery
+and click behavior remain a documented manual macOS permission-validation
+boundary.
