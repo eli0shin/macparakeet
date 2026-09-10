@@ -1956,11 +1956,7 @@ final class TranscriptionServiceTests: XCTestCase {
             llmService: llm,
             llmRunRepo: llmRunRepo,
             shouldUseAIFormatter: { true },
-            meetingAutomationHookRunner: nil,
-            speechActivityDetector: FixtureSpeechActivity(ranges: [
-                ReadingTurnTimeRange(startMs: 1_000, endMs: 3_000),
-                ReadingTurnTimeRange(startMs: 5_000, endMs: 7_000),
-            ])
+            meetingAutomationHookRunner: nil
         )
         let recording = try makeOneSourceMeetingRecording(displayName: "Long Meeting")
         defer { try? FileManager.default.removeItem(at: recording.folderURL) }
@@ -1977,7 +1973,7 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertTrue(llm.lastFormatterPromptTemplate?.contains(
             "Preserve every <<<MACPARAKEET_READING_TURN_BOUNDARY>>> marker exactly"
         ) == true)
-        XCTAssertEqual(result.meetingReadingTurnFormatting?.count, 3)
+        XCTAssertEqual(result.meetingReadingTurnFormatting?.count, 1)
         XCTAssertEqual(result.cleanTranscript, turnTexts.map { $0.uppercased() }.joined(separator: "\n\n"))
         XCTAssertEqual(result.rawTranscript, turnTexts.joined(separator: " "))
         XCTAssertEqual(result.wordTimestamps?.map(\.word), turnTexts)
@@ -2917,7 +2913,7 @@ final class TranscriptionServiceTests: XCTestCase {
         ])
     }
 
-    func testTranscribeMeetingKeepsFallbackSystemSpeakerWhenDiarizationDoesNotCoverEveryWord() async throws {
+    func testTranscribeMeetingKeepsTimestampGapWordsInTheirSpeakerContribution() async throws {
         let recordingFolder = URL(fileURLWithPath: AppPaths.tempDir)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: recordingFolder, withIntermediateDirectories: true)
@@ -2977,13 +2973,8 @@ final class TranscriptionServiceTests: XCTestCase {
 
         let result = try await service.transcribeMeeting(recording: recording)
 
-        XCTAssertEqual(result.wordTimestamps?.map(\.speakerId), ["system:S1", "system"])
-        XCTAssertEqual(
-            result.speakers,
-            [
-            SpeakerInfo(id: "system", label: "Others"),
-            SpeakerInfo(id: "system:S1", label: "Others 1"),
-        ])
+        XCTAssertEqual(result.wordTimestamps?.map(\.speakerId), ["system:S1", "system:S1"])
+        XCTAssertEqual(result.speakers, [SpeakerInfo(id: "system:S1", label: "Others 1")])
     }
 
     func testTranscribeMeetingPreservesSingleSourceModelText() async throws {

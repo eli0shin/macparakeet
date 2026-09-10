@@ -274,7 +274,6 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
     private let podcastAudioFetcher: PodcastAudioFetching?
     private let promptResultRepo: PromptResultRepositoryProtocol?
     private let diarizationService: DiarizationServiceProtocol?
-    private let speechActivityDetector: any OfflineSpeechActivityDetecting
     private let mediaMetadataExtractor: MediaMetadataExtracting
     private let thumbnailCache: ThumbnailCaching
     private let playbackConverter: YouTubeAudioPlaybackConverting
@@ -315,8 +314,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         meetingArtifactStore: MeetingArtifactStoring? = MeetingArtifactStore(),
         meetingAutomationHookRunner: MeetingAutomationHookRunning? = MeetingAutomationHookRunner(),
         meetingCleanedMicrophoneReadinessPolicy: MeetingCleanedMicrophoneReadinessPolicy = .production,
-        meetingResidualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() },
-        speechActivityDetector: any OfflineSpeechActivityDetecting = OfflineSpeechActivityDetector()
+        meetingResidualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() }
     ) {
         self.init(
             audioProcessor: audioProcessor,
@@ -350,8 +348,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             meetingAutomationHookRunner: meetingAutomationHookRunner,
             meetingCleanedMicrophoneReadinessPolicy: meetingCleanedMicrophoneReadinessPolicy,
             meetingFinalizationBenchmarkObserver: nil,
-            meetingResidualSuppression: meetingResidualSuppression,
-            speechActivityDetector: speechActivityDetector
+            meetingResidualSuppression: meetingResidualSuppression
         )
     }
 
@@ -387,8 +384,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         meetingAutomationHookRunner: MeetingAutomationHookRunning? = MeetingAutomationHookRunner(),
         meetingCleanedMicrophoneReadinessPolicy: MeetingCleanedMicrophoneReadinessPolicy = .production,
         meetingFinalizationBenchmarkObserver: MeetingFinalizationBenchmarkObserver?,
-        meetingResidualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() },
-        speechActivityDetector: any OfflineSpeechActivityDetecting = OfflineSpeechActivityDetector()
+        meetingResidualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() }
     ) {
         self.audioProcessor = audioProcessor
         self.sttTranscriber = sttTranscriber
@@ -416,7 +412,6 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         self.podcastAudioFetcher = podcastAudioFetcher
         self.promptResultRepo = promptResultRepo
         self.diarizationService = diarizationService
-        self.speechActivityDetector = speechActivityDetector
         self.mediaMetadataExtractor = mediaMetadataExtractor
         self.thumbnailCache = thumbnailCache
         self.playbackConverter = playbackConverter
@@ -776,15 +771,10 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             existingSpeakers: original.speakers ?? [], existingSegments: original.diarizationSegments ?? [],
             microphoneSpeakerDetection: recording.microphoneSpeakerDetection
         )
-        let readingSource: ReadingTurnSource = source == .microphone ? .microphone : .system
-        let activityGaps = (original.readingDocument?.activityGaps ?? []).filter { $0.source != readingSource }
-            + (try await detectActivityGaps(audioURL: wavURL, source: readingSource, offsetMs: track.startOffsetMs))
         let readableDocument = FinalTranscriptAssembler.build(
             transcriptText: original.rawTranscript ?? finalized.rawTranscript,
             words: finalized.words,
             speakers: finalized.speakers,
-            diarizationSegments: finalized.diarizationSegments,
-            activityGaps: activityGaps,
             customWords: MeetingTranscriptCleaner.applicableCustomWords(
                 fetchMeetingVocabulary(),
                 to: original.rawTranscript ?? finalized.rawTranscript
@@ -1542,23 +1532,12 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             )
             transcription.transcriptSegments = transcriptSegments.isEmpty ? nil : transcriptSegments
 
-            var activityGaps: [SpeechActivityGap] = []
-            for source in sourceResults where !source.result.words.isEmpty {
-                if let url = sourceWavURLs[source.source] {
-                    activityGaps += try await detectActivityGaps(
-                        audioURL: url,
-                        source: source.source == .microphone ? .microphone : .system,
-                        offsetMs: source.startOffsetMs
-                    )
-                }
-            }
             lifecycleStage = .postProcessing
             let completed = try await completeTranscription(
                 source: .meeting,
                 transcription: &transcription,
                 operation: operation,
                 rawText: finalized.rawTranscript,
-                activityGaps: activityGaps,
                 processingStartedAt: processingStartedAt,
                 diarizationRequested: diarizationRequested,
                 diarizationApplied: systemDiarization != nil || microphoneDiarization != nil,
@@ -2068,6 +2047,10 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         speechEngine: SpeechEngineSelection? = nil,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil
     ) async throws -> Transcription {
+        #if DEBUG
+        let stageCapture = try PipelineStageCapture.start(transcriptionID: transcription.id)
+        try stageCapture?.write(transcription, to: "00-input-record.json")
+        #endif
         var wavURL: URL?
         let processingStartedAt = Date()
         var lifecycleStage: TelemetryTranscriptionStage = .audioConversion
@@ -2083,6 +2066,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 throw AudioProcessorError.conversionFailed("Failed to produce WAV output")
             }
 
+            #if DEBUG
+            try stageCapture?.copyAudio(from: wavURL)
+            #endif
             lifecycleStage = .stt
             onProgress?(.preparingSpeechModel)
             let sttProgress: (@Sendable (Int, Int) -> Void)? = onProgress.map { callback in
@@ -2098,6 +2084,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 onProgress: sttProgress
             )
 
+            #if DEBUG
+            try stageCapture?.writeSTT(result)
+            #endif
             let words = result.words.map { word in
                 WordTimestamp(
                     word: word.word,
@@ -2124,10 +2113,19 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                     onProgress?(.identifyingSpeakers)
                     Telemetry.send(.diarizationStarted(source: source))
                     let diarStartedAt = Date()
+                    #if DEBUG
+                    let diarResult = try await PipelineStageCapture.$current.withValue(stageCapture) {
+                        try await diarizationService.diarizeFinalTranscript(audioURL: wavURL)
+                    }
+                    try stageCapture?.write(diarResult.segments.map {
+                        DiarizationSegmentRecord(speakerId: $0.speakerId, startMs: $0.startMs, endMs: $0.endMs)
+                    }, to: "05-app-regions.json")
+                    #else
                     let diarResult = try await diarizationService.diarizeFinalTranscript(audioURL: wavURL)
+                    #endif
                     let diarDuration = Date().timeIntervalSince(diarStartedAt)
                     if !diarResult.segments.isEmpty {
-                        let mergedWords = SpeakerMerger.mergeWordTimestampsWithSpeakers(
+                        let mergedWords = SpeakerMerger.alignWordsToSpeakerTurns(
                             words: words,
                             segments: diarResult.segments
                         )
@@ -2148,6 +2146,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
+                    #if DEBUG
+                    if error is PipelineStageCapture.CaptureError { throw error }
+                    #endif
                     diarizationApplied = false
                     logger.error("diarization_failed error=\(error.localizedDescription, privacy: .public)")
                     Telemetry.send(
@@ -2161,22 +2162,36 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 diarizationApplied = false
             }
 
-            let activityGaps = words.isEmpty ? [] : try await detectActivityGaps(
-                audioURL: wavURL, source: .unknown, offsetMs: 0
-            )
+            #if DEBUG
+            try stageCapture?.write(transcription.wordTimestamps, to: "06-attributed-words.json")
+            try stageCapture?.write(transcription, to: "07-before-completion.json")
+            #endif
             lifecycleStage = .postProcessing
+            #if DEBUG
+            let completed = try await PipelineStageCapture.$current.withValue(stageCapture) {
+                try await completeTranscription(
+                    source: source, transcription: &transcription, operation: operation,
+                    rawText: result.text, processingStartedAt: processingStartedAt,
+                    diarizationRequested: diarizationRequested, diarizationApplied: diarizationApplied,
+                    persistResult: persistResult
+                )
+            }
+            #else
             let completed = try await completeTranscription(
                 source: source,
                 transcription: &transcription,
                 operation: operation,
                 rawText: result.text,
-                activityGaps: activityGaps,
                 processingStartedAt: processingStartedAt,
                 diarizationRequested: diarizationRequested,
                 diarizationApplied: diarizationApplied,
                 persistResult: persistResult
             )
+            #endif
 
+            #if DEBUG
+            try stageCapture?.write(completed, to: "08-completed-record.json")
+            #endif
             try? FileManager.default.removeItem(at: wavURL)
             if cleanUpDownloadedFiles {
                 for tempFile in tempFiles {
@@ -2326,36 +2341,18 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         }
     }
 
-    private func detectActivityGaps(
-        audioURL: URL, source: ReadingTurnSource, offsetMs: Int
-    ) async throws -> [SpeechActivityGap] {
-        do {
-            let ranges = try await speechActivityDetector.quietRanges(audioURL: audioURL)
-            try Task.checkCancellation()
-            return ranges.map {
-                SpeechActivityGap(source: source, startMs: $0.startMs + offsetMs, endMs: $0.endMs + offsetMs)
-            }
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            try Task.checkCancellation()
-            logger.warning("offline_activity_unavailable error_type=\(Self.errorType(for: error), privacy: .public)")
-            return []
-        }
-    }
-
     private func completeTranscription(
         source: TelemetryTranscriptionSource,
         transcription: inout Transcription,
         operation: TranscriptionOperationContext,
         rawText: String,
-        activityGaps: [SpeechActivityGap] = [],
         processingStartedAt: Date,
         diarizationRequested: Bool,
         diarizationApplied: Bool,
         persistResult: Bool = true,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil
     ) async throws -> Transcription {
+        try Task.checkCancellation()
         let mode = processingMode()
         let isMeeting = transcription.sourceType == .meeting
         var customWords: [CustomWord] = []
@@ -2404,11 +2401,12 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             transcriptText: transcription.rawTranscript ?? rawText,
             words: transcription.wordTimestamps ?? [],
             speakers: transcription.speakers ?? [],
-            diarizationSegments: transcription.diarizationSegments ?? [],
-            activityGaps: activityGaps,
             customWords: isMeeting ? customWords : [],
             cleanup: isMeeting ? .cleaned : .verbatim
         )
+        #if DEBUG
+        try PipelineStageCapture.current?.write(deterministicDocument, to: "07a-assembled-reading-turns.json")
+        #endif
         var expandedSnippetIDs = refinement.expandedSnippetIDs
         if !isMeeting, hasReadingStructure {
             expandedSnippetIDs = []
@@ -2438,8 +2436,11 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                     wordReferences: turn.wordReferences
                 ))
             }
-            deterministicDocument = MeetingTranscriptPresentationDocument(turns: refinedTurns, activityGaps: activityGaps)
+            deterministicDocument = MeetingTranscriptPresentationDocument(turns: refinedTurns)
         }
+        #if DEBUG
+        try PipelineStageCapture.current?.write(deterministicDocument, to: "07b-refined-reading-turns.json")
+        #endif
         if hasReadingStructure, shouldUseAIFormatter(), llmService != nil {
             let promptTemplate = aiFormatterPromptTemplate()
             let transcriptFormatter = TranscriptFormatter(
@@ -2487,8 +2488,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 : result.formatting
             if !result.formatting.isEmpty {
                 let formattedDocument = MeetingTranscriptPresentationDocument(
-                    turns: MeetingTranscriptPresentationBuilder.applyFormatting(result.formatting, to: deterministicDocument.turns),
-                    activityGaps: activityGaps
+                    turns: MeetingTranscriptPresentationBuilder.applyFormatting(result.formatting, to: deterministicDocument.turns)
                 )
                 transcription.cleanTranscript = formattedDocument.turns
                     .map(\.text)
@@ -2525,8 +2525,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             let readableDocument = MeetingTranscriptPresentationDocument(
                 turns: MeetingTranscriptPresentationBuilder.applyFormatting(
                     transcription.meetingReadingTurnFormatting ?? [], to: deterministicDocument.turns
-                ),
-                activityGaps: activityGaps
+                )
             )
             transcription.readingDocument = readableDocument
             let readableText = readableDocument.turns.map(\.text).joined(separator: "\n\n")
@@ -2584,6 +2583,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             }
         }
 
+        try Task.checkCancellation()
         transcription.status = .completed
         transcription.updatedAt = Date()
         if persistResult {

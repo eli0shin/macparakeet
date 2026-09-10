@@ -40,7 +40,13 @@ public protocol DiarizationServiceProtocol: Sendable {
 }
 
 extension DiarizationServiceProtocol {
-    public func diarizeFinalTranscript(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint? = nil) async throws -> MacParakeetDiarizationResult {
+    public func diarizeFinalTranscript(audioURL: URL) async throws -> MacParakeetDiarizationResult {
+        // Forward explicitly through the protocol requirement. A default argument
+        // on the fallback below selects that fallback for unconstrained calls.
+        try await diarizeFinalTranscript(audioURL: audioURL, speakerConstraint: nil)
+    }
+
+    public func diarizeFinalTranscript(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult {
         try await diarize(audioURL: audioURL, speakerConstraint: speakerConstraint)
     }
 
@@ -100,7 +106,7 @@ public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizin
             modelsDirectory: modelsDirectory ?? AppPaths.fluidAudioModelsDirURL,
             finalManagerFactory: { constraint in
                 OfflineDiarizerManager(config: Self.offlineConfig(
-                    speakerConstraint: constraint, preserveActivity: true, baseConfig: config
+                    speakerConstraint: constraint, finalTranscript: true, baseConfig: config
                 ))
             },
             liveDiarizer: MeetingLiveDiarizer(
@@ -175,6 +181,10 @@ public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizin
             return MacParakeetDiarizationResult(segments: [], speakerCount: 0, speakers: [])
         }
 
+        #if DEBUG
+        try PipelineStageCapture.current?.writeFluidAudio(fluidResult)
+        #endif
+
         // Sort by start time before assigning stable IDs so "S1" is the
         // first speaker to *talk* (chronologically), not the first speaker
         // to appear in whatever order FluidAudio's offline pipeline happens
@@ -194,6 +204,10 @@ public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizin
                 nextIndex += 1
             }
         }
+
+        #if DEBUG
+        try PipelineStageCapture.current?.write(idMapping, to: "04-speaker-id-map.json")
+        #endif
 
         let segments: [SpeakerSegment] = chronologicalSegments.map { seg in
             let mappedId = idMapping[seg.speakerId] ?? seg.speakerId
@@ -301,16 +315,17 @@ public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizin
 
     nonisolated static func offlineConfig(
         speakerConstraint: SpeakerDiarizationConstraint?,
-        preserveActivity: Bool = false,
+        finalTranscript: Bool = false,
         baseConfig: OfflineDiarizerConfig = .default
     ) -> OfflineDiarizerConfig {
         var config = baseConfig
-        if preserveActivity {
-            // Final assembly needs concurrent regions and gaps. Live callers
-            // keep their existing exclusive post-processing policy.
-            config.exclusiveSegments = false
-            config.minGapDuration = 0
-            config.segmentationMinDurationOff = 0
+        if finalTranscript {
+            // Our FluidAudio fork uses a 0.15 clean-mask gate and real audio
+            // context for zero-vote repair. Keep clustering defaults unchanged.
+            config.segmentationStepRatio = 0.1
+            config.minSegmentDuration = 0
+            config.exclusiveSegments = true
+            config.zeroVoteReembed.enabled = true
         }
         guard let speakerConstraint else { return config }
 

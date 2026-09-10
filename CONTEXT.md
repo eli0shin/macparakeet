@@ -7,10 +7,10 @@ MacParakeet provides local-first dictation, transcription, and meeting recording
 ### Meeting transcripts
 
 **Reading Turn**:
-A speaker-labeled contribution in a readable meeting transcript. A Reading Turn is not necessarily the speaker's entire uninterrupted speech.
+A speaker-labeled contribution persisted in the final transcript. Consecutive words attributed to the same speaker form one Reading Turn; paragraph breaks remain inside that contribution.
 
 **Speech Block**:
-A continuous contribution by one speaker, bounded by an audible pause or a paragraph boundary. A surrounding Speech Block can be split to insert a shorter contribution while keeping that inserted contribution whole.
+A continuous acoustic contribution by one speaker. The final transcript does not infer Speech Blocks from whole-recording speaker spans or recursively reorder them. Paragraph breaks alone do not establish speaker changes.
 
 **Contained overlap**:
 An overlap in which one Speech Block starts and ends within another Speech Block.

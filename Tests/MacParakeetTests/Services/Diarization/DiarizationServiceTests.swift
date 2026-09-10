@@ -92,6 +92,28 @@ final class DiarizationServiceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: repoDirectory.path))
     }
 
+    func testFinalConfigEnablesForkRepairWithoutChangingClustering() {
+        let config = DiarizationService.offlineConfig(speakerConstraint: nil, finalTranscript: true)
+        let defaults = OfflineDiarizerConfig.default
+
+        XCTAssertTrue(config.zeroVoteReembed.enabled)
+        XCTAssertEqual(config.zeroVoteReembed.minDurationSeconds, 0.4)
+        XCTAssertEqual(config.segmentationStepRatio, 0.1)
+        XCTAssertEqual(config.minSegmentDuration, 0)
+        XCTAssertTrue(config.exclusiveSegments)
+        XCTAssertEqual(config.clusteringThreshold, defaults.clusteringThreshold)
+        XCTAssertEqual(config.Fa, defaults.Fa)
+        XCTAssertEqual(config.Fb, defaults.Fb)
+        XCTAssertNil(config.clustering.numSpeakers)
+        XCTAssertFalse(DiarizationService.offlineConfig(speakerConstraint: nil).zeroVoteReembed.enabled)
+    }
+
+    func testFinalConfigKeepsRepairWithSpeakerConstraint() {
+        let config = DiarizationService.offlineConfig(speakerConstraint: .exact(4), finalTranscript: true)
+        XCTAssertTrue(config.zeroVoteReembed.enabled)
+        XCTAssertEqual(config.clustering.numSpeakers, 4)
+    }
+
     func testOfflineConfigAppliesExactSpeakerConstraint() {
         let config = DiarizationService.offlineConfig(speakerConstraint: .exact(2))
 
@@ -122,6 +144,56 @@ final class DiarizationServiceTests: XCTestCase {
         XCTAssertNil(config.clustering.numSpeakers)
         XCTAssertNil(config.clustering.minSpeakers)
         XCTAssertEqual(config.clustering.maxSpeakers, 4)
+    }
+
+    func testFinalTranscriptWithoutConstraintUsesFinalManagerThroughProtocol() async throws {
+        let regular = RecordingOfflineDiarizerManager(result: DiarizationResult(segments: []))
+        let final = RecordingOfflineDiarizerManager(result: DiarizationResult(segments: []))
+        let service: any DiarizationServiceProtocol = DiarizationService(
+            manager: regular,
+            modelsDirectory: URL(fileURLWithPath: "/tmp/unused-diarization-models"),
+            finalManagerFactory: { _ in final }
+        )
+        let audioURL = URL(fileURLWithPath: "/tmp/unused-diarization.wav")
+
+        _ = try await service.diarizeFinalTranscript(audioURL: audioURL)
+        _ = try await service.diarizeFinalTranscript(audioURL: audioURL, speakerConstraint: nil)
+
+        let regularCalls = await regular.processedAudioURLs
+        let finalCalls = await final.processedAudioURLs
+        XCTAssertEqual(regularCalls, [])
+        XCTAssertEqual(finalCalls, [audioURL, audioURL])
+    }
+
+    func testFinalTranscriptForwardsSpeakerConstraintThroughProtocol() async throws {
+        let regular = RecordingOfflineDiarizerManager(result: DiarizationResult(segments: []))
+        let final = RecordingOfflineDiarizerManager(result: DiarizationResult(segments: []))
+        let service: any DiarizationServiceProtocol = DiarizationService(
+            manager: regular,
+            modelsDirectory: URL(fileURLWithPath: "/tmp/unused-diarization-models"),
+            finalManagerFactory: { constraint in
+                XCTAssertEqual(constraint, .exact(2))
+                return final
+            }
+        )
+        let audioURL = URL(fileURLWithPath: "/tmp/unused-diarization.wav")
+
+        _ = try await service.diarizeFinalTranscript(audioURL: audioURL, speakerConstraint: .exact(2))
+
+        let regularCalls = await regular.processedAudioURLs
+        let finalCalls = await final.processedAudioURLs
+        XCTAssertEqual(regularCalls, [])
+        XCTAssertEqual(finalCalls, [audioURL])
+    }
+
+    func testFinalTranscriptDefaultStillSupportsBasicDiarizers() async throws {
+        let mock = MockDiarizationService()
+        let service: any DiarizationServiceProtocol = mock
+
+        _ = try await service.diarizeFinalTranscript(audioURL: URL(fileURLWithPath: "/tmp/unused.wav"))
+
+        let called = await mock.diarizeCalled
+        XCTAssertTrue(called)
     }
 
     func testDiarizePreparesModelsUsingCustomDirectoryBeforeColdStartInference() async throws {

@@ -91,10 +91,23 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ### Saved final transcript order
 
-- New final meeting and imported transcripts save readable speaker blocks once.
-  Readable exports and AI context use that saved order instead of interleaving
-  overlapping words. Original word timestamps and timed subtitle output remain
-  evidence-focused; reading order need not be chronological word order.
+- New final meeting and imported transcripts combine consecutive same-speaker
+  contributions before saving. Paragraph breaks stay inside those contributions.
+  Readable exports and AI context use the saved evidence order, without speculative
+  containment or recursive reordering. Original word timestamps remain unchanged.
+- Final diarization without an explicit speaker constraint now reaches the final
+  configuration instead of the protocol fallback's regular configuration.
+- Final diarization uses denser segmentation and removes the one-second segment
+  cutoff while retaining FluidAudio exclusive output. Word alignment bridges gaps
+  between speaker regions instead of introducing an extra source-default speaker.
+- Final diarization uses the `macparakeet` branch of our FluidAudio fork for
+  short-speaker embedding admission and real-context zero-vote repair. This
+  improves some speaker assignments but does not eliminate false speaker splits.
+- DEBUG builds can opt into full local stage captures with
+  `MACPARAKEET_DEBUG_PIPELINE_OUTPUT`. Captures contain audio, transcript text
+  and embeddings and must stay outside Git. Release builds do not capture them.
+- Final processing no longer runs a separate silence scan or deletes recognized
+  microphone words as suspected echo. Acoustic echo removal remains before STT.
 - Full transcription records can include optional `readingDocument` data with
   ordered turns and exact word references. Durable transcript segments can
   include optional `wordReferences`. Their existing `wordRange` remains an

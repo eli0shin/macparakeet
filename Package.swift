@@ -10,9 +10,9 @@ let packageDependencies: [Package.Dependency] =
     [
         // GRDB for SQLite (dictation history + transcription records)
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
-        // FluidAudio: vocabulary safety controls and long-audio seam fixes.
-        // Keep upgrades explicit because model lifecycle APIs can change.
-        .package(url: "https://github.com/FluidInference/FluidAudio", exact: "0.15.6"),
+        // Our 0.15.6-based fork: short-lane embeddings and real-context gap repair.
+        // Follow our maintained branch; Package.resolved records the resolved build.
+        .package(url: "https://github.com/eli0shin/FluidAudio", branch: "macparakeet"),
         // ArgumentParser for CLI
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
         // FluidAudio's Swift module exposes yyjson under current Xcode/Swift.
