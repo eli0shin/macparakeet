@@ -40,7 +40,13 @@ public protocol DiarizationServiceProtocol: Sendable {
 }
 
 extension DiarizationServiceProtocol {
-    public func diarizeFinalTranscript(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint? = nil) async throws -> MacParakeetDiarizationResult {
+    public func diarizeFinalTranscript(audioURL: URL) async throws -> MacParakeetDiarizationResult {
+        // Forward explicitly through the protocol requirement. A default argument
+        // on the fallback below selects that fallback for unconstrained calls.
+        try await diarizeFinalTranscript(audioURL: audioURL, speakerConstraint: nil)
+    }
+
+    public func diarizeFinalTranscript(audioURL: URL, speakerConstraint: SpeakerDiarizationConstraint?) async throws -> MacParakeetDiarizationResult {
         try await diarize(audioURL: audioURL, speakerConstraint: speakerConstraint)
     }
 

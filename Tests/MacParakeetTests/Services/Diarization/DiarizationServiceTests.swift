@@ -124,6 +124,56 @@ final class DiarizationServiceTests: XCTestCase {
         XCTAssertEqual(config.clustering.maxSpeakers, 4)
     }
 
+    func testFinalTranscriptWithoutConstraintUsesFinalManagerThroughProtocol() async throws {
+        let regular = RecordingOfflineDiarizerManager(result: DiarizationResult(segments: []))
+        let final = RecordingOfflineDiarizerManager(result: DiarizationResult(segments: []))
+        let service: any DiarizationServiceProtocol = DiarizationService(
+            manager: regular,
+            modelsDirectory: URL(fileURLWithPath: "/tmp/unused-diarization-models"),
+            finalManagerFactory: { _ in final }
+        )
+        let audioURL = URL(fileURLWithPath: "/tmp/unused-diarization.wav")
+
+        _ = try await service.diarizeFinalTranscript(audioURL: audioURL)
+        _ = try await service.diarizeFinalTranscript(audioURL: audioURL, speakerConstraint: nil)
+
+        let regularCalls = await regular.processedAudioURLs
+        let finalCalls = await final.processedAudioURLs
+        XCTAssertEqual(regularCalls, [])
+        XCTAssertEqual(finalCalls, [audioURL, audioURL])
+    }
+
+    func testFinalTranscriptForwardsSpeakerConstraintThroughProtocol() async throws {
+        let regular = RecordingOfflineDiarizerManager(result: DiarizationResult(segments: []))
+        let final = RecordingOfflineDiarizerManager(result: DiarizationResult(segments: []))
+        let service: any DiarizationServiceProtocol = DiarizationService(
+            manager: regular,
+            modelsDirectory: URL(fileURLWithPath: "/tmp/unused-diarization-models"),
+            finalManagerFactory: { constraint in
+                XCTAssertEqual(constraint, .exact(2))
+                return final
+            }
+        )
+        let audioURL = URL(fileURLWithPath: "/tmp/unused-diarization.wav")
+
+        _ = try await service.diarizeFinalTranscript(audioURL: audioURL, speakerConstraint: .exact(2))
+
+        let regularCalls = await regular.processedAudioURLs
+        let finalCalls = await final.processedAudioURLs
+        XCTAssertEqual(regularCalls, [])
+        XCTAssertEqual(finalCalls, [audioURL])
+    }
+
+    func testFinalTranscriptDefaultStillSupportsBasicDiarizers() async throws {
+        let mock = MockDiarizationService()
+        let service: any DiarizationServiceProtocol = mock
+
+        _ = try await service.diarizeFinalTranscript(audioURL: URL(fileURLWithPath: "/tmp/unused.wav"))
+
+        let called = await mock.diarizeCalled
+        XCTAssertTrue(called)
+    }
+
     func testDiarizePreparesModelsUsingCustomDirectoryBeforeColdStartInference() async throws {
         let customDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

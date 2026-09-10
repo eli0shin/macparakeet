@@ -95,6 +95,8 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
   contributions before saving. Paragraph breaks stay inside those contributions.
   Readable exports and AI context use the saved evidence order, without speculative
   containment or recursive reordering. Original word timestamps remain unchanged.
+- Final diarization without an explicit speaker constraint now reaches the final
+  configuration instead of the protocol fallback's regular configuration.
 - Final diarization uses denser segmentation and removes the one-second segment
   cutoff while retaining FluidAudio exclusive output. Word alignment bridges gaps
   between speaker regions instead of introducing an extra source-default speaker.
