@@ -1293,37 +1293,46 @@ private struct CalendarEventRow: View {
     let event: CalendarEvent
 
     var body: some View {
-        HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(event.title)
-                    .font(DesignSystem.Typography.body.weight(.semibold))
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    .lineLimit(1)
-                HStack(spacing: 6) {
-                    Text(eventDateText)
-                    Text("·")
-                    Text(event.formattedTimeRange)
-                    if let calendarName = event.calendarName, !calendarName.isEmpty {
-                        Text("·")
-                        Text(calendarName)
-                    }
-                    if event.attendeeCount > 0 {
-                        Text("·")
-                        Text(peopleCountText)
-                    }
-                }
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+        VStack(alignment: .leading, spacing: 5) {
+            Text(event.title)
+                .font(DesignSystem.Typography.body.weight(.semibold))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .lineLimit(1)
+
+            HStack(spacing: 6) {
+                Text(eventDateText)
+                Text("·")
+                Text(event.formattedTimeRange)
+                if let calendarName = event.calendarName, !calendarName.isEmpty {
+                    Text("·")
+                    Text(calendarName)
+                }
+            }
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .lineLimit(1)
+
+            if let organizer = event.organizerDisplayName {
+                participantDetail(label: "Organizer", people: [organizer])
+            }
+            if !event.participantDisplayNames.isEmpty {
+                participantDetail(label: "With", people: event.participantDisplayNames)
             }
         }
         .padding(DesignSystem.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var peopleCountText: String {
-        let count = event.attendeeCount + 1
-        return "\(count) \(count == 1 ? "person" : "people")"
+    private func participantDetail(label: String, people: [String]) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text("\(label):")
+                .fontWeight(.semibold)
+            Text(people.joined(separator: ", "))
+        }
+        .font(DesignSystem.Typography.caption)
+        .foregroundStyle(DesignSystem.Colors.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
     }
 
     private static let eventDateFormatter: DateFormatter = {

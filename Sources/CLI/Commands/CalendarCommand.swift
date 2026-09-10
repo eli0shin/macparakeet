@@ -93,8 +93,11 @@ struct CalendarCommand: AsyncParsableCommand {
                     let service = MeetingLinkParser.shared.identifyService(from: meetUrl) ?? "Link"
                     print("  \(service): \(meetUrl)")
                 }
-                if !event.participants.isEmpty {
-                    print("  Participants: \(event.participants.count)")
+                if let organizer = event.organizerDisplayName {
+                    print("  Organizer: \(organizer)")
+                }
+                if !event.participantDisplayNames.isEmpty {
+                    print("  Participants: \(event.participantDisplayNames.joined(separator: ", "))")
                 }
                 if let status = event.userStatus, status != .accepted {
                     print("  Your status: \(status.rawValue)")
