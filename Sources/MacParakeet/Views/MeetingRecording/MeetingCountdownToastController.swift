@@ -127,6 +127,7 @@ final class MeetingCountdownToastController {
         panel.hasShadow = false  // SwiftUI renders its own shadow
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
         panel.contentView = hosting
 
         if let screen = Self.screenForToast() {

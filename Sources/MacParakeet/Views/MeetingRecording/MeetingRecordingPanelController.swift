@@ -2,16 +2,11 @@ import AppKit
 import MacParakeetViewModels
 import SwiftUI
 
-private final class MeetingRecordingPanelWindow: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-}
-
 @MainActor
 final class MeetingRecordingPanelController {
     var onCloseRequested: (() -> Void)?
 
-    private var panel: NSPanel?
+    private var window: NSWindow?
     private var windowDelegate: MeetingRecordingPanelWindowDelegate?
     private let viewModel: MeetingRecordingPanelViewModel
 
@@ -20,59 +15,63 @@ final class MeetingRecordingPanelController {
     }
 
     var isVisible: Bool {
-        panel?.isVisible ?? false
+        window?.isVisible ?? false
     }
 
+    var managedWindow: NSWindow? { window }
+
     func show() {
-        if panel == nil {
-            createPanel()
+        if window == nil {
+            createWindow()
         }
 
-        panel?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
     }
 
     func hide() {
-        panel?.orderOut(nil)
+        window?.orderOut(nil)
     }
 
     func close() {
-        panel?.delegate = nil
-        panel?.close()
-        panel = nil
+        window?.delegate = nil
+        window?.close()
+        window = nil
         windowDelegate = nil
     }
 
-    private func createPanel() {
-        let panel = MeetingRecordingPanelWindow(
+    private func createWindow() {
+        let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 420, height: 460),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        panel.title = "Meeting Recording"
-        panel.titlebarAppearsTransparent = true
-        panel.isMovableByWindowBackground = true
-        panel.level = .floating
-        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-        panel.isReleasedWhenClosed = false
-        panel.minSize = NSSize(width: 360, height: 320)
-        panel.setFrameAutosaveName("MeetingRecordingPanel")
-        panel.contentView = NSHostingView(rootView: MeetingRecordingPanelView(viewModel: viewModel))
+        window.title = "Meeting Recording"
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.level = .normal
+        window.collectionBehavior = []
+        window.hidesOnDeactivate = false
+        window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 360, height: 320)
+        let restoredFrame = window.setFrameUsingName("MeetingRecordingPanel")
+        window.setFrameAutosaveName("MeetingRecordingPanel")
+        window.contentView = NSHostingView(rootView: MeetingRecordingPanelView(viewModel: viewModel))
 
-        if panel.frame.origin == .zero, let screen = NSScreen.main {
+        if !restoredFrame, let screen = NSScreen.main {
             let frame = screen.visibleFrame
-            let x = frame.maxX - panel.frame.width - 24
+            let x = frame.maxX - window.frame.width - 24
             let y = frame.minY + 96
-            panel.setFrameOrigin(NSPoint(x: x, y: y))
+            window.setFrameOrigin(NSPoint(x: x, y: y))
         }
 
         let delegate = MeetingRecordingPanelWindowDelegate { [weak self] in
             self?.onCloseRequested?()
         }
-        panel.delegate = delegate
+        window.delegate = delegate
 
-        self.panel = panel
+        self.window = window
         self.windowDelegate = delegate
     }
 }
@@ -85,6 +84,9 @@ private final class MeetingRecordingPanelWindowDelegate: NSObject, NSWindowDeleg
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        // User close hides only this working surface. The controller and view
+        // model remain alive for the active meeting, so reopening keeps notes,
+        // transcript, and Ask state.
         onCloseRequested()
         return false
     }

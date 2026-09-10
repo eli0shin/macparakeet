@@ -345,6 +345,7 @@ final class AppEnvironmentConfigurer {
             meetingRecordingSettlement: env.meetingRecordingSettlement,
             finalizationOwnershipClaimer: env.meetingRecordingLockFileStore,
             onMenuBarIconUpdate: { _ in callbacks.onMenuBarIconUpdate() },
+            onOpenMainWindow: callbacks.onOpenMainWindow,
             onTranscriptionReady: { [weak self] transcription in
                 guard let self else { return }
                 self.transcriptionViewModel.presentCompletedTranscription(transcription, autoSave: true)

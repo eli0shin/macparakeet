@@ -200,9 +200,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         },
         onQuit: { [weak self] in
             self?.quitApp()
-        },
-        isOnboardingVisible: { [weak self] in
-            self?.onboardingWindowController.isVisible ?? false
         }
     )
 
@@ -336,6 +333,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBarCoordinator.setupMenuBar()
         settingsObserverCoordinator.startObserving()
         windowCoordinator.applyActivationPolicyFromSettings()
+
+        // A direct user launch presents the normal working window. A login-item
+        // launch starts services in the background and does not take focus. New
+        // users continue into onboarding when environment setup completes.
+        if AppLaunchPresentationPolicy.shouldOpenMainWindow(
+            isLoginItemLaunch: AppLaunchPresentationPolicy.isCurrentLaunchFromLoginItem(),
+            onboardingCompleted: UserDefaults.standard.string(
+                forKey: OnboardingViewModel.onboardingCompletedKey
+            ) != nil
+        ) {
+            windowCoordinator.openMainWindow()
+        }
         #if DEBUG
         showDebugDictationPreviewQAIfRequested()
         #endif
