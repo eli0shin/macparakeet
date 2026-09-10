@@ -223,3 +223,9 @@ Acceptance:
 ## Blocked by
 
 None — can start immediately. Ticket 053 can proceed independently.
+
+## Resolution
+
+Implemented and merged in PR #65: https://github.com/eli0shin/macparakeet/pull/65
+
+Squash commit: `becb0d87bea85df7413394aba859c2a32bf387f5`.
