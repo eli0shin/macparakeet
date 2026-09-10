@@ -47,6 +47,14 @@ public protocol LLMServiceProtocol: Sendable {
         defaultPromptUsed: Bool,
         diagnosticID: UUID?
     ) async throws -> LLMFormatterResult
+    func formatTranscriptDetailed(
+        transcript: String,
+        promptTemplate: String,
+        source: TelemetryFormatterSource,
+        defaultPromptUsed: Bool,
+        diagnosticID: UUID?,
+        responseContract: TranscriptFormattingResponseContract
+    ) async throws -> LLMFormatterResult
 }
 
 public extension LLMServiceProtocol {
@@ -60,6 +68,21 @@ public extension LLMServiceProtocol {
         try await formatTranscriptDetailed(
             transcript: transcript, promptTemplate: promptTemplate,
             source: source, defaultPromptUsed: defaultPromptUsed
+        )
+    }
+
+    func formatTranscriptDetailed(
+        transcript: String,
+        promptTemplate: String,
+        source: TelemetryFormatterSource,
+        defaultPromptUsed: Bool,
+        diagnosticID: UUID?,
+        responseContract: TranscriptFormattingResponseContract
+    ) async throws -> LLMFormatterResult {
+        try await formatTranscriptDetailed(
+            transcript: transcript, promptTemplate: promptTemplate,
+            source: source, defaultPromptUsed: defaultPromptUsed,
+            diagnosticID: diagnosticID
         )
     }
 
@@ -123,6 +146,26 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             "cleaned_text": ChatJSONSchemaProperty(type: "string")
         ],
         required: ["cleaned_text"],
+        additionalProperties: false
+    )
+
+    static let meetingReadingTurnBatchSchema = ChatJSONSchema(
+        type: "object",
+        properties: [
+            "entries": ChatJSONSchemaProperty(
+                type: "array",
+                items: ChatJSONSchemaArrayItem(
+                    type: "object",
+                    properties: [
+                        "id": ChatJSONSchemaProperty(type: "string"),
+                        "text": ChatJSONSchemaProperty(type: "string"),
+                    ],
+                    required: ["id", "text"],
+                    additionalProperties: false
+                )
+            )
+        ],
+        required: ["entries"],
         additionalProperties: false
     )
 
@@ -653,6 +696,21 @@ public final class LLMService: LLMServiceProtocol, Sendable {
         defaultPromptUsed: Bool,
         diagnosticID: UUID?
     ) async throws -> LLMFormatterResult {
+        try await formatTranscriptDetailed(
+            transcript: transcript, promptTemplate: promptTemplate,
+            source: source, defaultPromptUsed: defaultPromptUsed,
+            diagnosticID: diagnosticID, responseContract: .plainText
+        )
+    }
+
+    public func formatTranscriptDetailed(
+        transcript: String,
+        promptTemplate: String,
+        source: TelemetryFormatterSource,
+        defaultPromptUsed: Bool,
+        diagnosticID: UUID?,
+        responseContract: TranscriptFormattingResponseContract
+    ) async throws -> LLMFormatterResult {
         let operationID = Observability.operationID()
         let startedAt = Date()
         let inputChars = transcript.count
@@ -674,16 +732,19 @@ public final class LLMService: LLMServiceProtocol, Sendable {
         ]
         func recordResponse(_ response: ChatCompletionResponse) async {
             guard let diagnosticID else { return }
-            await MeetingFormattingDiagnosticLog.shared.append(MeetingFormattingDiagnostic(
-                id: diagnosticID, createdAt: Date(), outcome: "provider_response",
-                reason: "provider=\(config.id.rawValue) model=\(response.model ?? "unknown") stop_reason=\(response.finishReason ?? "unknown")",
-                input: "System:\n\(Prompts.formatter)\n\nUser:\n\(renderedPrompt)",
-                output: response.content, expectedTurns: nil, actualTurns: nil,
-                reasoningContent: response.reasoningContent
-            ))
+            await MeetingFormattingDiagnosticLog.shared.append(
+                MeetingFormattingDiagnostic(
+                    id: diagnosticID, createdAt: Date(), outcome: "provider_response",
+                    reason:
+                        "provider=\(config.id.rawValue) model=\(response.model) stop_reason=\(response.finishReason ?? "unknown")",
+                    input: "System:\n\(Prompts.formatter)\n\nUser:\n\(renderedPrompt)",
+                    output: response.content, expectedTurns: nil, actualTurns: nil,
+                    reasoningContent: response.reasoningContent
+                ))
         }
 
-        let requestTimeoutSeconds = diagnosticID == nil
+        let requestTimeoutSeconds =
+            diagnosticID == nil
             ? nil
             : Self.meetingFormatterRequestTimeoutSeconds
 
@@ -691,15 +752,22 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             let response: ChatCompletionResponse
             let output: String
             if config.id == .lmstudio {
+                let responseFormat: ChatResponseFormat
+                switch responseContract {
+                case .plainText:
+                    responseFormat = .jsonSchema(
+                        name: "formatter_output", schema: Self.lmStudioFormatterSchema)
+                case .meetingReadingTurnBatch:
+                    responseFormat = .jsonSchema(
+                        name: "meeting_reading_turn_batch",
+                        schema: Self.meetingReadingTurnBatchSchema)
+                }
                 response = try await client.chatCompletion(
                     messages: messages,
                     context: context,
                     options: ChatCompletionOptions(
                         temperature: 0.2,
-                        responseFormat: .jsonSchema(
-                            name: "formatter_output",
-                            schema: Self.lmStudioFormatterSchema
-                        ),
+                        responseFormat: responseFormat,
                         requestTimeoutSeconds: requestTimeoutSeconds
                     )
                 )
@@ -707,8 +775,13 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                 if response.finishReason?.lowercased() == "length" {
                     throw LLMError.formatterTruncated
                 }
-                let formatted = parseLMStudioFormattedTranscript(response) ?? response.content
-                output = AIFormatter.normalizedFormattedOutput(formatted)
+                switch responseContract {
+                case .plainText:
+                    let formatted = parseLMStudioFormattedTranscript(response) ?? response.content
+                    output = AIFormatter.normalizedFormattedOutput(formatted)
+                case .meetingReadingTurnBatch:
+                    output = Self.firstNonemptyResponseContent(response)
+                }
             } else {
                 response = try await client.chatCompletion(
                     messages: messages,
@@ -719,7 +792,12 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                     )
                 )
                 await recordResponse(response)
-                output = AIFormatter.normalizedFormattedOutput(response.content)
+                switch responseContract {
+                case .plainText:
+                    output = AIFormatter.normalizedFormattedOutput(response.content)
+                case .meetingReadingTurnBatch:
+                    output = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
             }
 
             // An empty or whitespace-only response is a failure, not a
@@ -1195,6 +1273,12 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             return Prompts.summary
         }
         return systemPrompt
+    }
+
+    private static func firstNonemptyResponseContent(_ response: ChatCompletionResponse) -> String {
+        [response.content, response.reasoningContent ?? ""]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty }) ?? ""
     }
 
     private func parseLMStudioFormattedTranscript(_ response: ChatCompletionResponse) -> String? {

@@ -2453,15 +2453,16 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 ? LLMRunSource(transcriptionId: transcription.id)
                 : nil
             let meetingFormatter = MeetingReadingTurnFormatter()
-            let diagnosticID = UUID()
             let result = await meetingFormatter.format(
                 deterministicDocument,
-                using: { request in
+                using: { batch in
+                    let request = try batch.encodedJSON()
                     let outcome = try await transcriptFormatter.format(
                         request,
                         runSource: runSource,
                         lane: .transcription,
-                        diagnosticID: diagnosticID,
+                        diagnosticID: batch.diagnosticID,
+                        responseContract: .meetingReadingTurnBatch,
                         resolvePrompt: { (MeetingReadingTurnFormatter.promptTemplate(promptTemplate), nil) }
                     )
                     if let run = outcome.run { formatterRuns.append(run) }
@@ -2478,8 +2479,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                         completed: progress.completedRequests,
                         total: progress.totalRequests
                     ))
-                },
-                diagnosticID: diagnosticID
+                }
             )
             guard !result.wasCancelled else { throw CancellationError() }
             transcription.meetingReadingTurnFormatting =

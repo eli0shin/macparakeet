@@ -842,6 +842,7 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
     var lastFormatterPromptTemplate: String?
     var lastFormatterSource: TelemetryFormatterSource?
     var lastFormatterDefaultPromptUsed: Bool?
+    var lastFormatterResponseContract: TranscriptFormattingResponseContract?
 
     func generatePromptResult(transcript: String, systemPrompt: String?) async throws -> String {
         summarizeCallCount += 1
@@ -930,6 +931,23 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
             inputTruncated: false,
             defaultPromptUsed: defaultPromptUsed,
             messageCount: 2
+        )
+    }
+
+    func formatTranscriptDetailed(
+        transcript: String,
+        promptTemplate: String,
+        source: TelemetryFormatterSource,
+        defaultPromptUsed: Bool,
+        diagnosticID: UUID?,
+        responseContract: TranscriptFormattingResponseContract
+    ) async throws -> LLMFormatterResult {
+        lastFormatterResponseContract = responseContract
+        return try await formatTranscriptDetailed(
+            transcript: transcript,
+            promptTemplate: promptTemplate,
+            source: source,
+            defaultPromptUsed: defaultPromptUsed
         )
     }
 

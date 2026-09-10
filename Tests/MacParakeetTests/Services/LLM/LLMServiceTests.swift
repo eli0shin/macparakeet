@@ -642,6 +642,36 @@ final class LLMServiceTests: XCTestCase {
         )
     }
 
+    func testMeetingReadingTurnBatchForLMStudioUsesMatchingSchemaAndReturnsRawJSON() async throws {
+        mockConfigStore.config = LLMProviderConfig(
+            id: .lmstudio,
+            baseURL: URL(string: "http://localhost:1234/v1")!,
+            apiKey: nil,
+            modelName: "qwen3.5-4b-mlx",
+            isLocal: true
+        )
+        let response = #"{"entries":[{"id":"turn-0","text":"First.\nSecond."}]}"#
+        mockClient.responseContent = response
+
+        let result = try await service.formatTranscriptDetailed(
+            transcript: #"{"entries":[{"id":"turn-0","text":"first second"}]}"#,
+            promptTemplate: MeetingReadingTurnFormatter.promptTemplate(AIFormatter.defaultPromptTemplate),
+            source: .transcription,
+            defaultPromptUsed: true,
+            diagnosticID: UUID(),
+            responseContract: .meetingReadingTurnBatch
+        )
+
+        XCTAssertEqual(result.output, response)
+        XCTAssertEqual(
+            mockClient.capturedOptions?.responseFormat,
+            .jsonSchema(
+                name: "meeting_reading_turn_batch",
+                schema: LLMService.meetingReadingTurnBatchSchema
+            )
+        )
+    }
+
     func testFormatTranscriptForLMStudioNormalizesEscapedParagraphBreaks() async throws {
         mockConfigStore.config = LLMProviderConfig(
             id: .lmstudio,

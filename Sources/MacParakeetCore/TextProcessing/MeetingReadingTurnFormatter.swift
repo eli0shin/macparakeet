@@ -44,16 +44,44 @@ public struct MeetingReadingTurnFormattingResult: Sendable, Equatable {
     }
 }
 
-/// Formats all complete Reading Turns in one request. The boundary marker lets
-/// the response map back to stable turns without dropping transcript text.
-/// A malformed or content-changing response leaves every turn deterministic.
+/// One Reading Turn in a provider-independent cleanup request or response.
+public struct MeetingReadingTurnBatchEntry: Codable, Sendable, Equatable {
+    public let id: String
+    public let text: String
+
+    public init(id: String, text: String) {
+        self.id = id
+        self.text = text
+    }
+}
+
+/// A serial cleanup request. `diagnosticID` links the raw provider response to
+/// this batch but is not encoded into the model input.
+public struct MeetingReadingTurnFormattingBatch: Sendable, Equatable {
+    public let entries: [MeetingReadingTurnBatchEntry]
+    public let diagnosticID: UUID
+
+    public var transcriptCharacterCount: Int {
+        entries.reduce(0) { $0 + $1.text.count }
+    }
+
+    public func encodedJSON() throws -> String {
+        let data = try JSONEncoder().encode(BatchPayload(entries: entries))
+        return String(decoding: data, as: UTF8.self)
+    }
+}
+
+/// Formats finalized Reading Turns through small, serial requests. Complete
+/// turns of 500 or more characters are always sent alone without a size cap.
+/// Consecutive shorter turns are packed without exceeding 500 characters.
+/// Failed batches fall back independently and do not block later batches.
 public struct MeetingReadingTurnFormatter {
-    public typealias FormatRequest = (String) async throws -> String
+    public typealias FormatRequest = (MeetingReadingTurnFormattingBatch) async throws -> String
     public typealias ProgressHandler = @Sendable (MeetingReadingTurnFormattingProgress) -> Void
-
-    private static let turnBoundary = "<<<MACPARAKEET_READING_TURN_BOUNDARY>>>"
-
     public typealias DiagnosticSink = @Sendable (MeetingFormattingDiagnostic) async -> Void
+
+    public static let shortTurnBatchCharacterLimit = 500
+
     private let diagnosticSink: DiagnosticSink
 
     public init() {
@@ -65,90 +93,166 @@ public struct MeetingReadingTurnFormatter {
     }
 
     public static func promptTemplate(_ template: String) -> String {
-        AIFormatter.normalizedPromptTemplate(template) + """
-
-
-            Meeting transcript structure requirements (these take priority over paragraph styling):
-            Preserve every <<<MACPARAKEET_READING_TURN_BOUNDARY>>> marker exactly and in order.
-            Each marker separates speakers' contributions. Clean each contribution independently.
-            Never merge, split, remove, or move contributions across these markers.
-            Keep short contributions such as Yes or Okay, even when they are only one word.
-            Return the cleaned text with all markers intact. Do not add commentary.
+        let normalized = AIFormatter.normalizedPromptTemplate(template)
+        let contract = """
+            Reading Turn batch requirements (these take priority over other output instructions):
+            Clean each entry independently. Preserve every entry ID exactly.
+            Do not combine entries or move text between entries.
+            Return only JSON in this form: {"entries":[{"id":"turn ID","text":"cleaned text"}]}.
+            Include every input ID exactly once. Do not add commentary.
             """
+
+        guard normalized.contains(AIFormatter.transcriptPlaceholder) else {
+            return normalized + "\n\n" + contract + "\n\nReading Turn batch:\n" + AIFormatter.transcriptPlaceholder
+        }
+        return normalized.replacingOccurrences(
+            of: AIFormatter.transcriptPlaceholder,
+            with: contract + "\n\nReading Turn batch:\n" + AIFormatter.transcriptPlaceholder
+        )
     }
 
     public func format(
         _ document: MeetingTranscriptPresentationDocument,
         using formatRequest: FormatRequest,
-        onProgress: ProgressHandler? = nil,
-        diagnosticID: UUID = UUID()
+        onProgress: ProgressHandler? = nil
     ) async -> MeetingReadingTurnFormattingResult {
-        let turns = document.turns.filter {
-            $0.deterministicText.contains(where: { !$0.isWhitespace })
+        let parts = document.turns.enumerated().compactMap { index, turn -> Part? in
+            guard turn.deterministicText.contains(where: { !$0.isWhitespace }) else { return nil }
+            return Part(id: "turn-\(index)", turn: turn)
         }
-        let totalRequests = turns.isEmpty ? 0 : 1
-        let request = turns.map(\.deterministicText).joined(
-            separator: "\n\n\(Self.turnBoundary)\n\n"
-        )
-        func record(_ outcome: String, reason: String? = nil, output: String? = nil, actualTurns: Int? = nil) async {
-            await diagnosticSink(
-                MeetingFormattingDiagnostic(
-                    id: diagnosticID, createdAt: Date(), outcome: outcome, reason: reason,
-                    input: request, output: output, expectedTurns: turns.count, actualTurns: actualTurns
-                ))
-        }
-        onProgress?(.init(completedRequests: 0, totalRequests: totalRequests))
-        guard !turns.isEmpty else {
-            await record("skipped", reason: "no_nonempty_turns")
-            return result(formatting: [], completedRequests: 0, totalRequests: 0, wasCancelled: false)
-        }
-        guard !Task.isCancelled else {
-            await record("cancelled", reason: "cancelled_before_request")
-            return result(formatting: [], completedRequests: 0, totalRequests: 1, wasCancelled: true)
-        }
-        do {
-            let rawOutput = try await formatRequest(request)
+        let batches = makeBatches(parts)
+        var formatting: [MeetingReadingTurnFormatting] = []
+        var completedRequests = 0
+        onProgress?(.init(completedRequests: 0, totalRequests: batches.count))
+
+        for batch in batches {
             guard !Task.isCancelled else {
-                await record("cancelled", reason: "cancelled_after_response", output: rawOutput)
-                return result(formatting: [], completedRequests: 0, totalRequests: 1, wasCancelled: true)
+                return result(
+                    formatting: formatting, completedRequests: completedRequests,
+                    totalRequests: batches.count, wasCancelled: true)
             }
-            let outputs = rawOutput.components(separatedBy: Self.turnBoundary).map {
-                AIFormatter.normalizedFormattedOutput($0)
-            }
-            var reasons: [String] = []
-            if outputs.count != turns.count {
-                reasons.append(
-                    "turn_count_mismatch expected=\(turns.count) actual=\(outputs.count) expected_boundaries=\(turns.count - 1) actual_boundaries=\(outputs.count - 1)"
-                )
-            } else {
-                for (index, pair) in zip(turns, outputs).enumerated() {
-                    if let reason = Self.rejectionReason(
-                        input: pair.0.deterministicText, output: pair.1, turn: index + 1)
-                    {
-                        reasons.append(reason)
-                    }
+
+            let request = batch.request
+            let input = (try? request.encodedJSON()) ?? ""
+            do {
+                let rawOutput = try await formatRequest(request)
+                guard !Task.isCancelled else {
+                    await record(
+                        id: request.diagnosticID, outcome: "cancelled",
+                        reason: "cancelled_after_response", input: input, output: rawOutput,
+                        expectedTurns: batch.parts.count, actualTurns: nil)
+                    return result(
+                        formatting: formatting, completedRequests: completedRequests,
+                        totalRequests: batches.count, wasCancelled: true)
                 }
+
+                do {
+                    let parsed = try Self.parse(rawOutput, expectedIDs: batch.parts.map(\.id))
+                    var rejected = parsed.reasons
+                    var accepted = 0
+                    for (turnIndex, part) in batch.parts.enumerated() {
+                        guard let output = parsed.outputs[part.id] else { continue }
+                        if let reason = Self.rejectionReason(
+                            input: part.turn.deterministicText,
+                            output: output,
+                            turn: turnIndex + 1
+                        ) {
+                            rejected.append(reason)
+                        } else {
+                            accepted += 1
+                            formatting.append(
+                                MeetingReadingTurnFormatting(
+                                    turnID: part.turn.id,
+                                    deterministicText: part.turn.deterministicText,
+                                    formattedText: output
+                                ))
+                        }
+                    }
+                    let outcome = rejected.isEmpty ? "accepted" : (accepted == 0 ? "rejected" : "partially_accepted")
+                    await record(
+                        id: request.diagnosticID, outcome: outcome,
+                        reason: rejected.isEmpty ? nil : rejected.joined(separator: "; "),
+                        input: input, output: rawOutput,
+                        expectedTurns: batch.parts.count, actualTurns: parsed.actualEntryCount)
+                } catch {
+                    await record(
+                        id: request.diagnosticID, outcome: "rejected",
+                        reason: "invalid_batch_response error=\(String(reflecting: error))",
+                        input: input, output: rawOutput,
+                        expectedTurns: batch.parts.count, actualTurns: nil)
+                }
+            } catch is CancellationError {
+                await record(
+                    id: request.diagnosticID, outcome: "cancelled",
+                    reason: "request_cancelled", input: input, output: nil,
+                    expectedTurns: batch.parts.count, actualTurns: nil)
+                return result(
+                    formatting: formatting, completedRequests: completedRequests,
+                    totalRequests: batches.count, wasCancelled: true)
+            } catch {
+                await record(
+                    id: request.diagnosticID, outcome: "rejected",
+                    reason: "request_failed error=\(String(reflecting: error))",
+                    input: input, output: nil,
+                    expectedTurns: batch.parts.count, actualTurns: nil)
             }
-            let formatting =
-                reasons.isEmpty
-                ? zip(turns, outputs).map {
-                    MeetingReadingTurnFormatting(
-                        turnID: $0.id, deterministicText: $0.deterministicText, formattedText: $1)
-                } : []
-            await record(
-                reasons.isEmpty ? "accepted" : "rejected",
-                reason: reasons.isEmpty ? nil : reasons.joined(separator: "; "),
-                output: rawOutput, actualTurns: outputs.count)
-            onProgress?(.init(completedRequests: 1, totalRequests: 1))
-            return result(formatting: formatting, completedRequests: 1, totalRequests: 1, wasCancelled: false)
-        } catch is CancellationError {
-            await record("cancelled", reason: "request_cancelled")
-            return result(formatting: [], completedRequests: 0, totalRequests: 1, wasCancelled: true)
-        } catch {
-            await record("rejected", reason: "request_failed error=\(String(reflecting: error))")
-            onProgress?(.init(completedRequests: 1, totalRequests: 1))
-            return result(formatting: [], completedRequests: 1, totalRequests: 1, wasCancelled: false)
+
+            completedRequests += 1
+            onProgress?(.init(completedRequests: completedRequests, totalRequests: batches.count))
         }
+
+        return result(
+            formatting: formatting, completedRequests: completedRequests,
+            totalRequests: batches.count, wasCancelled: false)
+    }
+
+    private func makeBatches(_ parts: [Part]) -> [Batch] {
+        var batches: [Batch] = []
+        var shortParts: [Part] = []
+        var shortCharacterCount = 0
+
+        func flushShortParts() {
+            guard !shortParts.isEmpty else { return }
+            batches.append(Batch(parts: shortParts))
+            shortParts = []
+            shortCharacterCount = 0
+        }
+
+        for part in parts {
+            let count = part.turn.deterministicText.count
+            if count >= Self.shortTurnBatchCharacterLimit {
+                flushShortParts()
+                batches.append(Batch(parts: [part]))
+            } else if !shortParts.isEmpty,
+                shortCharacterCount + count > Self.shortTurnBatchCharacterLimit
+            {
+                flushShortParts()
+                shortParts = [part]
+                shortCharacterCount = count
+            } else {
+                shortParts.append(part)
+                shortCharacterCount += count
+            }
+        }
+        flushShortParts()
+        return batches
+    }
+
+    private func record(
+        id: UUID,
+        outcome: String,
+        reason: String?,
+        input: String,
+        output: String?,
+        expectedTurns: Int,
+        actualTurns: Int?
+    ) async {
+        await diagnosticSink(
+            MeetingFormattingDiagnostic(
+                id: id, createdAt: Date(), outcome: outcome, reason: reason,
+                input: input, output: output,
+                expectedTurns: expectedTurns, actualTurns: actualTurns
+            ))
     }
 
     private func result(
@@ -159,11 +263,46 @@ public struct MeetingReadingTurnFormatter {
     ) -> MeetingReadingTurnFormattingResult {
         MeetingReadingTurnFormattingResult(
             formatting: formatting,
-            progress: .init(
-                completedRequests: completedRequests,
-                totalRequests: totalRequests
-            ),
+            progress: .init(completedRequests: completedRequests, totalRequests: totalRequests),
             wasCancelled: wasCancelled
+        )
+    }
+
+    private static func parse(_ output: String, expectedIDs: [String]) throws -> ParsedBatchResponse {
+        var candidate = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        if candidate.hasPrefix("```"), let firstNewline = candidate.firstIndex(of: "\n") {
+            candidate = String(candidate[candidate.index(after: firstNewline)...])
+            if let closingFence = candidate.range(of: "```", options: .backwards) {
+                candidate = String(candidate[..<closingFence.lowerBound])
+            }
+        }
+        let payload = try JSONDecoder().decode(BatchPayload.self, from: Data(candidate.utf8))
+        let expected = Set(expectedIDs)
+        var mapped: [String: String] = [:]
+        var duplicated: Set<String> = []
+        var reasons: [String] = []
+
+        for entry in payload.entries {
+            guard expected.contains(entry.id) else {
+                reasons.append("unknown_id id=\(entry.id)")
+                continue
+            }
+            guard !duplicated.contains(entry.id) else { continue }
+            if mapped[entry.id] != nil {
+                mapped.removeValue(forKey: entry.id)
+                duplicated.insert(entry.id)
+                reasons.append("duplicate_id id=\(entry.id)")
+                continue
+            }
+            mapped[entry.id] = AIFormatter.normalizedFormattedOutput(entry.text)
+        }
+        for id in expectedIDs where mapped[id] == nil && !duplicated.contains(id) {
+            reasons.append("missing_id id=\(id)")
+        }
+        return ParsedBatchResponse(
+            outputs: mapped,
+            reasons: reasons,
+            actualEntryCount: payload.entries.count
         )
     }
 
@@ -208,13 +347,37 @@ public struct MeetingReadingTurnFormatter {
     private static func protectedTokens(in text: String) -> [String: Int] {
         let tokens = text.split(whereSeparator: \.isWhitespace).compactMap { raw -> String? in
             let token = raw.trimmingCharacters(in: .punctuationCharacters)
-            guard
-                token.contains(where: \.isNumber)
-                    || token.contains("@")
-                    || token.contains("://")
-            else { return nil }
+            guard token.contains(where: \.isNumber) || token.contains("@") || token.contains("://") else {
+                return nil
+            }
             return token.lowercased()
         }
         return tokenCounts(tokens)
     }
+}
+
+private struct Part {
+    let id: String
+    let turn: ReadingTurn
+}
+
+private struct Batch {
+    let parts: [Part]
+
+    var request: MeetingReadingTurnFormattingBatch {
+        MeetingReadingTurnFormattingBatch(
+            entries: parts.map { MeetingReadingTurnBatchEntry(id: $0.id, text: $0.turn.deterministicText) },
+            diagnosticID: UUID()
+        )
+    }
+}
+
+private struct BatchPayload: Codable {
+    let entries: [MeetingReadingTurnBatchEntry]
+}
+
+private struct ParsedBatchResponse {
+    let outputs: [String: String]
+    let reasons: [String]
+    let actualEntryCount: Int
 }

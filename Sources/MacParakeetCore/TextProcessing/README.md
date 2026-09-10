@@ -42,10 +42,10 @@ mode.
   meeting surfaces always select `.cleaned`, independent of the dictation
   Raw/Clean preference. `.verbatim` remains available for evidence-focused use.
 - `MeetingReadingTurnFormatter.swift` — optional AI formatting module for completed
-  meetings. It sends all deterministic Reading Turn text in one request, validates
-  content preservation, and maps valid output back to stable Reading Turns. A
-  failure leaves all turns deterministic. Cancellation is reported to the meeting
-  workflow without publishing partial overrides.
+  meetings and timestamped file transcripts. It sends finalized Reading Turns in
+  sequential JSON batches, validates content preservation, and maps valid output
+  back to stable Reading Turns. Failed batches use deterministic text without
+  blocking later batches. Cancellation is reported to the transcription workflow.
 - `MeetingTranscriptDocumentRenderer.swift` — shared completed-meeting boundary
   and plain-text/Markdown projections for copy, readable exports, meeting
   artifacts, rich AI context, and containing-turn navigation. It does not
@@ -130,20 +130,22 @@ long pauses and completed source exchanges stay as boundaries. Live preview
 paragraphs also order words by start time before grouping. This local policy
 does not rewrite words or diarization regions.
 
-**Meeting AI formatting never owns transcript structure.** The formatter sends
-all deterministic Reading Turn text in one complete request and never sends
-speaker labels, timestamps, overlap state, or word references. It does not split,
-select, or drop source text to meet a request bound. Output commits only when all
-turns are present, non-empty, preserve numbers/URLs/email-like values, and stay
-within the accepted lexical-change ratio. Durable overrides include the turn
-identity and deterministic source text; stale overrides fail closed. The existing
-transcript-formatter toggle, provider, model, and prompt remain the only routing
-controls, so this module adds no implicit network path. The meeting prompt explicitly
-requires every Reading Turn boundary to survive cleanup, including short turns.
+**AI formatting never owns Reading Turn structure.** The formatter never sends
+speaker labels, timestamps, overlap state, or word references. A Reading Turn of
+500 or more characters is one uncapped request and is never split or truncated.
+Consecutive shorter turns share a request while their combined source text stays
+at or below 500 characters. Every request and response uses the same JSON `entries`
+contract with transport IDs, including requests that contain one turn. Valid
+entries commit independently; a failed batch uses deterministic text and does not
+block later batches. Outputs must be non-empty, preserve numbers/URLs/email-like
+values, and stay within the accepted lexical-change ratio. Durable overrides
+include the turn identity and deterministic source text; stale overrides fail
+closed. The existing formatter toggle, provider, model, and prompt remain the only
+routing controls, so this module adds no implicit network path.
 
-Each meeting AI cleanup attempt writes an awaited local diagnostic to
+Each meeting AI cleanup batch writes an awaited local diagnostic to
 `~/Library/Logs/MacParakeet/meeting-ai-cleanup.jsonl`. It includes the complete
-input and output text, acceptance/rejection/cancellation outcome, turn counts,
+input and output JSON, acceptance/rejection/cancellation outcome, turn counts,
 and exact rejection reason with the failed turn and validation values. Text is
 not redacted. A `provider_response` record with the same diagnostic ID stores
 the full rendered prompt, original response content, reasoning content, provider,

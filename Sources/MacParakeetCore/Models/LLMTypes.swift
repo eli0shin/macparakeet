@@ -124,6 +124,11 @@ public enum ChatResponseFormat: Sendable, Equatable {
     case jsonSchema(name: String, schema: ChatJSONSchema)
 }
 
+public enum TranscriptFormattingResponseContract: Sendable, Equatable {
+    case plainText
+    case meetingReadingTurnBatch
+}
+
 public enum LLMStructuredOutputCapability: Sendable, Equatable {
     case nativeJSONSchema
     case promptEmbeddedJSONSchema

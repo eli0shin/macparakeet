@@ -3,81 +3,185 @@ import XCTest
 @testable import MacParakeetCore
 
 final class MeetingReadingTurnFormatterTests: XCTestCase {
-    func testAllReadingTurnsAreSentInOneCompleteRequest() async {
-        let formatter = MeetingReadingTurnFormatter()
-        let requests = RequestRecorder { $0.uppercased() }
+    func testReadingTurnsUseSequentialFiveHundredCharacterBatches() async {
         let document = makeDocument([
-            ["BEGIN_SENTINEL first turn."],
-            ["MIDDLE_SENTINEL second turn."],
-            ["END_SENTINEL third turn."],
+            [String(repeating: "a", count: 500)],
+            [String(repeating: "b", count: 200)],
+            [String(repeating: "c", count: 300)],
+            [String(repeating: "d", count: 301)],
         ])
+        let recorder = BatchRecorder { Self.response(for: $0) }
 
-        let result = await formatter.format(document) { input in
-            try await requests.format(input)
+        let result = await MeetingReadingTurnFormatter().format(document) {
+            try await recorder.format($0)
         }
 
-        let captured = await requests.requests
-        XCTAssertEqual(captured.count, 1)
-        XCTAssertTrue(captured[0].contains("BEGIN_SENTINEL first turn."))
-        XCTAssertTrue(captured[0].contains("MIDDLE_SENTINEL second turn."))
-        XCTAssertTrue(captured[0].contains("END_SENTINEL third turn."))
+        let batches = await recorder.batches
+        XCTAssertEqual(batches.map { $0.entries.map(\.text.count) }, [[500], [200, 300], [301]])
+        XCTAssertEqual(result.formatting.count, 4)
+        XCTAssertEqual(result.progress, .init(completedRequests: 3, totalRequests: 3))
+        XCTAssertFalse(result.wasCancelled)
+    }
+
+    func testLongReadingTurnIsSentWholeAndAloneWithoutACap() async {
+        let longText = "BEGIN" + String(repeating: "x", count: 25_000) + "END"
+        let recorder = BatchRecorder { Self.response(for: $0) }
+
+        let result = await MeetingReadingTurnFormatter().format(
+            makeDocument([["short"], [longText], ["tail"]])
+        ) { try await recorder.format($0) }
+
+        let batches = await recorder.batches
+        XCTAssertEqual(batches.count, 3)
+        XCTAssertEqual(batches[1].entries.map(\.text), [longText])
         XCTAssertEqual(result.formatting.count, 3)
-        XCTAssertEqual(result.progress, .init(completedRequests: 1, totalRequests: 1))
-        XCTAssertFalse(result.wasCancelled)
     }
 
-    func testProviderFailureDoesNotRetryWithReducedContext() async {
-        let formatter = MeetingReadingTurnFormatter()
-        let requests = RequestRecorder { _ in throw FixtureError.failed }
-        let document = makeDocument([["First."], ["Second."], ["Third."]])
+    func testSingleAndMultipleTurnBatchesUseTheSameJSONShape() async throws {
+        let recorder = BatchRecorder { Self.response(for: $0) }
+        _ = await MeetingReadingTurnFormatter().format(
+            makeDocument([[String(repeating: "a", count: 500)], ["b"], ["c"]])
+        ) { try await recorder.format($0) }
 
-        let result = await formatter.format(document) { input in
-            try await requests.format(input)
-        }
-
-        let captured = await requests.requests
-        XCTAssertEqual(captured.count, 1)
-        XCTAssertTrue(result.formatting.isEmpty)
-        XCTAssertFalse(result.wasCancelled)
+        let batches = await recorder.batches
+        XCTAssertEqual(batches.count, 2)
+        let single = try JSONDecoder().decode(BatchEnvelope.self, from: Data(batches[0].encodedJSON().utf8))
+        let multiple = try JSONDecoder().decode(BatchEnvelope.self, from: Data(batches[1].encodedJSON().utf8))
+        XCTAssertEqual(single.entries.count, 1)
+        XCTAssertEqual(multiple.entries.count, 2)
+        XCTAssertEqual(Set(single.entries[0].keys), ["id", "text"])
+        XCTAssertTrue(multiple.entries.allSatisfy { Set($0.keys) == ["id", "text"] })
     }
 
-    func testMalformedOrContentChangingOutputLeavesAllTurnsDeterministic() async {
-        let formatter = MeetingReadingTurnFormatter()
-        let document = makeDocument([["Keep number 42."], ["Second turn."]])
+    func testFailedBatchDoesNotPreventLaterBatchesFromBeingCleaned() async {
+        let attempts = OSAllocatedUnfairLock(initialState: 0)
+        let first = String(repeating: "first ", count: 90)
+        let second = String(repeating: "second ", count: 90)
 
-        let result = await formatter.format(document) { _ in
-            "Keep number 43."
-        }
-
-        XCTAssertTrue(result.formatting.isEmpty)
-        XCTAssertEqual(
-            apply(result.formatting, to: document).turns.map(\.text),
-            document.turns.map(\.deterministicText)
-        )
-    }
-
-    func testCancellationAfterRequestDoesNotCommitFormatting() async {
-        let formatter = MeetingReadingTurnFormatter()
-        let document = makeDocument([["Do not commit."], ["Never commit."]])
-
-        let task = Task {
-            await formatter.format(document) { input in
-                withUnsafeCurrentTask { $0?.cancel() }
-                return input
+        let result = await MeetingReadingTurnFormatter().format(makeDocument([[first], [second]])) { batch in
+            let attempt = attempts.withLock { value in
+                value += 1
+                return value
             }
+            if attempt == 1 { throw FixtureError.failed }
+            return Self.response(for: batch, transform: { $0.uppercased() })
         }
-        let result = await task.value
+
+        XCTAssertEqual(attempts.withLock { $0 }, 2)
+        XCTAssertEqual(result.formatting.count, 1)
+        XCTAssertEqual(result.formatting.first?.deterministicText, second)
+        XCTAssertEqual(
+            result.formatting.first?.formattedText,
+            second.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        XCTAssertEqual(result.progress, .init(completedRequests: 2, totalRequests: 2))
+    }
+
+    func testResponseIDsMapReorderedEntriesBackToReadingTurns() async {
+        let document = makeDocument([["first"], ["second"], ["third"]])
+
+        let result = await MeetingReadingTurnFormatter().format(document) { batch in
+            Self.response(
+                entries: batch.entries.reversed().map {
+                    MeetingReadingTurnBatchEntry(id: $0.id, text: $0.text.uppercased())
+                })
+        }
+
+        XCTAssertEqual(result.formatting.map(\.formattedText), ["FIRST", "SECOND", "THIRD"])
+        XCTAssertEqual(result.formatting.map(\.turnID), document.turns.map(\.id))
+    }
+
+    func testInvalidIDsRejectOnlyTheirBatch() async {
+        let diagnostics = DiagnosticRecorder()
+        let formatter = MeetingReadingTurnFormatter(diagnosticSink: { await diagnostics.append($0) })
+        let first = String(repeating: "first ", count: 90)
+        let second = String(repeating: "second ", count: 90)
+        let attempts = OSAllocatedUnfairLock(initialState: 0)
+
+        let result = await formatter.format(makeDocument([[first], [second]])) { batch in
+            let attempt = attempts.withLock { value in
+                value += 1; return value
+            }
+            if attempt == 1 {
+                return Self.response(entries: [batch.entries[0], batch.entries[0]])
+            }
+            return Self.response(for: batch)
+        }
+
+        let events = await diagnostics.events
+        XCTAssertEqual(result.formatting.map(\.deterministicText), [second])
+        XCTAssertEqual(events.map(\.outcome), ["rejected", "accepted"])
+        XCTAssertTrue(events[0].reason?.contains("duplicate_id id=turn-0") == true)
+    }
+
+    func testMissingResponseEntryDoesNotDiscardValidEntryInTheSameBatch() async {
+        let diagnostics = DiagnosticRecorder()
+        let formatter = MeetingReadingTurnFormatter(diagnosticSink: { await diagnostics.append($0) })
+        let document = makeDocument([["first"], ["second"]])
+
+        let result = await formatter.format(document) { batch in
+            Self.response(entries: [
+                .init(id: batch.entries[0].id, text: "First.")
+            ])
+        }
+
+        let events = await diagnostics.events
+        XCTAssertEqual(result.formatting.map(\.formattedText), ["First."])
+        XCTAssertEqual(events.first?.outcome, "partially_accepted")
+        XCTAssertEqual(events.first?.reason, "missing_id id=turn-1")
+    }
+
+    func testOneContentRejectionDoesNotDiscardValidEntriesInTheSameBatch() async {
+        let diagnostics = DiagnosticRecorder()
+        let formatter = MeetingReadingTurnFormatter(diagnosticSink: { await diagnostics.append($0) })
+        let document = makeDocument([["Keep number 42."], ["hello world."]])
+
+        let result = await formatter.format(document) { batch in
+            Self.response(entries: [
+                .init(id: batch.entries[0].id, text: "Keep number 43."),
+                .init(id: batch.entries[1].id, text: "Hello, world."),
+            ])
+        }
+
+        let events = await diagnostics.events
+        XCTAssertEqual(result.formatting.count, 1)
+        XCTAssertEqual(result.formatting.first?.formattedText, "Hello, world.")
+        XCTAssertEqual(events.first?.outcome, "partially_accepted")
+        XCTAssertTrue(events.first?.reason?.contains("protected_values_changed turn=1") == true)
+    }
+
+    func testCancellationStopsFutureBatches() async {
+        let first = String(repeating: "first ", count: 90)
+        let second = String(repeating: "second ", count: 90)
+        let recorder = BatchRecorder { batch in
+            if batch.entries[0].text == second { throw CancellationError() }
+            return Self.response(for: batch)
+        }
+
+        let result = await MeetingReadingTurnFormatter().format(makeDocument([[first], [second]])) {
+            try await recorder.format($0)
+        }
 
         XCTAssertTrue(result.wasCancelled)
-        XCTAssertTrue(result.formatting.isEmpty)
-        XCTAssertEqual(result.progress, .init(completedRequests: 0, totalRequests: 1))
+        let requestCount = await recorder.batches.count
+        XCTAssertEqual(requestCount, 2)
+        XCTAssertEqual(result.formatting.map(\.deterministicText), [first])
+        XCTAssertEqual(result.progress, .init(completedRequests: 1, totalRequests: 2))
+    }
+
+    func testPromptUsesJSONEntriesInsteadOfBoundaryMarkers() {
+        let prompt = MeetingReadingTurnFormatter.promptTemplate(AIFormatter.defaultPromptTemplate)
+        XCTAssertTrue(prompt.contains("Preserve every entry ID exactly"))
+        XCTAssertTrue(prompt.contains(#"{"entries":[{"id":"turn ID","text":"cleaned text"}]}"#))
+        XCTAssertFalse(prompt.contains("MACPARAKEET_READING_TURN_BOUNDARY"))
+        XCTAssertTrue(prompt.contains(AIFormatter.transcriptPlaceholder))
     }
 
     func testApplyingFormattingPreservesIdentitySpeakerTimingAndEvidence() async {
-        let formatter = MeetingReadingTurnFormatter()
         let document = makeDocument([["hello world."]])
-
-        let result = await formatter.format(document) { _ in "Hello, world." }
+        let result = await MeetingReadingTurnFormatter().format(document) { batch in
+            Self.response(entries: [.init(id: batch.entries[0].id, text: "Hello, world.")])
+        }
         let formatted = apply(result.formatting, to: document).turns[0]
         let original = document.turns[0]
 
@@ -91,96 +195,16 @@ final class MeetingReadingTurnFormatterTests: XCTestCase {
         XCTAssertEqual(formatted.paragraphs, original.paragraphs)
     }
 
-    func testMissingBoundariesLogsExactReasonAndFullText() async {
-        let recorder = DiagnosticRecorder()
-        let formatter = MeetingReadingTurnFormatter(diagnosticSink: { await recorder.append($0) })
-        let document = makeDocument([["Um I I I think this matters."], ["Yes, it does."]])
-        let output = "I think this matters.\n\nYes, it does."
-        let result = await formatter.format(document) { _ in output }
-        let events = await recorder.events
-        XCTAssertTrue(result.formatting.isEmpty)
-        XCTAssertEqual(events.count, 1)
-        XCTAssertEqual(
-            events.first?.reason, "turn_count_mismatch expected=2 actual=1 expected_boundaries=1 actual_boundaries=0")
-        XCTAssertTrue(events.first?.input.contains("Um I I I") == true)
-        XCTAssertEqual(events.first?.output, output)
+    private static func response(
+        for batch: MeetingReadingTurnFormattingBatch,
+        transform: (String) -> String = { $0 }
+    ) -> String {
+        response(entries: batch.entries.map { .init(id: $0.id, text: transform($0.text)) })
     }
 
-    func testContentRejectionsLogTurnAndValidationValues() async {
-        let cases: [(String, String, String)] = [
-            ("Keep number 42.", "Keep number 43.", "protected_values_changed turn=1"),
-            ("Keep this.", "", "empty_output turn=1"),
-            ("Hello.", "!!!", "no_lexical_tokens turn=1"),
-            ("Keep these exact words.", "Replace everything completely now.", "lexical_change_exceeded turn=1"),
-            ("Hello.", "Hello" + String(repeating: "!", count: 250), "output_length_exceeded turn=1"),
-        ]
-        for (input, output, reason) in cases {
-            let recorder = DiagnosticRecorder()
-            let formatter = MeetingReadingTurnFormatter(diagnosticSink: { await recorder.append($0) })
-            let result = await formatter.format(makeDocument([[input]])) { _ in output }
-            let events = await recorder.events
-            XCTAssertTrue(result.formatting.isEmpty)
-            XCTAssertTrue(events.first?.reason?.hasPrefix(reason) == true, "\(events)")
-            XCTAssertEqual(events.first?.input, input)
-            XCTAssertEqual(events.first?.output, output)
-        }
-    }
-
-    func testDiagnosticFileContainsCompleteResponseAndReason() async throws {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: folder) }
-        let url = folder.appendingPathComponent("cleanup.jsonl")
-        let log = MeetingFormattingDiagnosticLog(fileURL: url)
-        let formatter = MeetingReadingTurnFormatter(diagnosticSink: { await log.append($0) })
-        let input = "Um I I I think this matters."
-        let output = "A completely different response.\nWith another paragraph."
-        _ = await formatter.format(makeDocument([[input]])) { _ in output }
-        _ = await formatter.format(makeDocument([["Hello."]])) { _ in "Hello!" }
-        let lines = try String(contentsOf: url, encoding: .utf8).split(separator: "\n")
-        XCTAssertEqual(lines.count, 2)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let event = try decoder.decode(MeetingFormattingDiagnostic.self, from: Data(lines[0].utf8))
-        XCTAssertEqual(event.input, input)
-        XCTAssertEqual(event.output, output)
-        XCTAssertEqual(event.outcome, "rejected")
-        XCTAssertTrue(event.reason?.contains("ratio=") == true)
-        XCTAssertTrue(event.reason?.contains("limit=0.35") == true)
-    }
-
-    func testCancellationLogsReturnedTextInsteadOfDroppingEvidence() async {
-        let recorder = DiagnosticRecorder()
-        let formatter = MeetingReadingTurnFormatter(diagnosticSink: { await recorder.append($0) })
-        let document = makeDocument([["Hello."]])
-        let task = Task {
-            await formatter.format(document) { _ in
-                withUnsafeCurrentTask { $0?.cancel() }
-                return "Hello!"
-            }
-        }
-        let result = await task.value
-        let events = await recorder.events
-        XCTAssertTrue(result.wasCancelled)
-        XCTAssertEqual(events.first?.reason, "cancelled_after_response")
-        XCTAssertEqual(events.first?.output, "Hello!")
-    }
-
-    func testPromptExplicitlyRequiresBoundaryPreservation() {
-        let prompt = MeetingReadingTurnFormatter.promptTemplate(AIFormatter.defaultPromptTemplate)
-        XCTAssertTrue(prompt.contains("Preserve every <<<MACPARAKEET_READING_TURN_BOUNDARY>>> marker exactly"))
-        XCTAssertTrue(prompt.contains(AIFormatter.transcriptPlaceholder))
-    }
-
-    func testAcceptedOutputAndProviderFailureAreLogged() async {
-        let recorder = DiagnosticRecorder()
-        let formatter = MeetingReadingTurnFormatter(diagnosticSink: { await recorder.append($0) })
-        _ = await formatter.format(makeDocument([["Hello world."]])) { _ in "Hello, world." }
-        _ = await formatter.format(makeDocument([["Hello world."]])) { _ in throw FixtureError.failed }
-        let events = await recorder.events
-        XCTAssertEqual(events.map(\.outcome), ["accepted", "rejected"])
-        XCTAssertNil(events[0].reason)
-        XCTAssertTrue(events[1].reason?.contains("request_failed") == true)
-        XCTAssertTrue(events[1].reason?.contains("failed") == true)
+    private static func response(entries: [MeetingReadingTurnBatchEntry]) -> String {
+        let data = try! JSONEncoder().encode(ResponseEnvelope(entries: entries))
+        return String(decoding: data, as: UTF8.self)
     }
 
     private func makeDocument(_ turnParagraphs: [[String]]) -> MeetingTranscriptPresentationDocument {
@@ -227,23 +251,31 @@ final class MeetingReadingTurnFormatterTests: XCTestCase {
     }
 }
 
-private actor RequestRecorder {
-    private(set) var requests: [String] = []
-    private let response: @Sendable (String) throws -> String
+private actor BatchRecorder {
+    private(set) var batches: [MeetingReadingTurnFormattingBatch] = []
+    private let response: @Sendable (MeetingReadingTurnFormattingBatch) throws -> String
 
-    init(response: @escaping @Sendable (String) throws -> String) {
+    init(response: @escaping @Sendable (MeetingReadingTurnFormattingBatch) throws -> String) {
         self.response = response
     }
 
-    func format(_ input: String) throws -> String {
-        requests.append(input)
-        return try response(input)
+    func format(_ batch: MeetingReadingTurnFormattingBatch) throws -> String {
+        batches.append(batch)
+        return try response(batch)
     }
 }
 
 private actor DiagnosticRecorder {
     var events: [MeetingFormattingDiagnostic] = []
     func append(_ event: MeetingFormattingDiagnostic) { events.append(event) }
+}
+
+private struct ResponseEnvelope: Encodable {
+    let entries: [MeetingReadingTurnBatchEntry]
+}
+
+private struct BatchEnvelope: Decodable {
+    let entries: [[String: String]]
 }
 
 private enum FixtureError: Error {

@@ -20,6 +20,7 @@ struct TranscriptFormatter: Sendable {
         runSource: LLMRunSource?,
         lane: Lane,
         diagnosticID: UUID? = nil,
+        responseContract: TranscriptFormattingResponseContract = .plainText,
         resolvePrompt: @Sendable () async -> (template: String, resolution: AIFormatterPromptResolution?)
     ) async throws -> FormatterOutcome {
         guard shouldUseAIFormatter(), let llmService else {
@@ -68,7 +69,8 @@ struct TranscriptFormatter: Sendable {
                 promptTemplate: promptTemplate,
                 source: lane.telemetrySource,
                 defaultPromptUsed: defaultPromptUsed,
-                diagnosticID: diagnosticID
+                diagnosticID: diagnosticID,
+                responseContract: responseContract
             )
             let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
             let run = runSource.map {

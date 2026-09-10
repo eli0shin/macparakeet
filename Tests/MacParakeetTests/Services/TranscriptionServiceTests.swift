@@ -1929,7 +1929,7 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertFalse(markdown.contains(assistantReply))
     }
 
-    func testLongMeetingUsesOneCompleteReadingTurnFormattingRequestAndPersistsOverrides() async throws {
+    func testLongMeetingUsesUncappedReadingTurnBatchJSONAndPersistsOverrides() async throws {
         let sentinels = ["BEGIN_SENTINEL", "MIDDLE_SENTINEL", "END_SENTINEL"]
         let turnTexts = sentinels.map { sentinel in
             sentinel + String(repeating: "a", count: 7_000) + "."
@@ -1948,7 +1948,21 @@ final class TranscriptionServiceTests: XCTestCase {
             }
         ))
         let llm = MockLLMService()
-        llm.formatTranscriptTransform = { $0.uppercased() }
+        llm.formatTranscriptTransform = { input in
+            let data = try XCTUnwrap(input.data(using: .utf8))
+            var object = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: data) as? [String: Any]
+            )
+            let entries = try XCTUnwrap(object["entries"] as? [[String: Any]])
+            object["entries"] = entries.map { entry in
+                [
+                    "id": entry["id"] as? String ?? "",
+                    "text": (entry["text"] as? String ?? "").uppercased(),
+                ]
+            }
+            let response = try JSONSerialization.data(withJSONObject: object)
+            return String(decoding: response, as: UTF8.self)
+        }
         let service = TranscriptionService(
             audioProcessor: mockAudio,
             sttTranscriber: mockSTT,
@@ -1970,9 +1984,13 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(llm.formatTranscriptCallCount, 1)
         let completeRequest = try XCTUnwrap(llm.formattedTranscripts.first)
         XCTAssertTrue(sentinels.allSatisfy(completeRequest.contains))
-        XCTAssertTrue(llm.lastFormatterPromptTemplate?.contains(
-            "Preserve every <<<MACPARAKEET_READING_TURN_BOUNDARY>>> marker exactly"
-        ) == true)
+        let requestObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(completeRequest.utf8)) as? [String: Any]
+        )
+        XCTAssertEqual((requestObject["entries"] as? [[String: Any]])?.count, 1)
+        XCTAssertFalse(completeRequest.contains("MACPARAKEET_READING_TURN_BOUNDARY"))
+        XCTAssertEqual(llm.lastFormatterResponseContract, .meetingReadingTurnBatch)
+        XCTAssertTrue(llm.lastFormatterPromptTemplate?.contains("Preserve every entry ID exactly") == true)
         XCTAssertEqual(result.meetingReadingTurnFormatting?.count, 1)
         XCTAssertEqual(result.cleanTranscript, turnTexts.map { $0.uppercased() }.joined(separator: "\n\n"))
         XCTAssertEqual(result.rawTranscript, turnTexts.joined(separator: " "))
