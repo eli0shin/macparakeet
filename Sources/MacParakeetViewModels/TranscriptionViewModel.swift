@@ -894,7 +894,11 @@ public final class TranscriptionViewModel {
                 updatedResult.id = original.id
                 updatedResult.createdAt = original.createdAt
                 updatedResult.isFavorite = original.isFavorite
-                updatedResult.fileName = original.fileName
+                // Meeting finalization can replace its timestamp fallback with
+                // a generated title. Keep that result after retranscription.
+                if original.sourceType != .meeting {
+                    updatedResult.fileName = original.fileName
+                }
                 updatedResult.filePath = original.filePath
                 updatedResult.sourceURL = original.sourceURL
                 updatedResult.thumbnailURL = original.thumbnailURL

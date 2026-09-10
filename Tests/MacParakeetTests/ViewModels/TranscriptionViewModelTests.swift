@@ -2490,7 +2490,7 @@ final class TranscriptionViewModelTests: XCTestCase {
 
         let original = Transcription(
             id: UUID(),
-            fileName: "Meeting Apr 5",
+            fileName: "Meeting Jun 17, 2026 at 09:59",
             filePath: archivedMeeting.mixedURL.path,
             durationMs: 2_000,
             rawTranscript: "Old meeting transcript",
@@ -2502,7 +2502,7 @@ final class TranscriptionViewModelTests: XCTestCase {
         mockRepo.transcriptions = [original]
 
         let newResult = Transcription(
-            fileName: archivedMeeting.mixedURL.lastPathComponent,
+            fileName: "Quarterly Roadmap Review",
             rawTranscript: "Updated meeting transcript",
             status: .completed
         )
@@ -2516,6 +2516,7 @@ final class TranscriptionViewModelTests: XCTestCase {
 
         XCTAssertEqual(mockRepo.transcriptions.count, 1)
         XCTAssertEqual(mockRepo.transcriptions.first?.sourceType, .meeting)
+        XCTAssertEqual(mockRepo.transcriptions.first?.fileName, "Quarterly Roadmap Review")
         XCTAssertEqual(mockRepo.transcriptions.first?.userNotes, "Original decision notes")
         XCTAssertEqual(mockRepo.transcriptions.first?.recoveredFromCrash, true)
 

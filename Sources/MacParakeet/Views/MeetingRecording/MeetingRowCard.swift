@@ -28,6 +28,21 @@ struct MeetingRowCard<MenuContent: View>: View {
                     retryButton
                         .padding(.top, 4)
                 }
+
+                Menu {
+                    menuContent()
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Meeting actions")
+                .accessibilityLabel("Meeting actions")
             }
 
             errorDetailDisclosure
