@@ -261,7 +261,7 @@ AI features are entirely **opt-in** and separate from speech recognition — tra
 - **AI formatter** — Optionally run your dictation and file transcripts through your AI provider to clean up grammar, punctuation, and paragraphing. Toggle on/off, customize the prompt, or reset to default.
 - **Transforms** — Select text in any app and press a bound Transform hotkey, such as `Control-Option-1` for Polish, to rewrite the selection through your configured LLM provider.
 
-For every AI operation, MacParakeet sends the complete relevant text, applicable meeting notes, instructions, and chat history to the configured model. It does not silently truncate, select, summarize, retrieve, or chunk context. If the model's context window is too small, the operation stops with a clear error instead of retrying with less context.
+Summaries, chat, Transforms, and other context-based AI operations send the complete relevant text, applicable meeting notes, instructions, and chat history to the configured model. They do not silently truncate, select, summarize, retrieve, or retry with less context. AI transcript cleanup processes finalized Reading Turns sequentially: complete long turns are never split or truncated, while consecutive short turns can share a small request. A failed cleanup request falls back only for its Reading Turns and does not block later requests.
 
 **Supported providers:**
 

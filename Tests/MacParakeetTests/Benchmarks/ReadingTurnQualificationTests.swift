@@ -295,8 +295,8 @@ final class ReadingTurnQualificationTests: XCTestCase {
     nonisolated private static func exerciseFormatting(
         _ document: MeetingTranscriptPresentationDocument
     ) async -> MeetingReadingTurnFormattingResult {
-        await MeetingReadingTurnFormatter().format(document) { completeInput in
-            completeInput
+        await MeetingReadingTurnFormatter().format(document) { batch in
+            try batch.encodedJSON()
         }
     }
 
