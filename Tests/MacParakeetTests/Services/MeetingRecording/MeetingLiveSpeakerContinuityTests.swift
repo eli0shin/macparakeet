@@ -38,7 +38,7 @@ final class MeetingLiveSpeakerContinuityTests: XCTestCase {
         let b = SpeakerSegment(speakerId: "system:B", startMs: 800, endMs: 900)
         let second = snapshot([a, b], through: 1_000)
         let update = assembler.advanceLiveDiarization(second, source: .system)
-        XCTAssertEqual(update?.words.map(\.speakerId), ["system:A", "system:A", "system:A", "system:B"])
+        XCTAssertEqual(update?.words.map(\.speakerId), ["system:A", "system:A", "system:A", "system:A"])
         XCTAssertEqual(apply(&assembler, start: 950, end: 990, state: .timeline(second)).words.last?.speakerId,
                        "system:B")
     }
@@ -50,12 +50,12 @@ final class MeetingLiveSpeakerContinuityTests: XCTestCase {
             SpeakerSegment(speakerId: "system:B", startMs: 800, endMs: 900)
         ], through: 1_000)
         let update = apply(&assembler, start: 790, end: 801, state: .timeline(timeline))
-        XCTAssertEqual(update.words.last?.speakerId, "system:B")
+        XCTAssertEqual(update.words.last?.speakerId, "system:A")
         _ = apply(&assembler, start: 0, end: 100, source: .microphone, state: .awaitingTimeline)
         XCTAssertEqual(assembler.currentUpdate.words.count, 1)
         let mic = snapshot([SpeakerSegment(speakerId: "microphone:A", startMs: 200, endMs: 300)], through: 400)
         let combined = assembler.advanceLiveDiarization(mic, source: .microphone)
-        XCTAssertEqual(combined?.words.map(\.speakerId), ["microphone:A", "system:B"])
+        XCTAssertEqual(combined?.words.map(\.speakerId), ["microphone:A", "system:A"])
     }
 
     func testStopWithoutDetectionReleasesTextWithoutInventingSpeaker() {

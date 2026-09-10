@@ -6,7 +6,7 @@ public enum SpeakerMerger {
 
     /// Attribute complete words using speaker-region starts. Keep the current
     /// speaker through uncovered time; a later speaker start wins, even during
-    /// overlap. A word crossing a change belongs to the new speaker. Leading
+    /// overlap. A word crossing a change remains with the previous speaker. Leading
     /// words belong to the first detected speaker. Evidence times are unchanged.
     /// Live callers must hold words until the timeline covers their end times.
     public static func alignWordsToSpeakerTurns(
@@ -35,8 +35,8 @@ public enum SpeakerMerger {
             var upper = boundaries.count
             while lower < upper {
                 let middle = lower + (upper - lower) / 2
-                // Intervals are half-open: a word ending at B's start remains A.
-                if word.endMs <= boundaries[middle], word.startMs < boundaries[middle] {
+                // A word that starts before B's turn remains with A, even if it crosses the boundary.
+                if word.startMs < boundaries[middle] {
                     upper = middle
                 } else {
                     lower = middle + 1

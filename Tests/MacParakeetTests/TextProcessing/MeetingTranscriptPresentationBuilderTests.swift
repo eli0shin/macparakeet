@@ -384,7 +384,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
                         text: "Opening. Wait. Closing.",
                         words: [
                             TimestampedWord(word: "Opening.", startMs: 0, endMs: 500, confidence: 0.9),
-                            TimestampedWord(word: "Wait.", startMs: 500, endMs: 1_500, confidence: 0.9),
+                            TimestampedWord(word: "Wait.", startMs: 700, endMs: 1_500, confidence: 0.9),
                             TimestampedWord(word: "Closing.", startMs: 1_600, endMs: 2_100, confidence: 0.9),
                         ]
                     ),
@@ -423,7 +423,7 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
                         words: [
                             // End at S2's start without crossing into that speaker.
                             TimestampedWord(word: "Hello", startMs: 0, endMs: 250, confidence: 0.9),
-                            TimestampedWord(word: "there.", startMs: 700, endMs: 1_000, confidence: 0.9),
+                            TimestampedWord(word: "there.", startMs: 800, endMs: 1_000, confidence: 0.9),
                         ]
                     ),
                     startOffsetMs: 0

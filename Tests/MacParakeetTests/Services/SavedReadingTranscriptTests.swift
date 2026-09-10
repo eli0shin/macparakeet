@@ -33,8 +33,8 @@ final class SavedReadingTranscriptTests: XCTestCase {
         let repository = TranscriptionRepository(dbQueue: database.dbQueue)
         let engine = MockSTTClient()
         let evidence = [word("Before", 0, 100), word("during", 200, 300), word("gap", 600, 700),
-                        // The late gap stays S1; even a small crossing of S2's start belongs to S2.
-                        word("after.", 1_700, 1_800), word("Reply.", 1_890, 1_901)]
+                        // The late gap stays S1; a word starting at S2's boundary belongs to S2.
+                        word("after.", 1_700, 1_800), word("Reply.", 1_900, 2_000)]
         await engine.configure(result: stt(evidence))
         let diarizer = MockDiarizationService()
         await diarizer.configure(result: MacParakeetDiarizationResult(

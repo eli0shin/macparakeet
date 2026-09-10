@@ -13,7 +13,7 @@ final class SpeakerContinuityTests: XCTestCase {
                        SpeakerSegment(speakerId: "A", startMs: 350, endMs: 400),
                        SpeakerSegment(speakerId: "B", startMs: 800, endMs: 900)]
         let result = SpeakerMerger.alignWordsToSpeakerTurns(words: words, segments: regions)
-        XCTAssertEqual(result.map(\.speakerId), ["A", "A", "A", "A", "B", "B", "B"])
+        XCTAssertEqual(result.map(\.speakerId), ["A", "A", "A", "A", "A", "B", "B"])
         for (original, attributed) in zip(words, result) {
             XCTAssertEqual(original.word, attributed.word)
             XCTAssertEqual(original.startMs, attributed.startMs)
@@ -30,7 +30,7 @@ final class SpeakerContinuityTests: XCTestCase {
         let result = SpeakerMerger.alignWordsToSpeakerTurns(
             words: [word(100, 200), word(490, 501), word(700, 800), word(2_900, 3_001)],
             segments: regions)
-        XCTAssertEqual(result.map(\.speakerId), ["A", "B", "B", "A"])
+        XCTAssertEqual(result.map(\.speakerId), ["A", "A", "B", "B"])
     }
 
     func testNoValidRegionsDoesNotInventSpeaker() {
