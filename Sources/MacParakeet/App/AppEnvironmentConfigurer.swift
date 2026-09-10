@@ -28,7 +28,7 @@ final class AppEnvironmentConfigurer {
     struct Callbacks {
         let onMenuBarIconUpdate: () -> Void
         let onPresentEntitlementsAlert: (Error) -> Void
-        let onOpenMainWindow: () -> Void
+        let onOpenMainWindow: @MainActor @Sendable () -> Void
         let onToggleMeetingRecordingFromHotkey: () -> Void
         let onTriggerFileTranscriptionFromHotkey: () -> Void
         let onTriggerYouTubeTranscriptionFromHotkey: () -> Void
