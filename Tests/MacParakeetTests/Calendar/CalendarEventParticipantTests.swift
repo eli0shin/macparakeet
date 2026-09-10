@@ -7,6 +7,10 @@ final class CalendarEventParticipantTests: XCTestCase {
             EventParticipant.emailAddress(from: URL(string: "mailto:Ava%2Bcalendar@example.com")!),
             "Ava+calendar@example.com"
         )
+        XCTAssertEqual(
+            EventParticipant.emailAddress(from: URL(string: "MAILTO:ava@example.com?subject=Review")!),
+            "ava@example.com"
+        )
         XCTAssertNil(EventParticipant.emailAddress(from: URL(string: "https://calendar.example.com/principal/ava")!))
     }
 

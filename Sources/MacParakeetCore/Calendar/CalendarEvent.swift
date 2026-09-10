@@ -120,8 +120,14 @@ public struct EventParticipant: Codable, Sendable, Hashable {
     }
 
     static func emailAddress(from url: URL) -> String? {
-        guard url.scheme?.caseInsensitiveCompare("mailto") == .orderedSame else { return nil }
-        let address = url.path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard url.scheme?.caseInsensitiveCompare("mailto") == .orderedSame,
+              let separator = url.absoluteString.firstIndex(of: ":") else {
+            return nil
+        }
+        let resource = url.absoluteString[url.absoluteString.index(after: separator)...]
+            .split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)[0]
+        let address = (String(resource).removingPercentEncoding ?? String(resource))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         return address.isEmpty ? nil : address
     }
 
