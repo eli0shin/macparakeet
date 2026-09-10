@@ -20,6 +20,7 @@ final class MockCalendarService: CalendarServicing, @unchecked Sendable {
 
     nonisolated(unsafe) private(set) var requestPermissionCallCount = 0
     nonisolated(unsafe) private(set) var fetchUpcomingEventsCallCount = 0
+    nonisolated(unsafe) private(set) var lastFetchFrom: Date?
     nonisolated(unsafe) private(set) var availableCalendarsCallCount = 0
 
     /// When set, the *next* fetch parks until `releaseHeldFetch()` is called.
@@ -49,6 +50,7 @@ final class MockCalendarService: CalendarServicing, @unchecked Sendable {
 
     func fetchUpcomingEvents(from: Date, days: Int?) async throws -> [CalendarEvent] {
         fetchUpcomingEventsCallCount += 1
+        lastFetchFrom = from
         if holdNextFetch {
             holdNextFetch = false
             await withCheckedContinuation { fetchContinuation = $0 }

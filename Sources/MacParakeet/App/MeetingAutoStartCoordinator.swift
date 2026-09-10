@@ -7,9 +7,8 @@ import UserNotifications
 
 /// Polls the user's calendar and routes upcoming meetings to the right
 /// surface (notification / countdown toast / recording flow).
-/// ADR-017 Phases 1 + 2 are wired here. `.lateJoinAvailable` is a no-op
-/// (Phase 3 territory — the enum case stays so Phase 3 can wire the
-/// late-join toast without changing `evaluate(...)`).
+/// Calendar reminders, auto-start countdowns, and confirmed late-start
+/// recording actions are wired here.
 ///
 /// Auto-*stop* was removed (ADR-017 amendment, 2026-05): scheduled end times
 /// are unreliable, so the coordinator never stops a recording. Stopping is
@@ -26,9 +25,9 @@ import UserNotifications
 ///                ▼             ▼                                      ▼
 ///         .reminderDue   .autoStartDue                     .lateJoinAvailable
 ///                │             │                                      │
-///                ▼             ▼                                  (no-op,
-///   UNUserNotificationCenter   5s countdown                       Phase 3)
-///                              toast → start
+///                ▼             ▼                                      ▼
+///   UNUserNotificationCenter   5s countdown                 actionable notice
+///                              toast → start                 → confirmed start
 /// ```
 @MainActor
 final class MeetingAutoStartCoordinator {
@@ -47,7 +46,9 @@ final class MeetingAutoStartCoordinator {
     /// distinction.
     private let onAutoStartConfirmed: @MainActor (_ snapshot: MeetingCalendarSnapshot) -> Int?
     private let toastController: MeetingCountdownToastController
+    private let defaults: UserDefaults
     private let logger = Logger(subsystem: "com.macparakeet", category: "MeetingAutoStart")
+    private static let postedNotificationHistoryKey = "calendar.postedNotificationHistory.v1"
 
     /// Adaptive polling — see ADR-017 §7. We only recreate the `Timer` when
     /// the desired interval changes so a meeting 30s away gets sub-tick
@@ -85,7 +86,8 @@ final class MeetingAutoStartCoordinator {
         settingsViewModel: SettingsViewModel,
         isRecordingActive: @escaping @MainActor () -> Bool = { false },
         onAutoStartConfirmed: @escaping @MainActor (_ snapshot: MeetingCalendarSnapshot) -> Int? = { _ in nil },
-        toastController: MeetingCountdownToastController? = nil
+        toastController: MeetingCountdownToastController? = nil,
+        defaults: UserDefaults = .standard
     ) {
         self.calendarService = calendarService
         self.settingsViewModel = settingsViewModel
@@ -96,6 +98,7 @@ final class MeetingAutoStartCoordinator {
         // happens in the caller's actor context). Construct here when the
         // caller didn't inject one.
         self.toastController = toastController ?? MeetingCountdownToastController()
+        self.defaults = defaults
     }
 
     deinit {
@@ -251,11 +254,15 @@ final class MeetingAutoStartCoordinator {
         }
 
         let events: [CalendarEvent]
+        let now = Date()
         do {
-            // 7-day look-ahead is overkill for the next-poll logic but keeps
-            // the per-calendar include filter cheap and lets adaptive polling
-            // see a "next event" 90 minutes out.
-            let raw = try await calendarService.fetchUpcomingEvents(days: 7)
+            // Include meetings that started during sleep or app restart so the
+            // late-start and reminder catch-up windows can still act on them.
+            let lookback = TimeInterval(currentConfig(mode: settingsViewModel.calendarAutoStartMode).lateJoinGraceMinutes * 60)
+            let raw = try await calendarService.fetchUpcomingEvents(
+                from: now.addingTimeInterval(-lookback),
+                days: 7
+            )
             events = filterByIncludedCalendars(raw)
         } catch {
             latestPolledEvents = []
@@ -283,7 +290,7 @@ final class MeetingAutoStartCoordinator {
         let config = currentConfig(mode: mode)
         let monitorEvents = MeetingMonitor.evaluate(
             events: events,
-            now: Date(),
+            now: now,
             config: config,
             activeRecording: activeRecording,
             dismissedEventIds: dismissedEventIds,
@@ -369,10 +376,8 @@ final class MeetingAutoStartCoordinator {
         case .autoStartDue(let calEvent):
             showAutoStartCountdown(calEvent)
 
-        case .lateJoinAvailable:
-            // Phase 3 — UI not built. The enum case stays so Phase 3 wires
-            // the late-join toast without changing `evaluate(...)`.
-            return
+        case .lateJoinAvailable(let calEvent):
+            await showLateStartNotice(calEvent)
         }
     }
 
@@ -537,54 +542,25 @@ extension MeetingAutoStartCoordinator {
 
 private extension MeetingAutoStartCoordinator {
     func showReminder(_ event: CalendarEvent, mode: CalendarAutoStartMode) async {
-        // Mark before posting so a failed delivery doesn't cause us to
-        // re-attempt every poll tick — better to miss one reminder than
-        // spam the user.
-        remindedEventIds.insert(event.dedupeKey)
+        guard await ensureNotificationAuthorization(for: event) else { return }
 
-        // Defense in depth: we requested authorization at calendar grant
-        // time, but the user may have revoked notifications since. Without
-        // this check macOS silently drops `add()` and the user sees no
-        // reminder despite Calendar being granted.
-        guard await CalendarNotificationAuthorization.isAuthorized() else {
-            logger.warning("Notification authorization missing — reminder for event id=\(event.id, privacy: .public) not delivered")
+        let center = UNUserNotificationCenter.current()
+        let identifier = CalendarMeetingNotification.reminderIdentifier(for: event)
+        if await notificationExists(identifier: identifier, center: center) {
+            remindedEventIds.insert(event.dedupeKey)
             return
         }
 
         let leadMinutes = settingsViewModel.calendarReminderMinutes
-        // Notification UX: the headline is the timing + event name (the part
-        // the user will scan first); the supporting line is the meeting
-        // service ("Zoom", "Google Meet", etc.) so the user knows where to
-        // click. Names match the field they populate in
-        // `UNMutableNotificationContent`, not the semantic role of "title"
-        // and "subtitle" — the previous swap was confusing on a re-read.
-        let notificationTitle: String = {
-            if leadMinutes > 0 {
-                return "\(event.title) starts in \(leadMinutes) minute\(leadMinutes == 1 ? "" : "s")"
-            }
-            return "\(event.title) is starting"
-        }()
-        let notificationBody = event.meetUrl.flatMap(MeetingLinkParser.shared.identifyService) ?? "MacParakeet"
-
-        let content = UNMutableNotificationContent()
-        content.title = notificationTitle
-        content.body = notificationBody
-        content.sound = nil  // Reminders shouldn't compete with the user's Zoom join sound
-
         let request = UNNotificationRequest(
-            identifier: "macparakeet.calendar.\(event.id)",
-            content: content,
-            trigger: nil  // Deliver immediately
+            identifier: identifier,
+            content: CalendarMeetingNotification.reminderContent(for: event, leadMinutes: leadMinutes),
+            trigger: nil
         )
-
-        // Only report `calendarReminderShown` after delivery actually succeeds —
-        // otherwise telemetry over-reports and we lose signal on real failure
-        // rates. The `remindedEventIds` mark above stays before the auth check,
-        // because the alternative (mark on success only) would re-attempt every
-        // poll tick when delivery transiently fails — better to miss a single
-        // reminder than spam the user.
         do {
-            try await UNUserNotificationCenter.current().add(request)
+            try await center.add(request)
+            markNotificationPosted(identifier)
+            remindedEventIds.insert(event.dedupeKey)
             Telemetry.send(.calendarReminderShown(
                 mode: mode.rawValue,
                 leadMinutes: leadMinutes,
@@ -594,6 +570,72 @@ private extension MeetingAutoStartCoordinator {
         } catch {
             logger.error("Reminder notification failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    func showLateStartNotice(_ event: CalendarEvent) async {
+        countdownShownEventIds.insert(event.dedupeKey)
+        guard await ensureNotificationAuthorization(for: event) else {
+            countdownShownEventIds.remove(event.dedupeKey)
+            return
+        }
+
+        let center = UNUserNotificationCenter.current()
+        let identifier = CalendarMeetingNotification.lateStartIdentifier(for: event)
+        if await notificationExists(identifier: identifier, center: center) { return }
+
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: CalendarMeetingNotification.lateStartContent(for: event),
+            trigger: nil
+        )
+        do {
+            try await center.add(request)
+            markNotificationPosted(identifier)
+            logger.info("Late-start notice posted for event id=\(event.id, privacy: .public)")
+        } catch {
+            countdownShownEventIds.remove(event.dedupeKey)
+            logger.error("Late-start notification failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func ensureNotificationAuthorization(for event: CalendarEvent) async -> Bool {
+        let authorized = await CalendarNotificationAuthorization.isAuthorized()
+        settingsViewModel.calendarNotificationsAuthorized = authorized
+        if !authorized {
+            logger.warning("Notification authorization missing — notice for event id=\(event.id, privacy: .public) not delivered")
+        }
+        return authorized
+    }
+
+    func notificationExists(identifier: String, center: UNUserNotificationCenter) async -> Bool {
+        if notificationWasPosted(identifier) { return true }
+        let pending = await center.pendingNotificationRequests()
+        if pending.contains(where: { $0.identifier == identifier }) {
+            markNotificationPosted(identifier)
+            return true
+        }
+        let delivered = await center.deliveredNotifications()
+        if delivered.contains(where: { $0.request.identifier == identifier }) {
+            markNotificationPosted(identifier)
+            return true
+        }
+        return false
+    }
+
+    func notificationWasPosted(_ identifier: String, now: Date = Date()) -> Bool {
+        var history = defaults.dictionary(forKey: Self.postedNotificationHistoryKey) ?? [:]
+        let cutoff = now.addingTimeInterval(-8 * 24 * 60 * 60).timeIntervalSinceReferenceDate
+        history = history.filter { _, value in
+            (value as? NSNumber)?.doubleValue ?? 0 >= cutoff
+        }
+        defaults.set(history, forKey: Self.postedNotificationHistoryKey)
+        return history[identifier] != nil
+    }
+
+    func markNotificationPosted(_ identifier: String, now: Date = Date()) {
+        var history = defaults.dictionary(forKey: Self.postedNotificationHistoryKey) ?? [:]
+        history[identifier] = now.timeIntervalSinceReferenceDate
+        defaults.set(history, forKey: Self.postedNotificationHistoryKey)
     }
 
     // MARK: - Cleanup

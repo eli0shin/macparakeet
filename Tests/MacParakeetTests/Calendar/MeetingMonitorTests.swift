@@ -70,11 +70,8 @@ final class MeetingMonitorTests: XCTestCase {
         XCTAssertTrue(result.isEmpty)
     }
 
-    func testNotifyModeWithReminderMinutesZeroProducesNothing() {
+    func testNotifyModeWithReminderMinutesZeroFiresAtStartTime() {
         let now = Date()
-        // reminderMinutes=0 disables reminders entirely; .notify mode also
-        // gates `.autoStartDue`/`.lateJoinAvailable` off — so there is
-        // nothing to emit even though the event is at T-0.
         let evt = event(startsIn: 0, from: now)
         let result = MeetingMonitor.evaluate(
             events: [evt],
@@ -85,7 +82,7 @@ final class MeetingMonitorTests: XCTestCase {
             remindedEventIds: [],
             countdownShownEventIds: []
         )
-        XCTAssertTrue(result.isEmpty)
+        XCTAssertEqual(result, [.reminderDue(evt)])
     }
 
     func testNotifyModeFiresReminderButNotAutoStart() {
@@ -118,7 +115,7 @@ final class MeetingMonitorTests: XCTestCase {
         let result = MeetingMonitor.evaluate(
             events: [evt],
             now: now,
-            config: config(mode: .autoStart, reminderMinutes: 0),
+            config: config(mode: .autoStart, reminderMinutes: -1),
             activeRecording: false,
             dismissedEventIds: [],
             remindedEventIds: [],
@@ -166,9 +163,24 @@ final class MeetingMonitorTests: XCTestCase {
         XCTAssertEqual(extractIds(result), ["evt-1"], "Slow polls within 90s should still fire reminder")
     }
 
-    func testReminderDoesNotFirePast90SecondWindow() {
+    func testReminderCatchesUpAfterIdealLeadTimeUntilEventStarts() {
         let now = Date()
-        let evt = event(startsIn: 5 * 60 - 91, from: now)  // 91s past
+        let evt = event(startsIn: 2 * 60, from: now)
+        let result = MeetingMonitor.evaluate(
+            events: [evt],
+            now: now,
+            config: config(reminderMinutes: 5),
+            activeRecording: false,
+            dismissedEventIds: [],
+            remindedEventIds: [],
+            countdownShownEventIds: []
+        )
+        XCTAssertEqual(result, [.reminderDue(evt)])
+    }
+
+    func testReminderDoesNotFirePastEventStartForgivenessWindow() {
+        let now = Date()
+        let evt = event(startsIn: -91, from: now)
         let result = MeetingMonitor.evaluate(
             events: [evt],
             now: now,
@@ -220,7 +232,7 @@ final class MeetingMonitorTests: XCTestCase {
                        "A reschedule to a new time must re-fire — the old slot's key must not suppress it")
     }
 
-    func testReminderMinutesZeroDisablesReminder() {
+    func testAtStartReminderDoesNotFireEarly() {
         let now = Date()
         let evt = event(startsIn: 5 * 60, from: now)
         let result = MeetingMonitor.evaluate(
@@ -389,7 +401,7 @@ final class MeetingMonitorTests: XCTestCase {
         let result = MeetingMonitor.evaluate(
             events: [evt],
             now: now,
-            config: config(mode: .autoStart, reminderMinutes: 0),
+            config: config(mode: .autoStart, reminderMinutes: -1),
             activeRecording: false,
             dismissedEventIds: [],
             remindedEventIds: [],
@@ -406,7 +418,7 @@ final class MeetingMonitorTests: XCTestCase {
         let result = MeetingMonitor.evaluate(
             events: [evt],
             now: now,
-            config: config(mode: .autoStart, reminderMinutes: 0),
+            config: config(mode: .autoStart, reminderMinutes: -1),
             activeRecording: false,
             dismissedEventIds: [],
             remindedEventIds: [],
@@ -464,7 +476,23 @@ final class MeetingMonitorTests: XCTestCase {
             remindedEventIds: [],
             countdownShownEventIds: []
         )
-        XCTAssertTrue(result.contains { if case .lateJoinAvailable = $0 { return true } else { return false } })
+        XCTAssertEqual(result, [.lateJoinAvailable(evt)],
+                       "A late wake must not post both a reminder and a late-start notice")
+    }
+
+    func testLatePendingInviteStillGetsCatchUpReminder() {
+        let now = Date()
+        let evt = event(startsIn: -60, from: now, userStatus: .pending)
+        let result = MeetingMonitor.evaluate(
+            events: [evt],
+            now: now,
+            config: config(mode: .autoStart, reminderMinutes: 5),
+            activeRecording: false,
+            dismissedEventIds: [],
+            remindedEventIds: [],
+            countdownShownEventIds: []
+        )
+        XCTAssertEqual(result, [.reminderDue(evt)])
     }
 
     func testLateJoinDoesNotFireBeyondGracePeriod() {

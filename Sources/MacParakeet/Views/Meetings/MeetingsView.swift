@@ -51,7 +51,11 @@ struct MeetingsView: View {
             .background(DesignSystem.Colors.contentBackground)
         }
         .onAppear {
+            viewModel.settingsViewModel.refreshCalendarPermission()
             viewModel.refreshIfNeeded()
+            Task {
+                await viewModel.settingsViewModel.refreshCalendarNotificationAuthorization()
+            }
         }
         .onChange(of: customWordsRevision) { _, _ in
             viewModel.refreshRecentMeetings()
@@ -938,6 +942,23 @@ private struct CalendarInlineControlsRow: View {
             }
 
             controlsArea
+
+            if controlsEnabled,
+               settingsViewModel.calendarAutoStartMode != .off,
+               !settingsViewModel.calendarNotificationsAuthorized {
+                HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(DesignSystem.Colors.warningAmber)
+                    Text("Notifications are blocked. Calendar reminders cannot appear.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    Spacer(minLength: DesignSystem.Spacing.sm)
+                    Button("Open Notification Settings") {
+                        settingsViewModel.openNotificationSystemSettings()
+                    }
+                    .controlSize(.small)
+                }
+            }
         }
         .padding(DesignSystem.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)

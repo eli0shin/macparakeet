@@ -25,7 +25,7 @@ public enum MeetingMonitor {
 
     public struct Config: Codable, Sendable, Equatable {
         public var mode: CalendarAutoStartMode
-        /// 0 disables the reminder. Typical values: 1, 5, 10.
+        /// Lead time before the event. `0` means at the start time.
         public var reminderMinutes: Int
         /// Phase 2 — countdown duration before auto-start fires. Held here so
         /// the future coordinator wiring doesn't need a separate config type.
@@ -76,9 +76,18 @@ public enum MeetingMonitor {
         var result: [MonitorEvent] = []
 
         for event in candidates {
-            if config.reminderMinutes > 0 && !remindedEventIds.contains(event.dedupeKey) {
+            let canOfferAutomaticStart = config.mode == .autoStart && !activeRecording
+                && !countdownShownEventIds.contains(event.dedupeKey)
+                && shouldAutoStart(forStatus: event.userStatus)
+            let lateJoinBegin = event.startTime.addingTimeInterval(30)
+            let lateJoinEnd = event.startTime.addingTimeInterval(Double(config.lateJoinGraceMinutes * 60))
+            let lateJoinDue = canOfferAutomaticStart && now > lateJoinBegin && now <= lateJoinEnd
+
+            if config.reminderMinutes >= 0 && !lateJoinDue
+                && !remindedEventIds.contains(event.dedupeKey) {
                 let reminderTime = event.startTime.addingTimeInterval(-Double(config.reminderMinutes * 60))
-                let reminderWindowEnd = reminderTime.addingTimeInterval(90)
+                // Catch up after restart or wake while the reminder is still useful.
+                let reminderWindowEnd = event.startTime.addingTimeInterval(90)
                 if now >= reminderTime && now <= reminderWindowEnd {
                     result.append(.reminderDue(event))
                 }
@@ -90,18 +99,14 @@ public enum MeetingMonitor {
             // (`.pending`). Reminders stay lenient (declined-only) since a
             // notification is low-cost, but auto-recording a meeting you might
             // not attend is a surprise.
-            if config.mode == .autoStart && !activeRecording
-                && !countdownShownEventIds.contains(event.dedupeKey)
-                && shouldAutoStart(forStatus: event.userStatus) {
+            if canOfferAutomaticStart {
                 let autoStartBegin = event.startTime.addingTimeInterval(-5)
                 let autoStartEnd = event.startTime.addingTimeInterval(30)
                 if now >= autoStartBegin && now <= autoStartEnd {
                     result.append(.autoStartDue(event))
                 }
 
-                let lateJoinBegin = event.startTime.addingTimeInterval(30)
-                let lateJoinEnd = event.startTime.addingTimeInterval(Double(config.lateJoinGraceMinutes * 60))
-                if now > lateJoinBegin && now <= lateJoinEnd {
+                if lateJoinDue {
                     result.append(.lateJoinAvailable(event))
                 }
             }
