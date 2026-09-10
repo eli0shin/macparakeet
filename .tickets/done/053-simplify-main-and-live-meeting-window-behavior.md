@@ -156,3 +156,9 @@ Required behavior:
 ## Blocked by
 
 None — can start immediately. Ticket 052 can proceed independently.
+
+## Resolution
+
+Implemented and merged in PR #64: https://github.com/eli0shin/macparakeet/pull/64
+
+Squash commit: `c760118417d86f832fa6bba065c75dfc308e9ea7`.
