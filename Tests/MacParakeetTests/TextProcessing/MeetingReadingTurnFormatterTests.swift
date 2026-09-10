@@ -121,7 +121,7 @@ final class MeetingReadingTurnFormatterTests: XCTestCase {
 
         let result = await formatter.format(document) { batch in
             Self.response(entries: [
-                .init(id: batch.entries[0].id, text: "First."),
+                .init(id: batch.entries[0].id, text: "First.")
             ])
         }
 
