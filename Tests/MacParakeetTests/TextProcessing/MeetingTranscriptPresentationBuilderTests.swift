@@ -421,7 +421,8 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
                     result: STTResult(
                         text: "Hello there.",
                         words: [
-                            TimestampedWord(word: "Hello", startMs: 0, endMs: 300, confidence: 0.9),
+                            // End at S2's start without crossing into that speaker.
+                            TimestampedWord(word: "Hello", startMs: 0, endMs: 250, confidence: 0.9),
                             TimestampedWord(word: "there.", startMs: 700, endMs: 1_000, confidence: 0.9),
                         ]
                     ),

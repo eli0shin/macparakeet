@@ -185,7 +185,7 @@ struct TranscriptTextView: NSViewRepresentable {
             let speakerChanged = isFirstLine || line.speakerIdentity != previousSpeakerID
             isFirstLine = false
 
-            if speakerChanged {
+            if speakerChanged && line.showsSpeakerHeading {
                 let headerPara = NSMutableParagraphStyle()
                 headerPara.lineSpacing = 2
                 headerPara.paragraphSpacingBefore = globalIndex > 0 ? 10 : 0

@@ -858,6 +858,13 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         if let sessionID {
             await liveDiarizationService?.finishLiveSession(id: sessionID)
         }
+        // Release text even if detection never identified a speaker or its final
+        // timeline did not cover the last words. Do not invent an attribution.
+        for source in [AudioSource.microphone, .system] {
+            if let update = transcriptAssembler.stopLiveDiarization(for: source) {
+                yieldTranscriptUpdate(update)
+            }
+        }
     }
 
     private func cleanupFailedStart(folderURL: URL) async {
