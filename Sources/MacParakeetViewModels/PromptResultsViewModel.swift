@@ -95,6 +95,8 @@ public final class PromptResultsViewModel {
     private var currentTranscriptionID: UUID?
     private var streamingTask: Task<Void, Never>?
     private var modelListTask: Task<Void, Never>?
+    private var persistedContentLoadTask: Task<Void, Never>?
+    private var persistedContentLoadGeneration = 0
     private let logger = Logger(subsystem: "com.macparakeet.viewmodels", category: "PromptResultsViewModel")
 
     public var canGeneratePromptResult: Bool {
@@ -270,6 +272,49 @@ public final class PromptResultsViewModel {
             errorMessage = error.localizedDescription
         }
         processNextQueuedGeneration()
+    }
+
+    public func loadPersistedContentAsync(transcriptionId: UUID) {
+        if currentTranscriptionID != transcriptionId {
+            cancelAllGenerations()
+        }
+        currentTranscriptionID = transcriptionId
+        persistedContentLoadTask?.cancel()
+        persistedContentLoadGeneration += 1
+        let generation = persistedContentLoadGeneration
+        let promptRepo = promptRepo
+        let promptResultRepo = promptResultRepo
+        persistedContentLoadTask = Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                let prompts = try promptRepo?.fetchVisible(category: .result) ?? []
+                let results = try promptResultRepo?.fetchAll(transcriptionId: transcriptionId) ?? []
+                return (prompts, results)
+            }.result
+            guard let self, !Task.isCancelled,
+                generation == self.persistedContentLoadGeneration,
+                self.currentTranscriptionID == transcriptionId
+            else { return }
+            switch result {
+            case .success(let content):
+                self.visiblePrompts = content.0
+                if let selected = self.selectedPrompt,
+                    let refreshed = content.0.first(where: { $0.id == selected.id })
+                {
+                    self.selectedPrompt = refreshed
+                } else {
+                    self.selectedPrompt = content.0.first(where: { $0.isAutoRun }) ?? content.0.first
+                }
+                self.promptResults = content.1
+                self.onPromptResultsChanged?(transcriptionId, !content.1.isEmpty)
+                self.errorMessage = nil
+            case .failure(let error):
+                self.promptResults = []
+                self.onPromptResultsChanged?(transcriptionId, false)
+                self.errorMessage = error.localizedDescription
+            }
+            self.persistedContentLoadTask = nil
+            self.processNextQueuedGeneration()
+        }
     }
 
     public func markPromptResultViewed(_ promptResultID: UUID) {

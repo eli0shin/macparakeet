@@ -96,7 +96,8 @@ struct MainWindowView: View {
                                 state.navigateFromSidebar(
                                     to: item,
                                     libraryViewModel: libraryViewModel,
-                                    transcriptionViewModel: transcriptionViewModel
+                                    transcriptionViewModel: transcriptionViewModel,
+                                    historyViewModel: historyViewModel
                                 )
                             }
                             .tag(item)
@@ -105,7 +106,14 @@ struct MainWindowView: View {
 
                     Section {
                         ForEach(SidebarItem.configItems) { item in
-                            Label(item.rawValue, systemImage: item.icon)
+                            MainSidebarItemRow(item: item) {
+                                state.navigateFromSidebar(
+                                    to: item,
+                                    libraryViewModel: libraryViewModel,
+                                    transcriptionViewModel: transcriptionViewModel,
+                                    historyViewModel: historyViewModel
+                                )
+                            }
                                 .tag(item)
                         }
                     }
@@ -161,6 +169,9 @@ struct MainWindowView: View {
                                 promptsViewModel: promptsViewModel,
                                 customWords: customWordsViewModel.words,
                                 onBack: {
+                                    if let current = transcriptionViewModel.currentTranscription {
+                                        libraryViewModel.syncListMetadata(from: current)
+                                    }
                                     transcriptionViewModel.showInputPortal()
                                 },
                                 onStartNew: {

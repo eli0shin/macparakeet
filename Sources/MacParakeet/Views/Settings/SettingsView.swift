@@ -128,7 +128,17 @@ struct SettingsView: View {
         self.requestedTabRevision = requestedTabRevision
         self.onRequestedTabConsumed = onRequestedTabConsumed
         self.onHotkeyRecordingStateChanged = onHotkeyRecordingStateChanged
-        self._rootViewModel = State(initialValue: SettingsRootViewModel(initialTab: requestedTab))
+        let initialRootViewModel = SettingsRootViewModel(initialTab: requestedTab)
+        if requestedTab == .capture, let requestedAnchor {
+            if requestedAnchor.hasPrefix("dictation") {
+                initialRootViewModel.activeCaptureWorkflow = .dictation
+            } else if requestedAnchor.hasPrefix("transcription") {
+                initialRootViewModel.activeCaptureWorkflow = .transcription
+            } else if requestedAnchor.hasPrefix("meeting"), AppFeatures.meetingRecordingEnabled {
+                initialRootViewModel.activeCaptureWorkflow = .meetings
+            }
+        }
+        self._rootViewModel = State(initialValue: initialRootViewModel)
     }
 
     var body: some View {
@@ -172,7 +182,7 @@ struct SettingsView: View {
         .onAppear {
             viewModel.refreshLaunchAtLoginStatus()
             viewModel.startPermissionPolling()
-            viewModel.refreshStats()
+            viewModel.refreshStatsAsync()
             viewModel.refreshEntitlements()
             viewModel.engine.refreshModelStatus()
             viewModel.engine.refreshSpeechEngineSwitchAvailability()

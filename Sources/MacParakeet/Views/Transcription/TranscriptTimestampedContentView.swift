@@ -48,18 +48,18 @@ private func indexedSegments(_ segments: [TranscriptSegment]) -> [IndexedTranscr
     }
 }
 
-struct SpeakerTurnIdentity: Hashable {
+struct SpeakerTurnIdentity: Hashable, Sendable {
     let speakerId: String
     let firstStartMs: Int?
     let duplicateOrdinal: Int
 }
 
-private struct SpeakerTurnIdentityBase: Hashable {
+private struct SpeakerTurnIdentityBase: Hashable, Sendable {
     let speakerId: String
     let firstStartMs: Int?
 }
 
-struct IdentifiedSpeakerTurn: Identifiable {
+struct IdentifiedSpeakerTurn: Identifiable, Sendable {
     let turn: SpeakerTurn
     let identity: SpeakerTurnIdentity
 
@@ -106,7 +106,8 @@ func speakerTurnCardScrollTarget(
 ) -> Int? {
     for card in cards.reversed() {
         if let firstStartMs = card.turn.segments.first?.startMs,
-           firstStartMs <= currentMs {
+            firstStartMs <= currentMs
+        {
             return firstStartMs
         }
     }
@@ -356,7 +357,8 @@ private struct TranscriptSegmentRow: View {
         .background {
             if showRowBackground {
                 RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                    .fill(isActive
+                    .fill(
+                        isActive
                           ? DesignSystem.Colors.accent.opacity(0.12)
                           : DesignSystem.Colors.surfaceElevated.opacity(0.45))
             }
@@ -380,7 +382,8 @@ private struct TranscriptSegmentRow: View {
         guard !highlightRanges.isEmpty else {
             return Text(text).font(bodyFont)
         }
-        return Text(TranscriptFindHighlight.attributed(
+        return Text(
+            TranscriptFindHighlight.attributed(
             text,
             ranges: highlightRanges,
             current: currentRange,

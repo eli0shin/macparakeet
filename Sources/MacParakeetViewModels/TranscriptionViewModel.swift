@@ -1582,6 +1582,22 @@ public final class TranscriptionViewModel {
         refreshPromptResultStatus()
     }
 
+    public func loadPersistedContentAsync() {
+        guard let id = currentTranscription?.id else { return }
+        let transcriptionRepo = transcriptionRepo
+        let promptResultRepo = promptResultRepo
+        Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                let transcription = try? transcriptionRepo?.fetch(id: id)
+                let hasResults = (try? promptResultRepo?.hasPromptResults(transcriptionId: id)) ?? false
+                return (transcription, hasResults)
+            }.value
+            guard let self, self.currentTranscription?.id == id else { return }
+            if let fresh = result.0 { self.currentTranscription = fresh }
+            self.hasPromptResultTabs = result.1
+        }
+    }
+
     public func refreshCurrentTranscriptionIfMatching(id: UUID) {
         guard currentTranscription?.id == id,
               let fresh = try? transcriptionRepo?.fetch(id: id) else {

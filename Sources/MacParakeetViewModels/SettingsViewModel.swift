@@ -33,7 +33,7 @@ public final class SettingsViewModel {
         }
     }
 
-    public static let systemDefaultMicrophoneSelection = "__system_default__"
+    nonisolated public static let systemDefaultMicrophoneSelection = "__system_default__"
     private static let microphoneTestSilenceThreshold: Float = 0.01
     public let engine: EngineSettingsViewModel
 
@@ -686,12 +686,15 @@ public final class SettingsViewModel {
     private let permissionPollingInterval: Duration
     private var isApplyingLaunchAtLoginState = false
     private var storageStatsRefreshGeneration = 0
+    private var microphoneRefreshGeneration = 0
     // `deinit` is nonisolated even though this type is `@MainActor`.
     // These handles are only mutated on the main actor during the view
     // model lifetime; unsafe access lets deinit cancel/unregister.
     @ObservationIgnored nonisolated(unsafe) private var permissionPollingTask: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) private var microphoneTestTask: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) private var storageStatsTask: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var statsRefreshTask: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var microphoneRefreshTask: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) private var calendarSettingsObserver: NSObjectProtocol?
     /// Re-entrancy guard so `observeCalendarSettings()` doesn't fire `didSet`
     /// → notification → re-resolve → `didSet` → … on every user toggle.
@@ -872,6 +875,8 @@ public final class SettingsViewModel {
         permissionPollingTask?.cancel()
         microphoneTestTask?.cancel()
         storageStatsTask?.cancel()
+        statsRefreshTask?.cancel()
+        microphoneRefreshTask?.cancel()
         if let calendarSettingsObserver {
             NotificationCenter.default.removeObserver(calendarSettingsObserver)
         }
@@ -1207,7 +1212,7 @@ public final class SettingsViewModel {
     }
 
     public func refreshPermissions() {
-        refreshMicrophoneDevices()
+        refreshMicrophoneDevicesAsync()
         Task {
             if let service = permissionService {
                 let micStatus = await service.checkMicrophonePermission()
@@ -1222,8 +1227,47 @@ public final class SettingsViewModel {
     }
 
     public func refreshMicrophoneDevices() {
-        let defaultUID = defaultInputDeviceUIDProvider()
-        microphoneDeviceOptions = inputDevicesProvider().map { device in
+        microphoneDeviceOptions = makeMicrophoneDeviceOptions()
+    }
+
+    @discardableResult
+    public func refreshMicrophoneDevicesAsync() -> Task<Void, Never> {
+        microphoneRefreshGeneration += 1
+        let generation = microphoneRefreshGeneration
+        let selectedUID = selectedMicrophoneDeviceUID
+        let inputDevicesProvider = inputDevicesProvider
+        let defaultInputDeviceUIDProvider = defaultInputDeviceUIDProvider
+        microphoneRefreshTask?.cancel()
+        let task = Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .utility) {
+                Self.makeMicrophoneDeviceOptions(
+                    selectedUID: selectedUID,
+                    devices: inputDevicesProvider(),
+                    defaultUID: defaultInputDeviceUIDProvider()
+                )
+            }.value
+            guard let self, !Task.isCancelled, generation == self.microphoneRefreshGeneration else { return }
+            self.microphoneDeviceOptions = result
+            self.microphoneRefreshTask = nil
+        }
+        microphoneRefreshTask = task
+        return task
+    }
+
+    private func makeMicrophoneDeviceOptions() -> [MicrophoneDeviceOption] {
+        Self.makeMicrophoneDeviceOptions(
+            selectedUID: selectedMicrophoneDeviceUID,
+            devices: inputDevicesProvider(),
+            defaultUID: defaultInputDeviceUIDProvider()
+        )
+    }
+
+    private nonisolated static func makeMicrophoneDeviceOptions(
+        selectedUID: String,
+        devices: [AudioDeviceManager.InputDevice],
+        defaultUID: String?
+    ) -> [MicrophoneDeviceOption] {
+        var options = devices.map { device in
             MicrophoneDeviceOption(
                 id: device.uid,
                 uid: device.uid,
@@ -1237,13 +1281,13 @@ public final class SettingsViewModel {
             if lhs.isDefault != rhs.isDefault { return lhs.isDefault && !rhs.isDefault }
             return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
-        if selectedMicrophoneDeviceUID != Self.systemDefaultMicrophoneSelection,
-            !microphoneDeviceOptions.contains(where: { $0.uid == selectedMicrophoneDeviceUID })
+        if selectedUID != systemDefaultMicrophoneSelection,
+            !options.contains(where: { $0.uid == selectedUID })
         {
-            microphoneDeviceOptions.append(
+            options.append(
                 MicrophoneDeviceOption(
-                    id: selectedMicrophoneDeviceUID,
-                    uid: selectedMicrophoneDeviceUID,
+                    id: selectedUID,
+                    uid: selectedUID,
                     name: "Selected microphone",
                     transportLabel: "unavailable",
                     isDefault: false,
@@ -1251,6 +1295,7 @@ public final class SettingsViewModel {
                 )
             )
         }
+        return options
     }
 
     public func testSelectedMicrophone() {
@@ -1398,8 +1443,31 @@ public final class SettingsViewModel {
         do { snippetCount = try snippetRepo?.fetchAll().count ?? 0 } catch {
             logger.error("Failed to load snippet count: \(error.localizedDescription)")
         }
-
         refreshStorageStats()
+    }
+
+    @discardableResult
+    public func refreshStatsAsync() -> Task<Void, Never> {
+        guard let repo = dictationRepo else { return Task {} }
+        if let statsRefreshTask { return statsRefreshTask }
+        let customWordRepo = customWordRepo
+        let snippetRepo = snippetRepo
+        let task = Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .utility) {
+                let dictationCount = try? repo.stats().visibleCount
+                let customWordCount = try? customWordRepo?.fetchAll().count
+                let snippetCount = try? snippetRepo?.fetchAll().count
+                return (dictationCount, customWordCount, snippetCount)
+            }.value
+            guard let self, !Task.isCancelled else { return }
+            if let count = result.0 { self.dictationCount = count }
+            if let count = result.1 { self.customWordCount = count }
+            if let count = result.2 { self.snippetCount = count }
+            self.statsRefreshTask = nil
+            self.refreshStorageStats()
+        }
+        statsRefreshTask = task
+        return task
     }
 
     public func refreshEntitlements() {
