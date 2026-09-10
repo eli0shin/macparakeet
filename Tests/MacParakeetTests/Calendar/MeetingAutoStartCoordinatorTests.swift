@@ -78,7 +78,8 @@ final class MeetingAutoStartCoordinatorTests: XCTestCase {
                 }
                 return 1
             },
-            toastController: toastController
+            toastController: toastController,
+            defaults: defaults
         )
     }
 
@@ -191,6 +192,19 @@ final class MeetingAutoStartCoordinatorTests: XCTestCase {
                        "Denied permission must not attempt a fetch")
 
         coordinator.stop()
+    }
+
+    func testPollLooksBackForMeetingsThatStartedDuringRestartOrSleep() async throws {
+        calendarService.stubPermissionStatus = .granted
+        seedSettings(mode: .autoStart)
+
+        let coordinator = makeCoordinator()
+        let beforePoll = Date()
+        coordinator.testHook_forcePoll()
+        await waitForPoll()
+
+        let fetchFrom = try XCTUnwrap(calendarService.lastFetchFrom)
+        XCTAssertLessThanOrEqual(fetchFrom, beforePoll.addingTimeInterval(-9 * 60))
     }
 
     // MARK: - Auto-start outcome routing

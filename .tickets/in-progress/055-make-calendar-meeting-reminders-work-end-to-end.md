@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@055-make-calendar-meeting-reminders-work-end-to-end
 Tags:
   - calendar
   - meetings

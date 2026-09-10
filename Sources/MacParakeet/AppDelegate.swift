@@ -1,6 +1,7 @@
 import AppKit
 import MacParakeetCore
 import MacParakeetViewModels
+import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -12,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var meetingRecordingFlowCoordinator: MeetingRecordingFlowCoordinator?
     private var meetingAutoStartCoordinator: MeetingAutoStartCoordinator?
     private var meetingAutoStopCoordinator: MeetingAutoStopCoordinator?
+    /// A notification action can launch the app before the meeting flow exists.
+    private var pendingCalendarNotificationResponse: CalendarMeetingNotification.Response?
     /// Productized Transforms coordinator (ADR-022). Owns the process-wide
     /// `TransformsHotkeyRegistry` + dispatch from registered hotkeys to the
     /// `TransformExecutor` pipeline. Gated on `AppFeatures.transformsEnabled`.
@@ -327,6 +330,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        let notificationCenter = UNUserNotificationCenter.current()
+        notificationCenter.delegate = self
+        CalendarMeetingNotification.registerCategories(on: notificationCenter)
+
         applyAppAppearance()
         startEnvironmentSetup()
         menuBarCoordinator.setupMainMenu()
@@ -413,6 +420,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         onboardingCoordinator.handleApplicationDidBecomeActive(environment: appEnvironment)
+        settingsViewModel.refreshCalendarPermission()
+        Task { [weak self] in
+            guard let self else { return }
+            await self.settingsViewModel.refreshCalendarNotificationAuthorization()
+            self.meetingsWorkspaceViewModel.refreshUpcomingEvents()
+        }
         if let appEnvironment {
             meetingAudioRetentionSweepCoordinator.scheduleForegroundSweepIfDue(environment: appEnvironment)
         }
@@ -490,6 +503,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyCoordinator = runtime.hotkeyCoordinator
         meetingAutoStartCoordinator = runtime.meetingAutoStartCoordinator
         meetingAutoStopCoordinator = runtime.meetingAutoStopCoordinator
+        if let response = pendingCalendarNotificationResponse {
+            pendingCalendarNotificationResponse = nil
+            handleCalendarNotificationResponse(response)
+        }
         applyInstantDictationPreference(refreshWarmCapture: false)
 
         // Shared resolver for the user's LLM provider — returns the live
@@ -773,6 +790,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Meeting Recording
 
+    private func handleCalendarNotificationResponse(_ response: CalendarMeetingNotification.Response) {
+        switch response.actionIdentifier {
+        case CalendarMeetingNotification.joinAction:
+            if let url = response.meetingURL { NSWorkspace.shared.open(url) }
+        case CalendarMeetingNotification.startRecordingAction:
+            guard meetingRecordingFlowCoordinator != nil else {
+                pendingCalendarNotificationResponse = response
+                return
+            }
+            let snapshot = MeetingCalendarSnapshot(event: response.event, confidence: .confirmed)
+            _ = meetingRecordingFlowCoordinator?.startFromCalendar(calendarEventSnapshot: snapshot)
+        case CalendarMeetingNotification.openMeetingsAction:
+            openMeetingsSurface()
+        case UNNotificationDefaultActionIdentifier:
+            if let url = response.meetingURL {
+                NSWorkspace.shared.open(url)
+            } else {
+                openMeetingsSurface()
+            }
+        default:
+            break
+        }
+    }
+
+    private func openMeetingsSurface() {
+        mainWindowState.selectedItem = .meetings
+        windowCoordinator.openMainWindow()
+    }
+
     private func toggleMeetingRecording(
         originatesFromWindow: Bool,
         trigger: TelemetryMeetingRecordingTrigger = .manual
@@ -992,5 +1038,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func quitApp() {
         NSApp.terminate(nil)
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        // Show silent calendar notices while MacParakeet is in the foreground.
+        completionHandler([.banner])
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        let decoded = CalendarMeetingNotification.response(
+            actionIdentifier: response.actionIdentifier,
+            userInfo: response.notification.request.content.userInfo
+        )
+        if let decoded {
+            await MainActor.run { [weak self] in
+                self?.handleCalendarNotificationResponse(decoded)
+            }
+        }
     }
 }
