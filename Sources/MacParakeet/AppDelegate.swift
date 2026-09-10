@@ -1053,16 +1053,16 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse,
-        withCompletionHandler completionHandler: @escaping () -> Void
-    ) {
+        didReceive response: UNNotificationResponse
+    ) async {
         let decoded = CalendarMeetingNotification.response(
             actionIdentifier: response.actionIdentifier,
             userInfo: response.notification.request.content.userInfo
         )
-        Task { @MainActor [weak self] in
-            if let decoded { self?.handleCalendarNotificationResponse(decoded) }
-            completionHandler()
+        if let decoded {
+            await MainActor.run { [weak self] in
+                self?.handleCalendarNotificationResponse(decoded)
+            }
         }
     }
 }

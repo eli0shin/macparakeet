@@ -546,7 +546,7 @@ private extension MeetingAutoStartCoordinator {
 
         let center = UNUserNotificationCenter.current()
         let identifier = CalendarMeetingNotification.reminderIdentifier(for: event)
-        if await notificationExists(identifier: identifier, center: center) {
+        if notificationWasPosted(identifier) {
             remindedEventIds.insert(event.dedupeKey)
             return
         }
@@ -581,7 +581,7 @@ private extension MeetingAutoStartCoordinator {
 
         let center = UNUserNotificationCenter.current()
         let identifier = CalendarMeetingNotification.lateStartIdentifier(for: event)
-        if await notificationExists(identifier: identifier, center: center) { return }
+        if notificationWasPosted(identifier) { return }
 
         let request = UNNotificationRequest(
             identifier: identifier,
@@ -605,21 +605,6 @@ private extension MeetingAutoStartCoordinator {
             logger.warning("Notification authorization missing — notice for event id=\(event.id, privacy: .public) not delivered")
         }
         return authorized
-    }
-
-    func notificationExists(identifier: String, center: UNUserNotificationCenter) async -> Bool {
-        if notificationWasPosted(identifier) { return true }
-        let pending = await center.pendingNotificationRequests()
-        if pending.contains(where: { $0.identifier == identifier }) {
-            markNotificationPosted(identifier)
-            return true
-        }
-        let delivered = await center.deliveredNotifications()
-        if delivered.contains(where: { $0.request.identifier == identifier }) {
-            markNotificationPosted(identifier)
-            return true
-        }
-        return false
     }
 
     func notificationWasPosted(_ identifier: String, now: Date = Date()) -> Bool {
