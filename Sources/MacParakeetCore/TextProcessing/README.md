@@ -134,7 +134,8 @@ does not rewrite words or diarization regions.
 speaker labels, timestamps, overlap state, or word references. A Reading Turn of
 500 or more characters is one uncapped request and is never split or truncated.
 Consecutive shorter turns share a request while their combined source text stays
-at or below 500 characters. Every request and response uses the same JSON `entries`
+at or below 500 characters and the request contains at most 10 turns. Every request
+and response uses the same JSON `entries`
 contract with transport IDs, including requests that contain one turn. Valid
 entries commit independently; a failed batch uses deterministic text and does not
 block later batches. Outputs must be non-empty, preserve numbers/URLs/email-like

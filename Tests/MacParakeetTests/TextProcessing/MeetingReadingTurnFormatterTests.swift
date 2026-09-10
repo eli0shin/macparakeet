@@ -23,6 +23,20 @@ final class MeetingReadingTurnFormatterTests: XCTestCase {
         XCTAssertFalse(result.wasCancelled)
     }
 
+    func testShortReadingTurnBatchContainsAtMostTenTurns() async {
+        let document = makeDocument((1...21).map { ["turn-\($0)"] })
+        let recorder = BatchRecorder { Self.response(for: $0) }
+
+        let result = await MeetingReadingTurnFormatter().format(document) {
+            try await recorder.format($0)
+        }
+
+        let batches = await recorder.batches
+        XCTAssertEqual(batches.map { $0.entries.count }, [10, 10, 1])
+        XCTAssertEqual(result.formatting.count, 21)
+        XCTAssertEqual(result.progress, .init(completedRequests: 3, totalRequests: 3))
+    }
+
     func testLongReadingTurnIsSentWholeAndAloneWithoutACap() async {
         let longText = "BEGIN" + String(repeating: "x", count: 25_000) + "END"
         let recorder = BatchRecorder { Self.response(for: $0) }

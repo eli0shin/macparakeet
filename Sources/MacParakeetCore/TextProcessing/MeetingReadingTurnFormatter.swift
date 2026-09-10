@@ -73,14 +73,15 @@ public struct MeetingReadingTurnFormattingBatch: Sendable, Equatable {
 
 /// Formats finalized Reading Turns through small, serial requests. Complete
 /// turns of 500 or more characters are always sent alone without a size cap.
-/// Consecutive shorter turns are packed without exceeding 500 characters.
-/// Failed batches fall back independently and do not block later batches.
+/// Consecutive shorter turns are packed without exceeding 500 characters or
+/// 10 turns. Failed batches fall back independently and do not block later batches.
 public struct MeetingReadingTurnFormatter {
     public typealias FormatRequest = (MeetingReadingTurnFormattingBatch) async throws -> String
     public typealias ProgressHandler = @Sendable (MeetingReadingTurnFormattingProgress) -> Void
     public typealias DiagnosticSink = @Sendable (MeetingFormattingDiagnostic) async -> Void
 
     public static let shortTurnBatchCharacterLimit = 500
+    public static let maximumTurnsPerBatch = 10
 
     private let diagnosticSink: DiagnosticSink
 
@@ -224,7 +225,8 @@ public struct MeetingReadingTurnFormatter {
                 flushShortParts()
                 batches.append(Batch(parts: [part]))
             } else if !shortParts.isEmpty,
-                shortCharacterCount + count > Self.shortTurnBatchCharacterLimit
+                shortParts.count >= Self.maximumTurnsPerBatch
+                    || shortCharacterCount + count > Self.shortTurnBatchCharacterLimit
             {
                 flushShortParts()
                 shortParts = [part]
