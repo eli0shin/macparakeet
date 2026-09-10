@@ -90,7 +90,7 @@ final class SavedReadingTranscriptTests: XCTestCase {
         XCTAssertEqual(finalized.words.filter { $0.speakerId == "system" }.map(\.word), evidence.map(\.word))
     }
 
-    func testFinalAccuracySettingsKeepExclusiveOutputAndEmbeddingDefaults() {
+    func testFinalAccuracySettingsKeepExclusiveOutputAndEnableForkRepair() {
         let live = DiarizationService.offlineConfig(speakerConstraint: nil)
         let final = DiarizationService.offlineConfig(speakerConstraint: nil, finalTranscript: true)
         XCTAssertEqual(final.segmentationStepRatio, 0.1)
@@ -98,7 +98,8 @@ final class SavedReadingTranscriptTests: XCTestCase {
         XCTAssertTrue(final.exclusiveSegments)
         XCTAssertEqual(final.minGapDuration, live.minGapDuration)
         XCTAssertEqual(final.embeddingExcludeOverlap, live.embeddingExcludeOverlap)
-        XCTAssertFalse(final.zeroVoteReembed.enabled)
+        XCTAssertTrue(final.zeroVoteReembed.enabled)
+        XCTAssertFalse(live.zeroVoteReembed.enabled)
         XCTAssertEqual(final.clusteringThreshold, live.clusteringThreshold)
         XCTAssertEqual(final.windowDuration, 10)
         XCTAssertEqual(live.segmentationStepRatio, 0.2)

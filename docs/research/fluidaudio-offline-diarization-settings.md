@@ -2,7 +2,32 @@
 
 Researched 2026-09-09. This document reports source evidence, not a new product specification or an implemented fix. No audio was uploaded or reprocessed. No models were downloaded and no application settings were changed.
 
-## Implementation follow-up
+## Current fork integration — 2026-09-10
+
+The user has now authorized the tested SDK patch. `Package.swift` follows
+[`eli0shin/FluidAudio`, branch `macparakeet`](https://github.com/eli0shin/FluidAudio/tree/macparakeet),
+based on upstream 0.15.6. `Package.resolved` records the resolved revision.
+The fork lowers the clean-mask embedding gate from 0.20 to 0.15 and uses real
+surrounding audio for zero-vote span re-embedding, with pooling restricted to
+the target span. MacParakeet enables that repair for final diarization, including
+speaker-constrained final runs. Step ratio 0.1, minimum output duration zero,
+exclusive output, clustering defaults, model weights and live LS-EEND remain as before.
+
+This supersedes the earlier unchanged-embedding/no-repair scope below. It does
+not include other experimental gates, clustering settings, smoothing hooks or
+VBx changes. Six development-file experiments showed modest attribution gains
+and local regressions; neither private-recording nor held-out correctness is established.
+
+For local diagnosis, DEBUG builds can capture the real file-transcription stages
+with `MACPARAKEET_DEBUG_PIPELINE_OUTPUT=/absolute/private/output`. Each run gets
+its own directory with prepared audio, STT words, the complete SDK return,
+ID mapping, app regions, attributed words, assembled/refined Reading Turns and
+the completed record. Capture is off unless explicitly enabled. These files
+contain audio, transcript text and embeddings: keep them outside Git. Reload
+saved results through the CLI `export` command. This is not a separate inference
+path and does not expose raw SDK-internal segmentation tensors.
+
+## Earlier implementation follow-up
 
 The user selected FluidAudio exclusive output, step ratio 0.1, minimum segment duration zero, and unchanged embedding defaults, model choice, and identity naming. The correction removes the added silence scan, recursive Reading Turn reordering, and text-level microphone echo deletion. It aligns words to consecutive model speaker contributions and persists combined same-speaker contributions; original word times and model regions remain separate evidence.
 

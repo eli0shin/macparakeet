@@ -2047,6 +2047,10 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         speechEngine: SpeechEngineSelection? = nil,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil
     ) async throws -> Transcription {
+        #if DEBUG
+        let stageCapture = try PipelineStageCapture.start(transcriptionID: transcription.id)
+        try stageCapture?.write(transcription, to: "00-input-record.json")
+        #endif
         var wavURL: URL?
         let processingStartedAt = Date()
         var lifecycleStage: TelemetryTranscriptionStage = .audioConversion
@@ -2062,6 +2066,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 throw AudioProcessorError.conversionFailed("Failed to produce WAV output")
             }
 
+            #if DEBUG
+            try stageCapture?.copyAudio(from: wavURL)
+            #endif
             lifecycleStage = .stt
             onProgress?(.preparingSpeechModel)
             let sttProgress: (@Sendable (Int, Int) -> Void)? = onProgress.map { callback in
@@ -2077,6 +2084,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 onProgress: sttProgress
             )
 
+            #if DEBUG
+            try stageCapture?.writeSTT(result)
+            #endif
             let words = result.words.map { word in
                 WordTimestamp(
                     word: word.word,
@@ -2103,7 +2113,16 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                     onProgress?(.identifyingSpeakers)
                     Telemetry.send(.diarizationStarted(source: source))
                     let diarStartedAt = Date()
+                    #if DEBUG
+                    let diarResult = try await PipelineStageCapture.$current.withValue(stageCapture) {
+                        try await diarizationService.diarizeFinalTranscript(audioURL: wavURL)
+                    }
+                    try stageCapture?.write(diarResult.segments.map {
+                        DiarizationSegmentRecord(speakerId: $0.speakerId, startMs: $0.startMs, endMs: $0.endMs)
+                    }, to: "05-app-regions.json")
+                    #else
                     let diarResult = try await diarizationService.diarizeFinalTranscript(audioURL: wavURL)
+                    #endif
                     let diarDuration = Date().timeIntervalSince(diarStartedAt)
                     if !diarResult.segments.isEmpty {
                         let mergedWords = SpeakerMerger.alignWordsToSpeakerTurns(
@@ -2127,6 +2146,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
+                    #if DEBUG
+                    if error is PipelineStageCapture.CaptureError { throw error }
+                    #endif
                     diarizationApplied = false
                     logger.error("diarization_failed error=\(error.localizedDescription, privacy: .public)")
                     Telemetry.send(
@@ -2140,7 +2162,21 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 diarizationApplied = false
             }
 
+            #if DEBUG
+            try stageCapture?.write(transcription.wordTimestamps, to: "06-attributed-words.json")
+            try stageCapture?.write(transcription, to: "07-before-completion.json")
+            #endif
             lifecycleStage = .postProcessing
+            #if DEBUG
+            let completed = try await PipelineStageCapture.$current.withValue(stageCapture) {
+                try await completeTranscription(
+                    source: source, transcription: &transcription, operation: operation,
+                    rawText: result.text, processingStartedAt: processingStartedAt,
+                    diarizationRequested: diarizationRequested, diarizationApplied: diarizationApplied,
+                    persistResult: persistResult
+                )
+            }
+            #else
             let completed = try await completeTranscription(
                 source: source,
                 transcription: &transcription,
@@ -2151,7 +2187,11 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 diarizationApplied: diarizationApplied,
                 persistResult: persistResult
             )
+            #endif
 
+            #if DEBUG
+            try stageCapture?.write(completed, to: "08-completed-record.json")
+            #endif
             try? FileManager.default.removeItem(at: wavURL)
             if cleanUpDownloadedFiles {
                 for tempFile in tempFiles {
@@ -2364,6 +2404,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             customWords: isMeeting ? customWords : [],
             cleanup: isMeeting ? .cleaned : .verbatim
         )
+        #if DEBUG
+        try PipelineStageCapture.current?.write(deterministicDocument, to: "07a-assembled-reading-turns.json")
+        #endif
         var expandedSnippetIDs = refinement.expandedSnippetIDs
         if !isMeeting, hasReadingStructure {
             expandedSnippetIDs = []
@@ -2395,6 +2438,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             }
             deterministicDocument = MeetingTranscriptPresentationDocument(turns: refinedTurns)
         }
+        #if DEBUG
+        try PipelineStageCapture.current?.write(deterministicDocument, to: "07b-refined-reading-turns.json")
+        #endif
         if hasReadingStructure, shouldUseAIFormatter(), llmService != nil {
             let promptTemplate = aiFormatterPromptTemplate()
             let transcriptFormatter = TranscriptFormatter(

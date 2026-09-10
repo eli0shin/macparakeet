@@ -12,10 +12,10 @@
     {
       "identity" : "fluidaudio",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/FluidInference/FluidAudio",
+      "location" : "https://github.com/eli0shin/FluidAudio",
       "state" : {
-        "revision" : "4dbf4f9f9a5ff3a53ade848d7ba4e3df13db859b",
-        "version" : "0.15.6"
+        "branch" : "macparakeet",
+        "revision" : "5b5a539bdb7ca11e03ff2961e61a5cc00eef1c32"
       }
     },
     {

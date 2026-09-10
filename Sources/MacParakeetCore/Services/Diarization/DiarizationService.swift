@@ -181,6 +181,10 @@ public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizin
             return MacParakeetDiarizationResult(segments: [], speakerCount: 0, speakers: [])
         }
 
+        #if DEBUG
+        try PipelineStageCapture.current?.writeFluidAudio(fluidResult)
+        #endif
+
         // Sort by start time before assigning stable IDs so "S1" is the
         // first speaker to *talk* (chronologically), not the first speaker
         // to appear in whatever order FluidAudio's offline pipeline happens
@@ -200,6 +204,10 @@ public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizin
                 nextIndex += 1
             }
         }
+
+        #if DEBUG
+        try PipelineStageCapture.current?.write(idMapping, to: "04-speaker-id-map.json")
+        #endif
 
         let segments: [SpeakerSegment] = chronologicalSegments.map { seg in
             let mappedId = idMapping[seg.speakerId] ?? seg.speakerId
@@ -312,11 +320,12 @@ public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizin
     ) -> OfflineDiarizerConfig {
         var config = baseConfig
         if finalTranscript {
-            // FluidAudio's documented offline accuracy configuration. Keep
-            // embedding/clustering defaults and use its exclusive output.
+            // Our FluidAudio fork uses a 0.15 clean-mask gate and real audio
+            // context for zero-vote repair. Keep clustering defaults unchanged.
             config.segmentationStepRatio = 0.1
             config.minSegmentDuration = 0
             config.exclusiveSegments = true
+            config.zeroVoteReembed.enabled = true
         }
         guard let speakerConstraint else { return config }
 

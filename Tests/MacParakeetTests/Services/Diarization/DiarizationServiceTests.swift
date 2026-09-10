@@ -92,6 +92,28 @@ final class DiarizationServiceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: repoDirectory.path))
     }
 
+    func testFinalConfigEnablesForkRepairWithoutChangingClustering() {
+        let config = DiarizationService.offlineConfig(speakerConstraint: nil, finalTranscript: true)
+        let defaults = OfflineDiarizerConfig.default
+
+        XCTAssertTrue(config.zeroVoteReembed.enabled)
+        XCTAssertEqual(config.zeroVoteReembed.minDurationSeconds, 0.4)
+        XCTAssertEqual(config.segmentationStepRatio, 0.1)
+        XCTAssertEqual(config.minSegmentDuration, 0)
+        XCTAssertTrue(config.exclusiveSegments)
+        XCTAssertEqual(config.clusteringThreshold, defaults.clusteringThreshold)
+        XCTAssertEqual(config.Fa, defaults.Fa)
+        XCTAssertEqual(config.Fb, defaults.Fb)
+        XCTAssertNil(config.clustering.numSpeakers)
+        XCTAssertFalse(DiarizationService.offlineConfig(speakerConstraint: nil).zeroVoteReembed.enabled)
+    }
+
+    func testFinalConfigKeepsRepairWithSpeakerConstraint() {
+        let config = DiarizationService.offlineConfig(speakerConstraint: .exact(4), finalTranscript: true)
+        XCTAssertTrue(config.zeroVoteReembed.enabled)
+        XCTAssertEqual(config.clustering.numSpeakers, 4)
+    }
+
     func testOfflineConfigAppliesExactSpeakerConstraint() {
         let config = DiarizationService.offlineConfig(speakerConstraint: .exact(2))
 
