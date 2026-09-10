@@ -242,9 +242,9 @@ public final class LLMSettingsViewModel {
         }
     }
 
-    public var isConfigured: Bool {
-        configStore != nil && (try? configStore?.loadConfig()) != nil
-    }
+    /// In-memory view of the last saved configuration. Rendering Settings must
+    /// not read configuration storage or the Keychain.
+    public private(set) var isConfigured = false
 
     public var setupStatus: AISetupStatus {
         if case .error(let message) = connectionTestState {
@@ -544,20 +544,18 @@ public final class LLMSettingsViewModel {
     }
 
     private var savedProviderID: LLMProviderID? {
-        guard let configStore else { return nil }
-        return (try? configStore.loadConfig())?.id
+        guard case .provider(let id, _, _, _, _, _) = savedConfiguration else { return nil }
+        return id
     }
 
     private var savedAIOptionDisplayName: String? {
-        guard let configStore, let config = try? configStore.loadConfig() else { return nil }
-        if config.id == .localCLI {
-            return
-                cliConfigStore
-                .flatMap { $0.load() }
-                .map { LocalCLITemplate.displayName(for: $0.commandTemplate) }
-                ?? config.id.displayName
+        guard let savedProviderID else { return nil }
+        if savedProviderID == .localCLI,
+            case .provider(_, _, _, _, _, let cliConfig?) = savedConfiguration
+        {
+            return LocalCLITemplate.displayName(for: cliConfig.commandTemplate)
         }
-        return config.id.displayName
+        return savedProviderID.displayName
     }
 
     private var draftAIOptionDisplayName: String? {
@@ -596,6 +594,8 @@ public final class LLMSettingsViewModel {
             localCLIConfig: LocalCLIConfig?
         )
     }
+
+    private var savedConfiguration: ConfigurationSnapshot = .none
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -666,6 +666,12 @@ public final class LLMSettingsViewModel {
                 draft = normalizedDraft
             }
 
+            updateSavedConfiguration(
+                config: config,
+                localCLIConfig: draft.providerID == .localCLI
+                    ? LocalCLIConfig(
+                        commandTemplate: draft.trimmedCommandTemplate, timeoutSeconds: draft.cliTimeoutSeconds)
+                    : nil)
             saveState = .saved
             inProcessModelManager.refreshSelectionState()
             onConfigurationChanged?()
@@ -711,7 +717,7 @@ public final class LLMSettingsViewModel {
         guard let configStore else { return }
         // Use the persisted provider to decide what to delete. The draft may
         // point at an unsaved provider switch in Settings.
-        let storedProviderID = (try? configStore.loadConfig())?.id
+        let storedProviderID = savedProviderID
         let preservedCLIConfig =
             draft.providerID == .localCLI && storedProviderID != .localCLI
             ? cliConfigStore?.load()
@@ -752,6 +758,8 @@ public final class LLMSettingsViewModel {
         } else {
             resetDiscoveredModels()
         }
+        savedConfiguration = .none
+        isConfigured = false
         connectionTestState = .idle
         saveState = .idle
         inProcessModelManager.refreshSelectionState()
@@ -1159,6 +1167,8 @@ public final class LLMSettingsViewModel {
 
     private func loadExistingConfig() {
         guard let configStore, let config = try? configStore.loadConfig() else {
+            savedConfiguration = .none
+            isConfigured = false
             draft = LLMSettingsDraft(
                 aiFormatterPrompt: Self.loadStoredAIFormatterPrompt(from: defaults)
             )
@@ -1168,6 +1178,7 @@ public final class LLMSettingsViewModel {
             return
         }
         let cliConfig = config.id == .localCLI ? cliConfigStore?.load() : nil
+        updateSavedConfiguration(config: config, localCLIConfig: cliConfig)
         draft = .fromStoredConfig(
             config,
             suggestedModels: Self.suggestedModels(for: config.id),
@@ -1291,15 +1302,19 @@ public final class LLMSettingsViewModel {
     }
 
     private func savedConfigurationSnapshot() -> ConfigurationSnapshot {
-        guard let configStore, let config = try? configStore.loadConfig() else { return .none }
-        return .provider(
+        savedConfiguration
+    }
+
+    private func updateSavedConfiguration(config: LLMProviderConfig, localCLIConfig: LocalCLIConfig?) {
+        savedConfiguration = .provider(
             id: config.id,
             baseURL: config.baseURL.absoluteString,
             modelName: config.modelName,
             apiKey: config.id.supportsAPIKey ? (config.apiKey ?? "") : nil,
             isLocal: config.isLocal,
-            localCLIConfig: config.id == .localCLI ? cliConfigStore?.load() : nil
+            localCLIConfig: config.id == .localCLI ? localCLIConfig : nil
         )
+        isConfigured = true
     }
 
     private func draftBaseURL(for providerID: LLMProviderID) -> String {

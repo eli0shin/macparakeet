@@ -24,6 +24,12 @@ struct MeetingsView: View {
     private static let rightRailWidth: CGFloat = 280
     private static let twoColumnMinimumWidth: CGFloat = 1_100
 
+    private var customWordsRevision: [String] {
+        customWords.map {
+            "\($0.id.uuidString)|\($0.word)|\($0.replacement ?? "")|\($0.isEnabled)|\($0.updatedAt.timeIntervalSinceReferenceDate)"
+        }
+    }
+
     var body: some View {
         GeometryReader { proxy in
             ScrollView {
@@ -46,6 +52,9 @@ struct MeetingsView: View {
         }
         .onAppear {
             viewModel.refreshIfNeeded()
+        }
+        .onChange(of: customWordsRevision) { _, _ in
+            viewModel.refreshRecentMeetings()
         }
         .focusable(viewModel.recentMeetingsViewModel.isBulkSelectionModeEnabled)
         .focused($recentMeetingsSelectionFocused)
@@ -101,8 +110,8 @@ struct MeetingsView: View {
             }
             Button(MeetingDeletionCopy.audioOnlyConfirmTitle, role: .destructive) {
                 if let transcription = pendingDeleteAudio {
-                    viewModel.recentMeetingsViewModel.deleteMeetingAudio(transcription)
                     pendingDeleteAudio = nil
+                    Task { await viewModel.recentMeetingsViewModel.deleteMeetingAudio(transcription) }
                 }
             }
         } message: {
@@ -125,8 +134,8 @@ struct MeetingsView: View {
             }
             Button(MeetingDeletionCopy.fullDeleteConfirmTitle, role: .destructive) {
                 if let transcription = pendingDeleteMeeting {
-                    viewModel.recentMeetingsViewModel.deleteTranscription(transcription)
                     pendingDeleteMeeting = nil
+                    Task { await viewModel.recentMeetingsViewModel.deleteTranscription(transcription) }
                 }
             }
         } message: {
@@ -541,6 +550,7 @@ struct MeetingsView: View {
                         isSelected: viewModel.recentMeetingsViewModel.isTranscriptionSelected(transcription),
                         showsSelectionControls: viewModel.recentMeetingsViewModel.isBulkSelectionModeEnabled,
                         isRetrying: viewModel.recentMeetingsViewModel.isRetryingMeetingTranscription(transcription),
+                        usesPreparedSnippet: true,
                         onTap: {
                             if viewModel.recentMeetingsViewModel.isBulkOperationInProgress {
                                 return
@@ -548,7 +558,7 @@ struct MeetingsView: View {
                             if viewModel.recentMeetingsViewModel.isBulkSelectionModeEnabled {
                                 viewModel.recentMeetingsViewModel.toggleSelection(for: transcription)
                             } else {
-                                onSelectMeeting(transcription)
+                                openMeeting(transcription)
                             }
                         },
                         onRetry: {
@@ -564,10 +574,18 @@ struct MeetingsView: View {
         }
     }
 
+    private func openMeeting(_ transcription: Transcription) {
+        Task {
+            guard let full = await viewModel.recentMeetingsViewModel.fullTranscriptionForDetail(transcription)
+            else { return }
+            onSelectMeeting(full)
+        }
+    }
+
     @ViewBuilder
     private func recentMeetingMenu(for transcription: Transcription) -> some View {
         Button {
-            onSelectMeeting(transcription)
+            openMeeting(transcription)
         } label: {
             Label("Open", systemImage: "doc.text")
         }

@@ -6,6 +6,7 @@ public protocol TranscriptionRepositoryProtocol: Sendable {
     func fetch(id: UUID) throws -> Transcription?
     func fetchAll(limit: Int?) throws -> [Transcription]
     func fetchLibraryPage(query: TranscriptionLibraryQuery) throws -> TranscriptionLibraryPage
+    func fetchLibraryListPage(query: TranscriptionLibraryQuery) throws -> TranscriptionLibraryPage
     func fetchByFilePath(_ filePath: String, sourceType: Transcription.SourceType?) throws -> [Transcription]
     func fetchMeetings(withStatus status: Transcription.TranscriptionStatus) throws -> [Transcription]
     func fetchMeetingAudioRetentionCandidates(createdAtOrBefore cutoff: Date) throws -> [Transcription]
@@ -69,6 +70,10 @@ extension TranscriptionRepositoryProtocol {
     public func fetchCompletedByVideoID(_ videoID: String) throws -> Transcription? { nil }
     public func count() throws -> Int { try fetchAll(limit: nil).count }
     public func search(query: String, limit: Int?) throws -> [Transcription] { [] }
+    public func fetchLibraryListPage(query: TranscriptionLibraryQuery) throws -> TranscriptionLibraryPage {
+        try fetchLibraryPage(query: query)
+    }
+
     public func fetchLibraryPage(query: TranscriptionLibraryQuery) throws -> TranscriptionLibraryPage {
         var results = try fetchAll(limit: nil)
 
@@ -218,6 +223,12 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
     }
 
     public func fetchLibraryPage(query: TranscriptionLibraryQuery) throws -> TranscriptionLibraryPage {
+        let listPage = try fetchLibraryListPage(query: query)
+        let fullItems = try listPage.items.compactMap { try fetch(id: $0.id) }
+        return TranscriptionLibraryPage(items: fullItems, hasMore: listPage.hasMore)
+    }
+
+    public func fetchLibraryListPage(query: TranscriptionLibraryQuery) throws -> TranscriptionLibraryPage {
         try dbQueue.read { db in
             let limit = max(0, query.limit)
             let offset = max(0, query.offset)
@@ -265,7 +276,11 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
                 )
             }
 
-            var sql = "SELECT * FROM transcriptions"
+            // Ordinary Library paging uses a display projection. Large transcript
+            // documents remain in SQLite until the user opens or exports an item.
+            // A bounded legacy-meeting prefix is cleaned once on this worker read,
+            // then discarded before the page reaches the UI.
+            var sql = "SELECT \(Self.libraryListProjection) FROM transcriptions"
             if !whereClauses.isEmpty {
                 sql += " WHERE " + whereClauses.joined(separator: " AND ")
             }
@@ -274,11 +289,30 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
             arguments.append(fetchLimit)
             arguments.append(offset)
 
-            let fetched = try Transcription.fetchAll(
+            var fetched = try Transcription.fetchAll(
                 db,
                 sql: sql,
                 arguments: StatementArguments(arguments)
             )
+            let needsLegacyMeetingPreview = fetched.contains {
+                $0.sourceType == .meeting && $0.cleanTranscript == nil
+            }
+            let customWords = needsLegacyMeetingPreview ? try Self.enabledCustomWords(in: db) : []
+            for index in fetched.indices where fetched[index].sourceType == .meeting {
+                if fetched[index].cleanTranscript == nil {
+                    let preview = MeetingTranscriptCleaner.preferredText(
+                        for: fetched[index],
+                        customWords: customWords
+                    )
+                    let normalized =
+                        preview
+                        .replacingOccurrences(of: "\n", with: " ")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    fetched[index].derivedSnippet = normalized.isEmpty ? nil : String(normalized.prefix(140))
+                }
+                fetched[index].rawTranscript = nil
+                fetched[index].cleanTranscript = nil
+            }
             return TranscriptionLibraryPage(
                 items: limit == 0 ? [] : Array(fetched.prefix(limit)),
                 hasMore: fetched.count > limit
@@ -543,7 +577,8 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
     ) throws -> Bool {
         try dbQueue.write { db in
             guard var transcription = try Transcription.fetchOne(db, key: id),
-                  transcription.status == expectedStatus else {
+                transcription.status == expectedStatus
+            else {
                 return false
             }
             transcription.status = status
@@ -817,6 +852,26 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
         }
         return URL(fileURLWithPath: trimmed).standardizedFileURL.path
     }
+
+    /// Every persisted column must be present because `Transcription` uses its
+    /// normal record decoder. Payload columns are explicitly NULL, except for a
+    /// bounded legacy meeting prefix used to prepare one cached row preview.
+    private static let libraryListProjection = """
+        id, createdAt, fileName, filePath, audioTrackOrdinal,
+        meetingArtifactFolderPath, fileSizeBytes, durationMs,
+        CASE WHEN sourceType = 'meeting' AND cleanTranscript IS NULL
+             THEN substr(rawTranscript, 1, 2048) ELSE NULL END AS rawTranscript,
+        CASE WHEN sourceType = 'meeting' THEN substr(cleanTranscript, 1, 2048) ELSE NULL END AS cleanTranscript,
+        NULL AS wordTimestamps, language, speakerCount, NULL AS speakers,
+        NULL AS diarizationSegments, NULL AS transcriptSegments,
+        NULL AS readingDocument, NULL AS meetingReadingTurnFormatting,
+        NULL AS chatMessages, status, errorMessage, exportPath, sourceURL,
+        thumbnailURL, channelName, NULL AS videoDescription, isFavorite,
+        sourceType, recoveredFromCrash, isTranscriptEdited, NULL AS userNotes,
+        NULL AS meetingStartContext, meetingCaptureReport, engine, engineVariant,
+        NULL AS calendarEventSnapshot, titleOverride, libraryFolderID,
+        derivedTitle, derivedSnippet, updatedAt
+        """
 
     private static func libraryOrderClause(for sortOrder: TranscriptionLibrarySortOrder) -> String {
         switch sortOrder {

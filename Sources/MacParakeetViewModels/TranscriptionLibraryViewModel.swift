@@ -148,6 +148,7 @@ public final class TranscriptionLibraryViewModel {
     public private(set) var isBulkOperationInProgress = false
     public private(set) var pendingBulkOperation: BulkTranscriptionOperation?
     public private(set) var retryingMeetingTranscriptionIDs: Set<UUID> = []
+    public private(set) var pendingItemOperationIDs: Set<UUID> = []
     public var onRetryMeetingTranscription: ((Transcription) async throws -> Void)?
 
     /// Override for tests; production code uses `Date()`.
@@ -160,6 +161,8 @@ public final class TranscriptionLibraryViewModel {
     private var folderLoadTask: Task<Void, Never>?
     private var searchDebounceTask: Task<Void, Never>?
     private var loadGeneration = 0
+    private var detailSelectionGeneration = 0
+    private var hasLoadedSnapshot = false
     private var bulkSelectionGeneration = 0
     public let scope: TranscriptionLibraryScope
 
@@ -212,6 +215,21 @@ public final class TranscriptionLibraryViewModel {
         finishBulkSelection()
         location = newLocation
         loadTranscriptions()
+    }
+
+    /// Reset only Library navigation state. Sort order remains a genuine user
+    /// preference; selection, folder/detail location, filter, and search are
+    /// destinations and must not survive an explicit sidebar click.
+    public func resetNavigationToRoot() {
+        guard scope == .all else { return }
+        finishBulkSelection()
+        let needsReload = location != .root || filter != .all || !searchText.isEmpty
+        location = .root
+        filter = .all
+        searchText = ""
+        if !needsReload {
+            loadTranscriptionsIfNeeded()
+        }
     }
 
     @discardableResult
@@ -357,17 +375,74 @@ public final class TranscriptionLibraryViewModel {
         return loadPage(offset: 0, append: false)
     }
 
+    /// Keep the current page visible when SwiftUI remounts the list after a
+    /// detail view. Mutations and query changes call `loadTranscriptions()`
+    /// directly and therefore still refresh the snapshot.
+    @discardableResult
+    public func loadTranscriptionsIfNeeded() -> Task<Void, Never> {
+        guard !hasLoadedSnapshot else { return Task {} }
+        return loadTranscriptions()
+    }
+
+    /// Fetch the complete record only after explicit detail demand. A slower
+    /// earlier click cannot publish after a newer selection.
+    public func fullTranscriptionForDetail(_ item: Transcription) async -> Transcription? {
+        guard let repo = transcriptionRepo else { return nil }
+        detailSelectionGeneration += 1
+        let generation = detailSelectionGeneration
+        do {
+            let full = try await Task.detached(priority: .userInitiated) {
+                try repo.fetch(id: item.id)
+            }.value
+            guard generation == detailSelectionGeneration else { return nil }
+            return full
+        } catch {
+            guard generation == detailSelectionGeneration else { return nil }
+            errorMessage = "Failed to open transcription: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    public func syncListMetadata(from full: Transcription) {
+        guard let index = transcriptions.firstIndex(where: { $0.id == full.id }) else { return }
+        transcriptions[index].fileName = full.fileName
+        transcriptions[index].filePath = full.filePath
+        transcriptions[index].meetingArtifactFolderPath = full.meetingArtifactFolderPath
+        transcriptions[index].durationMs = full.durationMs
+        transcriptions[index].status = full.status
+        transcriptions[index].errorMessage = full.errorMessage
+        transcriptions[index].isFavorite = full.isFavorite
+        transcriptions[index].speakerCount = full.speakerCount
+        transcriptions[index].titleOverride = full.titleOverride
+        transcriptions[index].derivedTitle = full.derivedTitle
+        transcriptions[index].derivedSnippet = full.derivedSnippet
+        transcriptions[index].updatedAt = full.updatedAt
+        publishLoadedItems(transcriptions, hasMore: hasMore)
+    }
+
+    public func fullTranscriptions(ids: [UUID]) async throws -> [Transcription] {
+        guard let repo = transcriptionRepo else { return [] }
+        return try await Task.detached(priority: .userInitiated) {
+            try ids.compactMap { try repo.fetch(id: $0) }
+        }.value
+    }
+
     @discardableResult
     public func loadMoreTranscriptions() -> Task<Void, Never>? {
         guard hasMore, !isLoading else { return nil }
         return loadPage(offset: transcriptions.count, append: true)
     }
 
-    public func toggleFavorite(_ transcription: Transcription) {
+    public func toggleFavorite(_ transcription: Transcription) async {
+        guard let repo = transcriptionRepo else { return }
         let newValue = !transcription.isFavorite
-        do {
+        pendingItemOperationIDs.insert(transcription.id)
             errorMessage = nil
-            try transcriptionRepo?.updateFavorite(id: transcription.id, isFavorite: newValue)
+        defer { pendingItemOperationIDs.remove(transcription.id) }
+        do {
+            try await Task.detached(priority: .userInitiated) {
+                try repo.updateFavorite(id: transcription.id, isFavorite: newValue)
+            }.value
             if let idx = transcriptions.firstIndex(where: { $0.id == transcription.id }) {
                 if filter == .favorites && !newValue {
                     transcriptions.remove(at: idx)
@@ -399,6 +474,10 @@ public final class TranscriptionLibraryViewModel {
             errorMessage = "Meeting retry is not available."
             return Task {}
         }
+        guard let repo = transcriptionRepo else {
+            errorMessage = "Meeting retry is not available."
+            return Task {}
+        }
 
         retryingMeetingTranscriptionIDs.insert(transcription.id)
 
@@ -408,7 +487,10 @@ public final class TranscriptionLibraryViewModel {
                 self.retryingMeetingTranscriptionIDs.remove(transcription.id)
             }
             do {
-                try await retry(transcription)
+                let full = try await Task.detached(priority: .userInitiated) {
+                    try repo.fetch(id: transcription.id) ?? transcription
+                }.value
+                try await retry(full)
                 do {
                     try self.refreshLoadedTranscription(id: transcription.id)
                 } catch {
@@ -595,11 +677,17 @@ public final class TranscriptionLibraryViewModel {
         }
     }
 
-    public func deleteTranscription(_ transcription: Transcription) {
-        do {
+    public func deleteTranscription(_ transcription: Transcription) async {
+        guard let repo = transcriptionRepo else { return }
+        pendingItemOperationIDs.insert(transcription.id)
             errorMessage = nil
-            try TranscriptionDeletionCleanup.removeOwnedAssets(for: transcription)
-            let deleted = try transcriptionRepo?.delete(id: transcription.id) ?? false
+        defer { pendingItemOperationIDs.remove(transcription.id) }
+        do {
+            let deleted = try await Task.detached(priority: .userInitiated) {
+                let full = try repo.fetch(id: transcription.id) ?? transcription
+                try TranscriptionDeletionCleanup.removeOwnedAssets(for: full)
+                return try repo.delete(id: transcription.id)
+            }.value
             guard deleted else { return }
             transcriptions.removeAll { $0.id == transcription.id }
             selectedTranscriptionIDs.remove(transcription.id)
@@ -611,15 +699,19 @@ public final class TranscriptionLibraryViewModel {
         }
     }
 
-    public func deleteMeetingAudio(_ transcription: Transcription) {
-        do {
+    public func deleteMeetingAudio(_ transcription: Transcription) async {
+        guard let repo = transcriptionRepo, transcription.sourceType == .meeting else { return }
+        pendingItemOperationIDs.insert(transcription.id)
             errorMessage = nil
-            guard let repo = transcriptionRepo else { return }
-            guard transcription.sourceType == .meeting else { return }
-            let result = try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
-                for: transcription,
+        defer { pendingItemOperationIDs.remove(transcription.id) }
+        do {
+            let result = try await Task.detached(priority: .userInitiated) {
+                let full = try repo.fetch(id: transcription.id) ?? transcription
+                return try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
+                    for: full,
                 repository: repo
             )
+            }.value
             guard result.detached else {
                 errorMessage = TranscriptionAssetCleanup.unmanagedMeetingAudioMessage
                 return
@@ -640,7 +732,7 @@ public final class TranscriptionLibraryViewModel {
     }
 
     @discardableResult
-    public func renameTranscriptionTitle(_ transcription: Transcription, to title: String) -> Bool {
+    public func renameTranscriptionTitle(_ transcription: Transcription, to title: String) async -> Bool {
         guard transcription.sourceType == .file else { return false }
         guard let repo = transcriptionRepo else { return false }
         guard let normalizedTitle = Transcription.normalizedTitleOverride(from: title),
@@ -649,23 +741,39 @@ public final class TranscriptionLibraryViewModel {
             return false
         }
 
+        let operationLoadGeneration = loadGeneration
+        let wasVisible = transcriptions.contains { $0.id == transcription.id }
         errorMessage = nil
+        pendingItemOperationIDs.insert(transcription.id)
+        defer { pendingItemOperationIDs.remove(transcription.id) }
         do {
+            try await Task.detached(priority: .userInitiated) {
             try repo.updateTitleOverride(id: transcription.id, titleOverride: normalizedTitle)
+            }.value
         } catch {
             logger.error("Failed to rename transcription title: \(error.localizedDescription, privacy: .private)")
             errorMessage = "Failed to rename transcription: \(error.localizedDescription)"
             return false
         }
 
-        cancelActiveLoad()
-        do {
-            try reloadLoadedWindow()
-        } catch {
-            logger.error(
-                "Renamed transcription title but failed to refresh Library: \(error.localizedDescription, privacy: .private)"
-            )
-            errorMessage = "Renamed transcription, but failed to refresh Library: \(error.localizedDescription)"
+        // Cancel only the load that was already active when Rename started.
+        // A query change made while the write was pending owns a newer
+        // generation and must publish normally.
+        guard wasVisible, loadGeneration == operationLoadGeneration else { return true }
+        if loadTask != nil {
+            cancelActiveLoad()
+        }
+        guard let index = transcriptions.firstIndex(where: { $0.id == transcription.id }) else { return true }
+        transcriptions[index].titleOverride = normalizedTitle
+        transcriptions[index].updatedAt = Date()
+        if !transcriptions.isEmpty {
+            if sortOrder == .titleAscending {
+                transcriptions.sort {
+                    let comparison = $0.effectiveDisplayTitle.localizedCaseInsensitiveCompare($1.effectiveDisplayTitle)
+                    return comparison == .orderedSame ? $0.createdAt > $1.createdAt : comparison == .orderedAscending
+                }
+            }
+            publishLoadedItems(transcriptions, hasMore: hasMore)
         }
         return true
     }
@@ -684,7 +792,7 @@ public final class TranscriptionLibraryViewModel {
             return
         }
         query.limit = max(pageSize, transcriptions.count)
-        let page = try repo.fetchLibraryPage(query: query)
+        let page = try repo.fetchLibraryListPage(query: query)
         publishLoadedItems(page.items, hasMore: page.hasMore)
     }
 
@@ -749,7 +857,7 @@ public final class TranscriptionLibraryViewModel {
         let task = Task { @MainActor [weak self, repo, query] in
             do {
                 let page = try await Task.detached(priority: .userInitiated) {
-                    try repo.fetchLibraryPage(query: query)
+                    try repo.fetchLibraryListPage(query: query)
                 }.value
                 guard let self, !Task.isCancelled, self.loadGeneration == generation else { return }
                 let items = append ? self.transcriptions + page.items : page.items
@@ -815,6 +923,7 @@ public final class TranscriptionLibraryViewModel {
     }
 
     private func publishLoadedItems(_ items: [Transcription], hasMore: Bool) {
+        hasLoadedSnapshot = true
         transcriptions = items
         filteredTranscriptions = items
         groupedTranscriptions = groupByDate(items)
@@ -902,7 +1011,8 @@ public final class TranscriptionLibraryViewModel {
 
         for target in targets {
             do {
-                try TranscriptionDeletionCleanup.removeOwnedAssets(for: target)
+                let full = try repo.fetch(id: target.id) ?? target
+                try TranscriptionDeletionCleanup.removeOwnedAssets(for: full)
                 if try repo.delete(id: target.id) {
                     succeededIDs.append(target.id)
                 } else {
@@ -925,8 +1035,9 @@ public final class TranscriptionLibraryViewModel {
 
         for target in targets {
             do {
+                let full = try repo.fetch(id: target.id) ?? target
                 let result = try TranscriptionAssetCleanup.detachOwnedMeetingAudio(
-                    for: target,
+                    for: full,
                     repository: repo
                 )
                 if result.detached {

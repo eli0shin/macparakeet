@@ -22,6 +22,8 @@ public final class DictationHistoryViewModel {
         }
     }
     private var searchDebounceTask: Task<Void, Never>?
+    private var searchGeneration = 0
+    private var statsRefreshTask: Task<Void, Never>?
 
     // MARK: - Playback State
 
@@ -67,7 +69,7 @@ public final class DictationHistoryViewModel {
                 exitBulkSelection()
             }
             if selectedSubTab == .stats {
-                refreshStatsTabData()
+                refreshStatsTabDataAsync()
             }
         }
     }
@@ -75,7 +77,7 @@ public final class DictationHistoryViewModel {
     // MARK: - Stats Tab Data
 
     /// 26 weeks × 7 days = 182 days, dense (zero-filled).
-    public static let heatmapDayCount = 26 * 7
+    nonisolated public static let heatmapDayCount = 26 * 7
 
     public var dailyStats: [DailyDictationStat] = []
     public var currentStreak: Int = 0
@@ -317,31 +319,54 @@ public final class DictationHistoryViewModel {
         // dictation save when the user is on the History tab. The next
         // sub-tab switch will pull fresh data.
         if selectedSubTab == .stats {
-            refreshStatsTabData()
+            refreshStatsTabDataAsync()
         }
     }
 
     public func refreshStatsTabData() {
         guard let repo = dictationRepo else { return }
+        applyStatsTabData(Self.fetchStatsTabData(using: repo))
+    }
+
+    private func refreshStatsTabDataAsync() {
+        guard let repo = dictationRepo, statsRefreshTask == nil else { return }
+        statsRefreshTask = Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                Self.fetchStatsTabData(using: repo)
+            }.value
+            guard let self else { return }
+            self.statsRefreshTask = nil
+            guard !Task.isCancelled, self.selectedSubTab == .stats else { return }
+            self.applyStatsTabData(result)
+        }
+    }
+
+    private nonisolated static func fetchStatsTabData(using repo: DictationRepositoryProtocol) -> StatsTabData {
         do {
-            dailyStats = try repo.dailyStats(daysBack: Self.heatmapDayCount)
-            currentStreak = try repo.currentDailyStreak()
-            longestStreak = try repo.longestDailyStreak()
-            topApps = try repo.topApps(limit: 5).map {
+            return StatsTabData(
+                dailyStats: try repo.dailyStats(daysBack: heatmapDayCount),
+                currentStreak: try repo.currentDailyStreak(),
+                longestStreak: try repo.longestDailyStreak(),
+                topApps: try repo.topApps(limit: 5).map {
                 TopAppEntry(bundleID: $0.app, count: $0.count, words: $0.words)
             }
+            )
         } catch {
-            logger.error("Failed to load stats-tab data: \(error.localizedDescription)")
-            dailyStats = []
-            currentStreak = 0
-            longestStreak = 0
-            topApps = []
+            return .empty
         }
+    }
+
+    private func applyStatsTabData(_ data: StatsTabData) {
+        dailyStats = data.dailyStats
+        currentStreak = data.currentStreak
+        longestStreak = data.longestStreak
+        topApps = data.topApps
     }
 
     public func downloadAudio(for dictation: Dictation) {
         guard let audioPath = dictation.audioPath,
-              FileManager.default.fileExists(atPath: audioPath) else { return }
+            FileManager.default.fileExists(atPath: audioPath)
+        else { return }
         let sourceURL = URL(fileURLWithPath: audioPath)
         let panel = NSSavePanel()
         panel.nameFieldStringValue = sourceURL.lastPathComponent
@@ -480,17 +505,37 @@ public final class DictationHistoryViewModel {
 
     private func debounceSearch() {
         searchDebounceTask?.cancel()
-        if searchText.isEmpty {
-            // Clear immediately so the full list restores without lag
-            loadDictations(shouldRefreshStats: false)
-            return
-        }
-        searchDebounceTask = Task { [weak self] in
+        searchGeneration += 1
+        let generation = searchGeneration
+        guard let repo = dictationRepo else { return }
+        let query = searchText
+        searchDebounceTask = Task { @MainActor [weak self] in
+            if !query.isEmpty {
             try? await Task.sleep(for: .milliseconds(300))
-            guard let self, !Task.isCancelled else { return }
-            let resultCount = self.loadDictations(shouldRefreshStats: false)
-            Telemetry.send(.historySearched(resultCountBucket: Self.searchResultCountBucket(resultCount)))
         }
+            guard let self, !Task.isCancelled else { return }
+            let dictations = await Task.detached(priority: .userInitiated) {
+                (try? (query.isEmpty ? repo.fetchAll(limit: 200) : repo.search(query: query, limit: 200))) ?? []
+            }.value
+            guard !Task.isCancelled, generation == self.searchGeneration else { return }
+            self.publishDictations(dictations)
+            if !query.isEmpty {
+                Telemetry.send(.historySearched(resultCountBucket: Self.searchResultCountBucket(dictations.count)))
+            }
+        }
+    }
+
+    private func publishDictations(_ dictations: [Dictation]) {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: dictations) { calendar.startOfDay(for: $0.createdAt) }
+        groupedDictations = grouped.sorted { $0.key > $1.key }.map { key, value in
+            (formatDateHeader(key), value.sorted { $0.createdAt > $1.createdAt })
+        }
+        pruneSelectionToVisibleDictations()
+    }
+
+    public func waitForPendingSearch() async {
+        await searchDebounceTask?.value
     }
 
     private static func searchResultCountBucket(_ count: Int) -> String {
@@ -561,6 +606,15 @@ public final class DictationHistoryViewModel {
         } else {
             return Self.dateHeaderFormatter.string(from: date)
         }
+    }
+
+    private struct StatsTabData: Sendable {
+        let dailyStats: [DailyDictationStat]
+        let currentStreak: Int
+        let longestStreak: Int
+        let topApps: [TopAppEntry]
+
+        static let empty = StatsTabData(dailyStats: [], currentStreak: 0, longestStreak: 0, topApps: [])
     }
 
     private struct DeleteTarget: Sendable {

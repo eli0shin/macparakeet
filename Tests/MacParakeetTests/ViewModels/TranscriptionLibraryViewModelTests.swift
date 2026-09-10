@@ -55,11 +55,46 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         XCTAssertEqual(Set(vm.filteredTranscriptions.map(\.fileName)), ["done.mp3", "cancelled.mp3", "failed.mp3"])
     }
 
+    func testReturningToListReusesSnapshotUntilExplicitRefresh() async throws {
+        try repo.save(Transcription(fileName: "existing.mp3", status: .completed))
+        await load()
+        try repo.save(Transcription(fileName: "new.mp3", status: .completed))
+
+        await vm.loadTranscriptionsIfNeeded().value
+        XCTAssertEqual(vm.transcriptions.map(\.fileName), ["existing.mp3"])
+
+        await vm.loadTranscriptions().value
+        XCTAssertEqual(Set(vm.transcriptions.map(\.fileName)), ["existing.mp3", "new.mp3"])
+    }
+
+    func testOpeningListItemFetchesCompleteTranscriptionOnDemand() async throws {
+        let stored = Transcription(
+            fileName: "long.mp3",
+            rawTranscript: String(repeating: "body ", count: 10_000),
+            cleanTranscript: "Clean body",
+            wordTimestamps: [WordTimestamp(word: "body", startMs: 0, endMs: 100, confidence: 1)],
+            chatMessages: [ChatMessage(role: .user, content: "Question")],
+            status: .completed
+        )
+        try repo.save(stored)
+        await load()
+        let listItem = try XCTUnwrap(vm.transcriptions.first)
+        XCTAssertNil(listItem.rawTranscript)
+        XCTAssertNil(listItem.wordTimestamps)
+
+        let detail = await vm.fullTranscriptionForDetail(listItem)
+
+        XCTAssertEqual(detail?.rawTranscript, stored.rawTranscript)
+        XCTAssertEqual(detail?.wordTimestamps, stored.wordTimestamps)
+        XCTAssertEqual(detail?.chatMessages, stored.chatMessages)
+    }
+
     // MARK: - Filter
 
     func testFilterAll() async throws {
         try repo.save(Transcription(fileName: "local.mp3", status: .completed))
-        try repo.save(Transcription(
+        try repo.save(
+            Transcription(
             fileName: "youtube.mp3",
             status: .completed,
             sourceURL: "https://youtube.com/watch?v=abc",
@@ -73,7 +108,8 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
 
     func testFilterYouTube() async throws {
         try repo.save(Transcription(fileName: "local.mp3", status: .completed))
-        try repo.save(Transcription(
+        try repo.save(
+            Transcription(
             fileName: "youtube.mp3",
             status: .completed,
             sourceURL: "https://youtube.com/watch?v=abc",
@@ -88,8 +124,12 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
 
     func testFilterPodcast() async throws {
         try repo.save(Transcription(fileName: "local.mp3", status: .completed, sourceType: .file))
-        try repo.save(Transcription(fileName: "youtube.mp3", status: .completed, sourceURL: "https://youtube.com/watch?v=abc", sourceType: .youtube))
-        try repo.save(Transcription(
+        try repo.save(
+            Transcription(
+                fileName: "youtube.mp3", status: .completed, sourceURL: "https://youtube.com/watch?v=abc",
+                sourceType: .youtube))
+        try repo.save(
+            Transcription(
             fileName: "episode.mp3",
             status: .completed,
             sourceURL: "https://podcasts.apple.com/us/podcast/x/id1?i=2",
@@ -105,7 +145,10 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
     func testFilterLocal() async throws {
         try repo.save(Transcription(fileName: "local.mp3", status: .completed, sourceType: .file))
         try repo.save(Transcription(fileName: "meeting.mp3", status: .completed, sourceType: .meeting))
-        try repo.save(Transcription(fileName: "youtube.mp3", status: .completed, sourceURL: "https://youtube.com/watch?v=abc", sourceType: .youtube))
+        try repo.save(
+            Transcription(
+                fileName: "youtube.mp3", status: .completed, sourceURL: "https://youtube.com/watch?v=abc",
+                sourceType: .youtube))
 
         vm.filter = .local
         await load()
@@ -154,7 +197,8 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         let meetingVM = TranscriptionLibraryViewModel(scope: .meetings)
         meetingVM.configure(transcriptionRepo: repo)
 
-        try repo.save(Transcription(fileName: "fav meeting.mp3", status: .completed, isFavorite: true, sourceType: .meeting))
+        try repo.save(
+            Transcription(fileName: "fav meeting.mp3", status: .completed, isFavorite: true, sourceType: .meeting))
         try repo.save(Transcription(fileName: "normal meeting.mp3", status: .completed, sourceType: .meeting))
         try repo.save(Transcription(fileName: "fav local.mp3", status: .completed, isFavorite: true, sourceType: .file))
 
@@ -193,7 +237,8 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
     }
 
     func testSearchByChannel() async throws {
-        try repo.save(Transcription(
+        try repo.save(
+            Transcription(
             fileName: "Video",
             status: .completed,
             sourceURL: "https://youtube.com/watch?v=abc",
@@ -239,7 +284,7 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         vm.filter = .local
         await load()
 
-        vm.renameTranscriptionTitle(vm.transcriptions[0], to: "  Q3 Vendor Notes  ")
+        await vm.renameTranscriptionTitle(vm.transcriptions[0], to: "  Q3 Vendor Notes  ")
 
         let loaded = try XCTUnwrap(vm.transcriptions.first)
         XCTAssertEqual(loaded.titleOverride, "Q3 Vendor Notes")
@@ -264,8 +309,8 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         try repo.save(transcription)
         await load()
 
-        vm.renameTranscriptionTitle(vm.transcriptions[0], to: "   ")
-        vm.renameTranscriptionTitle(vm.transcriptions[0], to: "IMG_1942.m4a")
+        await vm.renameTranscriptionTitle(vm.transcriptions[0], to: "   ")
+        await vm.renameTranscriptionTitle(vm.transcriptions[0], to: "IMG_1942.m4a")
 
         let loaded = try XCTUnwrap(vm.transcriptions.first)
         XCTAssertNil(loaded.titleOverride)
@@ -292,12 +337,13 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.filteredTranscriptions.map(\.id), [second.id, first.id])
 
-        XCTAssertTrue(vm.renameTranscriptionTitle(first, to: "Aardvark Notes"))
+        let renamed = await vm.renameTranscriptionTitle(first, to: "Aardvark Notes")
+        XCTAssertTrue(renamed)
 
         XCTAssertEqual(vm.filteredTranscriptions.map(\.id), [first.id, second.id])
     }
 
-    func testRenameLocalTranscriptionTitleReportsRefreshFailureAfterSuccessfulWrite() async throws {
+    func testRenameLocalTranscriptionTitleDoesNotReloadWindowAfterSuccessfulWrite() async throws {
         let mockRepo = MockTranscriptionRepository()
         let viewModel = TranscriptionLibraryViewModel()
         let transcription = Transcription(
@@ -310,14 +356,13 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         await load(viewModel)
 
         mockRepo.fetchAllError = LibraryRenameTestError.reloadFailed
-        XCTAssertTrue(viewModel.renameTranscriptionTitle(viewModel.transcriptions[0], to: "Q3 Vendor Notes"))
+        let renamed = await viewModel.renameTranscriptionTitle(
+            viewModel.transcriptions[0], to: "Q3 Vendor Notes")
+        XCTAssertTrue(renamed)
 
         XCTAssertEqual(mockRepo.updateTitleOverrideCalls.count, 1)
         XCTAssertEqual(mockRepo.transcriptions.first?.titleOverride, "Q3 Vendor Notes")
-        XCTAssertTrue(
-            viewModel.errorMessage?.contains("Renamed transcription, but failed to refresh Library") ?? false
-        )
-        XCTAssertFalse(viewModel.errorMessage?.contains("Failed to rename transcription") ?? true)
+        XCTAssertNil(viewModel.errorMessage)
     }
 
     func testRenameLocalTranscriptionTitleReturnsFalseWhenWriteFails() async throws {
@@ -333,7 +378,8 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         viewModel.configure(transcriptionRepo: mockRepo)
         await load(viewModel)
 
-        let renamed = viewModel.renameTranscriptionTitle(viewModel.transcriptions[0], to: "Q3 Vendor Notes")
+        let renamed = await viewModel.renameTranscriptionTitle(
+            viewModel.transcriptions[0], to: "Q3 Vendor Notes")
 
         XCTAssertFalse(renamed)
         XCTAssertEqual(mockRepo.updateTitleOverrideCalls.count, 1)
@@ -351,24 +397,24 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         )
         let gate = StaleFetchGate()
         mockRepo.transcriptions = [transcription]
+        viewModel.configure(transcriptionRepo: mockRepo)
+        await load(viewModel)
         mockRepo.fetchAllHandler = { [mockRepo, gate] limit in
-            let callNumber = gate.nextCallNumber()
+            _ = gate.nextCallNumber()
             let snapshot = mockRepo.transcriptions
-            if callNumber == 1 {
-                gate.blockFirstFetchUntilAllowed()
-            }
+            gate.blockFirstFetchUntilAllowed()
             let sorted = snapshot.sorted { $0.createdAt > $1.createdAt }
             if let limit { return Array(sorted.prefix(limit)) }
             return sorted
         }
-        viewModel.configure(transcriptionRepo: mockRepo)
 
         let staleLoad = viewModel.loadTranscriptions()
         await Task.detached {
             gate.waitForFirstFetchStarted()
         }.value
 
-        XCTAssertTrue(viewModel.renameTranscriptionTitle(transcription, to: "Q3 Vendor Notes"))
+        let renamed = await viewModel.renameTranscriptionTitle(transcription, to: "Q3 Vendor Notes")
+        XCTAssertTrue(renamed)
         XCTAssertEqual(viewModel.transcriptions.first?.titleOverride, "Q3 Vendor Notes")
 
         gate.allowFirstFetchToFinish()
@@ -386,7 +432,7 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         await load()
 
         XCTAssertFalse(vm.transcriptions[0].isFavorite)
-        vm.toggleFavorite(vm.transcriptions[0])
+        await vm.toggleFavorite(vm.transcriptions[0])
         XCTAssertTrue(vm.transcriptions[0].isFavorite)
 
         // Verify persisted
@@ -404,7 +450,7 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         await load()
 
         XCTAssertEqual(vm.filteredTranscriptions.map(\.id), [favorite.id])
-        vm.toggleFavorite(vm.filteredTranscriptions[0])
+        await vm.toggleFavorite(vm.filteredTranscriptions[0])
 
         XCTAssertTrue(vm.filteredTranscriptions.isEmpty)
         XCTAssertFalse(try repo.fetch(id: favorite.id)?.isFavorite ?? true)
@@ -588,9 +634,12 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
 
     func testSelectLoadedVisibleTranscriptionsExcludesUnloadedRows() async throws {
         vm.pageSize = 2
-        try repo.save(Transcription(createdAt: Date(timeIntervalSince1970: 3), fileName: "third.mp3", status: .completed))
-        try repo.save(Transcription(createdAt: Date(timeIntervalSince1970: 2), fileName: "second.mp3", status: .completed))
-        try repo.save(Transcription(createdAt: Date(timeIntervalSince1970: 1), fileName: "first.mp3", status: .completed))
+        try repo.save(
+            Transcription(createdAt: Date(timeIntervalSince1970: 3), fileName: "third.mp3", status: .completed))
+        try repo.save(
+            Transcription(createdAt: Date(timeIntervalSince1970: 2), fileName: "second.mp3", status: .completed))
+        try repo.save(
+            Transcription(createdAt: Date(timeIntervalSince1970: 1), fileName: "first.mp3", status: .completed))
 
         await load()
 
@@ -622,7 +671,8 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
 
     func testSelectedLoadedTranscriptionsForExportFollowsVisibleOrder() async throws {
         let first = Transcription(createdAt: Date(timeIntervalSince1970: 2), fileName: "first.mp3", status: .completed)
-        let second = Transcription(createdAt: Date(timeIntervalSince1970: 1), fileName: "second.mp3", status: .completed)
+        let second = Transcription(
+            createdAt: Date(timeIntervalSince1970: 1), fileName: "second.mp3", status: .completed)
         try repo.save(second)
         try repo.save(first)
 
@@ -658,7 +708,7 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         await load()
 
         XCTAssertEqual(vm.transcriptions.count, 1)
-        vm.deleteTranscription(t)
+        await vm.deleteTranscription(t)
         XCTAssertEqual(vm.transcriptions.count, 0)
 
         let fetched = try repo.fetch(id: t.id)
@@ -687,7 +737,7 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         try repo.save(t)
         await load()
 
-        vm.deleteTranscription(t)
+        await vm.deleteTranscription(t)
 
         XCTAssertNotNil(try repo.fetch(id: t.id))
         XCTAssertEqual(vm.transcriptions.map(\.id), [t.id])
@@ -717,7 +767,7 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         try repo.save(t)
         await load()
 
-        vm.deleteMeetingAudio(t)
+        await vm.deleteMeetingAudio(t)
 
         let fetched = try XCTUnwrap(repo.fetch(id: t.id))
         XCTAssertNil(fetched.filePath)
@@ -753,7 +803,7 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
 
         XCTAssertTrue(MeetingAudioFile.isAvailable(for: t))
         XCTAssertFalse(MeetingAudioFile.isRemovable(for: t))
-        vm.deleteMeetingAudio(t)
+        await vm.deleteMeetingAudio(t)
 
         let fetched = try XCTUnwrap(repo.fetch(id: t.id))
         XCTAssertEqual(fetched.filePath, audioURL.path)

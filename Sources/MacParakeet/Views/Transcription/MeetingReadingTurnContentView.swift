@@ -1,7 +1,7 @@
 import SwiftUI
 import MacParakeetCore
 
-struct IdentifiedReadingTurn: Identifiable {
+struct IdentifiedReadingTurn: Identifiable, Sendable {
     let turn: ReadingTurn
     let scrollID: Int
 

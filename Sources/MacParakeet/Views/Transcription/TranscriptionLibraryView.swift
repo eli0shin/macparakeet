@@ -127,6 +127,11 @@ struct TranscriptionLibraryView: View {
         // full-width line across the content's top edge on entering selection
         // mode, and its first-responder draw is the hitch felt as "jank".
         .focusEffectDisabled(viewModel.isBulkSelectionModeEnabled)
+        .onChange(of: customWordsRevision) { _, _ in
+            if isMeetingListMode {
+                viewModel.loadTranscriptions()
+            }
+        }
         .onChange(of: viewModel.isBulkSelectionModeEnabled) { _, enabled in
             if enabled {
                 selectionKeyboardFocused = true
@@ -138,7 +143,7 @@ struct TranscriptionLibraryView: View {
         }
         .onAppear {
             viewModel.loadFolders()
-            viewModel.loadTranscriptions()
+            viewModel.loadTranscriptionsIfNeeded()
         }
         .alert(
             pendingDelete.map(singleDeleteTitle) ?? "Delete Transcription?",
@@ -152,8 +157,8 @@ struct TranscriptionLibraryView: View {
             }
             Button(pendingDelete.map(singleDeleteConfirmTitle) ?? "Delete", role: .destructive) {
                 if let transcription = pendingDelete {
-                    viewModel.deleteTranscription(transcription)
                     pendingDelete = nil
+                    Task { await viewModel.deleteTranscription(transcription) }
                 }
             }
         } message: {
@@ -205,8 +210,8 @@ struct TranscriptionLibraryView: View {
             }
             Button(MeetingDeletionCopy.audioOnlyConfirmTitle, role: .destructive) {
                 if let transcription = pendingDeleteAudio {
-                    viewModel.deleteMeetingAudio(transcription)
                     pendingDeleteAudio = nil
+                    Task { await viewModel.deleteMeetingAudio(transcription) }
                 }
             }
         } message: {
@@ -275,6 +280,12 @@ struct TranscriptionLibraryView: View {
         }
         .onDisappear {
             cancelBulkExport()
+        }
+    }
+
+    private var customWordsRevision: [String] {
+        customWords.map {
+            "\($0.id.uuidString)|\($0.word)|\($0.replacement ?? "")|\($0.isEnabled)|\($0.updatedAt.timeIntervalSinceReferenceDate)"
         }
     }
 
@@ -400,7 +411,11 @@ struct TranscriptionLibraryView: View {
         ScrollView {
             VStack(spacing: DesignSystem.Spacing.md) {
                 LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: DesignSystem.Layout.thumbnailCardMinWidth), spacing: DesignSystem.Spacing.md)],
+                    columns: [
+                        GridItem(
+                            .adaptive(minimum: DesignSystem.Layout.thumbnailCardMinWidth),
+                            spacing: DesignSystem.Spacing.md)
+                    ],
                     spacing: DesignSystem.Spacing.md
                 ) {
                     ForEach(viewModel.filteredTranscriptions) { transcription in
@@ -416,7 +431,7 @@ struct TranscriptionLibraryView: View {
                             if viewModel.isBulkSelectionModeEnabled {
                                 viewModel.toggleSelection(for: transcription)
                             } else {
-                                onSelect(transcription)
+                                open(transcription)
                             }
                         } menuContent: {
                             libraryMenuItems(for: transcription)
@@ -447,6 +462,7 @@ struct TranscriptionLibraryView: View {
                             isSelected: viewModel.isTranscriptionSelected(transcription),
                             showsSelectionControls: viewModel.isBulkSelectionModeEnabled,
                             isRetrying: viewModel.isRetryingMeetingTranscription(transcription),
+                            usesPreparedSnippet: true,
                             onTap: {
                                 if viewModel.isBulkOperationInProgress || bulkExportInProgress {
                                     return
@@ -454,7 +470,7 @@ struct TranscriptionLibraryView: View {
                                 if viewModel.isBulkSelectionModeEnabled {
                                     viewModel.toggleSelection(for: transcription)
                                 } else {
-                                    onSelect(transcription)
+                                    open(transcription)
                                 }
                             },
                             onRetry: {
@@ -478,7 +494,7 @@ struct TranscriptionLibraryView: View {
     @ViewBuilder
     private func libraryMenuItems(for transcription: Transcription) -> some View {
         Button {
-            onSelect(transcription)
+            open(transcription)
         } label: {
             Label("Open", systemImage: "doc.text")
         }
@@ -532,7 +548,8 @@ struct TranscriptionLibraryView: View {
                 Label("Open Meeting Folder", systemImage: "folder")
             }
             .disabled(!artifactAvailable)
-            .help(artifactAvailable
+            .help(
+                artifactAvailable
                   ? "Open the meeting artifact folder in Finder"
                   : "Meeting artifact folder is not available")
 
@@ -542,7 +559,8 @@ struct TranscriptionLibraryView: View {
                 Label("Copy Artifact Folder Path", systemImage: "doc.on.doc")
             }
             .disabled(!artifactAvailable)
-            .help(artifactAvailable
+            .help(
+                artifactAvailable
                   ? "Copy the meeting artifact folder path"
                   : "Meeting artifact folder is not available")
 
@@ -554,7 +572,8 @@ struct TranscriptionLibraryView: View {
                 Label("Show Audio in Finder", systemImage: "waveform")
             }
             .disabled(!audioAvailable)
-            .help(audioAvailable
+            .help(
+                audioAvailable
                   ? "Reveal the meeting audio file in Finder"
                   : MeetingDeletionCopy.audioUnavailableHelp(for: audioState))
 
@@ -564,7 +583,8 @@ struct TranscriptionLibraryView: View {
                 Label("Save Audio As…", systemImage: "square.and.arrow.down")
             }
             .disabled(!audioAvailable)
-            .help(audioAvailable
+            .help(
+                audioAvailable
                   ? "Save a copy of the meeting audio to a chosen location"
                   : MeetingDeletionCopy.audioUnavailableHelp(for: audioState))
 
@@ -574,7 +594,8 @@ struct TranscriptionLibraryView: View {
                 Label(MeetingDeletionCopy.audioOnlyMenuTitle, systemImage: "waveform.slash")
             }
             .disabled(!audioRemovable)
-            .help(audioRemovable
+            .help(
+                audioRemovable
                   ? "Remove the saved meeting audio while keeping the meeting"
                   : MeetingDeletionCopy.audioRemovalUnavailableHelp(
                       for: transcription,
@@ -585,7 +606,7 @@ struct TranscriptionLibraryView: View {
         Divider()
 
         Button {
-            viewModel.toggleFavorite(transcription)
+            Task { await viewModel.toggleFavorite(transcription) }
         } label: {
             Label(
                 transcription.isFavorite ? "Remove from Favorites" : "Add to Favorites",
@@ -598,7 +619,9 @@ struct TranscriptionLibraryView: View {
         Button(role: .destructive) {
             pendingDelete = transcription
         } label: {
-            Label(transcription.sourceType == .meeting ? MeetingDeletionCopy.fullDeleteMenuTitle : "Delete", systemImage: "trash")
+            Label(
+                transcription.sourceType == .meeting ? MeetingDeletionCopy.fullDeleteMenuTitle : "Delete",
+                systemImage: "trash")
         }
     }
 
@@ -664,8 +687,18 @@ struct TranscriptionLibraryView: View {
 
     private func commitRename() {
         guard let transcription = pendingRename else { return }
-        if viewModel.renameTranscriptionTitle(transcription, to: renameTitleDraft) {
+        let title = renameTitleDraft
+        Task {
+            if await viewModel.renameTranscriptionTitle(transcription, to: title) {
             cancelRename()
+        }
+    }
+    }
+
+    private func open(_ transcription: Transcription) {
+        Task {
+            guard let full = await viewModel.fullTranscriptionForDetail(transcription) else { return }
+            onSelect(full)
         }
     }
 
@@ -682,8 +715,8 @@ struct TranscriptionLibraryView: View {
     private static let bulkExportFormatOrder: [TranscriptExportFormat] = {
         let preferredOrder: [TranscriptExportFormat] = [.txt, .md, .srt, .vtt, .dapt, .json, .pdf, .docx]
         precondition(
-            preferredOrder.count == TranscriptExportFormat.allCases.count &&
-                Set(preferredOrder) == Set(TranscriptExportFormat.allCases),
+            preferredOrder.count == TranscriptExportFormat.allCases.count
+                && Set(preferredOrder) == Set(TranscriptExportFormat.allCases),
             "Bulk export format order must include every TranscriptExportFormat case"
         )
         return preferredOrder
@@ -711,9 +744,7 @@ struct TranscriptionLibraryView: View {
     }
 
     private var isBulkExportActionDisabled: Bool {
-        selectedBulkExportTargets.isEmpty ||
-            bulkExportInProgress ||
-            viewModel.isBulkOperationInProgress
+        selectedBulkExportTargets.isEmpty || bulkExportInProgress || viewModel.isBulkOperationInProgress
     }
 
     private var bulkExportOptionsPopover: some View {
@@ -884,7 +915,7 @@ struct TranscriptionLibraryView: View {
 
     private func runBulkExport() {
         guard !isBulkExportActionDisabled else { return }
-        let targets = selectedBulkExportTargets
+        let targetIDs = selectedBulkExportTargets.map(\.id)
 
         cancelBulkExport()
         let outcome = runBulkExportFolderPanel()
@@ -910,6 +941,10 @@ struct TranscriptionLibraryView: View {
             do {
                 await Task.yield()
                 guard bulkExportRunID == runID, !Task.isCancelled else { return }
+                let targets = try await viewModel.fullTranscriptions(ids: targetIDs)
+                guard targets.count == targetIDs.count else {
+                    throw CocoaError(.fileReadNoSuchFile)
+                }
 
                 let exportTask = Task.detached(priority: .userInitiated) {
                     try await TranscriptResultActions.exportTranscriptsToDirectory(
@@ -999,14 +1034,18 @@ struct TranscriptionLibraryView: View {
             Image(systemName: emptyStateIcon)
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(DesignSystem.Colors.textTertiary)
-            Text(viewModel.searchText.isEmpty
+            Text(
+                viewModel.searchText.isEmpty
                  ? emptyStateTitle
-                 : "No matching transcriptions")
+                    : "No matching transcriptions"
+            )
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
-            Text(viewModel.searchText.isEmpty
+            Text(
+                viewModel.searchText.isEmpty
                  ? emptyStateMessage
-                 : "Try different words or clear your search.")
+                    : "Try different words or clear your search."
+            )
                 .font(DesignSystem.Typography.bodySmall)
                 .foregroundStyle(DesignSystem.Colors.textTertiary)
                 .multilineTextAlignment(.center)
@@ -1097,7 +1136,8 @@ struct TranscriptionLibraryView: View {
             )
         }
 
-        return "Delete \(operation.targetCount) \(operation.targetCount == 1 ? "item" : "items")? This permanently deletes the Library rows and app-owned files. Original local source files are not removed."
+        return
+            "Delete \(operation.targetCount) \(operation.targetCount == 1 ? "item" : "items")? This permanently deletes the Library rows and app-owned files. Original local source files are not removed."
     }
 
     private func singleDeleteTitle(for transcription: Transcription) -> String {
@@ -1270,7 +1310,9 @@ private struct LibraryFolderDialogs: ViewModifier {
                     onDelete(folder)
                 }
             } message: {
-                Text("This deletes the folder and all folders inside it. Library items are kept and moved to Library root. No recordings or managed files are deleted.")
+                Text(
+                    "This deletes the folder and all folders inside it. Library items are kept and moved to Library root. No recordings or managed files are deleted."
+                )
             }
             .confirmationDialog(moveTitle, isPresented: $showingMove, titleVisibility: .visible) {
                 Button("Library") { onMove(nil) }

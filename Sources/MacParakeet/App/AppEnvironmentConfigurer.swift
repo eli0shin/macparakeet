@@ -28,7 +28,7 @@ final class AppEnvironmentConfigurer {
     struct Callbacks {
         let onMenuBarIconUpdate: () -> Void
         let onPresentEntitlementsAlert: (Error) -> Void
-        let onOpenMainWindow: () -> Void
+        let onOpenMainWindow: @MainActor @Sendable () -> Void
         let onToggleMeetingRecordingFromHotkey: () -> Void
         let onTriggerFileTranscriptionFromHotkey: () -> Void
         let onTriggerYouTubeTranscriptionFromHotkey: () -> Void
@@ -345,6 +345,7 @@ final class AppEnvironmentConfigurer {
             meetingRecordingSettlement: env.meetingRecordingSettlement,
             finalizationOwnershipClaimer: env.meetingRecordingLockFileStore,
             onMenuBarIconUpdate: { _ in callbacks.onMenuBarIconUpdate() },
+            onOpenMainWindow: callbacks.onOpenMainWindow,
             onTranscriptionReady: { [weak self] transcription in
                 guard let self else { return }
                 self.transcriptionViewModel.presentCompletedTranscription(transcription, autoSave: true)

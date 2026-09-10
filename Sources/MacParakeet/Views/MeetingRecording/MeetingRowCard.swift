@@ -11,6 +11,7 @@ struct MeetingRowCard<MenuContent: View>: View {
     var isSelected: Bool = false
     var showsSelectionControls: Bool = false
     var isRetrying: Bool = false
+    var usesPreparedSnippet: Bool = false
     var onTap: () -> Void
     var onRetry: (() -> Void)? = nil
     @ViewBuilder var menuContent: () -> MenuContent
@@ -306,7 +307,13 @@ struct MeetingRowCard<MenuContent: View>: View {
     }
 
     private var displayedSnippet: String? {
-        Self.snippetText(for: transcription, customWords: customWords)
+        if usesPreparedSnippet {
+            guard let snippet = transcription.derivedSnippet?.trimmingCharacters(in: .whitespacesAndNewlines),
+                !snippet.isEmpty
+            else { return nil }
+            return snippet
+        }
+        return Self.snippetText(for: transcription, customWords: customWords)
     }
 
     static func snippetText(
@@ -323,9 +330,7 @@ struct MeetingRowCard<MenuContent: View>: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanedFallback = cleaned.isEmpty ? nil : String(cleaned.prefix(140))
 
-        if transcription.sourceType == .meeting,
-            transcription.cleanTranscript == nil
-        {
+        if transcription.sourceType == .meeting, transcription.cleanTranscript == nil {
             return cleanedFallback
         }
         if let derived = transcription.derivedSnippet?.trimmingCharacters(in: .whitespacesAndNewlines),

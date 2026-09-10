@@ -11,13 +11,15 @@ final class MainSidebarLibraryInteractionTests: XCTestCase {
         let state = MainWindowState()
         let libraryViewModel = TranscriptionLibraryViewModel()
         let transcriptionViewModel = TranscriptionViewModel()
+        let historyViewModel = DictationHistoryViewModel()
         let folderID = UUID()
         let detail = Transcription(fileName: "detail.wav", status: .completed)
         let row = MainSidebarItemRow(item: .library) {
             state.navigateFromSidebar(
                 to: .library,
                 libraryViewModel: libraryViewModel,
-                transcriptionViewModel: transcriptionViewModel
+                transcriptionViewModel: transcriptionViewModel,
+                historyViewModel: historyViewModel
             )
         }
         let size = NSSize(width: 240, height: 40)

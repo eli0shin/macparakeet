@@ -81,6 +81,7 @@ final class TransformSpikeProgressPanelController {
         panel.ignoresMouseEvents = true
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
         panel.contentView = host
         panel.alphaValue = 0
 

@@ -117,6 +117,7 @@ final class IdlePillController {
         panel.hasShadow = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
         panel.contentView = hosting
 
         // Mouse tracking overlay for hover + click
