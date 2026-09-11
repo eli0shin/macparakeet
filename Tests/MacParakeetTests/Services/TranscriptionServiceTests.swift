@@ -371,6 +371,34 @@ final class TranscriptionServiceTests: XCTestCase {
         )
     }
 
+    func testExplicitMeetingTitleRegenerationReplacesAndPersistsExistingTitle() async throws {
+        let llm = MockLLMService()
+        llm.summarizeResult = "Updated Product Strategy"
+        service = TranscriptionService(
+            audioProcessor: mockAudio,
+            sttTranscriber: mockSTT,
+            transcriptionRepo: transcriptionRepo,
+            segmentRepo: segmentRepo,
+            llmService: llm,
+            shouldAutoGenerateMeetingTitles: { false },
+            meetingArtifactStore: nil
+        )
+        let meeting = Transcription(
+            fileName: "Existing AI Title",
+            rawTranscript: String(repeating: "enough meeting context ", count: 12),
+            status: .completed,
+            sourceType: .meeting
+        )
+        try transcriptionRepo.save(meeting)
+
+        let result = try await service.regenerateMeetingTitle(existing: meeting)
+
+        XCTAssertEqual(result.fileName, "Updated Product Strategy")
+        XCTAssertEqual(result.derivedTitle, "Updated Product Strategy")
+        XCTAssertEqual(try transcriptionRepo.fetch(id: meeting.id)?.fileName, "Updated Product Strategy")
+        XCTAssertEqual(llm.summarizeCallCount, 1)
+    }
+
     func testTranscribeFileSucceeds() async throws {
         let expectedResult = STTResult(
             text: "This is a transcription",

@@ -148,8 +148,10 @@ public final class TranscriptionLibraryViewModel {
     public private(set) var isBulkOperationInProgress = false
     public private(set) var pendingBulkOperation: BulkTranscriptionOperation?
     public private(set) var retryingMeetingTranscriptionIDs: Set<UUID> = []
+    public private(set) var regeneratingMeetingTitleIDs: Set<UUID> = []
     public private(set) var pendingItemOperationIDs: Set<UUID> = []
     public var onRetryMeetingTranscription: ((Transcription) async throws -> Void)?
+    public var onRegenerateMeetingTitle: ((Transcription) async throws -> Void)?
 
     /// Override for tests; production code uses `Date()`.
     public var nowProvider: @Sendable () -> Date = { Date() }
@@ -503,6 +505,44 @@ public final class TranscriptionLibraryViewModel {
                 self.logger.error(
                     "Failed to retry meeting transcription: \(error.localizedDescription, privacy: .private)")
                 self.errorMessage = "Failed to retry meeting transcription: \(error.localizedDescription)"
+                try? self.refreshLoadedTranscription(id: transcription.id)
+            }
+        }
+    }
+
+    public func isRegeneratingMeetingTitle(_ transcription: Transcription) -> Bool {
+        regeneratingMeetingTitleIDs.contains(transcription.id)
+    }
+
+    @discardableResult
+    public func regenerateMeetingTitle(_ transcription: Transcription) -> Task<Void, Never> {
+        guard transcription.sourceType == .meeting,
+              !regeneratingMeetingTitleIDs.contains(transcription.id)
+        else {
+            return Task {}
+        }
+        guard let regenerate = onRegenerateMeetingTitle, let repo = transcriptionRepo else {
+            errorMessage = "Meeting title regeneration is not available."
+            return Task {}
+        }
+
+        regeneratingMeetingTitleIDs.insert(transcription.id)
+        errorMessage = nil
+
+        return Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.regeneratingMeetingTitleIDs.remove(transcription.id) }
+            do {
+                let full = try await Task.detached(priority: .userInitiated) {
+                    try repo.fetch(id: transcription.id) ?? transcription
+                }.value
+                try await regenerate(full)
+                try self.refreshLoadedTranscription(id: transcription.id)
+            } catch {
+                self.logger.error(
+                    "Failed to regenerate meeting title: \(error.localizedDescription, privacy: .private)"
+                )
+                self.errorMessage = "Failed to regenerate meeting title: \(error.localizedDescription)"
                 try? self.refreshLoadedTranscription(id: transcription.id)
             }
         }

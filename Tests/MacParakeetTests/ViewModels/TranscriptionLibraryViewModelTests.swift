@@ -602,6 +602,51 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.transcriptions.last?.errorMessage)
     }
 
+    // MARK: - Meeting Title Regeneration
+
+    func testRegenerateMeetingTitleReloadsSameRowAfterCallback() async throws {
+        let meeting = Transcription(
+            fileName: "Existing AI Title",
+            rawTranscript: "A complete meeting transcript with enough context for a new title.",
+            status: .completed,
+            sourceType: .meeting
+        )
+        try repo.save(meeting)
+        await load()
+
+        var regeneratedIDs: [UUID] = []
+        vm.onRegenerateMeetingTitle = { transcription in
+            regeneratedIDs.append(transcription.id)
+            try self.repo.updateFileName(id: transcription.id, fileName: "Regenerated AI Title")
+        }
+
+        let regenerationTask = vm.regenerateMeetingTitle(meeting)
+
+        XCTAssertTrue(vm.isRegeneratingMeetingTitle(meeting))
+        await regenerationTask.value
+
+        XCTAssertEqual(regeneratedIDs, [meeting.id])
+        XCTAssertFalse(vm.isRegeneratingMeetingTitle(meeting))
+        XCTAssertEqual(vm.transcriptions.map(\.id), [meeting.id])
+        XCTAssertEqual(vm.transcriptions.first?.fileName, "Regenerated AI Title")
+    }
+
+    func testRegenerateMeetingTitleReportsUnavailableCallback() async throws {
+        let meeting = Transcription(
+            fileName: "Existing AI Title",
+            rawTranscript: "A complete meeting transcript with enough context for a new title.",
+            status: .completed,
+            sourceType: .meeting
+        )
+        try repo.save(meeting)
+        await load()
+
+        await vm.regenerateMeetingTitle(meeting).value
+
+        XCTAssertEqual(vm.errorMessage, "Meeting title regeneration is not available.")
+        XCTAssertFalse(vm.isRegeneratingMeetingTitle(meeting))
+    }
+
     // MARK: - Bulk Selection
 
     func testBeginBulkSelectionToggleClearAndExit() async throws {

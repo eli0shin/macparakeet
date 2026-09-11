@@ -524,6 +524,15 @@ struct TranscriptionLibraryView: View {
         }
 
         if transcription.sourceType == .meeting {
+            Divider()
+
+            Button {
+                viewModel.regenerateMeetingTitle(transcription)
+            } label: {
+                Label("Regenerate Title", systemImage: "sparkles")
+            }
+            .disabled(viewModel.isRegeneratingMeetingTitle(transcription))
+
             let audioState = MeetingAudioFile.state(for: transcription)
             let audioAvailable = audioState == .saved
             let audioRemovable = MeetingAudioFile.isRemovable(for: transcription, state: audioState)

@@ -49,6 +49,25 @@ final class MeetingTitleGeneratorTests: XCTestCase {
         }
     }
 
+    func testExplicitRegenerationReplacesExistingTitle() async throws {
+        let llm = MockLLMService()
+        llm.summarizeResult = "Updated Product Strategy"
+        let generator = MeetingTitleGenerator(
+            llmService: llm,
+            shouldGenerate: { true },
+            logger: .init(subsystem: "com.macparakeet.tests", category: "MeetingTitleGeneratorTests")
+        )
+
+        let title = try await generator.generateTitle(
+            transcript: String(repeating: "enough meeting context ", count: 12),
+            currentTitle: "Existing AI Meeting Title",
+            replacementPolicy: .always
+        )
+
+        XCTAssertEqual(title, "Updated Product Strategy")
+        XCTAssertEqual(llm.summarizeCallCount, 1)
+    }
+
     func testShouldReplaceTimestampFallbackMeetingTitles() {
         XCTAssertTrue(MeetingTitleGenerator.shouldReplaceFallbackMeetingTitle("Meeting"))
         XCTAssertTrue(MeetingTitleGenerator.shouldReplaceFallbackMeetingTitle("Meeting Jun 17, 2026 at 09:59"))

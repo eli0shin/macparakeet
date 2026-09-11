@@ -22,9 +22,20 @@ struct MeetingTitleGenerator: Sendable {
     let shouldGenerate: @Sendable () -> Bool
     let logger: Logger
 
-    func generateTitle(transcript: String, currentTitle: String) async throws -> String? {
+    enum ReplacementPolicy {
+        case fallbackOnly
+        case always
+    }
+
+    func generateTitle(
+        transcript: String,
+        currentTitle: String,
+        replacementPolicy: ReplacementPolicy = .fallbackOnly
+    ) async throws -> String? {
         guard shouldGenerate(), let llmService else { return nil }
-        guard Self.shouldReplaceFallbackMeetingTitle(currentTitle) else { return nil }
+        guard replacementPolicy == .always || Self.shouldReplaceFallbackMeetingTitle(currentTitle) else {
+            return nil
+        }
 
         guard Self.hasEnoughContext(transcript) else { return nil }
 

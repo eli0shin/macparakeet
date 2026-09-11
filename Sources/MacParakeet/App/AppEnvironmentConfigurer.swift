@@ -405,6 +405,12 @@ final class AppEnvironmentConfigurer {
         libraryViewModel.onRetryMeetingTranscription = retryMeetingFinalization
         meetingsWorkspaceViewModel.recentMeetingsViewModel.onRetryMeetingTranscription = retryMeetingFinalization
 
+        let regenerateMeetingTitle: (Transcription) async throws -> Void = { transcription in
+            _ = try await env.transcriptionService.regenerateMeetingTitle(existing: transcription)
+        }
+        libraryViewModel.onRegenerateMeetingTitle = regenerateMeetingTitle
+        meetingsWorkspaceViewModel.recentMeetingsViewModel.onRegenerateMeetingTitle = regenerateMeetingTitle
+
         Task { [weak self] in
             do {
                 let protectedIDs = meetingCoordinator.queuedMeetingTranscriptionIDs

@@ -576,6 +576,19 @@ struct MeetingsView: View {
                 }
             }
         }
+        .alert(
+            "Meeting Action Failed",
+            isPresented: Binding(
+                get: { viewModel.recentMeetingsViewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.recentMeetingsViewModel.errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                viewModel.recentMeetingsViewModel.errorMessage = nil
+            }
+        } message: {
+            Text(viewModel.recentMeetingsViewModel.errorMessage ?? "The meeting action failed.")
+        }
     }
 
     private func openMeeting(_ transcription: Transcription) {
@@ -593,6 +606,13 @@ struct MeetingsView: View {
         } label: {
             Label("Open", systemImage: "doc.text")
         }
+
+        Button {
+            viewModel.recentMeetingsViewModel.regenerateMeetingTitle(transcription)
+        } label: {
+            Label("Regenerate Title", systemImage: "sparkles")
+        }
+        .disabled(viewModel.recentMeetingsViewModel.isRegeneratingMeetingTitle(transcription))
 
         if !viewModel.recentMeetingsViewModel.isBulkSelectionModeEnabled {
             Button {

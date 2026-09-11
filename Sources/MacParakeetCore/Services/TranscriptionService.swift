@@ -44,6 +44,26 @@ public protocol TranscriptionServiceProtocol: Sendable {
         async throws -> Transcription
 }
 
+public enum MeetingTitleRegenerationError: LocalizedError, Sendable {
+    case meetingRequired
+    case alreadyInProgress
+    case transcriptUnavailable
+    case titleUnavailable
+
+    public var errorDescription: String? {
+        switch self {
+        case .meetingRequired:
+            "Only meeting titles can be regenerated."
+        case .alreadyInProgress:
+            "This meeting title is already being regenerated."
+        case .transcriptUnavailable:
+            "This meeting does not have a final transcript to use for title generation."
+        case .titleUnavailable:
+            "The AI provider did not return a usable meeting title. Check the AI provider and try again."
+        }
+    }
+}
+
 public protocol MeetingSpeakerAttributionCorrectingTranscriptionService: Sendable {
     func correctMeetingSpeakerAttribution(
         existing transcription: Transcription,
@@ -282,6 +302,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
     private let meetingCleanedMicrophoneReadinessPolicy: MeetingCleanedMicrophoneReadinessPolicy
     private let meetingFinalizationBenchmarkObserver: MeetingFinalizationBenchmarkObserver?
     private let meetingResidualSuppression: @Sendable () -> MeetingResidualEchoSuppression
+    private var regeneratingMeetingTitleIDs: Set<UUID> = []
 
     public init(
         audioProcessor: AudioProcessorProtocol,
@@ -617,6 +638,43 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 onProgress: onProgress
             )
         }
+    }
+
+    public func regenerateMeetingTitle(existing original: Transcription) async throws -> Transcription {
+        guard original.sourceType == .meeting else {
+            throw MeetingTitleRegenerationError.meetingRequired
+        }
+        guard regeneratingMeetingTitleIDs.insert(original.id).inserted else {
+            throw MeetingTitleRegenerationError.alreadyInProgress
+        }
+        defer { regeneratingMeetingTitleIDs.remove(original.id) }
+
+        var transcription = try transcriptionRepo.fetch(id: original.id) ?? original
+        let transcript = (transcription.cleanTranscript ?? transcription.rawTranscript)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let transcript, !transcript.isEmpty else {
+            throw MeetingTitleRegenerationError.transcriptUnavailable
+        }
+
+        let generator = MeetingTitleGenerator(
+            llmService: llmService,
+            shouldGenerate: { true },
+            logger: logger
+        )
+        guard let generatedTitle = try await generator.generateTitle(
+            transcript: transcript,
+            currentTitle: transcription.fileName,
+            replacementPolicy: .always
+        ) else {
+            throw MeetingTitleRegenerationError.titleUnavailable
+        }
+
+        transcription.fileName = generatedTitle
+        transcription.derivedTitle = generatedTitle
+        transcription.updatedAt = Date()
+        try transcriptionRepo.save(transcription)
+        try await materializeMeetingArtifact(transcription, runAutomationHook: false)
+        return transcription
     }
 
     public func retranscribe(
@@ -2710,20 +2768,27 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         _ transcription: Transcription,
         runAutomationHook: Bool = true
     ) async {
-        guard let meetingArtifactStore else { return }
         do {
-            let promptResults = try promptResultRepo?.fetchAll(transcriptionId: transcription.id) ?? []
-            let artifact = try await meetingArtifactStore.materialize(
-                transcription: transcription,
-                promptResults: promptResults
-            )
-            if runAutomationHook {
-                runMeetingAutomationHookIfConfigured(transcription: transcription, artifact: artifact)
-            }
+            try await materializeMeetingArtifact(transcription, runAutomationHook: runAutomationHook)
         } catch {
             logger.warning(
                 "meeting_artifact_materialize_failed id=\(transcription.id.uuidString, privacy: .public) error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
             )
+        }
+    }
+
+    private func materializeMeetingArtifact(
+        _ transcription: Transcription,
+        runAutomationHook: Bool
+    ) async throws {
+        guard let meetingArtifactStore else { return }
+        let promptResults = try promptResultRepo?.fetchAll(transcriptionId: transcription.id) ?? []
+        let artifact = try await meetingArtifactStore.materialize(
+            transcription: transcription,
+            promptResults: promptResults
+        )
+        if runAutomationHook {
+            runMeetingAutomationHookIfConfigured(transcription: transcription, artifact: artifact)
         }
     }
 
