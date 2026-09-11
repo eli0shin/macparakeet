@@ -63,32 +63,6 @@ private struct ExportConfirmation: Identifiable {
     let title: String
 }
 
-private struct RetranscriptionConfirmation: Identifiable {
-    let id = UUID()
-    let transcriptionID: UUID
-    let speechEngineOverride: SpeechEngineSelection?
-
-    var title: String {
-        if let speechEngineOverride {
-            "Try with \(speechEngineOverride.engine.displayName)?"
-        } else {
-            "Retranscribe this file?"
-        }
-    }
-
-    var confirmLabel: String {
-        if let speechEngineOverride {
-            "Try with \(speechEngineOverride.engine.displayName)"
-        } else {
-            "Retranscribe"
-        }
-    }
-
-    var message: String {
-        "Replaces this transcript. Prompts and chats are preserved."
-    }
-}
-
 private enum TranscriptDisplayMode: String, CaseIterable, Hashable {
     case text = "Text"
     case timed = "Timed"
@@ -109,15 +83,15 @@ func shouldDefaultToMeetingReadingSurface(
     isCompletedMeeting && !isTranscriptEdited && hasReadingTurns
 }
 
-/// Records the user's engine choice from the retranscribe popover so the
-/// confirmation alert can be presented in a *separate* render cycle from
-/// the popover dismissal — chaining popover → alert in the same cycle on
-/// macOS reliably drops the alert. The single `override` field carries
-/// nil when the user picked the primary engine (no override needed) and
-/// `.some` when they picked the alternative.
-private struct RetranscribePick: Sendable {
-    let transcriptionID: UUID
-    let override: SpeechEngineSelection?
+func performRetranscriptionSelection(
+    transcription: Transcription,
+    selection: SpeechEngineSelection,
+    isPrimary: Bool,
+    primaryReflectsTranscriptEngine: Bool,
+    onRetranscribe: ((Transcription, SpeechEngineSelection?) -> Void)?
+) {
+    let override = isPrimary && !primaryReflectsTranscriptEngine ? nil : selection
+    onRetranscribe?(transcription, override)
 }
 
 struct MeetingTimedTranscriptRecoveryBannerPresentation: Equatable {
@@ -291,9 +265,7 @@ struct TranscriptResultView: View {
     @State private var scrollMonitor: Any?
     @State private var showPromptLibrary = false
     @State private var showGeneratePopover = false
-    @State private var retranscriptionConfirmation: RetranscriptionConfirmation?
     @State private var showingRetranscribeOptions = false
-    @State private var pendingRetranscribePick: RetranscribePick?
     @State private var showingSpeakerCountCorrection = false
     @State private var speakerCorrectionSource: AudioSource = .system
     @State private var microphoneSpeakerDetection = false
@@ -737,35 +709,23 @@ struct TranscriptResultView: View {
                TranscriptDetailActionAvailability.canRetranscribe(
                    hasRetainedAudio: FileManager.default.fileExists(atPath: filePath),
                    status: activeTranscription.status
-               ) {
-                let engineOption = viewModel.retranscriptionEngineOption(for: activeTranscription)
+               ), let engineOption = viewModel.retranscriptionEngineOption(for: activeTranscription) {
                 Button {
-                    if engineOption != nil {
-                        showingRetranscribeOptions.toggle()
-                    } else {
-                        retranscriptionConfirmation = RetranscriptionConfirmation(
-                            transcriptionID: activeTranscription.id,
-                            speechEngineOverride: nil
-                        )
-                    }
+                    showingRetranscribeOptions.toggle()
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.trianglehead.2.clockwise")
                         Text("Retranscribe")
-                        if engineOption != nil {
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 2)
-                        }
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 2)
                     }
                 }
                 .parakeetAction(.secondary)
-                .help(engineOption != nil ? "Choose a speech engine for this rerun" : "Retranscribe this file")
+                .help("Choose a speech engine for this rerun")
                 .popover(isPresented: $showingRetranscribeOptions, arrowEdge: .top) {
-                    if let engineOption {
-                        retranscribeOptionsPopover(for: engineOption)
-                    }
+                    retranscribeOptionsPopover(for: engineOption)
                 }
             }
 
@@ -798,38 +758,8 @@ struct TranscriptResultView: View {
             }
         }
         .padding(DesignSystem.Spacing.md)
-        .onChange(of: showingRetranscribeOptions) { _, isOpen in
-            // Picker → alert handoff: the picker popover stores the user's
-            // choice in `pendingRetranscribePick` then closes itself. We hop
-            // through Task { @MainActor } so the popover-dismiss render
-            // cycle finishes before the alert tries to present — without the
-            // hop, SwiftUI on macOS reliably drops the alert.
-            guard !isOpen, let pick = pendingRetranscribePick else { return }
-            pendingRetranscribePick = nil
-            Task { @MainActor in
-                retranscriptionConfirmation = RetranscriptionConfirmation(
-                    transcriptionID: pick.transcriptionID,
-                    speechEngineOverride: pick.override
-                )
-            }
-        }
         .onChange(of: transcription.id) {
-            pendingRetranscribePick = nil
-            retranscriptionConfirmation = nil
             showingRetranscribeOptions = false
-        }
-        .alert(
-            retranscriptionConfirmation?.title ?? "Retranscribe this file?",
-            isPresented: isRetranscriptionConfirmationPresented,
-            presenting: retranscriptionConfirmation
-        ) { confirmation in
-            Button(confirmation.confirmLabel, role: .destructive) {
-                guard confirmation.transcriptionID == transcription.id else { return }
-                onRetranscribe?(activeTranscription, confirmation.speechEngineOverride)
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: { confirmation in
-            Text(confirmation.message)
         }
         .alert(MeetingDeletionCopy.audioOnlyAlertTitle, isPresented: $pendingDeleteMeetingAudio) {
             Button("Cancel", role: .cancel) {}
@@ -885,17 +815,6 @@ struct TranscriptResultView: View {
         .foregroundStyle(copied ? DesignSystem.Colors.successGreen : .primary)
     }
 
-    private var isRetranscriptionConfirmationPresented: Binding<Bool> {
-        Binding(
-            get: { retranscriptionConfirmation?.transcriptionID == transcription.id },
-            set: { isPresented in
-                if !isPresented {
-                    retranscriptionConfirmation = nil
-                }
-            }
-        )
-    }
-
     private func retranscribeOptionsPopover(
         for option: TranscriptionViewModel.RetranscriptionEngineOption
     ) -> some View {
@@ -926,8 +845,6 @@ struct TranscriptResultView: View {
                         parakeetVariant: option.parakeetVariant,
                         isPrimary: choice.isPrimary,
                         primaryReflectsTranscriptEngine: option.primaryReflectsTranscriptEngine,
-                        isAvailable: choice.isAvailable,
-                        unavailableReason: choice.unavailableReason,
                         advisory: choice.advisory
                     ) {
                         selectRetranscribeEngine(
@@ -1111,12 +1028,14 @@ struct TranscriptResultView: View {
         // user's Final Transcription default) reruns through the plain
         // current-settings path, so its variant and language follow whatever
         // the user has set now.
-        let override: SpeechEngineSelection? =
-            (choice.isPrimary && !reflectsTranscriptEngine) ? nil : choice.selection
-        pendingRetranscribePick = RetranscribePick(transcriptionID: transcription.id, override: override)
         showingRetranscribeOptions = false
-        // Confirmation alert is presented from the .onChange handler that
-        // observes showingRetranscribeOptions flipping to false — see actionBar.
+        performRetranscriptionSelection(
+            transcription: activeTranscription,
+            selection: choice.selection,
+            isPrimary: choice.isPrimary,
+            primaryReflectsTranscriptEngine: reflectsTranscriptEngine,
+            onRetranscribe: onRetranscribe
+        )
     }
 
     private var activeTranscription: Transcription {
@@ -3246,10 +3165,7 @@ struct TranscriptResultView: View {
 
             if let action = presentation.action {
                 Button {
-                    retranscriptionConfirmation = RetranscriptionConfirmation(
-                        transcriptionID: activeTranscription.id,
-                        speechEngineOverride: action.selection
-                    )
+                    onRetranscribe?(activeTranscription, action.selection)
                 } label: {
                     Label(
                         action.title,
@@ -4408,8 +4324,6 @@ private struct EngineOptionCard: View {
     /// the transcript ("Original") rather than a fall-back to the user's current
     /// default ("Current"). Ignored on non-primary cards.
     let primaryReflectsTranscriptEngine: Bool
-    let isAvailable: Bool
-    let unavailableReason: String?
     let advisory: String?
     let onSelect: () -> Void
 
@@ -4473,9 +4387,6 @@ private struct EngineOptionCard: View {
                                 tint: DesignSystem.Colors.accent
                             )
                         }
-                        if !isAvailable {
-                            EngineBadge(text: "Unavailable", tint: DesignSystem.Colors.warningAmber)
-                        }
                     }
                     .lineLimit(1)
 
@@ -4491,7 +4402,7 @@ private struct EngineOptionCard: View {
                             .foregroundStyle(DesignSystem.Colors.textTertiary)
                     }
 
-                    if let advisory, isAvailable {
+                    if let advisory {
                         Text(advisory)
                             .font(DesignSystem.Typography.caption)
                             .foregroundStyle(DesignSystem.Colors.textTertiary)
@@ -4499,14 +4410,6 @@ private struct EngineOptionCard: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    if let unavailableReason, !isAvailable {
-                        Text(unavailableReason)
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, 1)
-                    }
                 }
 
                 Spacer(minLength: 0)
@@ -4525,9 +4428,7 @@ private struct EngineOptionCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!isAvailable)
         .onHover { isHovering in
-            guard isAvailable else { return }
             withAnimation(DesignSystem.Animation.hoverTransition) {
                 hovering = isHovering
             }
@@ -4538,9 +4439,6 @@ private struct EngineOptionCard: View {
     }
 
     private var helpText: String {
-        if !isAvailable {
-            return unavailableReason ?? "Unavailable for this rerun."
-        }
         if let advisory {
             return "\(advisory) Rerun with \(selection.engine.displayName)."
         }
@@ -4548,25 +4446,18 @@ private struct EngineOptionCard: View {
     }
 
     private var iconColor: Color {
-        guard isAvailable else { return DesignSystem.Colors.textTertiary }
-        return DesignSystem.Colors.accent
+        DesignSystem.Colors.accent
     }
 
     private var titleColor: Color {
-        isAvailable ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary
+        DesignSystem.Colors.textPrimary
     }
 
     private var backgroundFill: Color {
-        if !isAvailable {
-            return DesignSystem.Colors.surfaceElevated.opacity(0.5)
-        }
         return hovering ? DesignSystem.Colors.accentLight : DesignSystem.Colors.surfaceElevated
     }
 
     private var borderColor: Color {
-        if !isAvailable {
-            return DesignSystem.Colors.border.opacity(0.6)
-        }
         return hovering ? DesignSystem.Colors.accent.opacity(0.5) : DesignSystem.Colors.border
     }
 
@@ -4575,14 +4466,10 @@ private struct EngineOptionCard: View {
         if isPrimary {
             parts.append(primaryReflectsTranscriptEngine ? "engine used for this transcript" : "current engine")
         }
-        if !isAvailable { parts.append("unavailable") }
         return parts.joined(separator: ", ")
     }
 
     private var accessibilityHint: String {
-        if !isAvailable {
-            return unavailableReason ?? "Unavailable for this rerun."
-        }
         if let advisory {
             return "\(advisory) Reruns this transcription with \(selection.engine.displayName)."
         }

@@ -2630,7 +2630,8 @@ final class TranscriptionViewModelTests: XCTestCase {
 
         viewModel = TranscriptionViewModel(
             isWhisperModelDownloaded: { true },
-            isNemotronModelDownloaded: { true }
+            isNemotronModelDownloaded: { true },
+            isCohereModelDownloaded: { true }
         )
         let original = Transcription(
             id: UUID(),
@@ -2647,8 +2648,6 @@ final class TranscriptionViewModelTests: XCTestCase {
         XCTAssertEqual(option.primaryEngine, SpeechEngineSelection(engine: .whisper, language: "ko"))
         XCTAssertEqual(option.choices.map(\.selection.engine), [.whisper, .parakeet, .nemotron, .cohere])
         XCTAssertTrue(try retranscriptionChoice(.whisper, in: option).isPrimary)
-        XCTAssertTrue(try retranscriptionChoice(.parakeet, in: option).isAvailable)
-        XCTAssertTrue(try retranscriptionChoice(.nemotron, in: option).isAvailable)
         XCTAssertEqual(option.title, "Retranscribe with speech engine")
     }
 
@@ -2745,7 +2744,8 @@ final class TranscriptionViewModelTests: XCTestCase {
         viewModel = TranscriptionViewModel(
             defaults: defaults,
             isWhisperModelDownloaded: { true },
-            isNemotronModelDownloaded: { true }
+            isNemotronModelDownloaded: { true },
+            isCohereModelDownloaded: { true }
         )
 
         let tmpFile = FileManager.default.temporaryDirectory
@@ -3010,7 +3010,8 @@ final class TranscriptionViewModelTests: XCTestCase {
         viewModel = TranscriptionViewModel(
             defaults: defaults,
             isWhisperModelDownloaded: { true },
-            isNemotronModelDownloaded: { true }
+            isNemotronModelDownloaded: { true },
+            isCohereModelDownloaded: { true }
         )
 
         let tmpFile = FileManager.default.temporaryDirectory
@@ -3037,7 +3038,7 @@ final class TranscriptionViewModelTests: XCTestCase {
         XCTAssertTrue(try retranscriptionChoice(.whisper, in: option).isPrimary)
     }
 
-    func testRetranscriptionEngineOptionIncludesNemotronButDisablesItWhenMissing() throws {
+    func testRetranscriptionEngineOptionOmitsMissingNemotronFromMeetingPicker() throws {
         let archivedMeeting = try makeArchivedMeetingRecording(
             speechEngine: SpeechEngineSelection(engine: .parakeet)
         )
@@ -3045,7 +3046,8 @@ final class TranscriptionViewModelTests: XCTestCase {
 
         viewModel = TranscriptionViewModel(
             isWhisperModelDownloaded: { true },
-            isNemotronModelDownloaded: { false }
+            isNemotronModelDownloaded: { false },
+            isCohereModelDownloaded: { true }
         )
         let original = Transcription(
             id: UUID(),
@@ -3059,18 +3061,12 @@ final class TranscriptionViewModelTests: XCTestCase {
 
         let option = try XCTUnwrap(viewModel.retranscriptionEngineOption(for: original))
 
-        XCTAssertEqual(option.choices.map(\.selection.engine), [.parakeet, .nemotron, .whisper, .cohere])
+        XCTAssertEqual(option.choices.map(\.selection.engine), [.parakeet, .whisper, .cohere])
         XCTAssertTrue(try retranscriptionChoice(.parakeet, in: option).isPrimary)
-        XCTAssertTrue(try retranscriptionChoice(.whisper, in: option).isAvailable)
-        let nemotron = try retranscriptionChoice(.nemotron, in: option)
-        XCTAssertFalse(nemotron.isAvailable)
-        XCTAssertEqual(
-            nemotron.unavailableReason,
-            "Download the Nemotron model in Settings before trying Nemotron."
-        )
+        XCTAssertFalse(option.choices.contains { $0.selection.engine == .nemotron })
     }
 
-    func testRetranscriptionEngineOptionIncludesNemotronWhenDownloaded() throws {
+    func testRetranscriptionEngineOptionIncludesDownloadedNemotron() throws {
         let archivedMeeting = try makeArchivedMeetingRecording(
             speechEngine: SpeechEngineSelection(engine: .parakeet)
         )
@@ -3078,7 +3074,8 @@ final class TranscriptionViewModelTests: XCTestCase {
 
         viewModel = TranscriptionViewModel(
             isWhisperModelDownloaded: { true },
-            isNemotronModelDownloaded: { true }
+            isNemotronModelDownloaded: { true },
+            isCohereModelDownloaded: { true }
         )
         let original = Transcription(
             id: UUID(),
@@ -3093,9 +3090,7 @@ final class TranscriptionViewModelTests: XCTestCase {
         let option = try XCTUnwrap(viewModel.retranscriptionEngineOption(for: original))
 
         XCTAssertEqual(option.choices.map(\.selection.engine), [.parakeet, .nemotron, .whisper, .cohere])
-        XCTAssertTrue(try retranscriptionChoice(.nemotron, in: option).isAvailable)
-        XCTAssertNil(try retranscriptionChoice(.nemotron, in: option).unavailableReason)
-        XCTAssertTrue(try retranscriptionChoice(.whisper, in: option).isAvailable)
+        XCTAssertNotNil(try retranscriptionChoice(.nemotron, in: option))
     }
 
     func testRetranscriptionEngineOptionAdvisesColdWhisperSwitch() throws {
@@ -3131,15 +3126,13 @@ final class TranscriptionViewModelTests: XCTestCase {
         let option = try XCTUnwrap(viewModel.retranscriptionEngineOption(for: original))
         let whisper = try retranscriptionChoice(.whisper, in: option)
 
-        XCTAssertTrue(whisper.isAvailable)
-        XCTAssertNil(whisper.unavailableReason)
         XCTAssertEqual(
             whisper.advisory,
             "First run may spend a few minutes preparing this Whisper model."
         )
     }
 
-    func testRetranscriptionEngineOptionDisablesMissingWhisperModel() throws {
+    func testRetranscriptionEngineOptionOmitsMissingWhisperFromMeetingPicker() throws {
         let archivedMeeting = try makeArchivedMeetingRecording(
             speechEngine: SpeechEngineSelection(engine: .nemotron)
         )
@@ -3147,7 +3140,8 @@ final class TranscriptionViewModelTests: XCTestCase {
 
         viewModel = TranscriptionViewModel(
             isWhisperModelDownloaded: { false },
-            isNemotronModelDownloaded: { true }
+            isNemotronModelDownloaded: { true },
+            isCohereModelDownloaded: { true }
         )
         let original = Transcription(
             id: UUID(),
@@ -3161,16 +3155,9 @@ final class TranscriptionViewModelTests: XCTestCase {
 
         let option = try XCTUnwrap(viewModel.retranscriptionEngineOption(for: original))
 
-        XCTAssertEqual(option.choices.map(\.selection.engine), [.nemotron, .parakeet, .whisper, .cohere])
+        XCTAssertEqual(option.choices.map(\.selection.engine), [.nemotron, .parakeet, .cohere])
         XCTAssertTrue(try retranscriptionChoice(.nemotron, in: option).isPrimary)
-        let whisper = try retranscriptionChoice(.whisper, in: option)
-        XCTAssertFalse(whisper.isAvailable)
-        XCTAssertEqual(
-            whisper.unavailableReason,
-            "Download the Whisper model in Settings before trying Whisper."
-        )
-        XCTAssertNil(whisper.advisory)
-        XCTAssertTrue(try retranscriptionChoice(.parakeet, in: option).isAvailable)
+        XCTAssertFalse(option.choices.contains { $0.selection.engine == .whisper })
     }
 
     func testRetranscriptionEngineOptionAvailableForYouTubeSource() throws {
@@ -3182,7 +3169,8 @@ final class TranscriptionViewModelTests: XCTestCase {
         viewModel = TranscriptionViewModel(
             defaults: defaults,
             isWhisperModelDownloaded: { true },
-            isNemotronModelDownloaded: { true }
+            isNemotronModelDownloaded: { true },
+            isCohereModelDownloaded: { true }
         )
 
         let tmpFile = FileManager.default.temporaryDirectory
@@ -3208,8 +3196,6 @@ final class TranscriptionViewModelTests: XCTestCase {
             try retranscriptionChoice(.nemotron, in: option).selection,
             SpeechEngineSelection(engine: .nemotron, language: "en-US")
         )
-        XCTAssertTrue(try retranscriptionChoice(.nemotron, in: option).isAvailable)
-        XCTAssertTrue(try retranscriptionChoice(.whisper, in: option).isAvailable)
     }
 
     func testRetranscriptionEngineOptionAvailableForFileSource() throws {
@@ -3221,7 +3207,8 @@ final class TranscriptionViewModelTests: XCTestCase {
         viewModel = TranscriptionViewModel(
             defaults: defaults,
             isWhisperModelDownloaded: { true },
-            isNemotronModelDownloaded: { true }
+            isNemotronModelDownloaded: { true },
+            isCohereModelDownloaded: { true }
         )
 
         let tmpFile = FileManager.default.temporaryDirectory
@@ -3247,7 +3234,6 @@ final class TranscriptionViewModelTests: XCTestCase {
             try retranscriptionChoice(.parakeet, in: option).selection,
             SpeechEngineSelection(engine: .parakeet)
         )
-        XCTAssertTrue(try retranscriptionChoice(.nemotron, in: option).isAvailable)
     }
 
     func testRetranscriptionCohereChoiceCarriesStoredLanguage() throws {
@@ -3262,7 +3248,8 @@ final class TranscriptionViewModelTests: XCTestCase {
         viewModel = TranscriptionViewModel(
             defaults: defaults,
             isWhisperModelDownloaded: { true },
-            isNemotronModelDownloaded: { true }
+            isNemotronModelDownloaded: { true },
+            isCohereModelDownloaded: { true }
         )
 
         let tmpFile = FileManager.default.temporaryDirectory
@@ -3287,7 +3274,7 @@ final class TranscriptionViewModelTests: XCTestCase {
         )
     }
 
-    func testRetranscriptionEngineOptionDisablesMissingCohereModel() throws {
+    func testRetranscriptionEngineOptionOmitsMissingCohereFromLibraryPicker() throws {
         let suiteName = "TranscriptionViewModelTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -3315,12 +3302,8 @@ final class TranscriptionViewModelTests: XCTestCase {
         )
 
         let option = try XCTUnwrap(viewModel.retranscriptionEngineOption(for: original))
-        let cohere = try retranscriptionChoice(.cohere, in: option)
-        XCTAssertFalse(cohere.isAvailable)
-        XCTAssertEqual(
-            cohere.unavailableReason,
-            "Download Cohere Transcribe in Settings before trying Cohere."
-        )
+        XCTAssertEqual(option.choices.map(\.selection.engine), [.parakeet, .nemotron, .whisper])
+        XCTAssertFalse(option.choices.contains { $0.selection.engine == .cohere })
     }
 
     func testRetranscriptionEngineOptionNilWhenFileMissing() {

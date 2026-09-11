@@ -20,8 +20,6 @@ public final class TranscriptionViewModel {
             public let selection: SpeechEngineSelection
             public let capabilities: SpeechEngineCapabilities
             public let isPrimary: Bool
-            public let isAvailable: Bool
-            public let unavailableReason: String?
             public let advisory: String?
 
             public var id: String {
@@ -52,9 +50,7 @@ public final class TranscriptionViewModel {
         }
 
         public var firstTimestampCapableChoice: Choice? {
-            choices.first { choice in
-                choice.isAvailable && choice.capabilities.providesWordTimestamps
-            }
+            choices.first { $0.capabilities.providesWordTimestamps }
         }
 
         public func producesWordTimestamps(_ selection: SpeechEngineSelection) -> Bool {
@@ -743,7 +739,7 @@ public final class TranscriptionViewModel {
         let nemotronVariant = SpeechEnginePreference.nemotronModelVariant(defaults: defaults)
         let whisperVariant = SpeechEnginePreference.whisperModelVariant(defaults: defaults)
 
-        let choices = retranscriptionEngineOrder(primary: primaryEngine.engine).map { engine in
+        let choices: [RetranscriptionEngineOption.Choice] = retranscriptionEngineOrder(primary: primaryEngine.engine).compactMap { engine in
             let selection = SpeechEngineSelection(
                 engine: engine,
                 language: Self.retranscriptionLanguage(for: engine, defaults: defaults)
@@ -756,14 +752,12 @@ public final class TranscriptionViewModel {
             ) else {
                 preconditionFailure("Missing SpeechEngineCapabilities row for \(engine.rawValue)")
             }
-            let unavailableReason = retranscriptionUnavailableReason(for: engine)
+            guard retranscriptionUnavailableReason(for: engine) == nil else { return nil }
             return RetranscriptionEngineOption.Choice(
                 selection: engine == primaryEngine.engine ? primaryEngine : selection,
                 capabilities: capabilities,
                 isPrimary: engine == primaryEngine.engine,
-                isAvailable: unavailableReason == nil,
-                unavailableReason: unavailableReason,
-                advisory: retranscriptionAdvisory(for: engine, unavailableReason: unavailableReason)
+                advisory: retranscriptionAdvisory(for: engine)
             )
         }
 
@@ -805,12 +799,8 @@ public final class TranscriptionViewModel {
         }
     }
 
-    private func retranscriptionAdvisory(
-        for engine: SpeechEnginePreference,
-        unavailableReason: String?
-    ) -> String? {
+    private func retranscriptionAdvisory(for engine: SpeechEnginePreference) -> String? {
         guard engine == .whisper,
-              unavailableReason == nil,
               SpeechEnginePreference.isColdSwitch(to: .whisper, defaults: defaults) else {
             return nil
         }
