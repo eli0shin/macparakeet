@@ -56,3 +56,11 @@ receives the snapshot but does not render it.
 - Searching or filtering by calendar title, participant, organizer, or service.
 - Editing Calendar events from MacParakeet.
 - Reconstructing calendar context for historical meetings that never saved it.
+
+## Resolution
+
+Implemented by PR #70 and squash-merged as `19d10b59`. Required CI passed for
+head `db2bea55`. Recent Meetings now shows confirmed or probable calendar
+connection state, and saved meeting detail presents the available schedule,
+service, organizer, participants, confidence, and safe meeting-link action.
+List loading retains only bounded match data; full context loads on demand.
