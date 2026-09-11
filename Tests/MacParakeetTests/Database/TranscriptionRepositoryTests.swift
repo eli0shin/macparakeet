@@ -652,6 +652,46 @@ final class TranscriptionRepositoryTests: XCTestCase {
                 + "fullTranscriptBytes=\(fullTranscriptBytes) listElapsed=\(listElapsed) retainedTranscriptBytes=0")
     }
 
+    func testMeetingLibraryListProjectionIncludesOnlyCalendarMatchConfidence() throws {
+        let meeting = Transcription(
+            fileName: "Calendar Meeting",
+            status: .completed,
+            sourceType: .meeting,
+            calendarEventSnapshot: MeetingCalendarSnapshot(
+                confidence: .probable,
+                eventIdentifier: String(repeating: "event", count: 1_000),
+                title: String(repeating: "Planning ", count: 1_000),
+                scheduledStartAt: Date(timeIntervalSince1970: 1_720_000_000),
+                scheduledEndAt: Date(timeIntervalSince1970: 1_720_003_600),
+                attendees: (0..<1_000).map {
+                    MeetingCalendarPerson(name: "Person \($0)", email: "person\($0)@example.com")
+                },
+                organizer: MeetingCalendarPerson(name: "Organizer", email: "organizer@example.com"),
+                meetingURL: "https://zoom.us/j/123456789",
+                meetingService: "Zoom"
+            )
+        )
+        try repo.save(meeting)
+
+        let item = try XCTUnwrap(
+            repo.fetchLibraryListPage(
+                query: TranscriptionLibraryQuery(sourceType: .meeting, limit: 10)
+            ).items.first)
+        let listSnapshot = try XCTUnwrap(item.calendarEventSnapshot)
+
+        XCTAssertEqual(listSnapshot.confidence, .probable)
+        XCTAssertTrue(listSnapshot.eventIdentifier.isEmpty)
+        XCTAssertTrue(listSnapshot.title.isEmpty)
+        XCTAssertTrue(listSnapshot.attendees.isEmpty)
+        XCTAssertNil(listSnapshot.organizer)
+        XCTAssertNil(listSnapshot.meetingURL)
+        XCTAssertNil(listSnapshot.meetingService)
+
+        let fullSnapshot = try XCTUnwrap(repo.fetch(id: meeting.id)?.calendarEventSnapshot)
+        XCTAssertEqual(fullSnapshot.attendees.count, 1_000)
+        XCTAssertEqual(fullSnapshot.meetingURL, "https://zoom.us/j/123456789")
+    }
+
     func testLegacyMeetingListPreviewIsBoundedAndReflectsCustomWords() throws {
         let meeting = Transcription(
             fileName: "Legacy Meeting",

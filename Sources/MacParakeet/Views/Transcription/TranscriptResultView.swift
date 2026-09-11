@@ -1587,6 +1587,11 @@ struct TranscriptResultView: View {
                         chatConfigurationBanner
                     }
 
+                    if activeTranscription.sourceType == .meeting,
+                       let calendarSnapshot = activeTranscription.calendarEventSnapshot {
+                        SavedMeetingCalendarContextSection(snapshot: calendarSnapshot)
+                    }
+
                     if let userNotes = activeTranscription.userNotes,
                        !userNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         meetingNotesSection(userNotes)
