@@ -80,14 +80,11 @@ reuse.
 Cache keys include:
 
 - The lane: Swift 6 debug/tests or optimized release.
-- Actual Swift and Xcode versions, SDK build, macOS build, architecture,
-  selected developer directory, and absolute checkout path.
+- Actual Swift and Xcode versions, SDK build, architecture, selected developer
+  directory, and absolute checkout path.
 - Package manifest and lockfile contents.
-- Workflow, setup action, and cache-key implementation contents. This includes
-  the compiler flags and optional dependency routes declared in the workflow.
 
-There is no compiled-cache prefix fallback across incompatible inputs. On a
-miss, the old source dependency cache can seed a cold build. Compatible keys
+There is no cache fallback. Compatible keys
 are stable across source commits: we do not upload a large archive on every PR
 update. GitHub saves a new compiled cache only after the complete job succeeds.
 Cache scope follows GitHub's branch rules: main can seed later PRs; one PR's

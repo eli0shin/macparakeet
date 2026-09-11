@@ -9,14 +9,9 @@ from pathlib import Path
 import subprocess
 
 
-# Build flags and gated dependency routes live in the workflow. Include the
-# cache implementation itself so policy changes cannot reuse an old archive.
 INPUTS = (
     "Package.swift",
     "Package.resolved",
-    ".github/workflows/ci.yml",
-    ".github/actions/setup-swift/action.yml",
-    "scripts/ci/build_cache.py",
 )
 LANES = ("debug-tests", "release")
 
@@ -37,7 +32,6 @@ def fingerprint(root, lane):
         "xcode": ["xcodebuild", "-version"],
         "developer_dir": ["xcode-select", "-p"],
         "sdk": ["xcrun", "--sdk", "macosx", "--show-sdk-build-version"],
-        "os": ["sw_vers", "-buildVersion"],
         "architecture": ["uname", "-m"],
     }
     context = {name: subprocess.check_output(command, text=True).strip()

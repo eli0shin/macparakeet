@@ -27,21 +27,7 @@ runs:
       with:
         path: .build
         key: ${{ steps.fingerprint.outputs.key }}
-        # No prefix fallback: incompatible flags, toolchains, or dependency
-        # graphs must start cold. Saves occur only after a successful job.
-    - name: Seed a cold build from dependency sources
-      if: steps.compiled.outputs.cache-hit != 'true'
-      uses: actions/cache/restore@v5
-      with:
-        path: |
-          .build/checkouts
-          .build/repositories
-          .build/artifacts
-          .build/workspace-state.json
-          ~/Library/Caches/org.swift.swiftpm
-        key: ${{ runner.os }}-${{ runner.arch }}-xcode26.5-spm-v2-${{ hashFiles('Package.swift', 'Package.resolved') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-xcode26.5-spm-v2-
+        # No prefix fallback. Saves occur only after a successful job.
     - name: Report cache restore
       shell: bash
       env:
