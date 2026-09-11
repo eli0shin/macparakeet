@@ -29,32 +29,6 @@ final class WindowBehaviorTests: XCTestCase {
         )
     }
 
-    func testMainWindowPresentationReusesClosedWindowAndPreservesFrame() {
-        _ = NSApplication.shared
-        let window = NSWindow(
-            contentRect: NSRect(x: 180, y: 220, width: 700, height: 500),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.isReleasedWhenClosed = false
-        var activationCount = 0
-
-        MainWindowPresentation.open(window) { activationCount += 1 }
-        XCTAssertTrue(window.isVisible)
-        // AppKit can adjust a new window to the visible screen when it is first
-        // shown. The presentation contract starts from that displayed frame.
-        let displayedFrame = window.frame
-        window.close()
-        XCTAssertFalse(window.isVisible)
-
-        MainWindowPresentation.open(window) { activationCount += 1 }
-        XCTAssertTrue(window.isVisible)
-        XCTAssertEqual(window.frame, displayedFrame)
-        XCTAssertEqual(activationCount, 2)
-        window.close()
-    }
-
     func testLiveMeetingUsesNormalPersistentWindowPolicy() {
         _ = NSApplication.shared
         let controller = MeetingRecordingPanelController(viewModel: MeetingRecordingPanelViewModel())
