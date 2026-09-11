@@ -185,20 +185,25 @@ public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizin
         try PipelineStageCapture.current?.writeFluidAudio(fluidResult)
         #endif
 
-        // Sort by start time before assigning stable IDs so "S1" is the
-        // first speaker to *talk* (chronologically), not the first speaker
-        // to appear in whatever order FluidAudio's offline pipeline happens
-        // to return segments. FluidAudio doesn't formally document the
-        // ordering of its `segments` array, so we don't rely on it.
-        let chronologicalSegments = fluidResult.segments.sorted { lhs, rhs in
+        // Sort and convert before filtering so duration rules use exact
+        // millisecond boundaries. Regions below 200 ms are timing noise. A
+        // speaker needs at least two seconds of remaining evidence.
+        let modelSegments = fluidResult.segments.sorted { lhs, rhs in
             lhs.startTimeSeconds < rhs.startTimeSeconds
+        }.map { segment in
+            SpeakerSegment(
+                speakerId: segment.speakerId,
+                startMs: max(0, Int((segment.startTimeSeconds * 1000).rounded())),
+                endMs: max(0, Int((segment.endTimeSeconds * 1000).rounded()))
+            )
         }
+        let supportedSegments = Self.filterUnsupportedSpeakerEvidence(modelSegments)
 
-        // Collect unique speaker IDs from FluidAudio (e.g. "speaker_0", "speaker_1")
-        // and normalize to stable IDs ("S1", "S2") in chronological encounter order.
+        // Assign stable IDs after filtering so S1 is the first supported speaker
+        // to talk, not a discarded model speaker.
         var idMapping: [String: String] = [:]
         var nextIndex = 1
-        for segment in chronologicalSegments {
+        for segment in supportedSegments {
             if idMapping[segment.speakerId] == nil {
                 idMapping[segment.speakerId] = "S\(nextIndex)"
                 nextIndex += 1
@@ -209,11 +214,12 @@ public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizin
         try PipelineStageCapture.current?.write(idMapping, to: "04-speaker-id-map.json")
         #endif
 
-        let segments: [SpeakerSegment] = chronologicalSegments.map { seg in
-            let mappedId = idMapping[seg.speakerId] ?? seg.speakerId
-            let startMs = max(0, Int((seg.startTimeSeconds * 1000).rounded()))
-            let endMs = max(0, Int((seg.endTimeSeconds * 1000).rounded()))
-            return SpeakerSegment(speakerId: mappedId, startMs: startMs, endMs: endMs)
+        let segments = supportedSegments.map { segment in
+            SpeakerSegment(
+                speakerId: idMapping[segment.speakerId] ?? segment.speakerId,
+                startMs: segment.startMs,
+                endMs: segment.endMs
+            )
         }
 
         let speakers: [SpeakerInfo] = idMapping
@@ -228,6 +234,23 @@ public actor DiarizationService: DiarizationServiceProtocol, MeetingLiveDiarizin
             speakerCount: speakers.count,
             speakers: speakers
         )
+    }
+
+    nonisolated static func filterUnsupportedSpeakerEvidence(
+        _ segments: [SpeakerSegment]
+    ) -> [SpeakerSegment] {
+        let minimumRegionDurationMs = 200
+        let minimumSpeakerDurationMs = 2_000
+        let durationQualified = segments.filter {
+            $0.endMs - $0.startMs >= minimumRegionDurationMs
+        }
+        let durationBySpeaker = durationQualified.reduce(into: [String: Int]()) { totals, segment in
+            totals[segment.speakerId, default: 0] += segment.endMs - segment.startMs
+        }
+        let supportedSpeakers = Set(durationBySpeaker.compactMap { speakerID, duration in
+            duration >= minimumSpeakerDurationMs ? speakerID : nil
+        })
+        return durationQualified.filter { supportedSpeakers.contains($0.speakerId) }
     }
 
     public func prepareModels(onProgress: (@Sendable (String) -> Void)? = nil) async throws {

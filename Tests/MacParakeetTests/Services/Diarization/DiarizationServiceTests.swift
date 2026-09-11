@@ -114,6 +114,21 @@ final class DiarizationServiceTests: XCTestCase {
         XCTAssertEqual(config.clustering.numSpeakers, 4)
     }
 
+    func testDropsShortRegionsAndSpeakersBeforeAssigningStableIDs() {
+        let segments = [
+            SpeakerSegment(speakerId: "flapping", startMs: 0, endMs: 199),
+            SpeakerSegment(speakerId: "brief", startMs: 1_000, endMs: 1_800),
+            SpeakerSegment(speakerId: "brief", startMs: 2_000, endMs: 3_199),
+            SpeakerSegment(speakerId: "stable", startMs: 4_000, endMs: 4_200),
+            SpeakerSegment(speakerId: "stable", startMs: 5_000, endMs: 6_800),
+        ]
+
+        let result = DiarizationService.filterUnsupportedSpeakerEvidence(segments)
+
+        XCTAssertEqual(result.map(\.speakerId), ["stable", "stable"])
+        XCTAssertEqual(result.map { $0.endMs - $0.startMs }, [200, 1_800])
+    }
+
     func testOfflineConfigAppliesExactSpeakerConstraint() {
         let config = DiarizationService.offlineConfig(speakerConstraint: .exact(2))
 
@@ -205,7 +220,7 @@ final class DiarizationServiceTests: XCTestCase {
                 speakerId: "speaker_0",
                 embedding: [],
                 startTimeSeconds: 0,
-                endTimeSeconds: 1.2,
+                endTimeSeconds: 2.0,
                 qualityScore: 0.9
             ),
         ]))
