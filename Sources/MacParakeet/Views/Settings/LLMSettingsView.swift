@@ -791,6 +791,36 @@ struct LLMSettingsView: View {
                 }
             }
 
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Fix misplaced words between speakers")
+                        .font(DesignSystem.Typography.body)
+                    Text(
+                        "During meeting AI cleanup, move clearly misplaced words between neighboring speaker turns. Applies to new and re-transcribed meetings."
+                    )
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: DesignSystem.Spacing.md)
+
+                Toggle("", isOn: $viewModel.meetingSpeakerTurnRepairEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .fixedSize()
+                    .disabled(
+                        !viewModel.isAIFormatterAvailable
+                            || !viewModel.aiFormatterEnabledForTranscriptions
+                    )
+                    .help(meetingSpeakerTurnRepairHelp)
+                    .accessibilityLabel("Fix misplaced words between speakers")
+                    .accessibilityValue(
+                        viewModel.meetingSpeakerTurnRepairEnabled ? "Enabled" : "Disabled"
+                    )
+            }
+
             if AppFeatures.aiFormatterProfilesEnabled {
                 aiFormatterSmartDefaultsSection
             }
@@ -816,6 +846,16 @@ struct LLMSettingsView: View {
             }
         }
         .id("ai.formatter")
+    }
+
+    private var meetingSpeakerTurnRepairHelp: String {
+        if !viewModel.isAIFormatterAvailable {
+            return "Set up and save an AI Formatter provider to use this setting."
+        }
+        if !viewModel.aiFormatterEnabledForTranscriptions {
+            return "Turn on Use for transcripts to use this setting."
+        }
+        return "Allow meeting AI cleanup to move clearly misplaced words between neighboring speaker turns."
     }
 
     private var aiFormatterSmartDefaultsSection: some View {

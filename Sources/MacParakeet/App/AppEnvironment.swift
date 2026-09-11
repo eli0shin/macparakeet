@@ -280,6 +280,9 @@ final class AppEnvironment {
         let aiFormatterPromptClosure: @Sendable () -> String = { [runtimePreferences] in
             runtimePreferences.aiFormatterPrompt
         }
+        let meetingSpeakerTurnRepairEnabledClosure: @Sendable () -> Bool = { [runtimePreferences] in
+            runtimePreferences.meetingSpeakerTurnRepairEnabled
+        }
         let meetingTitleGenerationEnabledClosure: @Sendable () -> Bool = { [runtimePreferences, llmConfigStore] in
             guard runtimePreferences.shouldAutoGenerateMeetingTitles else { return false }
             return (try? llmConfigStore.loadConfig()) != nil
@@ -385,6 +388,7 @@ final class AppEnvironment {
             llmRunRepo: llmRunRepo,
             shouldUseAIFormatter: transcriptionAIFormatterEnabledClosure,
             aiFormatterPromptTemplate: aiFormatterPromptClosure,
+            shouldRepairMeetingSpeakerTurnBoundaries: meetingSpeakerTurnRepairEnabledClosure,
             shouldAutoGenerateMeetingTitles: meetingTitleGenerationEnabledClosure,
             shouldKeepDownloadedAudio: { [runtimePreferences] in runtimePreferences.shouldSaveTranscriptionAudio },
             shouldDiarize: { [runtimePreferences] in runtimePreferences.shouldDiarize },

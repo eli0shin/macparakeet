@@ -448,6 +448,19 @@ public final class LLMSettingsViewModel {
         }
     }
 
+    /// Whether meeting AI cleanup may move clearly misplaced text between
+    /// adjacent Reading Turns. This value stays saved while transcript
+    /// formatting or the provider is unavailable.
+    public var meetingSpeakerTurnRepairEnabled: Bool {
+        didSet {
+            guard meetingSpeakerTurnRepairEnabled != oldValue else { return }
+            defaults.set(
+                meetingSpeakerTurnRepairEnabled,
+                forKey: UserDefaultsAppRuntimePreferences.meetingSpeakerTurnRepairEnabledKey
+            )
+        }
+    }
+
     /// Whether completed meeting recordings may use the saved LLM provider to
     /// replace the default timestamp title with a short topic title. Defaults
     /// to `true`; it is still gated at runtime on an actual provider config.
@@ -602,6 +615,7 @@ public final class LLMSettingsViewModel {
         self.inProcessModelManager = InProcessModelManagerViewModel()
         self.aiFormatterEnabledForDictation = Self.loadStoredAIFormatterEnabledForDictation(from: defaults)
         self.aiFormatterEnabledForTranscriptions = Self.loadStoredAIFormatterEnabledForTranscriptions(from: defaults)
+        self.meetingSpeakerTurnRepairEnabled = Self.loadStoredMeetingSpeakerTurnRepairEnabled(from: defaults)
         self.autoGenerateMeetingTitles = Self.loadStoredAutoGenerateMeetingTitles(from: defaults)
         self.aiFormatterSmartDefaultsPolicy = AIFormatterSmartDefaultsPolicy.current(defaults: defaults)
         self.transcriptAIContextMode = TranscriptAIContextMode.current(defaults: defaults)
@@ -1366,6 +1380,11 @@ public final class LLMSettingsViewModel {
     private static func loadStoredAIFormatterEnabledForTranscriptions(from defaults: UserDefaults) -> Bool {
         defaults.object(forKey: UserDefaultsAppRuntimePreferences.aiFormatterEnabledForTranscriptionsKey) as? Bool
             ?? true
+    }
+
+    private static func loadStoredMeetingSpeakerTurnRepairEnabled(from defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: UserDefaultsAppRuntimePreferences.meetingSpeakerTurnRepairEnabledKey) as? Bool
+            ?? false
     }
 
     private static func loadStoredAutoGenerateMeetingTitles(from defaults: UserDefaults) -> Bool {

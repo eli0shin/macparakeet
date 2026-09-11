@@ -43,9 +43,12 @@ mode.
   Raw/Clean preference. `.verbatim` remains available for evidence-focused use.
 - `MeetingReadingTurnFormatter.swift` — optional AI formatting module for completed
   meetings and timestamped file transcripts. It sends finalized Reading Turns in
-  sequential JSON batches, validates content preservation, and maps valid output
-  back to stable Reading Turns. Failed batches use deterministic text without
-  blocking later batches. Cancellation is reported to the transcription workflow.
+  sequential JSON batches and maps structurally valid output back by stable turn
+  ID. Meeting cleanup can optionally carry one complete returned turn into the
+  next request so the formatter can repair clear presentation-text attribution
+  errors at adjacent speaker boundaries. Failed batches use deterministic text
+  without blocking later batches. Cancellation is reported to the transcription
+  workflow.
 - `MeetingTranscriptDocumentRenderer.swift` — shared completed-meeting boundary
   and plain-text/Markdown projections for copy, readable exports, meeting
   artifacts, rich AI context, and containing-turn navigation. It does not
@@ -130,19 +133,30 @@ long pauses and completed source exchanges stay as boundaries. Live preview
 paragraphs also order words by start time before grouping. This local policy
 does not rewrite words or diarization regions.
 
-**AI formatting never owns Reading Turn structure.** The formatter never sends
-speaker labels, timestamps, overlap state, or word references. A Reading Turn of
-500 or more characters is one uncapped request and is never split or truncated.
-Consecutive shorter turns share a request while their combined source text stays
-at or below 500 characters and the request contains at most 10 turns. Every request
-and response uses the same JSON `entries`
-contract with transport IDs, including requests that contain one turn. Valid
-entries commit independently; a failed batch uses deterministic text and does not
-block later batches. Outputs must be non-empty, preserve numbers/URLs/email-like
-values, and stay within the accepted lexical-change ratio. Durable overrides
-include the turn identity and deterministic source text; stale overrides fail
-closed. The existing formatter toggle, provider, model, and prompt remain the only
-routing controls, so this module adds no implicit network path.
+**AI formatting changes presentation text, not transcript evidence.** The
+formatter never sends speaker labels, timestamps, overlap state, or word
+references. A Reading Turn of 500 or more characters is one uncapped request and
+is never split or truncated. Consecutive shorter turns share a request while
+their combined source text stays at or below 500 characters and the planned
+request contains at most 10 turns. Every request and response uses the same JSON
+`entries` contract with transport IDs, including requests that contain one turn.
+Responses are checked for JSON structure and mapped by ID; lexical similarity,
+protected-value, length, and non-empty content heuristics do not run. Valid
+entries commit independently, and an empty override removes that turn only from
+the cleaned presentation.
+
+The off-by-default **Fix misplaced words between speakers** AI Formatter setting
+applies only to meeting cleanup. When enabled, the formatter can move clearly
+misplaced words between adjacent Reading Turns. The final complete returned turn
+is held and prepended to the next planned batch so boundaries across requests can
+also be repaired. The carried turn is additional, uncapped context. A failed
+request keeps the last accepted carried version, uses deterministic text for new
+turns, and continues with that final deterministic turn as the next carry. A
+cancelled operation is not persisted. Durable overrides include the turn identity
+and deterministic source text; stale overrides fail closed. Canonical raw text,
+word timestamps, speaker evidence, timing, sources, and word references never
+change. The selected formatter provider, model, and prompt are reused, so this
+setting adds no implicit network path.
 
 Each meeting AI cleanup batch writes an awaited local diagnostic to
 `~/Library/Logs/MacParakeet/meeting-ai-cleanup.jsonl`. It includes the complete

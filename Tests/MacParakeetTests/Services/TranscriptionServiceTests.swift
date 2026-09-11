@@ -2009,6 +2009,82 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(try llmRunRepo.fetchForTranscription(id: result.id).count, 1)
     }
 
+    func testMeetingFinalizationAndRetranscriptionReadCurrentSpeakerTurnRepairSetting() async throws {
+        await mockSTT.configure(
+            result: STTResult(
+                text: "Meeting words.",
+                words: [
+                    TimestampedWord(
+                        word: "Meeting words.",
+                        startMs: 0,
+                        endMs: 500,
+                        confidence: 0.95
+                    )
+                ]
+            ))
+        let llm = MockLLMService()
+        llm.formatTranscriptTransform = { $0 }
+        let repairEnabled = OSAllocatedUnfairLock(initialState: false)
+        let service = TranscriptionService(
+            audioProcessor: mockAudio,
+            sttTranscriber: mockSTT,
+            transcriptionRepo: transcriptionRepo,
+            llmService: llm,
+            llmRunRepo: llmRunRepo,
+            shouldUseAIFormatter: { true },
+            shouldRepairMeetingSpeakerTurnBoundaries: { repairEnabled.withLock { $0 } },
+            meetingAutomationHookRunner: nil
+        )
+        let recording = try makeOneSourceMeetingRecording(displayName: "Repair Setting Meeting")
+        defer { try? FileManager.default.removeItem(at: recording.folderURL) }
+
+        let original = try await service.transcribeMeeting(recording: recording)
+        XCTAssertFalse(
+            llm.lastFormatterPromptTemplate?.contains("immediately preceding or following entry") == true
+        )
+
+        repairEnabled.withLock { $0 = true }
+        _ = try await service.retranscribeMeeting(existing: original, recording: recording)
+
+        XCTAssertEqual(llm.formatTranscriptCallCount, 2)
+        XCTAssertTrue(
+            llm.lastFormatterPromptTemplate?.contains("immediately preceding or following entry") == true
+        )
+    }
+
+    func testSpeakerTurnRepairDoesNotApplyToTimestampedFileTranscription() async throws {
+        await mockSTT.configure(
+            result: STTResult(
+                text: "File words.",
+                words: [
+                    TimestampedWord(
+                        word: "File words.",
+                        startMs: 0,
+                        endMs: 500,
+                        confidence: 0.95
+                    )
+                ]
+            ))
+        let llm = MockLLMService()
+        llm.formatTranscriptTransform = { $0 }
+        let service = TranscriptionService(
+            audioProcessor: mockAudio,
+            sttTranscriber: mockSTT,
+            transcriptionRepo: transcriptionRepo,
+            llmService: llm,
+            llmRunRepo: llmRunRepo,
+            shouldUseAIFormatter: { true },
+            shouldRepairMeetingSpeakerTurnBoundaries: { true },
+            meetingAutomationHookRunner: nil
+        )
+
+        _ = try await service.transcribe(fileURL: URL(fileURLWithPath: "/tmp/file-repair-scope.m4a"))
+
+        XCTAssertFalse(
+            llm.lastFormatterPromptTemplate?.contains("immediately preceding or following entry") == true
+        )
+    }
+
     func testMeetingCancellationDuringFormattingThrowsAndPersistsCancelledStatus() async throws {
         await mockSTT.configure(
             result: STTResult(

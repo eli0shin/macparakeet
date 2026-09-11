@@ -67,6 +67,140 @@ final class MeetingReadingTurnFormatterTests: XCTestCase {
         XCTAssertTrue(multiple.entries.allSatisfy { Set($0.keys) == ["id", "text"] })
     }
 
+    func testRepairCarriesTheCompleteFinalTurnAcrossPlannedBatches() async {
+        let firstBatch = (0..<5).map { index in
+            "turn-\(index)-" + String(repeating: Character("a"), count: 83)
+        }
+        let sixth = String(repeating: "b", count: 500)
+        let document = makeDocument((firstBatch + [sixth, "tail-seven", "tail-eight"]).map { [$0] })
+        let attempt = OSAllocatedUnfairLock(initialState: 0)
+        let firstCarry = "CARRY-ONE-BEGIN" + String(repeating: "x", count: 1_000) + "CARRY-ONE-END"
+        let secondCarry = "CARRY-TWO-BEGIN" + String(repeating: "y", count: 1_000) + "CARRY-TWO-END"
+        let recorder = BatchRecorder { batch in
+            let current = attempt.withLock { value in
+                value += 1
+                return value
+            }
+            switch current {
+            case 1:
+                return Self.response(
+                    entries: batch.entries.map { entry in
+                        .init(
+                            id: entry.id,
+                            text: entry.id == "turn-4" ? firstCarry : "cleaned-\(entry.id)"
+                        )
+                    })
+            case 2:
+                XCTAssertEqual(batch.entries[0].id, "turn-4")
+                XCTAssertEqual(batch.entries[0].text, firstCarry)
+                return Self.response(entries: [
+                    .init(id: "turn-5", text: secondCarry),
+                    .init(id: "turn-4", text: "revised-turn-4"),
+                ])
+            default:
+                XCTAssertEqual(batch.entries[0].id, "turn-5")
+                XCTAssertEqual(batch.entries[0].text, secondCarry)
+                return Self.response(
+                    entries: batch.entries.reversed().map { entry in
+                        .init(
+                            id: entry.id,
+                            text: entry.id == "turn-5" ? "revised-turn-5" : "cleaned-\(entry.id)"
+                        )
+                    })
+            }
+        }
+
+        let result = await MeetingReadingTurnFormatter().format(
+            document,
+            repairSpeakerTurnBoundaries: true
+        ) { try await recorder.format($0) }
+
+        let batches = await recorder.batches
+        XCTAssertEqual(batches.map { $0.entries.count }, [5, 2, 3])
+        XCTAssertEqual(
+            batches.map { $0.entries.map(\.id) },
+            [
+                ["turn-0", "turn-1", "turn-2", "turn-3", "turn-4"],
+                ["turn-4", "turn-5"],
+                ["turn-5", "turn-6", "turn-7"],
+            ])
+        XCTAssertEqual(
+            result.formatting.map(\.formattedText),
+            [
+                "cleaned-turn-0", "cleaned-turn-1", "cleaned-turn-2", "cleaned-turn-3",
+                "revised-turn-4", "revised-turn-5", "cleaned-turn-6", "cleaned-turn-7",
+            ]
+        )
+        XCTAssertEqual(result.progress, .init(completedRequests: 3, totalRequests: 3))
+    }
+
+    func testFailedRollingBatchPreservesCarryAndContinuesWithDeterministicFallback() async {
+        let texts = ["first", "second", "third"].map {
+            $0 + String(repeating: "-value", count: 90)
+        }
+        let attempt = OSAllocatedUnfairLock(initialState: 0)
+
+        let result = await MeetingReadingTurnFormatter().format(
+            makeDocument(texts.map { [$0] }),
+            repairSpeakerTurnBoundaries: true
+        ) { batch in
+            let current = attempt.withLock { value in
+                value += 1
+                return value
+            }
+            switch current {
+            case 1:
+                return Self.response(entries: [
+                    .init(id: batch.entries[0].id, text: "accepted-first")
+                ])
+            case 2:
+                throw FixtureError.failed
+            default:
+                XCTAssertEqual(batch.entries.map(\.id), ["turn-1", "turn-2"])
+                XCTAssertEqual(batch.entries[0].text, texts[1])
+                return Self.response(entries: [
+                    .init(id: "turn-2", text: "accepted-third"),
+                    .init(id: "turn-1", text: "repaired-second"),
+                ])
+            }
+        }
+
+        XCTAssertEqual(attempt.withLock { $0 }, 3)
+        XCTAssertEqual(
+            result.formatting.map(\.formattedText),
+            ["accepted-first", "repaired-second", "accepted-third"]
+        )
+        XCTAssertEqual(result.progress, .init(completedRequests: 3, totalRequests: 3))
+    }
+
+    func testMalformedRollingBatchPreservesCarryAndDoesNotBlockLaterBatch() async {
+        let texts = ["first", "second", "third"].map {
+            $0 + String(repeating: "-value", count: 90)
+        }
+        let attempt = OSAllocatedUnfairLock(initialState: 0)
+
+        let result = await MeetingReadingTurnFormatter().format(
+            makeDocument(texts.map { [$0] }),
+            repairSpeakerTurnBoundaries: true
+        ) { batch in
+            let current = attempt.withLock { value in
+                value += 1
+                return value
+            }
+            if current == 1 {
+                return Self.response(entries: [
+                    .init(id: batch.entries[0].id, text: "accepted-first")
+                ])
+            }
+            if current == 2 { return "not-json" }
+            XCTAssertEqual(batch.entries[0].text, texts[1])
+            return Self.response(for: batch)
+        }
+
+        XCTAssertEqual(result.formatting.first?.formattedText, "accepted-first")
+        XCTAssertEqual(result.formatting.map(\.deterministicText), [texts[0], texts[1], texts[2]])
+    }
+
     func testFailedBatchDoesNotPreventLaterBatchesFromBeingCleaned() async {
         let attempts = OSAllocatedUnfairLock(initialState: 0)
         let first = String(repeating: "first ", count: 90)
@@ -145,23 +279,49 @@ final class MeetingReadingTurnFormatterTests: XCTestCase {
         XCTAssertEqual(events.first?.reason, "missing_id id=turn-1")
     }
 
-    func testOneContentRejectionDoesNotDiscardValidEntriesInTheSameBatch() async {
+    func testContentChangesAndEmptyReplacementsAreAcceptedWithoutHeuristics() async {
         let diagnostics = DiagnosticRecorder()
         let formatter = MeetingReadingTurnFormatter(diagnosticSink: { await diagnostics.append($0) })
-        let document = makeDocument([["Keep number 42."], ["hello world."]])
+        let document = makeDocument([["Keep number 42."], ["remove this turn"]])
 
         let result = await formatter.format(document) { batch in
             Self.response(entries: [
-                .init(id: batch.entries[0].id, text: "Keep number 43."),
-                .init(id: batch.entries[1].id, text: "Hello, world."),
+                .init(id: batch.entries[0].id, text: "A completely different value: 43."),
+                .init(id: batch.entries[1].id, text: ""),
             ])
         }
 
         let events = await diagnostics.events
-        XCTAssertEqual(result.formatting.count, 1)
-        XCTAssertEqual(result.formatting.first?.formattedText, "Hello, world.")
-        XCTAssertEqual(events.first?.outcome, "partially_accepted")
-        XCTAssertTrue(events.first?.reason?.contains("protected_values_changed turn=1") == true)
+        XCTAssertEqual(
+            result.formatting.map(\.formattedText),
+            ["A completely different value: 43.", ""]
+        )
+        XCTAssertEqual(events.first?.outcome, "accepted")
+        XCTAssertNil(events.first?.reason)
+    }
+
+    func testRollingCancellationReturnsThePreviouslyAcceptedHeldTurn() async {
+        let first = String(repeating: "first ", count: 90)
+        let second = String(repeating: "second ", count: 90)
+        let attempts = OSAllocatedUnfairLock(initialState: 0)
+
+        let result = await MeetingReadingTurnFormatter().format(
+            makeDocument([[first], [second]]),
+            repairSpeakerTurnBoundaries: true
+        ) { batch in
+            let attempt = attempts.withLock { value in
+                value += 1
+                return value
+            }
+            if attempt == 2 { throw CancellationError() }
+            return Self.response(entries: [
+                .init(id: batch.entries[0].id, text: "accepted-held-turn")
+            ])
+        }
+
+        XCTAssertTrue(result.wasCancelled)
+        XCTAssertEqual(result.formatting.map(\.formattedText), ["accepted-held-turn"])
+        XCTAssertEqual(result.progress, .init(completedRequests: 1, totalRequests: 2))
     }
 
     func testCancellationStopsFutureBatches() async {
@@ -186,9 +346,42 @@ final class MeetingReadingTurnFormatterTests: XCTestCase {
     func testPromptUsesJSONEntriesInsteadOfBoundaryMarkers() {
         let prompt = MeetingReadingTurnFormatter.promptTemplate(AIFormatter.defaultPromptTemplate)
         XCTAssertTrue(prompt.contains("Preserve every entry ID exactly"))
+        XCTAssertTrue(prompt.contains("Do not combine entries or move text between entries"))
         XCTAssertTrue(prompt.contains(#"{"entries":[{"id":"turn ID","text":"cleaned text"}]}"#))
         XCTAssertFalse(prompt.contains("MACPARAKEET_READING_TURN_BOUNDARY"))
         XCTAssertTrue(prompt.contains(AIFormatter.transcriptPlaceholder))
+    }
+
+    func testRepairPromptAllowsOnlyClearMovementBetweenAdjacentFullTurns() {
+        let prompt = MeetingReadingTurnFormatter.promptTemplate(
+            AIFormatter.defaultPromptTemplate,
+            repairSpeakerTurnBoundaries: true
+        )
+
+        XCTAssertTrue(prompt.contains("immediately preceding or following entry"))
+        XCTAssertTrue(prompt.contains("If the correct boundary is unclear, preserve it"))
+        XCTAssertTrue(prompt.contains("complete replacement is empty"))
+        XCTAssertTrue(prompt.contains("Do not return diffs, patches, word IDs, split positions, or edit operations"))
+        XCTAssertTrue(prompt.contains(#"{"entries":[{"id":"turn ID","text":"complete cleaned text"}]}"#))
+    }
+
+    func testEmptyFullTurnReplacementIsDroppedOnlyFromCleanedPresentation() async {
+        let document = makeDocument([["I"], ["think we should do it."]])
+        let result = await MeetingReadingTurnFormatter().format(
+            document,
+            repairSpeakerTurnBoundaries: true
+        ) { batch in
+            Self.response(entries: [
+                .init(id: batch.entries[0].id, text: ""),
+                .init(id: batch.entries[1].id, text: "I think we should do it."),
+            ])
+        }
+
+        let presented = apply(result.formatting, to: document).droppingEmptyTurns()
+        XCTAssertEqual(presented.turns.map(\.text), ["I think we should do it."])
+        XCTAssertEqual(document.turns.count, 2)
+        XCTAssertEqual(document.turns[0].text, "I")
+        XCTAssertEqual(document.turns[0].wordReferences, [0])
     }
 
     func testApplyingFormattingPreservesIdentitySpeakerTimingAndEvidence() async {

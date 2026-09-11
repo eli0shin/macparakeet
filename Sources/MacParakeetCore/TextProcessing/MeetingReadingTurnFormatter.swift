@@ -74,7 +74,9 @@ public struct MeetingReadingTurnFormattingBatch: Sendable, Equatable {
 /// Formats finalized Reading Turns through small, serial requests. Complete
 /// turns of 500 or more characters are always sent alone without a size cap.
 /// Consecutive shorter turns are packed without exceeding 500 characters or
-/// 10 turns. Failed batches fall back independently and do not block later batches.
+/// 10 turns. Optional boundary repair carries the final complete returned turn
+/// into the next planned request. Failed batches fall back independently and do
+/// not block later batches.
 public struct MeetingReadingTurnFormatter {
     public typealias FormatRequest = (MeetingReadingTurnFormattingBatch) async throws -> String
     public typealias ProgressHandler = @Sendable (MeetingReadingTurnFormattingProgress) -> Void
@@ -93,15 +95,30 @@ public struct MeetingReadingTurnFormatter {
         self.diagnosticSink = diagnosticSink
     }
 
-    public static func promptTemplate(_ template: String) -> String {
+    public static func promptTemplate(
+        _ template: String,
+        repairSpeakerTurnBoundaries: Bool = false
+    ) -> String {
         let normalized = AIFormatter.normalizedPromptTemplate(template)
-        let contract = """
+        let contract =
+            if repairSpeakerTurnBoundaries {
+                """
+                Reading Turn batch requirements (these take priority over other output instructions):
+                Clean the entries in order and preserve every entry ID exactly.
+                Text at a boundary may belong to the immediately preceding or following entry. Move only clearly misplaced hanging words between those adjacent entries. If the correct boundary is unclear, preserve it.
+                Return the complete cleaned text for every entry, including any entry whose complete replacement is empty. Do not return diffs, patches, word IDs, split positions, or edit operations.
+                Return only JSON in this form: {"entries":[{"id":"turn ID","text":"complete cleaned text"}]}.
+                Include every input ID exactly once. Do not add commentary.
+                """
+            } else {
+                """
             Reading Turn batch requirements (these take priority over other output instructions):
             Clean each entry independently. Preserve every entry ID exactly.
             Do not combine entries or move text between entries.
             Return only JSON in this form: {"entries":[{"id":"turn ID","text":"cleaned text"}]}.
             Include every input ID exactly once. Do not add commentary.
             """
+            }
 
         guard normalized.contains(AIFormatter.transcriptPlaceholder) else {
             return normalized + "\n\n" + contract + "\n\nReading Turn batch:\n" + AIFormatter.transcriptPlaceholder
@@ -114,6 +131,7 @@ public struct MeetingReadingTurnFormatter {
 
     public func format(
         _ document: MeetingTranscriptPresentationDocument,
+        repairSpeakerTurnBoundaries: Bool = false,
         using formatRequest: FormatRequest,
         onProgress: ProgressHandler? = nil
     ) async -> MeetingReadingTurnFormattingResult {
@@ -122,89 +140,215 @@ public struct MeetingReadingTurnFormatter {
             return Part(id: "turn-\(index)", turn: turn)
         }
         let batches = makeBatches(parts)
-        var formatting: [MeetingReadingTurnFormatting] = []
+        var formattingByID: [String: MeetingReadingTurnFormatting] = [:]
+        var carry: RollingCarry?
         var completedRequests = 0
         onProgress?(.init(completedRequests: 0, totalRequests: batches.count))
 
-        for batch in batches {
+        for (batchIndex, batch) in batches.enumerated() {
             guard !Task.isCancelled else {
+                commit(carry, to: &formattingByID)
                 return result(
-                    formatting: formatting, completedRequests: completedRequests,
-                    totalRequests: batches.count, wasCancelled: true)
+                    formatting: orderedFormatting(parts, from: formattingByID),
+                    completedRequests: completedRequests,
+                    totalRequests: batches.count,
+                    wasCancelled: true
+                )
             }
 
-            let request = batch.request
+            let isLastBatch = batchIndex == batches.index(before: batches.endIndex)
+            var requestParts = batch.parts
+            if repairSpeakerTurnBoundaries, let carry {
+                requestParts.insert(carry.part, at: 0)
+            }
+            let requestEntries = requestParts.map { part in
+                MeetingReadingTurnBatchEntry(
+                    id: part.id,
+                    text: carry?.part.id == part.id
+                        ? carry?.text ?? part.turn.deterministicText : part.turn.deterministicText
+                )
+            }
+            let request = MeetingReadingTurnFormattingBatch(entries: requestEntries, diagnosticID: UUID())
             let input = (try? request.encodedJSON()) ?? ""
+
             do {
                 let rawOutput = try await formatRequest(request)
                 guard !Task.isCancelled else {
                     await record(
-                        id: request.diagnosticID, outcome: "cancelled",
-                        reason: "cancelled_after_response", input: input, output: rawOutput,
-                        expectedTurns: batch.parts.count, actualTurns: nil)
+                        id: request.diagnosticID,
+                        outcome: "cancelled",
+                        reason: "cancelled_after_response",
+                        input: input,
+                        output: rawOutput,
+                        expectedTurns: requestParts.count,
+                        actualTurns: nil
+                    )
+                    commit(carry, to: &formattingByID)
                     return result(
-                        formatting: formatting, completedRequests: completedRequests,
-                        totalRequests: batches.count, wasCancelled: true)
+                        formatting: orderedFormatting(parts, from: formattingByID),
+                        completedRequests: completedRequests,
+                        totalRequests: batches.count,
+                        wasCancelled: true
+                    )
                 }
 
                 do {
-                    let parsed = try Self.parse(rawOutput, expectedIDs: batch.parts.map(\.id))
-                    var rejected = parsed.reasons
-                    var accepted = 0
-                    for (turnIndex, part) in batch.parts.enumerated() {
-                        guard let output = parsed.outputs[part.id] else { continue }
-                        if let reason = Self.rejectionReason(
-                            input: part.turn.deterministicText,
-                            output: output,
-                            turn: turnIndex + 1
-                        ) {
-                            rejected.append(reason)
-                        } else {
-                            accepted += 1
-                            formatting.append(
-                                MeetingReadingTurnFormatting(
-                                    turnID: part.turn.id,
-                                    deterministicText: part.turn.deterministicText,
-                                    formattedText: output
-                                ))
+                    let parsed = try Self.parse(rawOutput, expectedIDs: requestParts.map(\.id))
+                    if repairSpeakerTurnBoundaries {
+                        carry = settleRollingBatch(
+                            previousCarry: carry,
+                            newParts: batch.parts,
+                            outputs: parsed.outputs,
+                            isLastBatch: isLastBatch,
+                            formattingByID: &formattingByID
+                        )
+                    } else {
+                        for part in batch.parts {
+                            guard let output = parsed.outputs[part.id] else { continue }
+                            formattingByID[part.id] = formatting(for: part, output: output)
                         }
                     }
-                    let outcome = rejected.isEmpty ? "accepted" : (accepted == 0 ? "rejected" : "partially_accepted")
+                    let accepted = parsed.outputs.count
+                    let outcome =
+                        parsed.reasons.isEmpty
+                        ? "accepted"
+                        : (accepted == 0 ? "rejected" : "partially_accepted")
                     await record(
-                        id: request.diagnosticID, outcome: outcome,
-                        reason: rejected.isEmpty ? nil : rejected.joined(separator: "; "),
-                        input: input, output: rawOutput,
-                        expectedTurns: batch.parts.count, actualTurns: parsed.actualEntryCount)
+                        id: request.diagnosticID,
+                        outcome: outcome,
+                        reason: parsed.reasons.isEmpty ? nil : parsed.reasons.joined(separator: "; "),
+                        input: input,
+                        output: rawOutput,
+                        expectedTurns: requestParts.count,
+                        actualTurns: parsed.actualEntryCount
+                    )
                 } catch {
+                    if repairSpeakerTurnBoundaries {
+                        carry = settleRollingBatch(
+                            previousCarry: carry,
+                            newParts: batch.parts,
+                            outputs: [:],
+                            isLastBatch: isLastBatch,
+                            formattingByID: &formattingByID
+                        )
+                    }
                     await record(
-                        id: request.diagnosticID, outcome: "rejected",
+                        id: request.diagnosticID,
+                        outcome: "rejected",
                         reason: "invalid_batch_response error=\(String(reflecting: error))",
-                        input: input, output: rawOutput,
-                        expectedTurns: batch.parts.count, actualTurns: nil)
+                        input: input,
+                        output: rawOutput,
+                        expectedTurns: requestParts.count,
+                        actualTurns: nil
+                    )
                 }
             } catch is CancellationError {
                 await record(
-                    id: request.diagnosticID, outcome: "cancelled",
-                    reason: "request_cancelled", input: input, output: nil,
-                    expectedTurns: batch.parts.count, actualTurns: nil)
+                    id: request.diagnosticID,
+                    outcome: "cancelled",
+                    reason: "request_cancelled",
+                    input: input,
+                    output: nil,
+                    expectedTurns: requestParts.count,
+                    actualTurns: nil
+                )
+                commit(carry, to: &formattingByID)
                 return result(
-                    formatting: formatting, completedRequests: completedRequests,
-                    totalRequests: batches.count, wasCancelled: true)
+                    formatting: orderedFormatting(parts, from: formattingByID),
+                    completedRequests: completedRequests,
+                    totalRequests: batches.count,
+                    wasCancelled: true
+                )
             } catch {
+                if repairSpeakerTurnBoundaries {
+                    carry = settleRollingBatch(
+                        previousCarry: carry,
+                        newParts: batch.parts,
+                        outputs: [:],
+                        isLastBatch: isLastBatch,
+                        formattingByID: &formattingByID
+                    )
+                }
                 await record(
-                    id: request.diagnosticID, outcome: "rejected",
+                    id: request.diagnosticID,
+                    outcome: "rejected",
                     reason: "request_failed error=\(String(reflecting: error))",
-                    input: input, output: nil,
-                    expectedTurns: batch.parts.count, actualTurns: nil)
+                    input: input,
+                    output: nil,
+                    expectedTurns: requestParts.count,
+                    actualTurns: nil
+                )
             }
 
             completedRequests += 1
             onProgress?(.init(completedRequests: completedRequests, totalRequests: batches.count))
         }
 
+        commit(carry, to: &formattingByID)
         return result(
-            formatting: formatting, completedRequests: completedRequests,
-            totalRequests: batches.count, wasCancelled: false)
+            formatting: orderedFormatting(parts, from: formattingByID),
+            completedRequests: completedRequests,
+            totalRequests: batches.count,
+            wasCancelled: false
+        )
+    }
+
+    private func settleRollingBatch(
+        previousCarry: RollingCarry?,
+        newParts: [Part],
+        outputs: [String: String],
+        isLastBatch: Bool,
+        formattingByID: inout [String: MeetingReadingTurnFormatting]
+    ) -> RollingCarry? {
+        var resolved: [RollingCarry] = []
+        if let previousCarry {
+            resolved.append(
+                outputs[previousCarry.part.id].map {
+                    RollingCarry(
+                        part: previousCarry.part,
+                        text: $0,
+                        formatting: formatting(for: previousCarry.part, output: $0)
+                    )
+                } ?? previousCarry
+            )
+        }
+        resolved.append(
+            contentsOf: newParts.map { part in
+                guard let output = outputs[part.id] else {
+                    return RollingCarry(part: part, text: part.turn.deterministicText, formatting: nil)
+                }
+                return RollingCarry(part: part, text: output, formatting: formatting(for: part, output: output))
+            })
+
+        if isLastBatch {
+            for value in resolved { commit(value, to: &formattingByID) }
+            return nil
+        }
+        for value in resolved.dropLast() { commit(value, to: &formattingByID) }
+        return resolved.last
+    }
+
+    private func formatting(for part: Part, output: String) -> MeetingReadingTurnFormatting {
+        MeetingReadingTurnFormatting(
+            turnID: part.turn.id,
+            deterministicText: part.turn.deterministicText,
+            formattedText: output
+        )
+    }
+
+    private func commit(
+        _ carry: RollingCarry?,
+        to formattingByID: inout [String: MeetingReadingTurnFormatting]
+    ) {
+        guard let carry, let formatting = carry.formatting else { return }
+        formattingByID[carry.part.id] = formatting
+    }
+
+    private func orderedFormatting(
+        _ parts: [Part],
+        from formattingByID: [String: MeetingReadingTurnFormatting]
+    ) -> [MeetingReadingTurnFormatting] {
+        parts.compactMap { formattingByID[$0.id] }
     }
 
     private func makeBatches(_ parts: [Part]) -> [Batch] {
@@ -308,59 +452,17 @@ public struct MeetingReadingTurnFormatter {
         )
     }
 
-    /// AI may change punctuation, casing, and a bounded amount of wording. It
-    /// may not drop protected values or replace a large share of lexical content.
-    private static func rejectionReason(input: String, output: String, turn: Int) -> String? {
-        guard output.contains(where: { !$0.isWhitespace }) else { return "empty_output turn=\(turn)" }
-        let inputTokens = lexicalTokens(in: input)
-        let outputTokens = lexicalTokens(in: output)
-        guard !inputTokens.isEmpty, !outputTokens.isEmpty else {
-            return
-                "no_lexical_tokens turn=\(turn) input_tokens=\(inputTokens.count) output_tokens=\(outputTokens.count)"
-        }
-        let inputProtected = protectedTokens(in: input)
-        let outputProtected = protectedTokens(in: output)
-        guard inputProtected == outputProtected else {
-            return "protected_values_changed turn=\(turn) expected=\(inputProtected) actual=\(outputProtected)"
-        }
-        let changedTokenCount = outputTokens.difference(from: inputTokens).count
-        let baseline = max(inputTokens.count, outputTokens.count)
-        let ratio = Double(changedTokenCount) / Double(baseline)
-        guard ratio <= 0.35 else {
-            return
-                "lexical_change_exceeded turn=\(turn) changed_tokens=\(changedTokenCount) baseline_tokens=\(baseline) ratio=\(ratio) limit=0.35"
-        }
-        let maxLength = max(input.count * 3 / 2, input.count + 200)
-        guard output.count <= maxLength else {
-            return
-                "output_length_exceeded turn=\(turn) input_chars=\(input.count) output_chars=\(output.count) limit=\(maxLength)"
-        }
-        return nil
-    }
-
-    private static func lexicalTokens(in text: String) -> [String] {
-        text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
-    }
-
-    private static func tokenCounts(_ tokens: [String]) -> [String: Int] {
-        tokens.reduce(into: [:]) { $0[$1, default: 0] += 1 }
-    }
-
-    private static func protectedTokens(in text: String) -> [String: Int] {
-        let tokens = text.split(whereSeparator: \.isWhitespace).compactMap { raw -> String? in
-            let token = raw.trimmingCharacters(in: .punctuationCharacters)
-            guard token.contains(where: \.isNumber) || token.contains("@") || token.contains("://") else {
-                return nil
-            }
-            return token.lowercased()
-        }
-        return tokenCounts(tokens)
-    }
 }
 
 private struct Part {
     let id: String
     let turn: ReadingTurn
+}
+
+private struct RollingCarry {
+    let part: Part
+    let text: String
+    let formatting: MeetingReadingTurnFormatting?
 }
 
 private struct Batch {

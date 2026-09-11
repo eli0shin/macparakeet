@@ -438,12 +438,14 @@ public enum SettingsSearchIndex {
                 ? [
                     "formatter", "formatting", "cleanup", "dictation prompt", "app profiles",
                     "smart defaults", "fallback prompt", "bundle id", "category", "rewrite", "polish",
-                    "use for transcripts", "use for dictation", "meeting transcripts"
+                    "use for transcripts", "use for dictation", "meeting transcripts",
+                    "fix misplaced words", "speaker turn", "speaker boundary"
                 ]
                 : [
                     "formatter", "formatting", "cleanup", "dictation prompt",
                     "fallback prompt", "rewrite", "polish",
-                    "use for transcripts", "use for dictation", "meeting transcripts"
+                    "use for transcripts", "use for dictation", "meeting transcripts",
+                    "fix misplaced words", "speaker turn", "speaker boundary"
                 ],
             cardAnchor: "ai.formatter"
         ),

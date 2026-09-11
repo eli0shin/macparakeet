@@ -241,10 +241,12 @@ final class SettingsSearchIndexTests: XCTestCase {
     func testAIFormatterSmartDefaultsQueriesFindFormatterEntry() {
         // "formatter" must find the always-visible card in both flag states;
         // profile-specific queries only resolve when profiles are enabled.
-        XCTAssertTrue(
-            Set(SettingsSearchIndex.matches("formatter").map(\.id)).contains("ai.formatter"),
-            "Query formatter should find the AI Formatter card"
-        )
+        for query in ["formatter", "fix misplaced words", "speaker boundary"] {
+            XCTAssertTrue(
+                Set(SettingsSearchIndex.matches(query).map(\.id)).contains("ai.formatter"),
+                "Query \(query) should find the AI Formatter card"
+            )
+        }
 
         for query in ["smart defaults", "app profiles"] {
             let ids = Set(SettingsSearchIndex.matches(query).map(\.id))

@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: pi
 Tags: []
 Parent:
 Blocked-By: []
@@ -69,8 +69,9 @@ acoustic speaker detection or raw transcript evidence.
 - Keep the setting off by default. Changing it does not silently rewrite saved
   meetings. New meeting cleanup and explicit meeting retranscription use its
   current value.
-- When disabled, preserve the existing batch plan, prompt contract, output,
-  retries, fallback, progress, and cancellation behavior.
+- When disabled, preserve the existing batch plan, prompt contract, requests,
+  fallback, progress, and cancellation behavior. Meeting cleanup makes one
+  request attempt per planned batch in both modes.
 - When enabled, tell the formatter that text at an adjacent Reading Turn boundary
   may belong to the preceding or following speaker. It may move clear hanging
   words between those turns while performing the normal cleanup. If the correct
@@ -106,8 +107,9 @@ Carry:                                                       cleaned turn 8
 - The carried Reading Turn is additional context. It must remain complete and
   must not be truncated, split, summarized, or replaced with a suffix excerpt.
 - A failed request must not discard a previously accepted version of the carried
-  turn. Preserve existing retry and fallback behavior for the new turns and allow
-  later batches to continue.
+  turn. Use deterministic text for the failed new turns, carry the final
+  deterministic new turn into the next request, and allow later batches to
+  continue. Do not add retries.
 
 ## Full-turn request and response contract
 
@@ -131,11 +133,13 @@ Requests and responses continue to use full JSON entries:
   turn.
 - Treat the returned entries as the complete replacement for those cleaned
   Reading Turns, not as changes to apply to earlier output.
-- Preserve entry order after mapping by ID.
-- When repair is enabled, validation must not reject an otherwise valid response
-  solely because text moved between adjacent entries. Any content-preservation
-  check must consider the complete request and response, not each turn in
-  isolation.
+- Preserve entry order after mapping by ID. Keep the existing partial ID-mapping
+  behavior: valid entries can be accepted when another entry is missing,
+  duplicated, or unknown.
+- Validate only the full JSON-entry shape and turn IDs. Do not apply lexical
+  similarity, protected-value, output-length, non-empty, or other content
+  preservation heuristics in either mode. An empty full-turn replacement is
+  valid and the existing cleaned-presentation path drops that empty turn.
 - Keep speaker labels outside the model output. An entry retains the speaker of
   its Reading Turn; moving text into that full entry changes its presented
   attribution.
@@ -145,45 +149,48 @@ Requests and responses continue to use full JSON entries:
 - Keep raw transcript text, `WordTimestamp` values, source attribution,
   diarization regions, Reading Turn timing, and word references unchanged as
   recoverable evidence.
-- Store only validated full-turn AI presentation overrides through the existing
-  cleanup path.
+- Store only structurally parsed, ID-mapped full-turn AI presentation overrides
+  through the existing cleanup path.
 - Do not claim that this feature repairs acoustic timestamps or the FluidAudio
   diarization model. It repairs obvious Reading Turn text attribution in the
   cleaned presentation.
-- Continue writing complete request, response, retry, rejection, cancellation,
-  and fallback details to the existing meeting AI cleanup diagnostics.
+- Continue writing complete request, response, rejection, cancellation, and
+  fallback details to the existing meeting AI cleanup diagnostics.
 
 ## Acceptance criteria
 
-- [ ] **Fix misplaced words between speakers** appears in **Settings → AI → AI
+- [x] **Fix misplaced words between speakers** appears in **Settings → AI → AI
   Formatter**, directly below the formatter routing controls and before prompt/profile
   controls. It is persisted, defaults off, remains visible, and is disabled with
   explanatory help when the formatter is unavailable or **Use for transcripts** is off.
-- [ ] With the setting off, existing AI cleanup behavior and requests are
-  unchanged.
-- [ ] With batches containing 5, 1, and 2 turns, requests contain 5, 2, and 3
+- [x] With the setting off, the existing batch plan, prompt, requests, fallback,
+  progress, and cancellation behavior are unchanged. Content-preservation
+  heuristics are removed in both modes.
+- [x] With batches containing 5, 1, and 2 turns, requests contain 5, 2, and 3
   complete turns respectively because the final returned turn is carried into
   the next request.
-- [ ] A carried turn is sent in full and the next successful response replaces
+- [x] A carried turn is sent in full and the next successful response replaces
   its earlier cleaned version in full.
-- [ ] The enabled prompt permits clear text movement only between adjacent
+- [x] The enabled prompt permits clear text movement only between adjacent
   Reading Turns and requires complete JSON entries in response.
-- [ ] Responses use full turns only. No diff, patch, word-ID, split-position, or
+- [x] Responses use full turns only. No diff, patch, word-ID, split-position, or
   edit-operation interface is introduced.
-- [ ] Returned IDs still map correctly when the provider changes entry order.
-- [ ] Moving a short phrase between adjacent entries is not rejected by
-  per-entry lexical or protected-value checks.
-- [ ] A failed or malformed later request does not erase the last accepted
+- [x] Returned IDs still map correctly when the provider changes entry order.
+- [x] Responses are checked only for JSON structure and turn-ID mapping. Empty
+  replacements are accepted; lexical, protected-value, output-length, and
+  non-empty content checks do not run in either mode.
+- [x] A failed or malformed later request does not erase the last accepted
   carried turn or block cleanup of all subsequent batches.
-- [ ] Cancellation does not commit a partial response or lose the held turn.
-- [ ] New meeting finalization and explicit meeting retranscription use the
+- [x] Cancellation does not commit a partial response or lose the held turn.
+- [x] New meeting finalization and explicit meeting retranscription use the
   current setting; changing the setting alone does not rewrite old meetings.
-- [ ] Canonical transcript, speaker, timing, diarization, source, and word-reference
+- [x] Canonical transcript, speaker, timing, diarization, source, and word-reference
   evidence remain unchanged.
-- [ ] Focused tests use formatter doubles to verify the request/response and
+- [x] Focused tests use formatter doubles to verify the request/response and
   failure contracts. They do not attempt to measure semantic accuracy.
-- [ ] Text Processing and LLM integration documentation describe the optional
-  rolling cleanup behavior and its presentation-only scope.
+- [x] Active Text Processing and product documentation describe the optional
+  rolling cleanup behavior and its presentation-only scope. This ticket is the
+  detailed specification; do not restore the retired `spec/` documentation tree.
 
 ## Out of scope
 
@@ -206,8 +213,18 @@ Requests and responses continue to use full JSON entries:
 - `Sources/MacParakeetCore/Services/TranscriptionService.swift`
 - `Tests/MacParakeetTests/TextProcessing/MeetingReadingTurnFormatterTests.swift`
 - `Sources/MacParakeetCore/TextProcessing/README.md`
-- `spec/11-llm-integration.md`
+- `README.md`
 
 Completed ticket `048-batch-meeting-ai-cleanup-across-turns-with-a-20000-character-text-budget`
 is relevant history. This ticket changes the later batching contract where the
 current implementation again caps batches by turn count and text size.
+
+## Resolution
+
+Added the persisted AI Formatter control and meeting-only runtime route. Enabled
+cleanup now carries complete full-turn output across planned requests, preserves
+accepted carry on request, response, and cancellation failures, and continues
+with deterministic fallback for new turns. JSON structure and turn IDs remain
+the only response checks; empty presentation overrides are valid. Updated active
+documentation and focused tests. The full `swift test` suite passed with 5,220
+tests, 26 skipped, and no failures.

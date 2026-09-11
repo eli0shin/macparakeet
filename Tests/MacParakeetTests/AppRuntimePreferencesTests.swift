@@ -488,6 +488,18 @@ final class AppRuntimePreferencesTests: XCTestCase {
         XCTAssertFalse(UserDefaultsAppRuntimePreferences(defaults: defaults).aiFormatterEnabledForTranscriptions)
     }
 
+    func testMeetingSpeakerTurnRepairDefaultsOffAndReadsPersistedValue() {
+        let suite = "app-runtime-prefs-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertFalse(UserDefaultsAppRuntimePreferences(defaults: defaults).meetingSpeakerTurnRepairEnabled)
+
+        defaults.set(true, forKey: UserDefaultsAppRuntimePreferences.meetingSpeakerTurnRepairEnabledKey)
+
+        XCTAssertTrue(UserDefaultsAppRuntimePreferences(defaults: defaults).meetingSpeakerTurnRepairEnabled)
+    }
+
     func testTranscriptAIContextModeDefaultsToRichAndReadsPersistedValue() {
         let suite = "app-runtime-prefs-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
