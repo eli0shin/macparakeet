@@ -38,17 +38,19 @@ final class WindowBehaviorTests: XCTestCase {
             defer: false
         )
         window.isReleasedWhenClosed = false
-        let expectedFrame = window.frame
         var activationCount = 0
 
         MainWindowPresentation.open(window) { activationCount += 1 }
         XCTAssertTrue(window.isVisible)
+        // AppKit can adjust a new window to the visible screen when it is first
+        // shown. The presentation contract starts from that displayed frame.
+        let displayedFrame = window.frame
         window.close()
         XCTAssertFalse(window.isVisible)
 
         MainWindowPresentation.open(window) { activationCount += 1 }
         XCTAssertTrue(window.isVisible)
-        XCTAssertEqual(window.frame, expectedFrame)
+        XCTAssertEqual(window.frame, displayedFrame)
         XCTAssertEqual(activationCount, 2)
         window.close()
     }
