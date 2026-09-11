@@ -283,6 +283,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
     private let llmRunRecorder: LLMRunRecorder
     private let shouldUseAIFormatter: @Sendable () -> Bool
     private let aiFormatterPromptTemplate: @Sendable () -> String
+    private let shouldRepairMeetingSpeakerTurnBoundaries: @Sendable () -> Bool
     private let shouldAutoGenerateMeetingTitles: @Sendable () -> Bool
     private let shouldKeepDownloadedAudio: @Sendable () -> Bool
     private let shouldDiarize: @Sendable () -> Bool
@@ -319,6 +320,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         llmRunRepo: LLMRunRepositoryProtocol? = nil,
         shouldUseAIFormatter: (@Sendable () -> Bool)? = nil,
         aiFormatterPromptTemplate: (@Sendable () -> String)? = nil,
+        shouldRepairMeetingSpeakerTurnBoundaries: (@Sendable () -> Bool)? = nil,
         shouldAutoGenerateMeetingTitles: (@Sendable () -> Bool)? = nil,
         shouldKeepDownloadedAudio: (@Sendable () -> Bool)? = nil,
         shouldDiarize: (@Sendable () -> Bool)? = nil,
@@ -352,6 +354,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             llmRunRepo: llmRunRepo,
             shouldUseAIFormatter: shouldUseAIFormatter,
             aiFormatterPromptTemplate: aiFormatterPromptTemplate,
+            shouldRepairMeetingSpeakerTurnBoundaries: shouldRepairMeetingSpeakerTurnBoundaries,
             shouldAutoGenerateMeetingTitles: shouldAutoGenerateMeetingTitles,
             shouldKeepDownloadedAudio: shouldKeepDownloadedAudio,
             shouldDiarize: shouldDiarize,
@@ -388,6 +391,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         llmRunRepo: LLMRunRepositoryProtocol? = nil,
         shouldUseAIFormatter: (@Sendable () -> Bool)? = nil,
         aiFormatterPromptTemplate: (@Sendable () -> String)? = nil,
+        shouldRepairMeetingSpeakerTurnBoundaries: (@Sendable () -> Bool)? = nil,
         shouldAutoGenerateMeetingTitles: (@Sendable () -> Bool)? = nil,
         shouldKeepDownloadedAudio: (@Sendable () -> Bool)? = nil,
         shouldDiarize: (@Sendable () -> Bool)? = nil,
@@ -421,6 +425,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         self.llmRunRecorder = LLMRunRecorder(repository: llmRunRepo)
         self.shouldUseAIFormatter = shouldUseAIFormatter ?? { false }
         self.aiFormatterPromptTemplate = aiFormatterPromptTemplate ?? { AIFormatter.defaultPromptTemplate }
+        self.shouldRepairMeetingSpeakerTurnBoundaries = shouldRepairMeetingSpeakerTurnBoundaries ?? { false }
         self.shouldAutoGenerateMeetingTitles = shouldAutoGenerateMeetingTitles ?? { false }
         self.shouldKeepDownloadedAudio = shouldKeepDownloadedAudio ?? { true }
         let resolvedShouldDiarize = shouldDiarize ?? { true }
@@ -2511,8 +2516,10 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 ? LLMRunSource(transcriptionId: transcription.id)
                 : nil
             let meetingFormatter = MeetingReadingTurnFormatter()
+            let repairSpeakerTurnBoundaries = isMeeting && shouldRepairMeetingSpeakerTurnBoundaries()
             let result = await meetingFormatter.format(
                 deterministicDocument,
+                repairSpeakerTurnBoundaries: repairSpeakerTurnBoundaries,
                 using: { batch in
                     let request = try batch.encodedJSON()
                     let outcome = try await transcriptFormatter.format(
@@ -2521,7 +2528,15 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                         lane: .transcription,
                         diagnosticID: batch.diagnosticID,
                         responseContract: .meetingReadingTurnBatch,
-                        resolvePrompt: { (MeetingReadingTurnFormatter.promptTemplate(promptTemplate), nil) }
+                        resolvePrompt: {
+                            (
+                                MeetingReadingTurnFormatter.promptTemplate(
+                                    promptTemplate,
+                                    repairSpeakerTurnBoundaries: repairSpeakerTurnBoundaries
+                                ),
+                                nil
+                            )
+                        }
                     )
                     if let run = outcome.run { formatterRuns.append(run) }
                     if let failure = outcome.failureDetail {

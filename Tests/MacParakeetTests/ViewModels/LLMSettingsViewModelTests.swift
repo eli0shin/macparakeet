@@ -143,6 +143,27 @@ final class LLMSettingsViewModelTests: XCTestCase {
         XCTAssertFalse(reloaded.aiFormatterEnabledForTranscriptions)
     }
 
+    func testMeetingSpeakerTurnRepairDefaultsToFalse() {
+        XCTAssertFalse(viewModel.meetingSpeakerTurnRepairEnabled)
+    }
+
+    func testMeetingSpeakerTurnRepairPersistsWhileProviderIsUnavailable() {
+        let key = UserDefaultsAppRuntimePreferences.meetingSpeakerTurnRepairEnabledKey
+
+        viewModel.configure(configStore: mockConfigStore, llmClient: mockClient)
+        viewModel.meetingSpeakerTurnRepairEnabled = true
+        viewModel.clearConfiguration()
+
+        XCTAssertEqual(defaults.object(forKey: key) as? Bool, true)
+        XCTAssertTrue(LLMSettingsViewModel(defaults: defaults).meetingSpeakerTurnRepairEnabled)
+    }
+
+    func testMeetingSpeakerTurnRepairLoadsStoredValueOnInit() {
+        defaults.set(true, forKey: UserDefaultsAppRuntimePreferences.meetingSpeakerTurnRepairEnabledKey)
+
+        XCTAssertTrue(LLMSettingsViewModel(defaults: defaults).meetingSpeakerTurnRepairEnabled)
+    }
+
     func testAutoGenerateMeetingTitlesDefaultsToTrue() {
         XCTAssertTrue(viewModel.autoGenerateMeetingTitles)
     }

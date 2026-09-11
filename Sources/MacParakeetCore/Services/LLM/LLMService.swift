@@ -135,9 +135,9 @@ public final class LLMService: LLMServiceProtocol, Sendable {
         let inputTruncated = false
     }
 
-    /// Meeting cleanup sends every Reading Turn in one request. Providers can
-    /// need several minutes to process long recordings, so this path must not
-    /// use the short interactive request timeout.
+    /// Meeting cleanup sends complete Reading Turns in serial JSON requests.
+    /// Providers can need several minutes to process long recordings, so this
+    /// path must not use the short interactive request timeout.
     static let meetingFormatterRequestTimeoutSeconds: TimeInterval = 1_800
 
     private static let lmStudioFormatterSchema = ChatJSONSchema(
