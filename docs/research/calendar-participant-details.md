@@ -14,28 +14,25 @@ MacParakeet does not query Contacts. It does not add a Contacts permission requi
 
 ## Real-calendar verification record
 
-Verification was attempted from this checkout with:
+Verified on September 10, 2026 with a signed development app and a real invitation in a calendar configured in macOS Calendar. Personal values were not copied into this record.
 
-```console
-$ swift run macparakeet-cli calendar upcoming --days 7 --filter all
-Error: Calendar access not yet requested. Launch MacParakeet, run onboarding (or visit Settings → Calendar), then retry.
-```
+For the invitation, EventKit exposed:
 
-The installed app CLI returned the same authorization state. This development machine therefore did not expose a real event to the process, so no provider-specific participant fields were recorded. Before release, repeat the command after granting the packaged app Calendar access and record only field availability, not personal values, in this table:
+- two attendees;
+- a name and a `mailto` URL for both attendees;
+- one attendee with `isCurrentUser == true`;
+- an organizer with both a name and a `mailto` URL.
 
-| Local Calendar account | Participant name | `mailto` URL | RSVP status | Organizer | Notes |
+**Meetings → Upcoming** showed the organizer on a separate `Organizer:` line and one other person on the `With:` line. It did not repeat the current user or organizer under `With:`. A separate real event with no attendees and no organizer kept the compact title, schedule, and calendar row without an empty people section.
+
+The invitation was already in progress when inspected. This pass proves the EventKit field extraction and Upcoming presentation before recording starts, but it does not prove display before the scheduled event start. The configured account provider type was not recorded, so no claim is made for a specific iCloud, Google, or Exchange field set.
+
+| Real Calendar case | Participant name | `mailto` URL | RSVP state | Organizer | Upcoming result |
 | --- | --- | --- | --- | --- | --- |
-| iCloud | Not verified | Not verified | Not verified | Not verified | Calendar access was not determined on the development machine. |
-| Google through macOS Calendar | Not verified | Not verified | Not verified | Not verified | Requires a locally configured account and a real invitation. |
-| Exchange through macOS Calendar | Not verified | Not verified | Not verified | Not verified | Requires a locally configured account and a real invitation. |
+| Invitation with two attendees | Both exposed | Both exposed | Calendar exposed accepted and unknown states | Name and `mailto` URL exposed | Separate organizer and one other participant; no current-user or organizer duplicate |
+| Event without attendees | Not applicable | Not applicable | Not applicable | Not exposed | No empty participant section |
 
-For the UI pass, enable Calendar reminders, open **Meetings → Upcoming**, and verify these cases:
-
-1. An invitation with names shows `Organizer:` and `With:` details before start.
-2. A participant with no name uses the available email address.
-3. A participant with neither field remains visible as `Participant`.
-4. The current user, organizer duplicates, and repeated attendees do not appear under `With:`.
-5. An event with no participants keeps the current compact event row, and denied Calendar permission keeps the current recovery state.
+Automated coverage supplies the unavailable-field cases that could not be produced with this account: name-only, email-only, no identity fields, equal names with distinct identities, and duplicate provider identities. A future provider matrix is still useful when iCloud, Google, and Exchange accounts are available on one test Mac; this validation does not infer provider behavior that was not observed.
 
 [^attendees]: Apple Developer Documentation, [EKCalendarItem.attendees](https://developer.apple.com/documentation/eventkit/ekcalendaritem/attendees).
 [^organizer]: Apple Developer Documentation, [EKEvent.organizer](https://developer.apple.com/documentation/eventkit/ekevent/organizer).
