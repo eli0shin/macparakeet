@@ -32,6 +32,10 @@ the bundle smoke is not signing/notarization or complete distribution validation
 Pull requests use the fast `/usr/bin/true` bundle fixture with helper downloads
 disabled. Its output cannot reach publication.
 
+All macOS lanes use the macOS 26 runner and Xcode 26.5. Distributable apps must
+link the macOS 26 SDK so system SwiftUI controls, including the main sidebar,
+have the same appearance as local development builds on macOS 26.
+
 After the complete CI gate passes, each `main` push and manual run publishes
 `MacParakeet-owner-development-build` for three days. This owner-only artifact
 contains one compressed DMG with the complete app and Applications shortcut.
@@ -192,7 +196,7 @@ more compilation time than their transfer/extraction cost.
 
 ## Initial local measurements
 
-Local Apple Silicon, current installed Xcode (not the hosted Xcode 16.1 runner):
+Local Apple Silicon, the Xcode version installed when these measurements were taken:
 
 - Cold `swift build --build-tests -Xswiftc -warn-concurrency`: **136.71 seconds**.
 - Focused 586 XCTest cases, grouped at three workers, including discovery and

@@ -99,7 +99,7 @@ jobs:
   debug-tests:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: macos-14
+    runs-on: macos-26
     # Five minutes is the normal-PR target, not a timeout that hides slow runs.
     timeout-minutes: 20
     steps:
@@ -147,7 +147,7 @@ jobs:
   swift6:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: macos-14
+    runs-on: macos-26
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -188,7 +188,7 @@ jobs:
     # Release validation stays on main/manual runs and release-input PRs.
     # Ordinary source PRs intentionally do not wait for whole-module optimization.
     if: needs.changes.outputs.release == 'true'
-    runs-on: macos-14
+    runs-on: macos-26
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
@@ -238,7 +238,7 @@ jobs:
       inputs.publish_signed_artifact == true &&
       github.ref == 'refs/heads/main'
     environment: signed-ci-artifact
-    runs-on: macos-14
+    runs-on: macos-26
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v6

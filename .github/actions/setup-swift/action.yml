@@ -9,7 +9,7 @@ runs:
   steps:
     - uses: maxim-lobanov/setup-xcode@v1
       with:
-        xcode-version: "16.1"
+        xcode-version: "26.5"
     - shell: bash
       run: |
         xcodebuild -version
@@ -39,9 +39,9 @@ runs:
           .build/artifacts
           .build/workspace-state.json
           ~/Library/Caches/org.swift.swiftpm
-        key: ${{ runner.os }}-${{ runner.arch }}-xcode16.1-spm-v2-${{ hashFiles('Package.swift', 'Package.resolved') }}
+        key: ${{ runner.os }}-${{ runner.arch }}-xcode26.5-spm-v2-${{ hashFiles('Package.swift', 'Package.resolved') }}
         restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-xcode16.1-spm-v2-
+          ${{ runner.os }}-${{ runner.arch }}-xcode26.5-spm-v2-
     - name: Report cache restore
       shell: bash
       env:

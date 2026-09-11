@@ -261,6 +261,7 @@ class WorkflowTests(unittest.TestCase):
         self.prototype_job = self.workflow.split("\n  compact-transcript-prototype:\n", 1)[1].split("\n  debug-tests:\n", 1)[0]
         self.github_release_workflow = Path(".github/workflows/release.yml").read_text()
         self.github_release_job = self.github_release_workflow.split("\n  release:\n", 1)[1]
+        self.setup_swift_action = Path(".github/actions/setup-swift/action.yml").read_text()
 
     def test_documentation_only_pushes_do_not_start_ci(self):
         triggers = self.workflow.split("\npermissions:\n", 1)[0]
@@ -346,6 +347,12 @@ class WorkflowTests(unittest.TestCase):
 
     def test_release_job_allows_both_fifteen_minute_build_steps(self):
         self.assertIn("\n    timeout-minutes: 35\n", self.release_job)
+
+    def test_distributable_apps_link_the_macos_26_sdk(self):
+        self.assertIn('xcode-version: "26.5"', self.setup_swift_action)
+        for job in [self.release_job, self.signed_job, self.development_job,
+                    self.github_release_job]:
+            self.assertIn("runs-on: macos-26", job)
 
     def test_fixture_bundle_inputs_cannot_reach_published_app(self):
         fixture = self.release_job.split("      - name: Release Bundle Fixture Smoke\n", 1)[1]
