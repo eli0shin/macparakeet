@@ -288,6 +288,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     private let systemSpeakerDetection: @Sendable () -> Bool
     private let microphoneSpeakerDetection: @Sendable () -> Bool
     private let finalSpeechEngineSelection: @Sendable () -> SpeechEngineSelection?
+    private let meetingAudioGain: @Sendable () -> MeetingAudioGain
     private let micConditionerFactory: @Sendable () -> any MicConditioning
     private let cleanedMicConditionerFactory: @Sendable () -> any MicConditioning
     private let cleanedMicrophoneReadinessScheduler: MeetingCleanedMicrophoneReadinessScheduling
@@ -397,7 +398,8 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         finalSpeechEngineSelection: @escaping @Sendable () -> SpeechEngineSelection? = { nil },
         isVadLiveChunkingEnabled: @escaping @Sendable () -> Bool = { false },
         liveDiarizationService: (any MeetingLiveDiarizing)? = nil,
-        echoSuppressionConfiguration: MeetingEchoSuppressionConfiguration = .fromEnvironment()
+        echoSuppressionConfiguration: MeetingEchoSuppressionConfiguration = .fromEnvironment(),
+        meetingAudioGain: @escaping @Sendable () -> MeetingAudioGain = { .current() }
     ) {
         self.init(
             systemSpeakerDetection: systemSpeakerDetection,
@@ -411,6 +413,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             finalSpeechEngineSelection: finalSpeechEngineSelection,
             isVadLiveChunkingEnabled: isVadLiveChunkingEnabled,
             liveDiarizationService: liveDiarizationService,
+            meetingAudioGain: meetingAudioGain,
             micConditionerFactory: {
                 MeetingEchoSuppressionFactory.makeConditioner(
                     configuration: echoSuppressionConfiguration
@@ -438,6 +441,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         finalSpeechEngineSelection: @escaping @Sendable () -> SpeechEngineSelection? = { nil },
         isVadLiveChunkingEnabled: @escaping @Sendable () -> Bool = { false },
         liveDiarizationService: (any MeetingLiveDiarizing)? = nil,
+        meetingAudioGain: @escaping @Sendable () -> MeetingAudioGain = { .current() },
         micConditionerFactory: @escaping @Sendable () -> any MicConditioning,
         cleanedMicConditionerFactory: (@Sendable () -> any MicConditioning)? = nil,
         wallClockNow: @escaping @Sendable () -> Date = { Date() },
@@ -472,6 +476,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         self.fileManager = fileManager
         self.finalSpeechEngineSelection = finalSpeechEngineSelection
         self.isVadLiveChunkingEnabled = isVadLiveChunkingEnabled
+        self.meetingAudioGain = meetingAudioGain
         self.micConditionerFactory = micConditionerFactory
         self.cleanedMicConditionerFactory = cleanedMicConditionerFactory ?? micConditionerFactory
         self.wallClockNow = wallClockNow
@@ -1806,7 +1811,8 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             samples: samples,
             source: source,
             hostTime: hostTime,
-            micConditioner: micConditioner
+            micConditioner: micConditioner,
+            audioGain: meetingAudioGain()
         )
         await handleCaptureOrchestratorOutput(output)
     }

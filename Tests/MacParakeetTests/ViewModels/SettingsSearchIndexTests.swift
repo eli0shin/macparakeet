@@ -164,6 +164,17 @@ final class SettingsSearchIndexTests: XCTestCase {
         }
     }
 
+    func testMeetingAudioGainQueriesFindMeetingSetting() {
+        for query in ["audio gain", "microphone gain", "quiet audio", "retranscribe"] {
+            let ids = Set(SettingsSearchIndex.matches(query).map(\.id))
+            if AppFeatures.meetingRecordingEnabled {
+                XCTAssertTrue(ids.contains("meeting.audioGain"), "Query \(query) should find meeting audio gain")
+            } else {
+                XCTAssertFalse(ids.contains("meeting.audioGain"), "Query \(query) should not reveal hidden meeting settings")
+            }
+        }
+    }
+
     func testMeetingSpeakerDetectionQueriesFindMeetingSetting() {
         let queries = ["system audio", "participants", "others", "speaker labels"]
 

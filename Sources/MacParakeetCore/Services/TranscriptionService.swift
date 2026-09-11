@@ -303,6 +303,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
     private let meetingCleanedMicrophoneReadinessPolicy: MeetingCleanedMicrophoneReadinessPolicy
     private let meetingFinalizationBenchmarkObserver: MeetingFinalizationBenchmarkObserver?
     private let meetingResidualSuppression: @Sendable () -> MeetingResidualEchoSuppression
+    private let meetingAudioGain: @Sendable () -> MeetingAudioGain
+    private let meetingAudioGainFileProcessor = MeetingAudioGainFileProcessor()
     private var regeneratingMeetingTitleIDs: Set<UUID> = []
 
     public init(
@@ -337,7 +339,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         meetingArtifactStore: MeetingArtifactStoring? = MeetingArtifactStore(),
         meetingAutomationHookRunner: MeetingAutomationHookRunning? = MeetingAutomationHookRunner(),
         meetingCleanedMicrophoneReadinessPolicy: MeetingCleanedMicrophoneReadinessPolicy = .production,
-        meetingResidualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() }
+        meetingResidualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() },
+        meetingAudioGain: @escaping @Sendable () -> MeetingAudioGain = { .current() }
     ) {
         self.init(
             audioProcessor: audioProcessor,
@@ -372,7 +375,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             meetingAutomationHookRunner: meetingAutomationHookRunner,
             meetingCleanedMicrophoneReadinessPolicy: meetingCleanedMicrophoneReadinessPolicy,
             meetingFinalizationBenchmarkObserver: nil,
-            meetingResidualSuppression: meetingResidualSuppression
+            meetingResidualSuppression: meetingResidualSuppression,
+            meetingAudioGain: meetingAudioGain
         )
     }
 
@@ -409,7 +413,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         meetingAutomationHookRunner: MeetingAutomationHookRunning? = MeetingAutomationHookRunner(),
         meetingCleanedMicrophoneReadinessPolicy: MeetingCleanedMicrophoneReadinessPolicy = .production,
         meetingFinalizationBenchmarkObserver: MeetingFinalizationBenchmarkObserver?,
-        meetingResidualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() }
+        meetingResidualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() },
+        meetingAudioGain: @escaping @Sendable () -> MeetingAudioGain = { .current() }
     ) {
         self.audioProcessor = audioProcessor
         self.sttTranscriber = sttTranscriber
@@ -446,6 +451,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         self.meetingCleanedMicrophoneReadinessPolicy = meetingCleanedMicrophoneReadinessPolicy
         self.meetingFinalizationBenchmarkObserver = meetingFinalizationBenchmarkObserver
         self.meetingResidualSuppression = meetingResidualSuppression
+        self.meetingAudioGain = meetingAudioGain
     }
 
     public func transcribe(
@@ -1689,6 +1695,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         var outputs: [MeetingTranscriptFinalizer.SourceTranscript] = []
         let activeSources = [AudioSource.microphone, .system].filter { recording.sourceAlignment.track(for: $0) != nil }
         let speechEngine = speechEngineOverride
+        let audioGain = meetingAudioGain()
         let microphoneDecision =
             activeSources.contains(.microphone)
             ? try await resolveMeetingMicrophoneSource(for: recording)
@@ -1705,8 +1712,15 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
                 )
                 lifecycleStage = .audioConversion
                 onProgress?(.converting)
-                let wavURL = try await audioProcessor.convert(fileURL: fileURL)
-                temporaryWavURLs.append(wavURL)
+                let convertedWavURL = try await audioProcessor.convert(fileURL: fileURL)
+                temporaryWavURLs.append(convertedWavURL)
+                let wavURL = try await meetingAudioGainFileProcessor.process(
+                    wavURL: convertedWavURL,
+                    decibels: audioGain.decibels(for: source)
+                )
+                if wavURL != convertedWavURL {
+                    temporaryWavURLs.append(wavURL)
+                }
                 sourceWavURLs[source] = wavURL
 
                 lifecycleStage = .stt

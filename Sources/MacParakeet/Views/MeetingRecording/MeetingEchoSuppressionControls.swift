@@ -37,6 +37,14 @@ struct MeetingInProgressAudioControls: View {
                 .foregroundStyle(DesignSystem.Colors.textTertiary)
             }
 
+            Divider()
+
+            MeetingAudioGainControls(
+                isLive: true,
+                microphoneAvailable: viewModel.speakerDetectionState.canDetectMicrophone,
+                systemAvailable: viewModel.speakerDetectionState.canDetectSystemAudio
+            )
+
             if viewModel.speakerDetectionState.canDetectSystemAudio
                 && viewModel.speakerDetectionState.canDetectMicrophone
             {
@@ -67,6 +75,85 @@ struct MeetingInProgressAudioControls: View {
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textTertiary)
         }
+    }
+}
+
+/// Shared by meeting Settings and the live recording panel. Gain changes the
+/// audio sent to speech processing, not the retained raw tracks or playback.
+struct MeetingAudioGainControls: View {
+    var isLive = false
+    var microphoneAvailable = true
+    var systemAvailable = true
+
+    @AppStorage(MeetingAudioGain.microphoneKey) private var microphoneDB = 0.0
+    @AppStorage(MeetingAudioGain.systemKey) private var systemDB = 0.0
+
+    private var selected: MeetingAudioGain {
+        .init(microphoneDB: microphoneDB, systemDB: systemDB)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("Transcription gain")
+                .font(DesignSystem.Typography.bodySmall.weight(.semibold))
+
+            gainSlider(
+                title: "Microphone audio gain",
+                value: Binding(
+                    get: { selected.microphoneDB },
+                    set: { microphoneDB = MeetingAudioGain(microphoneDB: $0, systemDB: systemDB).microphoneDB }
+                ),
+                isAvailable: microphoneAvailable,
+                onReset: { microphoneDB = 0 }
+            )
+
+            Divider()
+
+            gainSlider(
+                title: "System audio gain",
+                value: Binding(
+                    get: { selected.systemDB },
+                    set: { systemDB = MeetingAudioGain(microphoneDB: microphoneDB, systemDB: $0).systemDB }
+                ),
+                isAvailable: systemAvailable,
+                onReset: { systemDB = 0 }
+            )
+
+            Text(
+                isLive
+                    ? "Applies to new live transcript audio and this meeting's final transcript. Existing live text and retained audio stay unchanged."
+                    : "Applies to meeting transcription only. Retranscribe a saved meeting to test new gain values; retained audio stays unchanged."
+            )
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(DesignSystem.Colors.textTertiary)
+        }
+        .foregroundStyle(DesignSystem.Colors.textSecondary)
+    }
+
+    private func gainSlider(
+        title: String,
+        value: Binding<Double>,
+        isAvailable: Bool,
+        onReset: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text("\(Int(value.wrappedValue)) dB")
+                    .monospacedDigit()
+                Button("Reset") {
+                    onReset()
+                }
+                .parakeetAction(.secondary)
+                .disabled(!isAvailable || value.wrappedValue == 0)
+            }
+            Slider(value: value, in: MeetingAudioGain.decibelRange, step: 1)
+                .disabled(!isAvailable)
+                .accessibilityLabel(title)
+                .accessibilityValue("\(Int(value.wrappedValue)) decibels")
+        }
+        .opacity(isAvailable ? 1 : 0.5)
     }
 }
 

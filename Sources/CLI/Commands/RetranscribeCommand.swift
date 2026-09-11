@@ -590,6 +590,7 @@ struct RetranscribeCommand: AsyncParsableCommand {
             storedMode: defaults.string(forKey: UserDefaultsAppRuntimePreferences.processingModeKey)
         )
         let residualSuppression = MeetingResidualEchoSuppression.current(defaults: defaults)
+        let audioGain = MeetingAudioGain.current(defaults: defaults)
         return TranscriptionService(
             audioProcessor: AudioProcessor(),
             sttTranscriber: sttTranscriber,
@@ -607,7 +608,8 @@ struct RetranscribeCommand: AsyncParsableCommand {
                 systemSpeakerDetection: systemSpeakerDetection,
                 microphoneSpeakerDetection: microphoneSpeakerDetection
             ),
-            meetingResidualSuppression: { residualSuppression }
+            meetingResidualSuppression: { residualSuppression },
+            meetingAudioGain: { audioGain }
         )
     }
 

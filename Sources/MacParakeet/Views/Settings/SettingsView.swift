@@ -1238,6 +1238,10 @@ struct SettingsView: View {
 
                 Divider()
 
+                MeetingAudioGainControls()
+
+                Divider()
+
                 MeetingEchoSuppressionControls()
 
                 Divider()

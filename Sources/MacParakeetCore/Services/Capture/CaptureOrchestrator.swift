@@ -49,26 +49,37 @@ actor CaptureOrchestrator {
         samples: [Float],
         source: AudioSource,
         hostTime: UInt64?,
-        micConditioner: any MicConditioning
+        micConditioner: any MicConditioning,
+        audioGain: MeetingAudioGain = .standard
     ) async -> CaptureOrchestratorOutput {
         pairJoiner.push(samples: samples, hostTime: hostTime, source: source)
         let pairs = pairJoiner.drainPairs()
-        var output = await processPairs(pairs, micConditioner: micConditioner)
+        var output = await processPairs(
+            pairs,
+            micConditioner: micConditioner,
+            audioGain: audioGain
+        )
         output.diagnostics = pairJoiner.drainDiagnostics()
         return output
     }
 
     func flushPendingPairs(
-        micConditioner: any MicConditioning
+        micConditioner: any MicConditioning,
+        audioGain: MeetingAudioGain = .standard
     ) async -> CaptureOrchestratorOutput {
         let pairs = pairJoiner.flushRemainingPairs()
-        var output = await processPairs(pairs, micConditioner: micConditioner)
+        var output = await processPairs(
+            pairs,
+            micConditioner: micConditioner,
+            audioGain: audioGain
+        )
         let heldSamples = micConditioner.flush()
         if !heldSamples.isEmpty {
+            let gainedSamples = audioGain.applying(to: heldSamples, source: .microphone)
             output.liveDiarizationAudio.append(
-                CaptureOrchestratorAudioBlock(source: .microphone, samples: heldSamples)
+                CaptureOrchestratorAudioBlock(source: .microphone, samples: gainedSamples)
             )
-            for micChunk in await microphoneChunker.addSamples(heldSamples) {
+            for micChunk in await microphoneChunker.addSamples(gainedSamples) {
                 output.chunks.append(CaptureOrchestratorChunk(source: .microphone, chunk: micChunk))
             }
         }
@@ -88,7 +99,8 @@ actor CaptureOrchestrator {
 
     private func processPairs(
         _ pairs: [MeetingAudioPair],
-        micConditioner: any MicConditioning
+        micConditioner: any MicConditioning,
+        audioGain: MeetingAudioGain
     ) async -> CaptureOrchestratorOutput {
         var output = CaptureOrchestratorOutput()
         for pair in pairs {
@@ -122,20 +134,22 @@ actor CaptureOrchestrator {
                     : heldSamples + pair.microphoneSamples
             }
 
-            if !micSamples.isEmpty {
+            let gainedMicSamples = audioGain.applying(to: micSamples, source: .microphone)
+            let gainedSystemSamples = audioGain.applying(to: pair.systemSamples, source: .system)
+            if !gainedMicSamples.isEmpty {
                 output.liveDiarizationAudio.append(
-                    CaptureOrchestratorAudioBlock(source: .microphone, samples: micSamples)
+                    CaptureOrchestratorAudioBlock(source: .microphone, samples: gainedMicSamples)
                 )
             }
             output.liveDiarizationAudio.append(
-                CaptureOrchestratorAudioBlock(source: .system, samples: pair.systemSamples)
+                CaptureOrchestratorAudioBlock(source: .system, samples: gainedSystemSamples)
             )
 
-            for micChunk in await microphoneChunker.addSamples(micSamples) {
+            for micChunk in await microphoneChunker.addSamples(gainedMicSamples) {
                 output.chunks.append(CaptureOrchestratorChunk(source: .microphone, chunk: micChunk))
             }
 
-            for systemChunk in await systemChunker.addSamples(pair.systemSamples) {
+            for systemChunk in await systemChunker.addSamples(gainedSystemSamples) {
                 output.chunks.append(CaptureOrchestratorChunk(source: .system, chunk: systemChunk))
             }
 

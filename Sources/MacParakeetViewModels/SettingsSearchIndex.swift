@@ -88,6 +88,7 @@ public enum SettingsSearchIndex {
         "meeting",
         "meeting.hotkey",
         "meeting.floatingControls",
+        "meeting.audioGain",
         "meeting.speakerDetection",
         "meeting.autoStop",
         "meeting.calendar",
@@ -268,6 +269,17 @@ public enum SettingsSearchIndex {
                 "floating controls", "meeting pill", "recording pill",
                 "hide meeting", "hide recording", "recording ui", "menu bar",
                 "overlay"
+            ],
+            cardAnchor: "meeting"
+        ),
+        SettingsSearchEntry(
+            id: "meeting.audioGain",
+            tab: .capture,
+            title: "Meeting audio gain",
+            subtitle: "in Meeting Recording",
+            keywords: [
+                "gain", "volume", "level", "microphone gain", "system audio gain",
+                "quiet audio", "loud audio", "retranscribe"
             ],
             cardAnchor: "meeting"
         ),
