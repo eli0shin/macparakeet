@@ -352,7 +352,6 @@ final class AppEnvironmentConfigurer {
                 self.libraryViewModel.loadTranscriptions()
                 self.meetingsWorkspaceViewModel.refreshRecentMeetings()
                 self.mainWindowState.navigateToTranscription(from: .library)
-                callbacks.onOpenMainWindow()
             },
             onQueuedTranscriptionReady: { [weak self] transcription, selectTranscription in
                 guard let self else { return }
@@ -366,7 +365,6 @@ final class AppEnvironmentConfigurer {
                 self.meetingsWorkspaceViewModel.refreshRecentMeetings()
                 if selectTranscription {
                     self.mainWindowState.navigateToTranscription(from: .library)
-                    callbacks.onOpenMainWindow()
                 }
             },
             onQueuedTranscriptionFailed: { [weak self] transcriptionID, content in

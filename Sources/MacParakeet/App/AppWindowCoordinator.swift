@@ -5,17 +5,6 @@ import MacParakeetCore
 import MacParakeetViewModels
 
 @MainActor
-enum MainWindowPresentation {
-    static func open(_ window: NSWindow, activate: () -> Void) {
-        if window.isMiniaturized {
-            window.deminiaturize(nil)
-        }
-        activate()
-        window.makeKeyAndOrderFront(nil)
-    }
-}
-
-@MainActor
 final class AppWindowCoordinator: NSObject, NSWindowDelegate {
     private let mainWindowState: MainWindowState
     private let transcriptionViewModel: TranscriptionViewModel
@@ -89,13 +78,10 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
     }
 
     func openMainWindow() {
-        if mainWindow == nil {
-            createMainWindow()
-        }
+        guard mainWindow == nil else { return }
+        createMainWindow()
         guard let mainWindow else { return }
-        MainWindowPresentation.open(mainWindow) {
-            NSApp.activate(ignoringOtherApps: true)
-        }
+        mainWindow.orderFront(nil)
         logWindowEvent("open", window: mainWindow)
     }
 
@@ -105,25 +91,13 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
     }
 
     func handleAppReopen() -> Bool {
-        // Dock reopen requests the main window. Another visible surface (for
-        // example onboarding or a live meeting) does not satisfy that request.
-        openMainWindow()
-        return true
+        false
     }
 
     func applyActivationPolicyFromSettings() {
         let menuBarOnly = settingsViewModel.menuBarOnlyMode
-        let visibleWindows = NSApp.windows.filter(\.isVisible)
         let mode: NSApplication.ActivationPolicy = menuBarOnly ? .accessory : .regular
         NSApp.setActivationPolicy(mode)
-
-        // A policy change is an explicit user action. AppKit can order out app
-        // windows while changing policy, so restore each surface that was
-        // visible. `orderFront` preserves its assigned Space and does not
-        // activate the app or steal keyboard focus.
-        for window in visibleWindows {
-            window.orderFront(nil)
-        }
     }
 
     func makeDockMenu() -> NSMenu {
