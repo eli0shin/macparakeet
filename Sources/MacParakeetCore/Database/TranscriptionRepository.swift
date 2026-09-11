@@ -855,7 +855,8 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
 
     /// Every persisted column must be present because `Transcription` uses its
     /// normal record decoder. Payload columns are explicitly NULL, except for a
-    /// bounded legacy meeting prefix used to prepare one cached row preview.
+    /// bounded legacy meeting prefix used to prepare one cached row preview and
+    /// a fixed-size calendar placeholder that carries only match confidence.
     private static let libraryListProjection = """
         id, createdAt, fileName, filePath, audioTrackOrdinal,
         meetingArtifactFolderPath, fileSizeBytes, durationMs,
@@ -869,7 +870,17 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
         thumbnailURL, channelName, NULL AS videoDescription, isFavorite,
         sourceType, recoveredFromCrash, isTranscriptEdited, NULL AS userNotes,
         NULL AS meetingStartContext, meetingCaptureReport, engine, engineVariant,
-        NULL AS calendarEventSnapshot, titleOverride, libraryFolderID,
+        CASE WHEN json_valid(calendarEventSnapshot) THEN
+            CASE WHEN json_extract(calendarEventSnapshot, '$.confidence') IN ('confirmed', 'probable') THEN
+                json_object(
+                    'confidence', json_extract(calendarEventSnapshot, '$.confidence'),
+                    'eventIdentifier', '', 'title', '',
+                    'scheduledStartAt', 0, 'scheduledEndAt', 0,
+                    'attendees', json_array(), 'capturedAt', 0
+                )
+            ELSE NULL END
+        ELSE NULL END AS calendarEventSnapshot,
+        titleOverride, libraryFolderID,
         derivedTitle, derivedSnippet, updatedAt
         """
 
