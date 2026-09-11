@@ -99,34 +99,7 @@ final class MeetingTranscriptDisplayBuilderTests: XCTestCase {
         XCTAssertEqual(turn.paragraphs.count, 2)
     }
 
-    func testSkipsBlankTurnsBeforeGroupingSpeakerRuns() {
-        let document = MeetingTranscriptPresentationDocument(turns: [
-            turn(speakerId: "system:S2", label: "Other", firstWord: 0, startMs: 0, text: ""),
-            turn(speakerId: "system:S1", label: "Alex", firstWord: 1, startMs: 1_000),
-            turn(speakerId: "system:S2", label: "Other", firstWord: 2, startMs: 2_000, text: " \n\t"),
-            turn(speakerId: "system:S1", label: "Alex", firstWord: 3, startMs: 3_000),
-            turn(speakerId: "system:S2", label: "Other", firstWord: 4, startMs: 4_000, text: ""),
-        ])
-
-        let displayed = MeetingTranscriptDisplayBuilder.build(from: document)
-
-        XCTAssertEqual(displayed.turns.count, 1)
-        XCTAssertEqual(displayed.turns.first?.text, "Text 1\n\nText 3")
-        XCTAssertEqual(displayed.turns.first?.id, document.turns[1].id)
-        XCTAssertEqual(displayed.turns.first?.wordReferences, [1, 3])
-        XCTAssertEqual(displayed.turns.first?.timeRange, ReadingTurnTimeRange(startMs: 1_000, endMs: 3_500))
-        XCTAssertEqual(document.turns.count, 5)
-    }
-
-    func testAllBlankTurnsProduceEmptyDisplay() {
-        let document = MeetingTranscriptPresentationDocument(turns: [
-            turn(speakerId: "system:S1", label: "Alex", firstWord: 0, startMs: 0, text: " \n"),
-        ])
-
-        XCTAssertTrue(MeetingTranscriptDisplayBuilder.build(from: document).turns.isEmpty)
-    }
-
-    func testFillerOnlyTurnDoesNotSplitDisplayedSpeakerRun() {
+    func testFillerOnlyTurnIsDroppedBeforeDisplayGrouping() {
         let canonical = MeetingTranscriptPresentationBuilder.build(
             transcriptText: "",
             words: [
@@ -137,8 +110,8 @@ final class MeetingTranscriptDisplayBuilderTests: XCTestCase {
             speakers: nil
         )
 
-        XCTAssertEqual(canonical.turns.count, 3)
-        XCTAssertEqual(canonical.turns[1].text, "")
+        XCTAssertEqual(canonical.turns.map(\.text), ["First point.", "Next point."])
+        XCTAssertFalse(canonical.turns.contains { $0.speakerId == "system" })
         let displayed = MeetingTranscriptDisplayBuilder.build(from: canonical)
         XCTAssertEqual(displayed.turns.count, 1)
         XCTAssertEqual(displayed.turns.first?.text, "First point.\n\nNext point.")
@@ -148,8 +121,7 @@ final class MeetingTranscriptDisplayBuilderTests: XCTestCase {
         speakerId: String,
         label: String,
         firstWord: Int,
-        startMs: Int,
-        text: String? = nil
+        startMs: Int
     ) -> ReadingTurn {
         ReadingTurn(
             id: ReadingTurnIdentity(
@@ -162,7 +134,7 @@ final class MeetingTranscriptDisplayBuilderTests: XCTestCase {
             source: .system,
             timeRange: ReadingTurnTimeRange(startMs: startMs, endMs: startMs + 500),
             paragraphs: [
-                ReadingTurnParagraph(text: text ?? "Text \(firstWord)", wordReferences: [firstWord])
+                ReadingTurnParagraph(text: "Text \(firstWord)", wordReferences: [firstWord])
             ],
             wordReferences: [firstWord]
         )

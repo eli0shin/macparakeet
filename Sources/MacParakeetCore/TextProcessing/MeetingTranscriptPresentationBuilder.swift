@@ -115,6 +115,14 @@ public struct MeetingTranscriptPresentationDocument: Codable, Sendable, Equatabl
     public init(turns: [ReadingTurn]) {
         self.turns = turns
     }
+
+    /// Remove Reading Turns whose presented text became empty during cleanup.
+    /// Canonical word timestamps remain available as transcript evidence.
+    public func droppingEmptyTurns() -> Self {
+        Self(turns: turns.filter {
+            $0.text.contains(where: { !$0.isWhitespace })
+        })
+    }
 }
 
 /// Content-free measures for comparing Reading Turn fixture output. These
@@ -218,7 +226,7 @@ public enum MeetingTranscriptPresentationBuilder {
             )
             return MeetingTranscriptPresentationDocument(
                 turns: applyFormatting(formatting, to: fallback.turns)
-            )
+            ).droppingEmptyTurns()
         }
 
         let labels = Dictionary(
@@ -256,7 +264,7 @@ public enum MeetingTranscriptPresentationBuilder {
         )
         return MeetingTranscriptPresentationDocument(
             turns: applyFormatting(formatting, to: chronological)
-        )
+        ).droppingEmptyTurns()
     }
 
     /// Attribution is source-local, but reading order is global. Split an

@@ -80,6 +80,24 @@ final class SavedReadingTranscriptTests: XCTestCase {
         XCTAssertEqual(document.turns.map(\.text), words.map(\.word))
     }
 
+    func testReadingAssemblyDropsFillerOnlyTurnAtSource() {
+        let words = [
+            word("First.", 0, 500, "microphone"),
+            word("uh", 1_000, 1_500, "system"),
+            word("Next.", 2_000, 2_500, "microphone"),
+        ]
+
+        let document = FinalTranscriptAssembler.build(
+            transcriptText: "First. uh Next.",
+            words: words,
+            speakers: [],
+            cleanup: .cleaned
+        )
+
+        XCTAssertEqual(document.turns.map(\.text), ["First.", "Next."])
+        XCTAssertFalse(document.turns.contains { $0.speakerId == "system" })
+    }
+
     func testFinalizationKeepsRepeatedWordsOnBothSources() {
         let evidence = [word("Please", 100, 300), word("continue", 400, 700)]
         let finalized = MeetingTranscriptFinalizer.finalize(sourceTranscripts: [

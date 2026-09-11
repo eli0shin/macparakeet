@@ -34,6 +34,6 @@ public enum FinalTranscriptAssembler {
                     customWords: customWords, cleanup: cleanup
                 )
             }
-        )
+        ).droppingEmptyTurns()
     }
 }

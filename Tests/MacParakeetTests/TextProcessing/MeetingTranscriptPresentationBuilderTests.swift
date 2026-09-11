@@ -1016,6 +1016,31 @@ final class MeetingTranscriptPresentationBuilderTests: XCTestCase {
         XCTAssertEqual(rejected.turns[0].text, "Hello.")
     }
 
+    func testDropsReadingTurnAtSourceWhenAppliedFormattingIsEmpty() throws {
+        let words = [word("noise.", 0, 300, "system:S1")]
+        let baseline = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "noise.",
+            words: words,
+            speakers: [SpeakerInfo(id: "system:S1", label: "Avery")]
+        )
+        let turn = try XCTUnwrap(baseline.turns.first)
+
+        let formatted = MeetingTranscriptPresentationBuilder.build(
+            transcriptText: "noise.",
+            words: words,
+            speakers: [SpeakerInfo(id: "system:S1", label: "Avery")],
+            formatting: [
+                MeetingReadingTurnFormatting(
+                    turnID: turn.id,
+                    deterministicText: turn.deterministicText,
+                    formattedText: " \n\t"
+                )
+            ]
+        )
+
+        XCTAssertTrue(formatted.turns.isEmpty)
+    }
+
     func testStableIdentityDoesNotDependOnDisplayLabel() {
         let words = [word("Hello.", 0, 300, "system:S1")]
 
