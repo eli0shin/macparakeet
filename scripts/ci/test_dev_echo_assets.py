@@ -1,4 +1,7 @@
-"""Dev launch regression tests. No app launch, network, or user-data access."""
+"""Dev launch regression tests. No app launch, network, or user-data access.
+
+Tests that inspect implementation files for literal text are absolutely unacceptable.
+"""
 import hashlib
 import os
 from pathlib import Path
@@ -143,13 +146,6 @@ int32_t localvqe_process_frame_f32(uintptr_t c, const float *m,
                     self.assertIn("initialized and processed a frame", result.stdout)
                 else:
                     self.assertIn("model initialization failed", result.stderr)
-
-    def test_release_and_dev_use_same_packager(self):
-        for name in ("scripts/dev/run_app.sh", "scripts/dist/build_app_bundle.sh"):
-            text = (ROOT / name).read_text()
-            self.assertIn('. "$ROOT_DIR/scripts/dist/bundle_meeting_echo_assets.sh"', text)
-            self.assertNotIn("bundle_meeting_echo_assets()", text)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,3 +1,8 @@
+"""Test behavior by executing code or scripts.
+
+Tests that inspect implementation files for literal text are absolutely unacceptable.
+"""
+
 from contextlib import redirect_stdout
 import io
 import json
@@ -11,7 +16,6 @@ import unittest
 from unittest.mock import patch
 
 from classify_changes import classify, main as classify_main
-from check_results import check
 from plan_github_release import make_plan, next_tag, repository_plan
 from run_tests import executed_count, parse_tests, partition, run_command
 
@@ -251,181 +255,7 @@ class InterruptedReleaseRecoveryTests(unittest.TestCase):
             self.assertIn("git tag -d v0.7.3", commands)
 
 
-class WorkflowTests(unittest.TestCase):
-    def setUp(self):
-        self.workflow = Path(".github/workflows/ci.yml").read_text()
-        self.signed_job = self.workflow.split("\n  signed_test_dmg:\n", 1)[1].split("\n  # Preserve", 1)[0]
-        self.prototype_job = self.workflow.split(
-            "\n  compact_transcript_prototype_check:\n", 1
-        )[1].split("\n  test_suite:\n", 1)[0]
-        self.github_release_workflow = Path(".github/workflows/release.yml").read_text()
-        self.github_release_job = self.github_release_workflow.split(
-            "\n  publish_github_release:\n", 1
-        )[1]
-        self.setup_swift_action = Path(".github/actions/setup-swift/action.yml").read_text()
-
-    def test_documentation_only_pushes_do_not_start_ci(self):
-        triggers = self.workflow.split("\npermissions:\n", 1)[0]
-        push = triggers.split("  push:\n", 1)[1].split("  pull_request:\n", 1)[0]
-        for path in [".tickets/**", "docs/**", "plans/**", "spec/**", "integrations/**",
-                     '"*.md"', "Sources/**/README.md"]:
-            self.assertIn(f"      - {path}\n", push)
-        self.assertIn("  pull_request:\n", triggers)
-        self.assertIn("  workflow_dispatch:\n", triggers)
-        self.assertIn("PUSH_BASE_SHA: ${{ github.event.before }}", self.workflow)
-
-    def test_compact_transcript_prototype_is_self_contained_and_downloadable(self):
-        self.assertIn("github.event_name == 'pull_request'", self.prototype_job)
-        self.assertIn("github.head_ref == '025-prototype-compact-borderless-meeting-transcript'", self.prototype_job)
-        self.assertIn("github.event_name == 'workflow_dispatch'", self.prototype_job)
-        self.assertIn("github.ref == 'refs/heads/025-prototype-compact-borderless-meeting-transcript'", self.prototype_job)
-        self.assertIn("Verify self-contained prototype", self.prototype_job)
-        self.assertIn('forbidden = ["<script src=", "<link rel=", "http://", "https://", "file:///"', self.prototype_job)
-        upload = self.prototype_job.split("      - name: Upload compact transcript prototype\n", 1)[1]
-        self.assertIn("uses: actions/upload-artifact@v7", upload)
-        self.assertIn("name: MacParakeet-compact-borderless-transcript-prototype", upload)
-        self.assertIn("path: prototypes/compact-borderless-meeting-transcript/index.html", upload)
-        self.assertIn("if-no-files-found: error", upload)
-        self.assertIn("retention-days: 14", upload)
-        self.assertNotIn("secrets.", self.prototype_job)
-
-    def test_github_release_runs_only_after_trusted_main_push_ci(self):
-        workflow = self.github_release_workflow
-        job = self.github_release_job
-        self.assertIn("workflow_run:", workflow)
-        self.assertIn("workflows: [CI]", workflow)
-        self.assertIn("github.event.workflow_run.conclusion == 'success'", job)
-        self.assertIn("github.event.workflow_run.event == 'push'", job)
-        self.assertIn("github.event.workflow_run.head_branch == 'main'", job)
-        self.assertIn("github.event.workflow_run.head_repository.full_name == 'eli0shin/macparakeet'", job)
-        self.assertNotIn("pull_request:", workflow)
-        self.assertNotIn("workflow_dispatch:", workflow)
-
-    def test_github_release_serializes_and_scopes_write_permission(self):
-        workflow_prefix, job = self.github_release_workflow.split(
-            "\n  publish_github_release:\n", 1
-        )
-        self.assertIn("cancel-in-progress: false", workflow_prefix)
-        self.assertIn("permissions:\n  contents: read", workflow_prefix)
-        self.assertIn("permissions:\n      contents: write", job)
-        self.assertEqual(self.github_release_workflow.count("contents: write"), 1)
-        self.assertIn("environment: signed-ci-artifact", job)
-
-    def test_github_release_recovers_before_planning(self):
-        job = self.github_release_job
-        recovery = job.index("bash scripts/ci/recover_interrupted_release.sh")
-        planning = job.index("python3 scripts/ci/plan_github_release.py")
-        self.assertLess(recovery, planning)
-
-    def test_github_release_verifies_before_tag_and_publication(self):
-        job = self.github_release_job
-        build = job.index("bash scripts/ci/publish_signed_artifact.sh")
-        tag = job.index('git tag -a "$TAG"')
-        publication = job.index("gh release create --repo eli0shin/macparakeet")
-        self.assertLess(build, tag)
-        self.assertLess(tag, publication)
-        self.assertIn("scripts/ci/plan_github_release.py", job)
-        self.assertIn('SIGNED_ARTIFACT_BUILD_NUMBER="$(date -u +%Y%m%d%H%M%S)"', job)
-        self.assertIn("dist/MacParakeet.dmg", job)
-        self.assertIn('git push origin ":refs/tags/$TAG"', job)
-        self.assertIn(".draft == true", job)
-        self.assertIn("gh api --method DELETE", job)
-
-    def test_github_release_uses_only_the_six_protected_signing_secrets(self):
-        secret_names = [
-            "DEVELOPMENT_ID_CERTIFICATE_BASE64",
-            "DEVELOPMENT_ID_CERTIFICATE_PASSWORD",
-            "DEVELOPER_ID_APPLICATION_IDENTITY",
-            "APPLE_TEAM_ID",
-            "NOTARY_APPLE_ID",
-            "NOTARY_APP_SPECIFIC_PASSWORD",
-        ]
-        for name in secret_names:
-            self.assertIn("${{ secrets." + name + " }}", self.github_release_job)
-        self.assertEqual(self.github_release_job.count("${{ secrets."), len(secret_names))
-
-    def test_debug_tests_job_allows_a_cold_xcode_26_build(self):
-        debug_job = self.workflow.split("\n  test_suite:\n", 1)[1].split(
-            "\n  signed_test_dmg:\n", 1
-        )[0]
-        self.assertIn("\n    timeout-minutes: 20\n", debug_job)
-        build_step = debug_job.split(
-            "      - name: Build app, CLI, and tests with concurrency diagnostics\n", 1
-        )[1].split("      - name:", 1)[0]
-        self.assertIn("timeout-minutes: 12", build_step)
-
-    def test_normal_build_enforces_swift_6_language_mode(self):
-        package = Path("Package.swift").read_text()
-        self.assertTrue(package.startswith("// swift-tools-version: 6.0\n"))
-        self.assertIn("swiftLanguageModes: [.v6]", package)
-        self.assertNotIn("swift6_compatibility:", self.workflow)
-        self.assertNotIn("MACPARAKEET_SKIP_WHISPERKIT", self.workflow)
-
-    def test_pr_ci_does_not_build_an_unused_release_product(self):
-        self.assertNotIn("swift build -c release", self.workflow)
-        self.assertNotIn("release_validation:", self.workflow)
-
-    def test_distributable_apps_link_the_macos_26_sdk(self):
-        self.assertIn('xcode-version: "26.5"', self.setup_swift_action)
-        for job in [self.signed_job, self.github_release_job]:
-            self.assertIn("runs-on: macos-26", job)
-
-    def test_fixture_bundle_cannot_reach_published_app(self):
-        self.assertNotIn("FFMPEG_PATH: /usr/bin/true", self.workflow)
-        self.assertNotIn("unsigned-non-notarized", self.workflow)
-
-    def test_owner_development_dmg_is_not_built(self):
-        self.assertFalse(Path(".github/workflows/development-artifact.yml").exists())
-        self.assertFalse(Path("scripts/ci/publish_development_artifact.sh").exists())
-        self.assertFalse(Path("scripts/ci/verify_development_dmg.sh").exists())
-
-    def test_signed_publication_waits_for_complete_fail_closed_gate(self):
-        self.assertIn("needs: ci_gate", self.signed_job)
-        self.assertIn("needs.ci_gate.result == 'success'", self.signed_job)
-        self.assertNotIn("needs: [preflight, test_suite]", self.signed_job)
-
-    def test_signed_publication_is_manual_main_and_environment_gated(self):
-        self.assertIn("github.event_name == 'workflow_dispatch'", self.signed_job)
-        self.assertIn("inputs.publish_signed_artifact == true", self.signed_job)
-        self.assertIn("github.ref == 'refs/heads/main'", self.signed_job)
-        self.assertIn("environment: signed-ci-artifact", self.signed_job)
-        self.assertNotIn("pull_request", self.signed_job)
-        self.assertIn("SIGNED_ARTIFACT_VERSION: ${{ inputs.signed_artifact_version }}", self.signed_job)
-
-    def test_signing_secrets_exist_only_in_protected_job(self):
-        secret_names = [
-            "DEVELOPMENT_ID_CERTIFICATE_BASE64",
-            "DEVELOPMENT_ID_CERTIFICATE_PASSWORD",
-            "DEVELOPER_ID_APPLICATION_IDENTITY",
-            "APPLE_TEAM_ID",
-            "NOTARY_APPLE_ID",
-            "NOTARY_APP_SPECIFIC_PASSWORD",
-        ]
-        unprotected = self.workflow.split("\n  signed_test_dmg:\n", 1)[0]
-        for name in secret_names:
-            with self.subTest(secret=name):
-                self.assertIn("${{ secrets." + name + " }}", self.signed_job)
-                self.assertNotIn(name, unprotected)
-
-    def test_signed_upload_is_fail_closed_named_and_retained(self):
-        upload = self.signed_job.split("      - name: Upload signed and notarized CI test DMG\n", 1)[1]
-        upload = upload.split("      - name:", 1)[0]
-        self.assertIn("uses: actions/upload-artifact@v7", upload)
-        self.assertIn("name: MacParakeet-signed-notarized-ci-test", upload)
-        self.assertIn("path: dist/MacParakeet-signed-notarized-ci-test.dmg", upload)
-        self.assertIn("if-no-files-found: error", upload)
-        self.assertIn("retention-days: 7", upload)
-        self.assertNotIn("continue-on-error", upload)
-
-
 class SignedArtifactScriptTests(unittest.TestCase):
-    def setUp(self):
-        self.publish = Path("scripts/ci/publish_signed_artifact.sh").read_text()
-        self.verify = Path("scripts/ci/verify_signed_dmg.sh").read_text()
-        self.sign = Path("scripts/dist/sign_notarize.sh").read_text()
-        self.privacy_verify = Path("scripts/dist/verify_app_privacy_surface.sh").read_text()
-        self.downloadable_verify = Path("scripts/ci/verify_downloadable_app.sh").read_text()
-
     def run_publish_fixture(self, build_exit=0, missing_input=None,
                             invalid_certificate=False, interrupt_build=False):
         temporary_directory = tempfile.TemporaryDirectory(prefix="signed artifact fixture ")
@@ -505,19 +335,6 @@ class SignedArtifactScriptTests(unittest.TestCase):
             commands = [json.loads(line) for line in command_log.read_text().splitlines()]
         return temporary_directory, result, commands, original_keychains
 
-    def test_credentials_use_ephemeral_keychain_with_failure_cleanup(self):
-        self.assertIn("trap cleanup EXIT", self.publish)
-        self.assertIn("trap 'exit 130' INT", self.publish)
-        self.assertIn("trap 'exit 143' TERM", self.publish)
-        self.assertIn('security create-keychain', self.publish)
-        self.assertIn('security delete-keychain "$KEYCHAIN_PATH"', self.publish)
-        self.assertIn('rm -f "$CERTIFICATE_PATH"', self.publish)
-        self.assertIn('--keychain "$KEYCHAIN_PATH"', self.publish)
-        self.assertIn('SIGN_KEYCHAIN="$KEYCHAIN_PATH"', self.publish)
-        self.assertIn('NOTARYTOOL_KEYCHAIN="$KEYCHAIN_PATH"', self.publish)
-        self.assertIn('codesign --keychain "$SIGN_KEYCHAIN"', self.sign)
-        self.assertIn('xcrun notarytool "$@" --keychain "$NOTARYTOOL_KEYCHAIN"', self.sign)
-
     def test_signing_keychain_is_added_then_original_search_list_is_restored(self):
         fixture, result, commands, original_keychains = self.run_publish_fixture()
         with fixture:
@@ -569,75 +386,6 @@ class SignedArtifactScriptTests(unittest.TestCase):
             self.assertEqual(commands[-2], ["list-keychains", "-d", "user", "-s",
                                             *original_keychains])
             self.assertEqual(commands[-1][0], "delete-keychain")
-
-    def test_missing_credentials_version_and_identity_fail_closed(self):
-        for name in [
-            "SIGNED_ARTIFACT_VERSION", "SIGNED_ARTIFACT_BUILD_NUMBER",
-            "DEVELOPMENT_ID_CERTIFICATE_BASE64", "DEVELOPMENT_ID_CERTIFICATE_PASSWORD",
-            "DEVELOPER_ID_APPLICATION_IDENTITY", "APPLE_TEAM_ID", "NOTARY_APPLE_ID",
-            "NOTARY_APP_SPECIFIC_PASSWORD",
-        ]:
-            with self.subTest(variable=name):
-                self.assertIn(name, self.publish)
-        self.assertIn("explicit non-sentinel X.Y.Z", self.publish)
-        self.assertIn('[[ "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]', self.publish)
-        self.assertIn('"Developer ID Application: "*" ($APPLE_TEAM_ID)"', self.publish)
-        self.assertIn('grep -Fq "\\\"$DEVELOPER_ID_APPLICATION_IDENTITY\\\""', self.publish)
-        self.assertIn('rm -f "$TRUSTED_DMG"', self.publish)
-        self.assertLess(
-            self.publish.index("verify_signed_dmg.sh"),
-            self.publish.index('mv dist/MacParakeet.dmg "$TRUSTED_DMG"'),
-        )
-
-    def test_signing_and_verification_paths_do_not_hard_code_upstream_identity(self):
-        signing_paths = "\n".join([
-            self.publish, self.verify, self.sign, self.privacy_verify,
-        ])
-        self.assertNotIn("FYAF2ZD7RM", signing_paths)
-        self.assertNotIn("Daniel Moon", signing_paths)
-
-    def test_configured_identity_controls_notary_signing_and_verification(self):
-        self.assertIn('--team-id "$APPLE_TEAM_ID"', self.publish)
-        self.assertIn('SIGN_IDENTITY="$DEVELOPER_ID_APPLICATION_IDENTITY"', self.publish)
-        self.assertIn('EXPECTED_TEAM_ID="$APPLE_TEAM_ID"', self.publish)
-        self.assertIn('EXPECTED_AUTHORITY="$DEVELOPER_ID_APPLICATION_IDENTITY"', self.publish)
-        self.assertNotIn('echo "$identity_output"', self.publish)
-
-    def test_build_reuses_release_gates_and_signed_helper_entitlements(self):
-        self.assertIn("REQUIRE_MEETING_ECHO_ASSETS=1", self.publish)
-        self.assertIn("scripts/dist/build_app_bundle.sh", self.publish)
-        self.assertIn("scripts/dist/sign_notarize.sh", self.publish)
-        self.assertIn("NODE_RUNTIME_ENTITLEMENTS", self.sign)
-        self.assertIn("YTDLP_RUNTIME_ENTITLEMENTS", self.sign)
-        self.assertIn("verify_app_privacy_surface.sh", self.sign)
-        self.assertIn("verify_meeting_echo_assets.sh", self.sign)
-        self.assertIn("verify_packaged_app_launch.sh", self.downloadable_verify)
-
-    def test_landing_dmg_verification_covers_gatekeeper_stapling_and_helpers(self):
-        for command in [
-            "hdiutil verify", "codesign --verify --strict", "xcrun stapler validate",
-            "spctl --assess --type open", "codesign --verify --deep --strict",
-            "spctl --assess --type execute", "TeamIdentifier=$EXPECTED_TEAM_ID",
-            "Authority=$EXPECTED_AUTHORITY", "verify_signature_identity",
-            'find "$APP_PATH/Contents/Frameworks"',
-            'find "$APP_PATH/Contents/Resources"',
-            'find "$APP_PATH/Contents/MacOS"', "verify_downloadable_app.sh",
-        ]:
-            with self.subTest(command=command):
-                self.assertIn(command, self.verify)
-
-
-class BundleAssemblyTests(unittest.TestCase):
-    def test_packaged_apps_use_xcode_accessors_and_resource_layout(self):
-        build = Path("scripts/dist/build_app_bundle.sh").read_text()
-        signed_publish = Path("scripts/ci/publish_signed_artifact.sh").read_text()
-        self.assertIn('BUILD_SYSTEM" != "xcodebuild"', build)
-        self.assertIn("command-line resource accessors with checkout-path fallbacks", build)
-        self.assertIn('app_resource_bundle="$product_dir/MacParakeet_MacParakeet.bundle"', build)
-        self.assertIn('rm -rf "$RESOURCES_DIR/$name"', build)
-        self.assertIn('cp -R "$bundle" "$RESOURCES_DIR/"', build)
-        self.assertIn("BUILD_SYSTEM=xcodebuild", signed_publish)
-
 
 class DownloadableAppVerificationTests(unittest.TestCase):
     def make_app(self, root, ffmpeg_output="ffmpeg version fixture", include_ytdlp=True,
@@ -875,32 +623,6 @@ class DownloadableAppVerificationTests(unittest.TestCase):
             app = self.make_app(directory, ffmpeg_output="")
             self.assertNotEqual(self.verify(app).returncode, 0)
 
-
-class GateTests(unittest.TestCase):
-    def results(self, code="true"):
-        expected = "success" if code == "true" else "skipped"
-        return {
-            "preflight": {"result": "success", "outputs": {"code": code}},
-            "test_suite": {"result": expected},
-        }
-
-    def test_code_and_prose_success(self):
-        for code in ("true", "false"):
-            check(self.results(code))
-
-    def test_required_failure_cancellation_and_unexpected_skip_fail(self):
-        for job in ["preflight", "test_suite"]:
-            for result in ["failure", "cancelled", "skipped"]:
-                needs = self.results()
-                needs[job]["result"] = result
-                with self.subTest(job=job, result=result), self.assertRaises(ValueError):
-                    check(needs)
-
-    def test_missing_classification_fails(self):
-        needs = self.results()
-        del needs["preflight"]["outputs"]["code"]
-        with self.assertRaises(ValueError):
-            check(needs)
 
 
 class ShardingTests(unittest.TestCase):

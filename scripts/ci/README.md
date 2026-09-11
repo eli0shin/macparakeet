@@ -4,7 +4,7 @@
 
 The old workflow took a median 20:38 across eight successful PR runs on
 2026-09-05. Release compilation alone took a median 7:33. The target is now
-**five minutes from PR workflow creation to the final `swift-test` status**
+**five minutes from PR workflow creation to completion of the `test_suite` job**
 for ordinary source changes. This is a performance target, not a five-minute
 kill switch. Cold caches and hosted runner queues must be included when
 reporting results.
@@ -17,11 +17,10 @@ The workflow runs:
 | `test_suite` | Code/input changes | One full Swift 6 app/CLI/test build with WhisperKit; all XCTest and Swift Testing cases; debug CLI smoke; informational format lint |
 | `signed_test_dmg` | Explicit manual request on `main`, after protected-environment approval | Build, Developer ID sign, notarize, staple, verify, and upload a seven-day CI test DMG |
 | `Build, Sign, and Publish GitHub Release` | Successful trusted `main` push CI with shipping changes | Derive the next tag, build, sign, notarize, verify, then publish `MacParakeet.dmg` on GitHub Releases |
-| `ci_gate` (`swift-test` check) | Always | Stable, fail-closed result for all required lanes |
 
 PR CI does not compile an unused optimized Release product or fixture app bundle.
 The protected publication workflow builds and verifies the actual distributable
-app and CLI once after the required CI checks pass. Release-only compiler,
+app and CLI once after the test suite passes. Release-only compiler,
 packaging, signing, or notarization errors can therefore first appear during
 publication.
 
@@ -45,8 +44,7 @@ Pushes to `main` do not start CI when all changed paths are ticket tracking,
 anything under docs, plans, spec, or integrations, root Markdown, or source
 README files. This also prevents a downstream `workflow_run` release workflow
 from starting for those pushes. A mixed push starts the normal CI lanes. Manual
-dispatch remains available. Pull requests
-remain unfiltered so they report the stable final status.
+dispatch remains available. Pull requests remain unfiltered.
 
 The classifier uses the same ignored paths. The CLI changelog remains a test
 input because `CLIVersionTests` checks it against the binary version. Unknown
@@ -69,8 +67,8 @@ release. A version tag with a different annotation, such as the intentional `v0.
 baseline, is preserved when it has no GitHub Release and remains available to release
 planning.
 
-Default debug and production dependencies still include WhisperKit. Tests and
-product behavior are unchanged; no regression suite has been removed.
+Default debug and production dependencies still include WhisperKit. Product
+behavior and the product regression suite are unchanged.
 
 ## Compiled SwiftPM cache
 

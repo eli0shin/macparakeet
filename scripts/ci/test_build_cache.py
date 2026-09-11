@@ -1,3 +1,8 @@
+"""Test build-cache behavior.
+
+Tests that inspect implementation files for literal text are absolutely unacceptable.
+"""
+
 import os
 from pathlib import Path
 import shutil
@@ -33,12 +38,8 @@ class CacheKeyTests(unittest.TestCase):
                 changed = dict(self.inputs, **{path: "changed"})
                 self.assertNotEqual(self.key(), self.key(inputs=changed))
 
-    def test_order_is_stable_and_source_commits_are_not_cache_keys(self):
+    def test_input_order_does_not_change_the_key(self):
         self.assertEqual(self.key(), self.key(context=dict(reversed(list(self.context.items())))))
-        self.assertIn("Package.swift", INPUTS)
-        self.assertIn("Package.resolved", INPUTS)
-        self.assertIn(".github/workflows/ci.yml", INPUTS)
-        self.assertFalse(any(path.startswith(("Sources/", "Tests/")) for path in INPUTS))
 
 
 @unittest.skipUnless(os.environ.get("CI_SWIFT_CACHE_INTEGRATION") == "1",

@@ -154,13 +154,6 @@ final class MeetingAudioStorageWriterTests: XCTestCase {
         )
     }
 
-    func testWriterDoesNotReferenceAVAudioFile() throws {
-        let sourceURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
-            .appendingPathComponent("Sources/MacParakeetCore/Audio/MeetingAudioStorageWriter.swift")
-        let source = try String(contentsOf: sourceURL)
-        XCTAssertFalse(source.contains("AVAudioFile"))
-    }
-
     private func writeSeconds(
         _ seconds: Int,
         source: AudioSource,
