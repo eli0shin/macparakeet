@@ -48,3 +48,11 @@ real calendars. A user cannot see who a meeting is with before recording it.
 - Searching or filtering the Library by participant.
 - Adding Google or Microsoft sign-in flows outside macOS Calendar/EventKit.
 - Sending participant information to an LLM or telemetry.
+
+## Resolution
+
+Implemented by PR #67 and squash-merged as `b2cc5fe7`. Required CI passed for
+head `8609536f`. Real EventKit behavior was then validated with a signed app:
+Organizer and With rows displayed without duplicating the current user or
+organizer, and an event without attendees kept the compact row. The redacted
+validation record landed through follow-up PR #69 as `a5d49b35`.
