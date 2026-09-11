@@ -255,8 +255,6 @@ class WorkflowTests(unittest.TestCase):
     def setUp(self):
         self.workflow = Path(".github/workflows/ci.yml").read_text()
         self.release_job = self.workflow.split("\n  release:\n", 1)[1].split("\n  signed-artifact:\n", 1)[0]
-        self.development_workflow = Path(".github/workflows/development-artifact.yml").read_text()
-        self.development_job = self.development_workflow.split("\n  development-artifact:\n", 1)[1]
         self.signed_job = self.workflow.split("\n  signed-artifact:\n", 1)[1].split("\n  # Preserve", 1)[0]
         self.prototype_job = self.workflow.split("\n  compact-transcript-prototype:\n", 1)[1].split("\n  debug-tests:\n", 1)[0]
         self.github_release_workflow = Path(".github/workflows/release.yml").read_text()
@@ -341,17 +339,20 @@ class WorkflowTests(unittest.TestCase):
             self.assertIn("${{ secrets." + name + " }}", self.github_release_job)
         self.assertEqual(self.github_release_job.count("${{ secrets."), len(secret_names))
 
-    def test_debug_tests_job_has_twenty_minute_timeout(self):
+    def test_debug_tests_job_allows_a_cold_xcode_26_build(self):
         debug_job = self.workflow.split("\n  debug-tests:\n", 1)[1].split("\n  swift6:\n", 1)[0]
         self.assertIn("\n    timeout-minutes: 20\n", debug_job)
+        build_step = debug_job.split(
+            "      - name: Build app, CLI, and tests with concurrency diagnostics\n", 1
+        )[1].split("      - name:", 1)[0]
+        self.assertIn("timeout-minutes: 12", build_step)
 
     def test_release_job_allows_both_fifteen_minute_build_steps(self):
         self.assertIn("\n    timeout-minutes: 35\n", self.release_job)
 
     def test_distributable_apps_link_the_macos_26_sdk(self):
         self.assertIn('xcode-version: "26.5"', self.setup_swift_action)
-        for job in [self.release_job, self.signed_job, self.development_job,
-                    self.github_release_job]:
+        for job in [self.release_job, self.signed_job, self.github_release_job]:
             self.assertIn("runs-on: macos-26", job)
 
     def test_fixture_bundle_inputs_cannot_reach_published_app(self):
@@ -366,44 +367,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("MacParakeet-signed-notarized-ci-test", self.release_job)
         self.assertNotIn("unsigned-non-notarized", self.workflow)
 
-    def test_development_publication_waits_for_complete_gate_on_main_and_manual_runs(self):
-        self.assertIn("workflows: [CI]", self.development_workflow)
-        self.assertIn("types: [completed]", self.development_workflow)
-        self.assertIn("branches: [main]", self.development_workflow)
-        self.assertIn("github.event.workflow_run.conclusion == 'success'", self.development_job)
-        self.assertIn("github.event.workflow_run.event == 'workflow_dispatch'", self.development_job)
-        self.assertIn("github.event.workflow_run.event == 'push'", self.development_job)
-        self.assertIn("github.event.workflow_run.head_branch == 'main'", self.development_job)
-        self.assertIn("github.event.workflow_run.head_repository.full_name == 'eli0shin/macparakeet'", self.development_job)
-        self.assertIn("github.repository == 'eli0shin/macparakeet'", self.development_job)
-        self.assertIn("ref: ${{ github.event.workflow_run.head_sha }}", self.development_job)
-        self.assertIn("persist-credentials: false", self.development_job)
-        self.assertIn("permissions:\n  contents: read", self.development_workflow)
-        self.assertNotIn("pull_request", self.development_job)
-        self.assertNotIn("environment:", self.development_job)
-        self.assertNotIn("secrets.", self.development_job)
-
-    def test_development_build_cannot_delay_or_cancel_release_ci(self):
-        self.assertNotIn("\n  development-artifact:\n", self.workflow)
-        self.assertNotIn("publish_development_artifact.sh", self.workflow)
-        self.assertNotIn("needs:", self.development_job)
-        self.assertIn("group: owner-development-artifact-main", self.development_workflow)
-        self.assertIn("cancel-in-progress: true", self.development_workflow)
-        self.assertNotIn("owner-development-artifact-main", self.workflow)
-        self.assertNotIn("owner-development-artifact-main", self.github_release_workflow)
-        self.assertNotIn("Development", self.github_release_workflow)
-
-    def test_development_upload_is_unambiguous_fail_closed_and_short_lived(self):
-        self.assertIn("bash scripts/ci/publish_development_artifact.sh", self.development_job)
-        upload = self.development_job.split("      - name: Upload owner-only development DMG\n", 1)[1]
-        upload = upload.split("      - name:", 1)[0]
-        self.assertIn("uses: actions/upload-artifact@v7", upload)
-        self.assertIn("name: MacParakeet-owner-development-build", upload)
-        self.assertIn("path: dist/MacParakeet-owner-development-build.dmg", upload)
-        self.assertIn("if-no-files-found: error", upload)
-        self.assertIn("retention-days: 3", upload)
-        self.assertNotIn("continue-on-error", upload)
-        self.assertNotIn("MacParakeet-signed-notarized-ci-test", upload)
+    def test_owner_development_dmg_is_not_built(self):
+        self.assertFalse(Path(".github/workflows/development-artifact.yml").exists())
+        self.assertFalse(Path("scripts/ci/publish_development_artifact.sh").exists())
+        self.assertFalse(Path("scripts/ci/verify_development_dmg.sh").exists())
 
     def test_signed_publication_waits_for_complete_fail_closed_gate(self):
         self.assertIn("needs: swift-test", self.signed_job)
@@ -655,50 +622,6 @@ class SignedArtifactScriptTests(unittest.TestCase):
         ]:
             with self.subTest(command=command):
                 self.assertIn(command, self.verify)
-
-
-class DevelopmentArtifactScriptTests(unittest.TestCase):
-    def setUp(self):
-        self.publish = Path("scripts/ci/publish_development_artifact.sh").read_text()
-        self.verify = Path("scripts/ci/verify_development_dmg.sh").read_text()
-        self.downloadable_verify = Path("scripts/ci/verify_downloadable_app.sh").read_text()
-
-    def test_build_uses_complete_runtime_defaults_without_credentials(self):
-        self.assertIn("scripts/dist/build_app_bundle.sh", self.publish)
-        self.assertIn("BUILD_SOURCE=github-actions-owner-development", self.publish)
-        self.assertIn("BUILD_SYSTEM=xcodebuild", self.publish)
-        self.assertNotIn("BUNDLE_YTDLP=0", self.publish)
-        self.assertNotIn("BUNDLE_NODE=0", self.publish)
-        self.assertNotIn("FFMPEG_PATH", self.publish)
-        self.assertIn("REQUIRE_MEETING_ECHO_ASSETS=1", self.publish)
-        self.assertNotIn("BUNDLE_MEETING_ECHO_ASSETS=0", self.publish)
-        for sensitive_input in ["DEVELOPMENT_ID_CERTIFICATE", "NOTARY_APPLE_ID", "NOTARY_APP_SPECIFIC_PASSWORD"]:
-            self.assertNotIn(sensitive_input, self.publish)
-
-    def test_packaging_is_fail_closed_and_verifies_before_publication(self):
-        self.assertIn("codesign --force --sign -", self.publish)
-        self.assertIn("codesign --verify --deep --strict", self.publish)
-        self.assertIn("verify_downloadable_app.sh", self.publish)
-        self.assertIn("ln -s /Applications", self.publish)
-        self.assertIn("-format UDZO", self.publish)
-        self.assertIn("verify_development_dmg.sh", self.publish)
-        self.assertLess(self.publish.index("verify_development_dmg.sh"),
-                        self.publish.index("Owner-only development artifact is ready"))
-
-    def test_landing_verification_locks_shape_signatures_symlinks_and_helpers(self):
-        for expected in [
-            "hdiutil verify", "plutil -extract Format raw", "Applications",
-            "unexpected top-level item", "absolute bundle symlink",
-            "codesign --verify --deep --strict", "codesign --verify --strict",
-            "Signature=adhoc", "unexpectedly has a signing authority",
-            "verify_downloadable_app.sh", "verify_meeting_echo_assets.sh",
-            "REQUIRE_MEETING_ECHO_ASSETS=1", "VERIFY_CODE_SIGNATURES=1",
-            "VERIFY_MEETING_ECHO_RUNTIME=1", "DEFAULT_MEETING_ECHO_MODEL_NAME",
-            "YtDlpRuntime.entitlements",
-        ]:
-            with self.subTest(expected=expected):
-                self.assertIn(expected, self.verify)
-        self.assertIn("verify_packaged_app_launch.sh", self.downloadable_verify)
 
 
 class BundleAssemblyTests(unittest.TestCase):

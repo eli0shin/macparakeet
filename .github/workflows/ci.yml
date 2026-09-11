@@ -118,7 +118,8 @@ jobs:
           set -o pipefail
           python3 -m unittest discover -s scripts/ci -p 'test_build_cache.py' 2>&1 | tee .ci-logs/cache-integration.log
       - name: Build app, CLI, and tests with concurrency diagnostics
-        timeout-minutes: 7
+        # A cold Xcode 26 build takes about nine minutes on the hosted runner.
+        timeout-minutes: 12
         run: |
           set -o pipefail
           SECONDS=0

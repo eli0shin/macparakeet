@@ -17,7 +17,6 @@ The workflow runs:
 | `debug-tests` | Code/input changes | One app/CLI/test build with concurrency warnings; all XCTest and Swift Testing cases; debug CLI smoke |
 | `swift6` | Code/input changes, parallel with debug | First-party Swift 6 compilation without WhisperKit; informational format lint |
 | `release` | Release-input PRs, every non-documentation main push, manual run | Optimized release build and release CLI smoke; PRs use a fast fixture bundle smoke |
-| `development-artifact` | Successful non-documentation `main` pushes and manual runs | Build the complete app, apply structural ad-hoc signatures, verify it, and upload a three-day owner-only development DMG |
 | `signed-artifact` | Explicit manual request on `main`, after protected-environment approval | Build, Developer ID sign, notarize, staple, verify, and upload a seven-day CI test DMG |
 | `Publish GitHub Release` | Successful trusted `main` push CI with shipping changes | Derive the next tag, build, sign, notarize, verify, then publish `MacParakeet.dmg` on GitHub Releases |
 | `swift-test` | Always | Stable, fail-closed result for all required lanes |
@@ -35,14 +34,6 @@ disabled. Its output cannot reach publication.
 All macOS lanes use the macOS 26 runner and Xcode 26.5. Distributable apps must
 link the macOS 26 SDK so system SwiftUI controls, including the main sidebar,
 have the same appearance as local development builds on macOS 26.
-
-After the complete CI gate passes, each `main` push and manual run publishes
-`MacParakeet-owner-development-build` for three days. This owner-only artifact
-contains one compressed DMG with the complete app and Applications shortcut.
-The app and nested code have structural ad-hoc signatures, and the landing gate
-executes FFmpeg, yt-dlp, Node, and the CLI. It uses no protected credentials and
-is not Developer ID signed, notarized, Gatekeeper-ready, or an official release
-distribution.
 
 A manual run on `main` publishes the protected artifact only when
 `publish_signed_artifact` is enabled
