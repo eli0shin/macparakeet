@@ -2,7 +2,7 @@ name: Set up Swift CI
 description: Select the pinned toolchain and restore compatible compiled SwiftPM state.
 inputs:
   lane:
-    description: Build configuration (debug-tests, swift6, or release)
+    description: Build configuration (debug-tests or release)
     required: true
 runs:
   using: composite

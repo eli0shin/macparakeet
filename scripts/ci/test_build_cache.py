@@ -19,7 +19,7 @@ class CacheKeyTests(unittest.TestCase):
         return cache_key(lane, context or self.context, inputs or self.inputs)
 
     def test_lanes_are_separate(self):
-        self.assertEqual(len({self.key(lane) for lane in LANES}), 3)
+        self.assertEqual(len({self.key(lane) for lane in LANES}), 2)
         with self.assertRaises(ValueError):
             self.key("unknown")
 

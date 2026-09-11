@@ -224,7 +224,7 @@ Use `--format transcript` for transcript-only stdout in shell pipelines. Add `--
 |-------|--------|
 | STT | Parakeet via [FluidAudio](https://github.com/FluidInference/FluidAudio) CoreML (`v3` standard-path default, `v2` English-only opt-in, `unified` English-only punctuated opt-in) + local Nemotron Beta, Cohere Transcribe, and WhisperKit engines; locale-aware CJK/Korean onboarding can select WhisperKit initially |
 | STT orchestration | Shared runtime + explicit scheduler with a reserved dictation slot and a shared meeting/file slot; speech-engine routing and meeting-session pinning |
-| Language | Swift 6 language mode (package tools-version 5.9) + SwiftUI |
+| Language | Swift 6 language mode (package tools-version 6.0) + SwiftUI |
 | Database | SQLite via GRDB |
 | Distribution | GitHub Releases |
 | Media URLs | yt-dlp |

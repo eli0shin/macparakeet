@@ -556,6 +556,7 @@ final class SharedMicrophoneStreamTests: XCTestCase {
         // With operations fully serialized through engineQueue, two
         // concurrent subscribes should never see each other's optimistic
         // mid-failure state. Both succeed, only one engine starts.
+        let stream = stream!
         async let r1: SharedMicrophoneStream.SubscriberToken = stream.subscribe(wantsVPIO: false) { _, _ in }
         async let r2: SharedMicrophoneStream.SubscriberToken = stream.subscribe(wantsVPIO: false) { _, _ in }
 
@@ -578,8 +579,9 @@ final class SharedMicrophoneStreamTests: XCTestCase {
         // engineRunning=true.
         platform.configureAndStartError = MockError.simulatedFailure
 
-        async let r1 = subscribeResult(wantsVPIO: false)
-        async let r2 = subscribeResult(wantsVPIO: false)
+        let stream = stream!
+        async let r1 = Self.subscribeResult(stream: stream, wantsVPIO: false)
+        async let r2 = Self.subscribeResult(stream: stream, wantsVPIO: false)
 
         let results = await [r1, r2]
         XCTAssertTrue(
@@ -593,7 +595,10 @@ final class SharedMicrophoneStreamTests: XCTestCase {
         XCTAssertFalse(diag.vpioDeferred)
     }
 
-    private func subscribeResult(wantsVPIO: Bool) async -> Result<SharedMicrophoneStream.SubscriberToken, Error> {
+    private static func subscribeResult(
+        stream: SharedMicrophoneStream,
+        wantsVPIO: Bool
+    ) async -> Result<SharedMicrophoneStream.SubscriberToken, Error> {
         do {
             let token = try await stream.subscribe(wantsVPIO: wantsVPIO) { _, _ in }
             return .success(token)

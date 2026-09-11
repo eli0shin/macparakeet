@@ -161,9 +161,10 @@ final class DictationServiceTests: XCTestCase {
             dictationRepo: dictationRepo,
             entitlements: entitlements
         )
+        let service = service!
 
         let startTask = Task {
-            try await self.service.startRecording(
+            try await service.startRecording(
                 context: DictationTelemetryContext(trigger: .hotkey, mode: .hold)
             )
         }
@@ -228,9 +229,10 @@ final class DictationServiceTests: XCTestCase {
         let telemetry = DictationTelemetrySpy()
         Telemetry.configure(telemetry)
         await mockAudio.configureStartCaptureDelay(milliseconds: 100)
+        let service = service!
 
         let startTask = Task {
-            try await self.service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
+            try await service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
         }
 
         try await Task.sleep(for: .milliseconds(20))
@@ -287,9 +289,10 @@ final class DictationServiceTests: XCTestCase {
             sttTranscriber: mockSTT,
             dictationRepo: dictationRepo
         )
+        let service = service!
 
         let startTask = Task {
-            try await self.service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
+            try await service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
         }
 
         await audio.waitForStartCapture()
@@ -320,10 +323,11 @@ final class DictationServiceTests: XCTestCase {
             sttTranscriber: mockSTT,
             dictationRepo: dictationRepo
         )
+        let service = service!
 
         let startTask = Task {
-            try await self.service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
-            return await self.service.state
+            try await service.startRecording(context: DictationTelemetryContext(trigger: .hotkey, mode: .hold))
+            return await service.state
         }
 
         await audio.waitForStartCapture()

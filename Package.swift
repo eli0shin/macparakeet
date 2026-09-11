@@ -1,9 +1,8 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 
 import PackageDescription
 import Foundation
 
-let skipWhisperKit = ProcessInfo.processInfo.environment["MACPARAKEET_SKIP_WHISPERKIT"] == "1"
 let enableMLXLocalLLM = ProcessInfo.processInfo.environment["MACPARAKEET_ENABLE_MLX_LOCAL_LLM"] == "1"
 
 let packageDependencies: [Package.Dependency] =
@@ -18,10 +17,7 @@ let packageDependencies: [Package.Dependency] =
         // FluidAudio's Swift module exposes yyjson under current Xcode/Swift.
         .package(url: "https://github.com/ibireme/yyjson.git", exact: "0.12.0"),
         // WhisperKit for multilingual STT fallback (Korean + 95 other languages).
-        // Argmax is not Swift 6 language-mode clean yet, so CI can omit this package
-        // as a target dependency for the first-party Swift 6 syntax/concurrency
-        // compile check without removing its lockfile pins.
-        .package(url: "https://github.com/argmaxinc/argmax-oss-swift", exact: "0.18.0"),
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift", exact: "1.0.0"),
     ]
     + (enableMLXLocalLLM
         ? [
@@ -32,8 +28,6 @@ let packageDependencies: [Package.Dependency] =
             // resolver would otherwise pick 0.31.6, which requires Swift tools 6.3.
             .package(url: "https://github.com/ml-explore/mlx-swift", exact: "0.31.4"),
             // Only the Tokenizers product is used (local-directory tokenizer loading).
-            // Held to 1.1.x because argmax-oss-swift (WhisperKit) cannot resolve
-            // alongside swift-transformers 1.3 in the gated dependency graph.
             .package(url: "https://github.com/huggingface/swift-transformers", "1.1.6"..<"1.2.0"),
         ] : [])
 
@@ -43,19 +37,12 @@ let coreDependencies: [Target.Dependency] =
         .product(name: "FluidAudio", package: "FluidAudio"),
         .product(name: "yyjson", package: "yyjson"),
         "MacParakeetObjCShims",
+        .product(name: "WhisperKit", package: "argmax-oss-swift"),
     ]
-    + (skipWhisperKit
-        ? []
-        : [
-            .product(name: "WhisperKit", package: "argmax-oss-swift")
-        ])
 
-let whisperKitSwiftSettings: [SwiftSetting] =
-    skipWhisperKit
-    ? []
-    : [
-        .define("MACPARAKEET_HAS_WHISPERKIT")
-    ]
+let whisperKitSwiftSettings: [SwiftSetting] = [
+    .define("MACPARAKEET_HAS_WHISPERKIT")
+]
 
 let mlxLocalLLMSwiftSettings: [SwiftSetting] =
     enableMLXLocalLLM
@@ -180,5 +167,6 @@ let package = Package(
             dependencies: ["CLI", "MacParakeetCore"],
             path: "Tests/CLITests"
         ),
-    ] + mlxLocalLLMTargets
+    ] + mlxLocalLLMTargets,
+    swiftLanguageModes: [.v6]
 )

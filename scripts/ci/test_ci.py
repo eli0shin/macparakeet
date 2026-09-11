@@ -254,11 +254,14 @@ class InterruptedReleaseRecoveryTests(unittest.TestCase):
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
         self.workflow = Path(".github/workflows/ci.yml").read_text()
-        self.release_job = self.workflow.split("\n  release:\n", 1)[1].split("\n  signed-artifact:\n", 1)[0]
-        self.signed_job = self.workflow.split("\n  signed-artifact:\n", 1)[1].split("\n  # Preserve", 1)[0]
-        self.prototype_job = self.workflow.split("\n  compact-transcript-prototype:\n", 1)[1].split("\n  debug-tests:\n", 1)[0]
+        self.signed_job = self.workflow.split("\n  signed_test_dmg:\n", 1)[1].split("\n  # Preserve", 1)[0]
+        self.prototype_job = self.workflow.split(
+            "\n  compact_transcript_prototype_check:\n", 1
+        )[1].split("\n  test_suite:\n", 1)[0]
         self.github_release_workflow = Path(".github/workflows/release.yml").read_text()
-        self.github_release_job = self.github_release_workflow.split("\n  release:\n", 1)[1]
+        self.github_release_job = self.github_release_workflow.split(
+            "\n  publish_github_release:\n", 1
+        )[1]
         self.setup_swift_action = Path(".github/actions/setup-swift/action.yml").read_text()
 
     def test_documentation_only_pushes_do_not_start_ci(self):
@@ -299,7 +302,9 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("workflow_dispatch:", workflow)
 
     def test_github_release_serializes_and_scopes_write_permission(self):
-        workflow_prefix, job = self.github_release_workflow.split("\n  release:\n", 1)
+        workflow_prefix, job = self.github_release_workflow.split(
+            "\n  publish_github_release:\n", 1
+        )
         self.assertIn("cancel-in-progress: false", workflow_prefix)
         self.assertIn("permissions:\n  contents: read", workflow_prefix)
         self.assertIn("permissions:\n      contents: write", job)
@@ -340,31 +345,33 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.github_release_job.count("${{ secrets."), len(secret_names))
 
     def test_debug_tests_job_allows_a_cold_xcode_26_build(self):
-        debug_job = self.workflow.split("\n  debug-tests:\n", 1)[1].split("\n  swift6:\n", 1)[0]
+        debug_job = self.workflow.split("\n  test_suite:\n", 1)[1].split(
+            "\n  signed_test_dmg:\n", 1
+        )[0]
         self.assertIn("\n    timeout-minutes: 20\n", debug_job)
         build_step = debug_job.split(
             "      - name: Build app, CLI, and tests with concurrency diagnostics\n", 1
         )[1].split("      - name:", 1)[0]
         self.assertIn("timeout-minutes: 12", build_step)
 
-    def test_release_job_allows_both_fifteen_minute_build_steps(self):
-        self.assertIn("\n    timeout-minutes: 35\n", self.release_job)
+    def test_normal_build_enforces_swift_6_language_mode(self):
+        package = Path("Package.swift").read_text()
+        self.assertTrue(package.startswith("// swift-tools-version: 6.0\n"))
+        self.assertIn("swiftLanguageModes: [.v6]", package)
+        self.assertNotIn("swift6_compatibility:", self.workflow)
+        self.assertNotIn("MACPARAKEET_SKIP_WHISPERKIT", self.workflow)
+
+    def test_pr_ci_does_not_build_an_unused_release_product(self):
+        self.assertNotIn("swift build -c release", self.workflow)
+        self.assertNotIn("release_validation:", self.workflow)
 
     def test_distributable_apps_link_the_macos_26_sdk(self):
         self.assertIn('xcode-version: "26.5"', self.setup_swift_action)
-        for job in [self.release_job, self.signed_job, self.github_release_job]:
+        for job in [self.signed_job, self.github_release_job]:
             self.assertIn("runs-on: macos-26", job)
 
-    def test_fixture_bundle_inputs_cannot_reach_published_app(self):
-        fixture = self.release_job.split("      - name: Release Bundle Fixture Smoke\n", 1)[1]
-        fixture = fixture.split("      - name:", 1)[0]
-        self.assertIn("if: github.event_name == 'pull_request'", fixture)
-        self.assertIn('BUILD_SYSTEM: xcodebuild', fixture)
-        self.assertIn('BUNDLE_YTDLP: "0"', fixture)
-        self.assertIn('BUNDLE_NODE: "0"', fixture)
-        self.assertIn("FFMPEG_PATH: /usr/bin/true", fixture)
-
-        self.assertNotIn("MacParakeet-signed-notarized-ci-test", self.release_job)
+    def test_fixture_bundle_cannot_reach_published_app(self):
+        self.assertNotIn("FFMPEG_PATH: /usr/bin/true", self.workflow)
         self.assertNotIn("unsigned-non-notarized", self.workflow)
 
     def test_owner_development_dmg_is_not_built(self):
@@ -373,9 +380,9 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse(Path("scripts/ci/verify_development_dmg.sh").exists())
 
     def test_signed_publication_waits_for_complete_fail_closed_gate(self):
-        self.assertIn("needs: swift-test", self.signed_job)
-        self.assertIn("needs.swift-test.result == 'success'", self.signed_job)
-        self.assertNotIn("needs: [changes, release]", self.signed_job)
+        self.assertIn("needs: ci_gate", self.signed_job)
+        self.assertIn("needs.ci_gate.result == 'success'", self.signed_job)
+        self.assertNotIn("needs: [preflight, test_suite]", self.signed_job)
 
     def test_signed_publication_is_manual_main_and_environment_gated(self):
         self.assertIn("github.event_name == 'workflow_dispatch'", self.signed_job)
@@ -394,7 +401,7 @@ class WorkflowTests(unittest.TestCase):
             "NOTARY_APPLE_ID",
             "NOTARY_APP_SPECIFIC_PASSWORD",
         ]
-        unprotected = self.workflow.split("\n  signed-artifact:\n", 1)[0]
+        unprotected = self.workflow.split("\n  signed_test_dmg:\n", 1)[0]
         for name in secret_names:
             with self.subTest(secret=name):
                 self.assertIn("${{ secrets." + name + " }}", self.signed_job)
@@ -409,10 +416,6 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("if-no-files-found: error", upload)
         self.assertIn("retention-days: 7", upload)
         self.assertNotIn("continue-on-error", upload)
-
-    def test_release_log_artifact_remains_available(self):
-        self.assertIn("name: swift-release-logs", self.release_job)
-        self.assertIn("if: always()", self.release_job)
 
 
 class SignedArtifactScriptTests(unittest.TestCase):
@@ -874,27 +877,28 @@ class DownloadableAppVerificationTests(unittest.TestCase):
 
 
 class GateTests(unittest.TestCase):
-    def results(self, code="true", release="false"):
-        return {"changes": {"result": "success", "outputs": {"code": code, "release": release}},
-                "debug-tests": {"result": "success" if code == "true" else "skipped"},
-                "swift6": {"result": "success" if code == "true" else "skipped"},
-                "release": {"result": "success" if release == "true" else "skipped"}}
+    def results(self, code="true"):
+        expected = "success" if code == "true" else "skipped"
+        return {
+            "preflight": {"result": "success", "outputs": {"code": code}},
+            "test_suite": {"result": expected},
+        }
 
-    def test_code_release_and_prose_success(self):
-        for code, release in [("true", "false"), ("true", "true"), ("false", "false")]:
-            check(self.results(code, release))
+    def test_code_and_prose_success(self):
+        for code in ("true", "false"):
+            check(self.results(code))
 
     def test_required_failure_cancellation_and_unexpected_skip_fail(self):
-        for job in ["changes", "debug-tests", "swift6", "release"]:
+        for job in ["preflight", "test_suite"]:
             for result in ["failure", "cancelled", "skipped"]:
-                needs = self.results(release="true")
+                needs = self.results()
                 needs[job]["result"] = result
                 with self.subTest(job=job, result=result), self.assertRaises(ValueError):
                     check(needs)
 
     def test_missing_classification_fails(self):
         needs = self.results()
-        del needs["changes"]["outputs"]["code"]
+        del needs["preflight"]["outputs"]["code"]
         with self.assertRaises(ValueError):
             check(needs)
 

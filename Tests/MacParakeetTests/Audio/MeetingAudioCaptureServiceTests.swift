@@ -1,4 +1,4 @@
-import AVFAudio
+@preconcurrency import AVFAudio
 import XCTest
 @testable import MacParakeetCore
 
@@ -460,7 +460,7 @@ final class MeetingAudioCaptureServiceTests: XCTestCase {
             ]))
         microphone.emit(buffer: interleaved, time: AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: 1.0)))
 
-        var copiedBuffer: AVAudioPCMBuffer?
+        var copiedBuffer: UncheckedSendableAudioPCMBuffer?
         for _ in 0..<20 {
             copiedBuffer = await capturedBuffer.value()
             if copiedBuffer != nil {
@@ -469,7 +469,7 @@ final class MeetingAudioCaptureServiceTests: XCTestCase {
             try await Task.sleep(nanoseconds: 50_000_000)
         }
 
-        let buffer = try XCTUnwrap(copiedBuffer)
+        let buffer = try XCTUnwrap(copiedBuffer).buffer
         let samples = try XCTUnwrap(AudioChunker.extractSamples(from: buffer))
 
         XCTAssertFalse(buffer.format.isInterleaved)
@@ -2113,13 +2113,13 @@ private final class FailureDuringStartSystemAudioCapture: MeetingSystemAudioCapt
 }
 
 private actor CapturedPCMBuffer {
-    private var buffer: AVAudioPCMBuffer?
+    private var buffer: UncheckedSendableAudioPCMBuffer?
 
     func store(_ buffer: AVAudioPCMBuffer) {
-        self.buffer = buffer
+        self.buffer = UncheckedSendableAudioPCMBuffer(buffer)
     }
 
-    func value() -> AVAudioPCMBuffer? {
+    func value() -> UncheckedSendableAudioPCMBuffer? {
         buffer
     }
 }

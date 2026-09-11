@@ -102,7 +102,7 @@ final class PasteShortcutKeyResolverTests: XCTestCase {
         XCTAssertEqual(resolver.virtualKeyCode(for: "v"), 0x09)
     }
 
-    private static let dummyLayoutData = Data([0x00]) as CFData
+    nonisolated(unsafe) private static let dummyLayoutData = Data([0x00]) as CFData
     private static let vCharacter = UniChar(("v" as UnicodeScalar).value)
     private static let cCharacter = UniChar(("c" as UnicodeScalar).value)
 }

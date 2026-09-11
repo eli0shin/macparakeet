@@ -1399,7 +1399,7 @@ private enum STTSchedulerTestError: Error {
     case timeout
 }
 
-private final class OneShotThrowingContinuation<T>: @unchecked Sendable {
+private final class OneShotThrowingContinuation<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<T, any Error>?
 

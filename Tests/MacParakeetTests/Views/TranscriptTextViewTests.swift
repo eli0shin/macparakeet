@@ -4,6 +4,7 @@ import MacParakeetCore
 import MacParakeetViewModels
 @testable import MacParakeet
 
+@MainActor
 final class TranscriptTextViewTests: XCTestCase {
     func testLiveTranscriptBodyTextUsesDesignSystemPrimaryColor() throws {
         let view = TranscriptTextView(lines: [], autoScroll: true)

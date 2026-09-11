@@ -13,7 +13,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  publish_github_release:
+    name: Build, Sign, and Publish GitHub Release
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
@@ -40,7 +41,8 @@ jobs:
         env:
           TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
         run: python3 scripts/ci/plan_github_release.py --head "$TARGET_SHA"
-      - uses: ./.github/actions/setup-swift
+      - name: Set Up Release Toolchain and Build Cache
+        uses: ./.github/actions/setup-swift
         if: steps.plan.outputs.should_release == 'true'
         with:
           lane: release

@@ -2,7 +2,7 @@ import Foundation
 import OSLog
 
 #if MACPARAKEET_HAS_WHISPERKIT
-import WhisperKit
+@preconcurrency import WhisperKit
 #endif
 
 public actor WhisperEngine: STTTranscribing {
@@ -380,7 +380,7 @@ public actor WhisperEngine: STTTranscribing {
         _ whisperKit: WhisperKit,
         audioPath: String,
         requestedLanguage: String?,
-        callback: TranscriptionCallback
+        callback: TranscriptionCallback?
     ) async throws -> TranscriptionResult {
         let result = try await transcribeWithWhisperKit(
             whisperKit,
@@ -405,7 +405,7 @@ public actor WhisperEngine: STTTranscribing {
         _ whisperKit: WhisperKit,
         audioArray: [Float],
         requestedLanguage: String?,
-        callback: TranscriptionCallback
+        callback: TranscriptionCallback?
     ) async throws -> TranscriptionResult {
         let result = try await transcribeWithWhisperKit(
             whisperKit,
@@ -430,7 +430,7 @@ public actor WhisperEngine: STTTranscribing {
         _ whisperKit: WhisperKit,
         audioPaths: [String],
         decodeOptions: DecodingOptions,
-        callback: TranscriptionCallback
+        callback: TranscriptionCallback?
     ) async throws -> TranscriptionResult {
         let results = try await ANEInferenceGate.shared.withExclusiveAccess {
             await whisperKit.transcribeWithResults(
@@ -452,7 +452,7 @@ public actor WhisperEngine: STTTranscribing {
         _ whisperKit: WhisperKit,
         audioArray: [Float],
         decodeOptions: DecodingOptions,
-        callback: TranscriptionCallback
+        callback: TranscriptionCallback?
     ) async throws -> TranscriptionResult {
         let partialResults = try await ANEInferenceGate.shared.withExclusiveAccess {
             try await whisperKit.transcribe(

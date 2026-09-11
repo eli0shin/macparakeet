@@ -13,23 +13,17 @@ The workflow runs:
 
 | Lane | When | Checks |
 |---|---|---|
-| `changes` | Every PR, non-documentation main push, manual run | Script tests, subsystem README references, change classification |
-| `debug-tests` | Code/input changes | One app/CLI/test build with concurrency warnings; all XCTest and Swift Testing cases; debug CLI smoke |
-| `swift6` | Code/input changes, parallel with debug | First-party Swift 6 compilation without WhisperKit; informational format lint |
-| `release` | Release-input PRs, every non-documentation main push, manual run | Optimized release build and release CLI smoke; PRs use a fast fixture bundle smoke |
-| `signed-artifact` | Explicit manual request on `main`, after protected-environment approval | Build, Developer ID sign, notarize, staple, verify, and upload a seven-day CI test DMG |
-| `Publish GitHub Release` | Successful trusted `main` push CI with shipping changes | Derive the next tag, build, sign, notarize, verify, then publish `MacParakeet.dmg` on GitHub Releases |
-| `swift-test` | Always | Stable, fail-closed result for all required lanes |
+| `preflight` | Every PR, non-documentation main push, manual run | Script tests, installer checks, subsystem README references, and change classification |
+| `test_suite` | Code/input changes | One full Swift 6 app/CLI/test build with WhisperKit; all XCTest and Swift Testing cases; debug CLI smoke; informational format lint |
+| `signed_test_dmg` | Explicit manual request on `main`, after protected-environment approval | Build, Developer ID sign, notarize, staple, verify, and upload a seven-day CI test DMG |
+| `Build, Sign, and Publish GitHub Release` | Successful trusted `main` push CI with shipping changes | Derive the next tag, build, sign, notarize, verify, then publish `MacParakeet.dmg` on GitHub Releases |
+| `ci_gate` (`swift-test` check) | Always | Stable, fail-closed result for all required lanes |
 
-Release inputs include package manifests/lockfile, `.github/`, `scripts/ci/`,
-`scripts/dist/`, assets, source resources, Xcode projects/workspaces, plists,
-entitlements, and xcconfig files. Ordinary source PRs deliberately do not
-wait for release optimization. This accepts the risk that another release-only
-compiler/linker error can first appear on main. Run manual CI before releasing;
-the bundle smoke is not signing/notarization or complete distribution validation.
-
-Pull requests use the fast `/usr/bin/true` bundle fixture with helper downloads
-disabled. Its output cannot reach publication.
+PR CI does not compile an unused optimized Release product or fixture app bundle.
+The protected publication workflow builds and verifies the actual distributable
+app and CLI once after the required CI checks pass. Release-only compiler,
+packaging, signing, or notarization errors can therefore first appear during
+publication.
 
 All macOS lanes use the macOS 26 runner and Xcode 26.5. Distributable apps must
 link the macOS 26 SDK so system SwiftUI controls, including the main sidebar,
@@ -50,8 +44,8 @@ release.
 Pushes to `main` do not start CI when all changed paths are ticket tracking,
 anything under docs, plans, spec, or integrations, root Markdown, or source
 README files. This also prevents a downstream `workflow_run` release workflow
-from starting for those pushes. A mixed push starts CI and retains all main
-validation and artifact lanes. Manual dispatch remains available. Pull requests
+from starting for those pushes. A mixed push starts the normal CI lanes. Manual
+dispatch remains available. Pull requests
 remain unfiltered so they report the stable final status.
 
 The classifier uses the same ignored paths. The CLI changelog remains a test
@@ -75,19 +69,19 @@ release. A version tag with a different annotation, such as the intentional `v0.
 baseline, is preserved when it has no GitHub Release and remains available to release
 planning.
 
-Default debug/release dependencies still include WhisperKit. Tests and product
-behavior are unchanged; no regression suite has been removed.
+Default debug and production dependencies still include WhisperKit. Tests and
+product behavior are unchanged; no regression suite has been removed.
 
 ## Compiled SwiftPM cache
 
-Each lane caches its complete `.build` directory: dependency checkouts, compiled
-objects and modules, binary artifacts, module caches, and SwiftPM/llbuild state.
-Keeping these together preserves the source/output timestamps needed for reuse.
-The Swift 6 lane has its own runner and cache, so it does not need a second path.
+Each build lane caches its complete `.build` directory: dependency checkouts,
+compiled objects and modules, binary artifacts, module caches, and SwiftPM/llbuild
+state. Keeping these together preserves the source/output timestamps needed for
+reuse.
 
 Cache keys include:
 
-- The lane: debug/tests, Swift 6 without WhisperKit, or optimized release.
+- The lane: Swift 6 debug/tests or optimized release.
 - Actual Swift and Xcode versions, SDK build, macOS build, architecture,
   selected developer directory, and absolute checkout path.
 - Package manifest and lockfile contents.
@@ -107,8 +101,9 @@ Cached first-party outputs are allowed, but current source changes must rebuild.
 A real SwiftPM fixture archives/restores `.build`, proves unchanged dependency
 objects are reused, then proves a changed app source produces the new binary
 output. It uses POSIX/PAX tar, like Actions, to preserve sub-second timestamps.
-This fixture runs on release-input PRs/main/manual runs; the Linux control tests
-check key separation and invalidation without compiling Swift.
+The Linux control tests check key separation and invalidation without compiling
+Swift. The debug lane runs the real cache fixture for CI/distribution input
+changes, every non-documentation main push, and manual runs.
 
 `build-cache.txt` records the key and hit status. A cache hit alone is not proof
 of a faster build: compare cold and warm job times including restore/save time,
@@ -201,12 +196,11 @@ The final full-suite grouped run completed in **85.16 seconds**: all **5,136
 XCTest cases** (including 20 existing skips) and **17 Swift Testing tests**, with
 no failures. The three XCTest groups took 58.52, 82.85, and 60.02 seconds.
 The local cold build plus full test execution therefore total **221.87 seconds
-(3:42)**, excluding setup, CLI smoke, and the independent Swift 6 lane. The
+(3:42)**, excluding setup and CLI smoke. The
 slowest group contains both `MeetingAecMeasurementTests` (21.33 seconds) and
 `DictationServiceTests` (19.02 seconds); runtime-aware grouping is a possible
 next improvement if hosted results miss the target.
 
 These are not proof of the hosted five-minute target. Validate a normal source
 PR after the workflow is deployed, including cache restore and runner wait time.
-A PR that changes this CI implementation also runs the release lane by design
-and is not a normal-source timing sample.
+A PR that changes this CI implementation is not a normal-source timing sample.

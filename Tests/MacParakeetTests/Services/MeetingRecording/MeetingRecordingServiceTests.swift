@@ -3,6 +3,16 @@ import Foundation
 import XCTest
 @testable import MacParakeetCore
 
+private func collectMeetingCaptureFailureSignals(
+    from stream: AsyncStream<MeetingCaptureFailureSignal>
+) async -> [MeetingCaptureFailureSignal] {
+    var signals: [MeetingCaptureFailureSignal] = []
+    for await signal in stream {
+        signals.append(signal)
+    }
+    return signals
+}
+
 final class MeetingRecordingServiceTests: XCTestCase {
     func testStartRecordingWritesLockFileBeforeCaptureStarts() async throws {
         let captureService = MockMeetingAudioCaptureService()
@@ -1089,7 +1099,7 @@ final class MeetingRecordingServiceTests: XCTestCase {
 
         try await service.startRecording()
         let stream = await service.captureFailureSignalForCurrentSession()
-        let signalTask = Task { await collectCaptureFailureSignals(from: stream) }
+        let signalTask = Task { await collectMeetingCaptureFailureSignals(from: stream) }
 
         await captureService.yield(.error(.captureRuntimeFailure("simulated runtime failure")))
 
@@ -1115,7 +1125,7 @@ final class MeetingRecordingServiceTests: XCTestCase {
         try await waitForCaptureMode(service) { $0 == .stopped }
 
         let stream = await service.captureFailureSignalForCurrentSession()
-        let signalTask = Task { await collectCaptureFailureSignals(from: stream) }
+        let signalTask = Task { await collectMeetingCaptureFailureSignals(from: stream) }
         let signals = try await value(
             of: signalTask,
             timeoutMessage: "Timed out waiting for late capture-failure signal"
@@ -1135,7 +1145,7 @@ final class MeetingRecordingServiceTests: XCTestCase {
 
         try await service.startRecording()
         let stream = await service.captureFailureSignalForCurrentSession()
-        let signalTask = Task { await collectCaptureFailureSignals(from: stream) }
+        let signalTask = Task { await collectMeetingCaptureFailureSignals(from: stream) }
 
         await captureService.yield(.error(.captureRuntimeFailure("first runtime failure")))
         await captureService.yield(.error(.captureRuntimeFailure("duplicate runtime failure")))
@@ -1290,7 +1300,7 @@ final class MeetingRecordingServiceTests: XCTestCase {
 
         try await service.startRecording(sourceMode: .microphoneAndSystem)
         let failureStream = await service.captureFailureSignalForCurrentSession()
-        let failureTask = Task { await collectCaptureFailureSignals(from: failureStream) }
+        let failureTask = Task { await collectMeetingCaptureFailureSignals(from: failureStream) }
         let microphoneBuffer = try XCTUnwrap(
             makeMonoFloatBuffer(frameCount: 16_000, sampleValue: 0.25)
         )
@@ -2663,16 +2673,6 @@ final class MeetingRecordingServiceTests: XCTestCase {
             }
             try await Task.sleep(for: .milliseconds(20))
         }
-    }
-
-    private func collectCaptureFailureSignals(
-        from stream: AsyncStream<MeetingCaptureFailureSignal>
-    ) async -> [MeetingCaptureFailureSignal] {
-        var signals: [MeetingCaptureFailureSignal] = []
-        for await signal in stream {
-            signals.append(signal)
-        }
-        return signals
     }
 
     private func value<T>(

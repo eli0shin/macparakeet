@@ -253,9 +253,10 @@ final class CancelFlowTests: XCTestCase {
 
     func testStaleConfirmCancelDoesNotInterruptNewSessionStart() async throws {
         await mockAudio.configureStartCaptureDelay(milliseconds: 100)
+        let dictationService = dictationService!
 
         let startTask = Task {
-            try await self.dictationService.startRecording(
+            try await dictationService.startRecording(
                 context: DictationTelemetryContext(),
                 sessionID: 2
             )
@@ -295,8 +296,9 @@ final class CancelFlowTests: XCTestCase {
         // Begin undo for session 1. With the fast mock STT it reaches .success
         // quickly, then sleeps ~500ms before settling to .idle — that post-
         // success window is where a new session can land.
+        let dictationService = dictationService!
         let undoTask = Task {
-            try await self.dictationService.undoCancel()
+            try await dictationService.undoCancel()
         }
 
         // Let undo enter its post-success settle window.

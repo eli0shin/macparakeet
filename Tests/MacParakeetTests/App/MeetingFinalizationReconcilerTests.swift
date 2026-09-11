@@ -228,7 +228,7 @@ final class MeetingFinalizationReconcilerTests: XCTestCase {
         )
 
         await queue.enqueue(item)
-        try await waitUntil {
+        try await Self.waitUntil {
             queue.queuedTranscriptionIDs == [transcriptionID]
         }
 
@@ -270,7 +270,7 @@ final class MeetingFinalizationReconcilerTests: XCTestCase {
         )
     }
 
-    private func waitUntil(
+    private static func waitUntil(
         timeout: Duration = .seconds(1),
         predicate: @escaping @MainActor () -> Bool
     ) async throws {

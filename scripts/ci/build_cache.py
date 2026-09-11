@@ -18,7 +18,7 @@ INPUTS = (
     ".github/actions/setup-swift/action.yml",
     "scripts/ci/build_cache.py",
 )
-LANES = ("debug-tests", "swift6", "release")
+LANES = ("debug-tests", "release")
 
 
 def cache_key(lane, context, inputs):

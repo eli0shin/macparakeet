@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import os
 import XCTest
 @testable import MacParakeetCore

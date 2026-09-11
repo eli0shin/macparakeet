@@ -6,17 +6,17 @@ import os
 
 
 def check(needs):
-    if needs["changes"]["result"] != "success":
-        raise ValueError("Change classification or CI script checks failed")
-    outputs = needs["changes"]["outputs"]
-    for flag, jobs in [("code", ["debug-tests", "swift6"]), ("release", ["release"])]:
-        if outputs.get(flag) not in ("true", "false"):
-            raise ValueError(f"Missing classification: {flag}")
-        expected = "success" if outputs[flag] == "true" else "skipped"
-        for job in jobs:
-            result = needs[job]["result"]
-            if result != expected:
-                raise ValueError(f"{job}: expected {expected}, got {result}")
+    if needs["preflight"]["result"] != "success":
+        raise ValueError("Preflight checks or change classification failed")
+
+    code = needs["preflight"]["outputs"].get("code")
+    if code not in ("true", "false"):
+        raise ValueError("Missing code-change classification")
+
+    expected = "success" if code == "true" else "skipped"
+    result = needs["test_suite"]["result"]
+    if result != expected:
+        raise ValueError(f"test_suite: expected {expected}, got {result}")
 
 
 if __name__ == "__main__":

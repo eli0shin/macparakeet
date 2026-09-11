@@ -478,6 +478,7 @@ final class TranscriptionServiceTests: XCTestCase {
             youtubeDownloader: downloader
         )
         await mockSTT.configure(result: STTResult(text: "snapshot", engine: .cohere))
+        let service = service!
 
         let task = Task {
             try await service.transcribeURL(urlString: "https://youtu.be/route-snapshot")
