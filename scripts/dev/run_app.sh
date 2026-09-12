@@ -96,9 +96,8 @@ if ! xcodebuild build \
   -destination "platform=OS X,arch=arm64" \
   -derivedDataPath "$DERIVED_DATA_DIR" \
   CODE_SIGNING_ALLOWED=NO \
-  CODE_SIGNING_REQUIRED=NO >"$BUILD_LOG_FILE" 2>&1; then
-  echo "xcodebuild failed. Last 120 log lines from $BUILD_LOG_FILE:" >&2
-  tail -n 120 "$BUILD_LOG_FILE" >&2 || true
+  CODE_SIGNING_REQUIRED=NO 2>&1 | tee "$BUILD_LOG_FILE"; then
+  echo "xcodebuild failed. Full output is also saved at $BUILD_LOG_FILE" >&2
   exit 1
 fi
 

@@ -304,7 +304,7 @@ struct TranscriptionLibraryView: View {
         } else if isMeetingListMode {
             meetingsList
         } else {
-            thumbnailGrid
+            libraryRows
         }
     }
 
@@ -407,46 +407,61 @@ struct TranscriptionLibraryView: View {
         return path.reversed().joined(separator: " / ")
     }
 
-    private var thumbnailGrid: some View {
+    private var libraryRows: some View {
         ScrollView {
-            VStack(spacing: DesignSystem.Spacing.md) {
-                LazyVGrid(
-                    columns: [
-                        GridItem(
-                            .adaptive(minimum: DesignSystem.Layout.thumbnailCardMinWidth),
-                            spacing: DesignSystem.Spacing.md)
-                    ],
-                    spacing: DesignSystem.Spacing.md
-                ) {
-                    ForEach(viewModel.filteredTranscriptions) { transcription in
-                        TranscriptionThumbnailCard(
-                            transcription: transcription,
-                            searchText: viewModel.searchText,
-                            isSelected: viewModel.isTranscriptionSelected(transcription),
-                            showsSelectionControls: viewModel.isBulkSelectionModeEnabled
-                        ) {
-                            if viewModel.isBulkOperationInProgress || bulkExportInProgress {
-                                return
-                            }
-                            if viewModel.isBulkSelectionModeEnabled {
-                                viewModel.toggleSelection(for: transcription)
-                            } else {
-                                open(transcription)
-                            }
-                        } menuContent: {
-                            libraryMenuItems(for: transcription)
+            LazyVStack(alignment: .leading, spacing: 0) {
+                LibraryRowHeader(showsSelectionColumn: viewModel.isBulkSelectionModeEnabled)
+
+                ForEach(Array(viewModel.filteredTranscriptions.enumerated()), id: \.element.id) { index, transcription in
+                    TranscriptionLibraryRow(
+                        transcription: transcription,
+                        folderName: libraryLocationName(for: transcription),
+                        searchText: viewModel.searchText,
+                        isSelected: viewModel.isTranscriptionSelected(transcription),
+                        showsSelectionControls: viewModel.isBulkSelectionModeEnabled
+                    ) {
+                        if viewModel.isBulkOperationInProgress || bulkExportInProgress {
+                            return
                         }
-                        .contextMenu {
-                            libraryMenuItems(for: transcription)
+                        if viewModel.isBulkSelectionModeEnabled {
+                            viewModel.toggleSelection(for: transcription)
+                        } else {
+                            open(transcription)
                         }
+                    } menuContent: {
+                        libraryMenuItems(for: transcription)
+                    }
+                    .contextMenu {
+                        libraryMenuItems(for: transcription)
+                    }
+
+                    if index < viewModel.filteredTranscriptions.count - 1 {
+                        Divider()
+                            .padding(.leading, viewModel.isBulkSelectionModeEnabled ? 50 : 20)
                     }
                 }
+
                 loadMoreFooter
+                    .padding(.top, DesignSystem.Spacing.md)
+            }
+            .background(DesignSystem.Colors.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(DesignSystem.Colors.border.opacity(0.75), lineWidth: 0.5)
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
             .padding(.top, DesignSystem.Spacing.md)
             .padding(.bottom, DesignSystem.Spacing.lg)
         }
+    }
+
+    private func libraryLocationName(for transcription: Transcription) -> String {
+        guard let folderID = transcription.libraryFolderID,
+              let folder = viewModel.folders.first(where: { $0.id == folderID }) else {
+            return "Library"
+        }
+        return folderDestinationLabel(folder)
     }
 
     private var meetingsList: some View {
