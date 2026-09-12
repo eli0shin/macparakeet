@@ -2037,6 +2037,58 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(try llmRunRepo.fetchForTranscription(id: result.id).count, 1)
     }
 
+    func testMeetingPersistsOneReadingTurnWhenAICleanupRemovesInterveningSpeaker() async throws {
+        await mockSTT.configureSequence(results: [
+            STTResult(
+                text: "First point. Final point.",
+                words: [
+                    TimestampedWord(word: "First point.", startMs: 0, endMs: 400, confidence: 0.95),
+                    TimestampedWord(word: "Final point.", startMs: 1_000, endMs: 1_400, confidence: 0.95),
+                ]
+            ),
+            STTResult(
+                text: "Remove me.",
+                words: [
+                    TimestampedWord(word: "Remove me.", startMs: 500, endMs: 900, confidence: 0.95)
+                ]
+            ),
+        ])
+        let llm = MockLLMService()
+        llm.formatTranscriptTransform = { input in
+            let data = try XCTUnwrap(input.data(using: .utf8))
+            var object = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: data) as? [String: Any]
+            )
+            let entries = try XCTUnwrap(object["entries"] as? [[String: Any]])
+            object["entries"] = entries.map { entry in
+                [
+                    "id": entry["id"] as? String ?? "",
+                    "text": entry["id"] as? String == "turn-1"
+                        ? "" : entry["text"] as? String ?? "",
+                ]
+            }
+            return String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+        }
+        let service = TranscriptionService(
+            audioProcessor: mockAudio,
+            sttTranscriber: mockSTT,
+            transcriptionRepo: transcriptionRepo,
+            llmService: llm,
+            llmRunRepo: llmRunRepo,
+            shouldUseAIFormatter: { true },
+            meetingAutomationHookRunner: nil
+        )
+        let recording = try makeDualSourceMeetingRecording(displayName: "Cleaned Meeting")
+        defer { try? FileManager.default.removeItem(at: recording.folderURL) }
+
+        let result = try await service.transcribeMeeting(recording: recording)
+        let persisted = try XCTUnwrap(transcriptionRepo.fetch(id: result.id))
+
+        XCTAssertEqual(persisted.readingDocument?.turns.count, 1)
+        XCTAssertEqual(persisted.readingDocument?.turns.first?.text, "First point.\n\nFinal point.")
+        XCTAssertEqual(persisted.readingDocument?.turns.first?.wordReferences, [0, 2])
+    }
+
     func testMeetingFinalizationAndRetranscriptionReadCurrentSpeakerTurnRepairSetting() async throws {
         await mockSTT.configure(
             result: STTResult(

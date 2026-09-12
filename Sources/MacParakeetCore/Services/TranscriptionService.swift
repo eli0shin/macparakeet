@@ -2609,11 +2609,14 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         }
 
         if hasReadingStructure {
-            let readableDocument = MeetingTranscriptPresentationDocument(
+            let formattedDocument = MeetingTranscriptPresentationDocument(
                 turns: MeetingTranscriptPresentationBuilder.applyFormatting(
                     transcription.meetingReadingTurnFormatting ?? [], to: deterministicDocument.turns
                 )
             ).droppingEmptyTurns()
+            let readableDocument = isMeeting
+                ? MeetingTranscriptDisplayBuilder.build(from: formattedDocument)
+                : formattedDocument
             transcription.readingDocument = readableDocument
             let readableText = readableDocument.turns.map(\.text).joined(separator: "\n\n")
             transcription.cleanTranscript = readableText.isEmpty && rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

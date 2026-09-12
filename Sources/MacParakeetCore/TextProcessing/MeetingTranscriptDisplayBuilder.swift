@@ -1,7 +1,8 @@
 import Foundation
 
-/// Builds the completed-meeting UI document without changing the canonical
-/// Reading Turns used by exports, AI context, or stored formatting overrides.
+/// Coalesces consecutive presented contributions from the same speaker. The
+/// returned document keeps the first contribution's stable identity and does
+/// not change canonical word evidence.
 public enum MeetingTranscriptDisplayBuilder {
     public static func build(
         from document: MeetingTranscriptPresentationDocument
