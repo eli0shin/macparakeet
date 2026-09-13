@@ -3,45 +3,6 @@ import SwiftUI
 import MacParakeetCore
 import MacParakeetViewModels
 
-/// One searchable unit of the transcript reading surface (U2): a renderable
-/// text block plus its rendering context. In Timed mode `id` is the segment
-/// `startMs`. In Text mode the matcher searches the full transcript as a
-/// single block so cross-paragraph text selection stays intact.
-private struct TranscriptDetailPreparationSnapshot: Sendable {
-    let readingDocument: MeetingTranscriptPresentationDocument
-    let readingTurns: [IdentifiedReadingTurn]
-    let playbackIndex: ReadingTurnPlaybackIndex?
-    let segments: [TranscriptSegment]
-    let identifiedTurnCards: [IdentifiedSpeakerTurn]
-    let hasSpeakers: Bool
-    let segmentStartMs: [Int]
-    let speakerLabels: [String: String]
-}
-
-@MainActor
-private final class TranscriptDetailSnapshotCache {
-    static let shared = TranscriptDetailSnapshotCache()
-    private var values: [String: TranscriptDetailPreparationSnapshot] = [:]
-    private var order: [String] = []
-
-    func value(for key: String) -> TranscriptDetailPreparationSnapshot? { values[key] }
-
-    func insert(_ value: TranscriptDetailPreparationSnapshot, for key: String) {
-        values[key] = value
-        order.removeAll { $0 == key }
-        order.append(key)
-        while order.count > 4, let oldest = order.first {
-            order.removeFirst()
-            values.removeValue(forKey: oldest)
-        }
-    }
-}
-
-private struct TranscriptFindBlock: Equatable, Identifiable {
-    let id: Int
-    let text: String
-}
-
 /// Keeps legacy segment and speaker-card playback following below the transcript
 /// detail observation boundary. Completed-meeting Reading Turns use their own
 /// indexed playback boundary.
@@ -113,10 +74,11 @@ struct MeetingTimedTranscriptRecoveryBannerPresentation: Equatable {
 
     static func make(
         transcriptText: String,
+        hasTranscriptText: Bool? = nil,
         hasRetainedAudio: Bool,
         timestampCapableRerun: SpeechEngineSelection?
     ) -> MeetingTimedTranscriptRecoveryBannerPresentation? {
-        guard !transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard hasTranscriptText ?? !transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
 
@@ -265,9 +227,20 @@ struct TranscriptResultView: View {
     @State private var cachedReadingTurns: [IdentifiedReadingTurn] = []
     @State private var cachedReadingTurnPlaybackIndex: ReadingTurnPlaybackIndex?
     @State private var readingTurnContentRevision = 0
+    @State private var cachedTranscriptionID: UUID?
+    @State private var cachedPreferredText = ""
+    @State private var cachedTextWordCount = 0
+    @State private var cachedTimedWordCount = 0
+    @State private var cachedHasPreferredText = false
+    @State private var cachedHasCleanTranscriptText = false
     @State private var cachedHasSpeakers: Bool = false
+    @State private var cachedSpeakerStatistics: [String: SpeakerStatistics] = [:]
     @State private var cachedSpeakerColorMap: [String: Color] = [:]
     @State private var cachedSpeakerLabelMap: [String: String] = [:]
+    @State private var cachedReadingFindBlocks: [TranscriptFindBlock] = []
+    @State private var cachedSegmentFindBlocks: [TranscriptFindBlock] = []
+    @State private var cachedTextFindBlocks: [TranscriptFindBlock] = []
+    @State private var cachedMandalaData = MandalaData.fallback
     @State private var detailPreparationTask: Task<Void, Never>?
     @State private var cachedSegmentStartMs: [Int] = []  // sorted, for binary search
     @State private var autoScrollPaused = false
@@ -303,7 +276,7 @@ struct TranscriptResultView: View {
     ]
 
     var body: some View {
-        adaptiveLayoutWithEvaluationProbe
+        identityIsolatedAdaptiveLayout
         .onAppear {
             playbackViewModelProbe?(playerViewModel)
             // Lazy migration for existing webm/opus YouTube audio files
@@ -409,15 +382,14 @@ struct TranscriptResultView: View {
             syncTranscriptDisplayMode()
             if findBarVisible { rebuildFindBlocks() }
         }
+        .onChange(of: activeTranscription.updatedAt) {
+            rebuildSegmentCache()
+        }
         .onChange(of: viewModel.speakerAttributionCorrectionState) { _, state in
             if case .idle = state, speakerCorrectionSubmitted {
                 showingSpeakerCountCorrection = false
                 speakerCorrectionSubmitted = false
             }
-        }
-        .onChange(of: transcriptText) {
-            rebuildSegmentCache()
-            if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: customWordsRevision) {
             rebuildSegmentCache()
@@ -462,6 +434,15 @@ struct TranscriptResultView: View {
             }
         } message: {
             Text("This action cannot be undone.")
+        }
+    }
+
+    @ViewBuilder
+    private var identityIsolatedAdaptiveLayout: some View {
+        if cachedTranscriptionID == nil || cachedTranscriptionID == activeTranscription.id {
+            adaptiveLayoutWithEvaluationProbe
+        } else {
+            Color.clear
         }
     }
 
@@ -1064,10 +1045,7 @@ struct TranscriptResultView: View {
     }
 
     private var transcriptText: String {
-        MeetingTranscriptCleaner.preferredText(
-            for: activeTranscription,
-            customWords: customWords
-        )
+        cachedTranscriptionID == activeTranscription.id ? cachedPreferredText : ""
     }
 
     private var usesMeetingReadingSurface: Bool {
@@ -1110,16 +1088,13 @@ struct TranscriptResultView: View {
     }
 
     private var hasCleanTranscriptText: Bool {
-        guard let clean = activeTranscription.cleanTranscript else { return false }
-        return !clean.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        cachedTranscriptionID == activeTranscription.id && cachedHasCleanTranscriptText
     }
 
     private var transcriptWordCount: Int {
-        if transcriptDisplayMode == .timed,
-           let wordTimestamps = activeTranscription.wordTimestamps, !wordTimestamps.isEmpty {
-            return wordTimestamps.count
-        }
-        return transcriptText.split(whereSeparator: \.isWhitespace).count
+        guard cachedTranscriptionID == activeTranscription.id else { return 0 }
+        return transcriptDisplayMode == .timed && cachedTimedWordCount > 0
+            ? cachedTimedWordCount : cachedTextWordCount
     }
 
     private var speakerCountValue: Int {
@@ -1566,7 +1541,7 @@ struct TranscriptResultView: View {
                             speakerSummaryPanel(speakers: speakers)
                         }
                         timestampedView(words: timestamps)
-                    } else if !transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    } else if cachedHasPreferredText {
                         transcriptTextBlock
                     } else if meetingTranscriptProcessingPresentation == nil {
                         Text("No transcript available")
@@ -1806,13 +1781,11 @@ struct TranscriptResultView: View {
         }
         let blocks: [TranscriptFindBlock]
         if transcriptDisplayMode == .timed, usesMeetingReadingSurface {
-            blocks = cachedReadingTurns.map {
-                TranscriptFindBlock(id: $0.scrollID, text: $0.turn.text)
-            }
+            blocks = cachedReadingFindBlocks
         } else if transcriptDisplayMode == .timed, hasTimestamps {
-            blocks = cachedSegments.map { TranscriptFindBlock(id: $0.startMs, text: $0.text) }
+            blocks = cachedSegmentFindBlocks
         } else {
-            blocks = [TranscriptFindBlock(id: 0, text: transcriptText)]
+            blocks = cachedTextFindBlocks
         }
         findBlocks = blocks
         findModel.setBlocks(blocks.map(\.text))
@@ -1966,7 +1939,7 @@ struct TranscriptResultView: View {
         if activeTranscription.status == .processing {
             return "Editing is available after transcription finishes."
         }
-        if transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if !cachedHasPreferredText {
             return "Add transcript text manually."
         }
         return "Edit the transcript text"
@@ -3126,6 +3099,7 @@ struct TranscriptResultView: View {
             : nil
         return MeetingTimedTranscriptRecoveryBannerPresentation.make(
             transcriptText: transcriptText,
+            hasTranscriptText: cachedHasPreferredText,
             hasRetainedAudio: hasRetainedAudio,
             timestampCapableRerun: timestampCapableRerun
         )
@@ -3273,13 +3247,7 @@ struct TranscriptResultView: View {
     // MARK: - Mandala Data
 
     private var mandalaData: MandalaData {
-        if let timestamps = activeTranscription.wordTimestamps, !timestamps.isEmpty {
-            return .from(wordTimestamps: timestamps)
-        }
-        return .from(
-            text: activeTranscription.cleanTranscript ?? activeTranscription.rawTranscript ?? activeTranscription.fileName,
-            durationMs: activeTranscription.durationMs ?? 1000
-        )
+        cachedTranscriptionID == activeTranscription.id ? cachedMandalaData : .fallback
     }
 
     // MARK: - Timestamped View
@@ -3412,11 +3380,8 @@ struct TranscriptResultView: View {
 
     @ViewBuilder
     private func compactMeetingSpeakerSummaryPanel(speakers: [SpeakerInfo]) -> some View {
-        let colorMap = buildSpeakerColorMap()
-        let speakerStats = TranscriptSegmenter.computeSpeakerStats(
-            diarizationSegments: activeTranscription.diarizationSegments,
-            wordTimestamps: activeTranscription.wordTimestamps
-        )
+        let colorMap = cachedSpeakerColorMap
+        let speakerStats = cachedSpeakerStatistics
 
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             Button {
@@ -3510,11 +3475,8 @@ struct TranscriptResultView: View {
 
     @ViewBuilder
     private func speakerSummaryPanel(speakers: [SpeakerInfo]) -> some View {
-        let colorMap = buildSpeakerColorMap()
-        let speakerStats = TranscriptSegmenter.computeSpeakerStats(
-            diarizationSegments: activeTranscription.diarizationSegments,
-            wordTimestamps: activeTranscription.wordTimestamps
-        )
+        let colorMap = cachedSpeakerColorMap
+        let speakerStats = cachedSpeakerStatistics
 
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             Button {
@@ -3705,10 +3667,15 @@ struct TranscriptResultView: View {
     private func rebuildSegmentCache() {
         let transcription = activeTranscription
         let customWords = customWords
-        let key = detailPreparationKey(for: transcription, customWords: customWords)
-        cachedSpeakerColorMap = buildSpeakerColorMap()
+        let input = TranscriptDetailPreparationInput(
+            transcription: transcription,
+            customWords: customWords
+        )
+        if cachedTranscriptionID != transcription.id {
+            clearDetailSnapshot()
+        }
 
-        if let cached = TranscriptDetailSnapshotCache.shared.value(for: key) {
+        if let cached = TranscriptDetailSnapshotCache.shared.value(for: input) {
             applyDetailSnapshot(cached)
             return
         }
@@ -3716,82 +3683,34 @@ struct TranscriptResultView: View {
         detailPreparationTask?.cancel()
         detailPreparationTask = Task { @MainActor in
             let snapshot = await Task.detached(priority: .userInitiated) {
-                Self.prepareDetailSnapshot(transcription: transcription, customWords: customWords)
+                TranscriptDetailPreparation.make(
+                    transcription: transcription,
+                    customWords: customWords,
+                    input: input
+                )
             }.value
+            let currentInput = TranscriptDetailPreparationInput(
+                transcription: activeTranscription,
+                customWords: self.customWords
+            )
             guard !Task.isCancelled,
                 viewModel.currentTranscription?.id == transcription.id,
-                key == detailPreparationKey(for: activeTranscription, customWords: self.customWords)
+                snapshot.input == currentInput
             else { return }
-            TranscriptDetailSnapshotCache.shared.insert(snapshot, for: key)
+            TranscriptDetailSnapshotCache.shared.insert(snapshot)
             applyDetailSnapshot(snapshot)
             detailPreparationTask = nil
         }
     }
 
-    private func detailPreparationKey(for transcription: Transcription, customWords: [CustomWord]) -> String {
-        let wordsRevision = customWords.map {
-            "\($0.id.uuidString)|\($0.updatedAt.timeIntervalSinceReferenceDate)|\($0.isEnabled)"
-        }.joined(separator: ",")
-        return "\(transcription.id.uuidString)|\(transcription.updatedAt.timeIntervalSinceReferenceDate)|\(wordsRevision)"
-    }
-
-    private nonisolated static func prepareDetailSnapshot(
-        transcription: Transcription,
-        customWords: [CustomWord]
-    ) -> TranscriptDetailPreparationSnapshot {
-        let speakerLabels = Dictionary(uniqueKeysWithValues: (transcription.speakers ?? []).map { ($0.id, $0.label) })
-        let applicableWords = transcription.hasWordTimestamps
-            ? MeetingTranscriptCleaner.applicableCustomWords(customWords, to: transcription.rawTranscript ?? "")
-            : []
-        let readingDocument = CompletedMeetingReadingDocument.build(
-            from: transcription,
-            customWords: applicableWords,
-            cleanup: .cleaned
-        ) ?? MeetingTranscriptPresentationBuilder.build(
-            transcriptText: transcription.rawTranscript ?? "",
-            words: transcription.wordTimestamps,
-            speakers: transcription.speakers,
-            diarizationSegments: transcription.diarizationSegments,
-            customWords: applicableWords,
-            cleanup: .cleaned,
-            formatting: transcription.meetingReadingTurnFormatting ?? []
-        )
-        let displayedTurns = transcription.readingDocument != nil
-            ? readingDocument.turns
-            : MeetingTranscriptDisplayBuilder.build(from: readingDocument).turns
-        let readingTurns = identifiedReadingTurns(displayedTurns)
-        let playbackIndex = transcription.wordTimestamps.map {
-            ReadingTurnPlaybackIndex(turns: displayedTurns, words: $0)
-        }
-        let words = transcription.wordTimestamps ?? []
-        let segments = TranscriptSegmenter.groupIntoSegments(words: words)
-        let hasSpeakers = words.contains { $0.speakerId != nil }
-        let cards: [IdentifiedSpeakerTurn]
-        if hasSpeakers {
-            let turns = TranscriptSegmenter.groupIntoSpeakerTurns(
-                segments: segments,
-                speakerLabelProvider: { speakerID in
-                    guard let speakerID else { return "Unknown" }
-                    return speakerLabels[speakerID] ?? "Unknown"
-                }
-            )
-            cards = identifiedSpeakerTurnCards(turns)
-        } else {
-            cards = []
-        }
-        return TranscriptDetailPreparationSnapshot(
-            readingDocument: readingDocument,
-            readingTurns: readingTurns,
-            playbackIndex: playbackIndex,
-            segments: segments,
-            identifiedTurnCards: cards,
-            hasSpeakers: hasSpeakers,
-            segmentStartMs: segments.map(\.startMs),
-            speakerLabels: speakerLabels
-        )
-    }
-
     private func applyDetailSnapshot(_ snapshot: TranscriptDetailPreparationSnapshot) {
+        guard snapshot.input.transcriptionID == activeTranscription.id else { return }
+        cachedTranscriptionID = snapshot.input.transcriptionID
+        cachedPreferredText = snapshot.preferredText
+        cachedTextWordCount = snapshot.textWordCount
+        cachedTimedWordCount = snapshot.timedWordCount
+        cachedHasPreferredText = snapshot.hasPreferredText
+        cachedHasCleanTranscriptText = snapshot.hasCleanTranscriptText
         cachedReadingDocument = snapshot.readingDocument
         cachedReadingTurns = snapshot.readingTurns
         cachedReadingTurnPlaybackIndex = snapshot.playbackIndex
@@ -3800,10 +3719,43 @@ struct TranscriptResultView: View {
         cachedIdentifiedTurnCards = snapshot.identifiedTurnCards
         cachedHasSpeakers = snapshot.hasSpeakers
         cachedSegmentStartMs = snapshot.segmentStartMs
+        cachedSpeakerStatistics = snapshot.speakerStatistics
         cachedSpeakerLabelMap = snapshot.speakerLabels
+        cachedSpeakerColorMap = snapshot.speakerColorIndices.mapValues {
+            DesignSystem.Colors.speakerColor(for: $0)
+        }
+        cachedReadingFindBlocks = snapshot.readingFindBlocks
+        cachedSegmentFindBlocks = snapshot.segmentFindBlocks
+        cachedTextFindBlocks = snapshot.textFindBlocks
+        cachedMandalaData = snapshot.mandalaData
         syncTranscriptDisplayMode()
         reloadAIContext()
         if findBarVisible { rebuildFindBlocks() }
+    }
+
+    private func clearDetailSnapshot() {
+        cachedTranscriptionID = nil
+        cachedPreferredText = ""
+        cachedTextWordCount = 0
+        cachedTimedWordCount = 0
+        cachedHasPreferredText = false
+        cachedHasCleanTranscriptText = false
+        cachedReadingDocument = MeetingTranscriptPresentationDocument(turns: [])
+        cachedReadingTurns = []
+        cachedReadingTurnPlaybackIndex = nil
+        cachedSegments = []
+        cachedIdentifiedTurnCards = []
+        cachedHasSpeakers = false
+        cachedSegmentStartMs = []
+        cachedSpeakerStatistics = [:]
+        cachedSpeakerLabelMap = [:]
+        cachedSpeakerColorMap = [:]
+        cachedReadingFindBlocks = []
+        cachedSegmentFindBlocks = []
+        cachedTextFindBlocks = []
+        cachedMandalaData = .fallback
+        findBlocks = []
+        findModel.setBlocks([])
     }
 
     // MARK: - Binary Search Helpers
@@ -3860,24 +3812,6 @@ struct TranscriptResultView: View {
     }
 
     // MARK: - Speaker Helpers
-
-    private func buildSpeakerColorMap() -> [String: Color] {
-        guard let speakers = activeTranscription.speakers else { return [:] }
-        var map: [String: Color] = [:]
-        for (i, speaker) in speakers.enumerated() {
-            map[speaker.id] = DesignSystem.Colors.speakerColor(for: i)
-        }
-        return map
-    }
-
-    private func buildSpeakerLabelMap() -> [String: String] {
-        guard let speakers = activeTranscription.speakers else { return [:] }
-        var map: [String: String] = [:]
-        for speaker in speakers {
-            map[speaker.id] = speaker.label
-        }
-        return map
-    }
 
     private func syncTranscriptDisplayMode() {
         if shouldDefaultToMeetingReadingSurface(
