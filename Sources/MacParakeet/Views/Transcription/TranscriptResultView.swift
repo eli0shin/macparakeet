@@ -1594,6 +1594,14 @@ struct TranscriptResultView: View {
         .onChange(of: transcriptDisplayMode) {
             if findBarVisible { rebuildFindBlocks() }
         }
+        .onChange(of: findModel.isSearching) { wasSearching, isSearching in
+            guard findBarVisible, wasSearching, !isSearching else { return }
+            if findModel.hasMatches {
+                findScrollToken &+= 1
+            } else {
+                releaseFindOwnedAutoScrollPause()
+            }
+        }
         .onChange(of: editingTranscript) {
             if editingTranscript, findBarVisible { closeFindBar() }
         }
@@ -1659,6 +1667,7 @@ struct TranscriptResultView: View {
             ),
             isFocused: $findFieldFocused,
             position: findModel.displayPosition,
+            isSearching: findModel.isSearching,
             hasQueryButNoMatches: findHasQueryNoMatches,
             onNext: { findModel.next(); findScrollToken &+= 1 },
             onPrev: { findModel.prev(); findScrollToken &+= 1 },
@@ -1726,6 +1735,7 @@ struct TranscriptResultView: View {
 
     private var findHasQueryNoMatches: Bool {
         findBarVisible
+            && !findModel.isSearching
             && !findModel.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !findModel.hasMatches
     }
@@ -1760,10 +1770,9 @@ struct TranscriptResultView: View {
 
     private func setFindQuery(_ newValue: String) {
         findModel.setQuery(newValue)
-        if !findModel.hasMatches {
+        if !findModel.isSearching {
             releaseFindOwnedAutoScrollPause()
         }
-        findScrollToken &+= 1
     }
 
     /// Rebuild the ordered blocks the matcher searches for the current mode and
