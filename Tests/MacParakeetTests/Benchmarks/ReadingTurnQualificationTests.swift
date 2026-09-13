@@ -251,6 +251,9 @@ final class ReadingTurnQualificationTests: XCTestCase {
         let findModel = TranscriptFindModel()
         findModel.setBlocks(blocks)
         findModel.setQuery(String(searchToken))
+        while findModel.isSearching {
+            try await Task.sleep(for: .milliseconds(1))
+        }
         XCTAssertTrue(findModel.hasMatches)
 
         let exportService = ExportService()

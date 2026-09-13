@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@060-make-transcript-find-input-nonblocking
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive

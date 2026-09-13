@@ -13,7 +13,9 @@ struct TranscriptFindBar: View {
     @FocusState.Binding var isFocused: Bool
     /// 1-based "current of total"; `nil` while the query is empty or unmatched.
     let position: (current: Int, total: Int)?
-    /// True when the query is non-empty but matched nothing.
+    /// True while the latest field value is being matched.
+    let isSearching: Bool
+    /// True when the settled query is non-empty but matched nothing.
     let hasQueryButNoMatches: Bool
     let onNext: () -> Void
     let onPrev: () -> Void
@@ -83,7 +85,9 @@ struct TranscriptFindBar: View {
             Text("00000 of 00000")
                 .hidden()
 
-            if let position {
+            if isSearching {
+                Text("Searching…")
+            } else if let position {
                 Text("\(position.current) of \(position.total)")
             } else if hasQueryButNoMatches {
                 Text("No results")
