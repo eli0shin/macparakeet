@@ -39,3 +39,12 @@ size alone.
   updates for search, playback, hover, and focus interactions.
 - [ ] The split preserves all detail behavior and does not become a broad visual
   redesign or duplicate transcript domain logic.
+
+## Resolution
+
+Split transcript detail presentation into narrow header, actions, document,
+find, playback-follow, speaker-editing, and AI domains with immutable revisions
+and production Points of Interest instrumentation. Focused invalidation,
+playback, host-path, and CI coverage passed. Merged as
+[PR #77](https://github.com/eli0shin/macparakeet/pull/77) in commit
+`6c75ee29`.
