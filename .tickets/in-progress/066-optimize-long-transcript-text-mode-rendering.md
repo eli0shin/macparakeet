@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@066-optimize-long-transcript-text-mode-rendering
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
