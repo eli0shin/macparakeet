@@ -475,7 +475,6 @@ struct TranscriptResultView: View {
         case .findSession:
             findSessionDomain
         case .playbackFollow:
-            let _ = moduleEvaluationProbe?(.playbackFollow)
             meetingReadingTurnView
         case .speakerEditing:
             if let speakers = activeTranscription.speakers, !speakers.isEmpty {
@@ -1774,7 +1773,12 @@ struct TranscriptResultView: View {
                 if !usesMeetingReadingSurface {
                     NonMeetingTranscriptPlaybackObserver(
                         playerViewModel: playerViewModel,
-                        evaluationProbe: { moduleEvaluationProbe?(.playbackFollow) }
+                        evaluationProbe: {
+                            TranscriptDetailPresentationInstrumentation.record(
+                                .playbackFollow,
+                                probe: moduleEvaluationProbe
+                            )
+                        }
                     ) { oldValue, newValue in
                         guard playerViewModel.isPlaying else { return }
                         // Detect seek (large time jump) — re-sync transcript regardless of pause state
@@ -3558,7 +3562,12 @@ struct TranscriptResultView: View {
             },
             bodyPointSize: 15 * clampedTranscriptFontScale,
             currentHighlight: findCurrentHighlight,
-            evaluationProbe: { moduleEvaluationProbe?(.playbackFollow) }
+            evaluationProbe: {
+                TranscriptDetailPresentationInstrumentation.record(
+                    .playbackFollow,
+                    probe: moduleEvaluationProbe
+                )
+            }
         ) {
             meetingReadingTurnHeader
         }

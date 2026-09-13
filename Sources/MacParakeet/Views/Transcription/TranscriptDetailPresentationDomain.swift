@@ -42,6 +42,31 @@ private let transcriptDetailPresentationSignposter = OSSignposter(
     category: "TranscriptDetailPresentation"
 )
 
+enum TranscriptDetailPresentationInstrumentation {
+    static func record(
+        _ module: TranscriptDetailPresentationModule,
+        probe: ((TranscriptDetailPresentationModule) -> Void)? = nil
+    ) {
+        probe?(module)
+        switch module {
+        case .header:
+            transcriptDetailPresentationSignposter.emitEvent("Header Body")
+        case .actions:
+            transcriptDetailPresentationSignposter.emitEvent("Actions Body")
+        case .transcriptDocument:
+            transcriptDetailPresentationSignposter.emitEvent("Transcript Document Body")
+        case .findSession:
+            transcriptDetailPresentationSignposter.emitEvent("Find Session Body")
+        case .playbackFollow:
+            transcriptDetailPresentationSignposter.emitEvent("Playback Follow Body")
+        case .speakerEditing:
+            transcriptDetailPresentationSignposter.emitEvent("Speaker Editing Body")
+        case .aiPanes:
+            transcriptDetailPresentationSignposter.emitEvent("AI Panes Body")
+        }
+    }
+}
+
 /// An Equatable SwiftUI seam that stops unrelated parent state changes before
 /// they evaluate the module content. The content closure executes only when the
 /// module's immutable revision changes.
@@ -73,22 +98,6 @@ struct TranscriptDetailInvalidationDomain<Content: View>: View, Equatable {
     }
 
     private func recordEvaluation() {
-        evaluationProbe?(module)
-        switch module {
-        case .header:
-            transcriptDetailPresentationSignposter.emitEvent("Header Body")
-        case .actions:
-            transcriptDetailPresentationSignposter.emitEvent("Actions Body")
-        case .transcriptDocument:
-            transcriptDetailPresentationSignposter.emitEvent("Transcript Document Body")
-        case .findSession:
-            transcriptDetailPresentationSignposter.emitEvent("Find Session Body")
-        case .playbackFollow:
-            transcriptDetailPresentationSignposter.emitEvent("Playback Follow Body")
-        case .speakerEditing:
-            transcriptDetailPresentationSignposter.emitEvent("Speaker Editing Body")
-        case .aiPanes:
-            transcriptDetailPresentationSignposter.emitEvent("AI Panes Body")
-        }
+        TranscriptDetailPresentationInstrumentation.record(module, probe: evaluationProbe)
     }
 }

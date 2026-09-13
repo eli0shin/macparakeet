@@ -13,6 +13,7 @@ final class TranscriptDetailInvalidationDomainTests: XCTestCase {
             let transcriptionViewModel = TranscriptionViewModel()
             transcriptionViewModel.currentTranscription = transcription
             var evaluations: [TranscriptDetailPresentationModule: Int] = [:]
+            var playerViewModel: MediaPlayerViewModel?
             let root = TranscriptResultView(
                 transcription: transcription,
                 viewModel: transcriptionViewModel,
@@ -20,6 +21,7 @@ final class TranscriptDetailInvalidationDomainTests: XCTestCase {
                 promptResultsViewModel: PromptResultsViewModel(),
                 promptsViewModel: PromptsViewModel(),
                 customWords: [],
+                playbackViewModelProbe: { playerViewModel = $0 },
                 moduleEvaluationProbe: { evaluations[$0, default: 0] += 1 },
                 hostedPresentationModule: module
             )
@@ -35,8 +37,13 @@ final class TranscriptDetailInvalidationDomainTests: XCTestCase {
             window.orderFront(nil)
 
             let deadline = Date().addingTimeInterval(2)
+            var drovePlaybackTick = false
             while evaluations[module, default: 0] == 0, Date() < deadline {
                 host.layoutSubtreeIfNeeded()
+                if module == .playbackFollow, let playerViewModel, !drovePlaybackTick {
+                    playerViewModel.currentTimeMs = 100
+                    drovePlaybackTick = true
+                }
                 RunLoop.main.run(until: Date().addingTimeInterval(0.01))
             }
 
