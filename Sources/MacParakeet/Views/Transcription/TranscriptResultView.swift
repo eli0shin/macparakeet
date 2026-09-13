@@ -42,6 +42,21 @@ private struct TranscriptFindBlock: Equatable, Identifiable {
     let text: String
 }
 
+/// Keeps legacy segment and speaker-card playback following below the transcript
+/// detail observation boundary. Completed-meeting Reading Turns use their own
+/// indexed playback boundary.
+private struct NonMeetingTranscriptPlaybackObserver: View {
+    @Bindable var playerViewModel: MediaPlayerViewModel
+    let onTick: (Int, Int) -> Void
+
+    var body: some View {
+        EmptyView()
+            .onChange(of: playerViewModel.currentTimeMs) { oldValue, newValue in
+                onTick(oldValue, newValue)
+            }
+    }
+}
+
 /// Data-driven model for the export confirmation popover.
 /// Using a single `Identifiable` value with `.popover(item:)` ensures
 /// the popover content always has the correct URL and format — no race
@@ -180,6 +195,9 @@ struct TranscriptResultView: View {
     var onStartNew: (() -> Void)?
     var onRetranscribe: ((Transcription, SpeechEngineSelection?) -> Void)?
     var onSetUpAI: (() -> Void)?
+    var playbackViewModelProbe: ((MediaPlayerViewModel) -> Void)? = nil
+    var detailEvaluationProbe: (() -> Void)? = nil
+    var headerEvaluationProbe: (() -> Void)? = nil
 
     @AppStorage(UserDefaultsAppRuntimePreferences.transcriptAIContextModeKey)
     private var transcriptAIContextModeRaw = TranscriptAIContextMode.richTranscript.rawValue
@@ -285,8 +303,9 @@ struct TranscriptResultView: View {
     ]
 
     var body: some View {
-        adaptiveLayout
+        adaptiveLayoutWithEvaluationProbe
         .onAppear {
+            playbackViewModelProbe?(playerViewModel)
             // Lazy migration for existing webm/opus YouTube audio files
             // saved before issue #237's playback fix shipped. The VM
             // transcodes in the background; this callback persists the new
@@ -444,6 +463,11 @@ struct TranscriptResultView: View {
         } message: {
             Text("This action cannot be undone.")
         }
+    }
+
+    private var adaptiveLayoutWithEvaluationProbe: some View {
+        let _ = detailEvaluationProbe?()
+        return adaptiveLayout
     }
 
     @ViewBuilder
@@ -1551,21 +1575,25 @@ struct TranscriptResultView: View {
                 }
                 .padding(DesignSystem.Spacing.lg)
             }
-            .onChange(of: playerViewModel.currentTimeMs) { oldValue, newValue in
-                guard playerViewModel.isPlaying else { return }
-                // Detect seek (large time jump) — re-sync transcript regardless of pause state
-                if autoScrollPaused && abs(newValue - oldValue) > 2000 {
-                    autoScrollPaused = false
-                    scrollPauseTask?.cancel()
-                    lastScrolledSegmentMs = -1
-                }
-                guard !autoScrollPaused else { return }
-                guard !cachedSegments.isEmpty else { return }
-                if let targetId = autoScrollTarget(for: newValue),
-                   targetId != lastScrolledSegmentMs {
-                    lastScrolledSegmentMs = targetId
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        proxy.scrollTo(targetId, anchor: .center)
+            .background {
+                if !usesMeetingReadingSurface {
+                    NonMeetingTranscriptPlaybackObserver(playerViewModel: playerViewModel) { oldValue, newValue in
+                        guard playerViewModel.isPlaying else { return }
+                        // Detect seek (large time jump) — re-sync transcript regardless of pause state
+                        if autoScrollPaused && abs(newValue - oldValue) > 2000 {
+                            autoScrollPaused = false
+                            scrollPauseTask?.cancel()
+                            lastScrolledSegmentMs = -1
+                        }
+                        guard !autoScrollPaused else { return }
+                        guard !cachedSegments.isEmpty else { return }
+                        if let targetId = autoScrollTarget(for: newValue),
+                           targetId != lastScrolledSegmentMs {
+                            lastScrolledSegmentMs = targetId
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                proxy.scrollTo(targetId, anchor: .center)
+                            }
+                        }
                     }
                 }
             }
@@ -1848,7 +1876,8 @@ struct TranscriptResultView: View {
     }
 
     private var transcriptPaneHeader: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
+        let _ = headerEvaluationProbe?()
+        return HStack(spacing: DesignSystem.Spacing.sm) {
             Label("Transcript", systemImage: "text.alignleft")
                 .font(DesignSystem.Typography.sectionTitle)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
