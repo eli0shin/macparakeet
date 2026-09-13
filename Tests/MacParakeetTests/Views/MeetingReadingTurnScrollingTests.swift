@@ -23,6 +23,35 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         }
     }
 
+    private final class HeaderState: ObservableObject {
+        @Published var showsAISetupBanner = false
+    }
+
+    private struct HeaderTransitionHarness: View {
+        @ObservedObject var state: HeaderState
+        let turns: [IdentifiedReadingTurn]
+
+        var body: some View {
+            MeetingReadingTurnContentView(
+                turns: turns,
+                speakerColorMap: ["microphone": .orange],
+                headerRevision: state.showsAISetupBanner ? 1 : 0,
+                activeScrollID: nil,
+                timestampLabel: { "\($0)" },
+                isTimestampSeekable: false,
+                onTimestampTap: { _ in },
+                onCopyTurn: { _ in }
+            ) {
+                if state.showsAISetupBanner {
+                    Text("Set up AI to generate summaries")
+                        .frame(height: 120)
+                } else {
+                    EmptyView()
+                }
+            }
+        }
+    }
+
     func testTwelveHundredTimedRowsRealizeOnlyVisibleRowsAndScrollToExactBounds() {
         let view = host(turnCount: 1_200, compactRows: true)
         let window = NSWindow(
@@ -62,6 +91,28 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
             2,
             "Reading Turn layout kept running after scrolling stopped"
         )
+    }
+
+    func testAISetupVisibilityRevisionReloadsAndRemeasuresHostedHeader() {
+        let state = HeaderState()
+        let turns = identifiedReadingTurns([makeTurn(index: 0, compact: true)])
+        let view = CountingHostingView(
+            rootView: AnyView(HeaderTransitionHarness(state: state, turns: turns))
+        )
+        view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        let window = show(view)
+        defer { window.orderOut(nil) }
+
+        guard let tableView = preparedScrollView(in: view)?.documentView as? NSTableView else {
+            XCTFail("No production Reading Turn table")
+            return
+        }
+        let hiddenHeight = tableView.rect(ofRow: 0).height
+
+        state.showsAISetupBanner = true
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        XCTAssertGreaterThan(tableView.rect(ofRow: 0).height, hiddenHeight + 100)
     }
 
     func testDistantNavigationRealizesTargetWithoutInterveningRows() {

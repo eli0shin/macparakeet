@@ -3372,6 +3372,7 @@ struct TranscriptResultView: View {
         hasher.combine(activeTranscription.calendarEventSnapshot != nil)
         hasher.combine(activeTranscription.hasWordTimestamps)
         hasher.combine(meetingNoWordTimestampsBannerPresentation?.message)
+        hasher.combine(shouldShowTranscriptAISetupBanner)
         hasher.combine(activeTranscription.speakers?.map { "\($0.id):\($0.label)" })
         hasher.combine(speakerOverviewExpanded)
         hasher.combine(transcriptEditError)
