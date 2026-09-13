@@ -60,6 +60,7 @@ final class TranscriptResultPlaybackIsolationTests: XCTestCase {
         var playerViewModel: MediaPlayerViewModel?
         var detailEvaluationCount = 0
         var headerEvaluationCount = 0
+        var moduleEvaluationCounts: [TranscriptDetailPresentationModule: Int] = [:]
         let root = TranscriptResultView(
             transcription: transcription,
             viewModel: transcriptionViewModel,
@@ -69,7 +70,8 @@ final class TranscriptResultPlaybackIsolationTests: XCTestCase {
             customWords: [],
             playbackViewModelProbe: { playerViewModel = $0 },
             detailEvaluationProbe: { detailEvaluationCount += 1 },
-            headerEvaluationProbe: { headerEvaluationCount += 1 }
+            headerEvaluationProbe: { headerEvaluationCount += 1 },
+            moduleEvaluationProbe: { moduleEvaluationCounts[$0, default: 0] += 1 }
         )
         let host = NSHostingView(rootView: root)
         host.frame = NSRect(x: 0, y: 0, width: 1_000, height: 800)
@@ -107,6 +109,7 @@ final class TranscriptResultPlaybackIsolationTests: XCTestCase {
         }
         let settledDetailCount = detailEvaluationCount
         let settledHeaderCount = headerEvaluationCount
+        let settledModuleCounts = moduleEvaluationCounts
 
         for timeMs in stride(from: 100, through: 1_000, by: 100) {
             playerViewModel.currentTimeMs = timeMs
@@ -117,6 +120,24 @@ final class TranscriptResultPlaybackIsolationTests: XCTestCase {
         XCTAssertGreaterThan(settledHeaderCount, 0)
         XCTAssertEqual(detailEvaluationCount, settledDetailCount)
         XCTAssertEqual(headerEvaluationCount, settledHeaderCount)
+        if isTranscriptEdited {
+            XCTAssertEqual(
+                moduleEvaluationCounts[.playbackFollow, default: 0],
+                settledModuleCounts[.playbackFollow, default: 0]
+            )
+        } else {
+            XCTAssertGreaterThan(
+                moduleEvaluationCounts[.playbackFollow, default: 0],
+                settledModuleCounts[.playbackFollow, default: 0]
+            )
+        }
+        for module in TranscriptDetailPresentationModule.allCases where module != .playbackFollow {
+            XCTAssertEqual(
+                moduleEvaluationCounts[module, default: 0],
+                settledModuleCounts[module, default: 0],
+                "Playback tick invalidated \(module.rawValue)"
+            )
+        }
     }
 
     private func waitForEvaluationCountsToSettle(readCounts: () -> (Int, Int)) {

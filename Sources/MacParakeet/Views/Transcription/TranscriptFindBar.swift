@@ -35,6 +35,7 @@ struct TranscriptFindBar: View {
                 .font(DesignSystem.Typography.body)
                 .focused($isFocused)
                 .frame(minWidth: 130, maxWidth: 200)
+                .accessibilityIdentifier("transcript-find-field")
                 // Enter steps to the next match, like a browser find bar.
                 .onSubmit(onNext)
                 .onKeyPress(.escape) {

@@ -8,11 +8,13 @@ import MacParakeetViewModels
 /// indexed playback boundary.
 private struct NonMeetingTranscriptPlaybackObserver: View {
     @Bindable var playerViewModel: MediaPlayerViewModel
+    let evaluationProbe: (() -> Void)?
     let onTick: (Int, Int) -> Void
 
     var body: some View {
         EmptyView()
             .onChange(of: playerViewModel.currentTimeMs) { oldValue, newValue in
+                evaluationProbe?()
                 onTick(oldValue, newValue)
             }
     }
@@ -160,6 +162,9 @@ struct TranscriptResultView: View {
     var playbackViewModelProbe: ((MediaPlayerViewModel) -> Void)? = nil
     var detailEvaluationProbe: (() -> Void)? = nil
     var headerEvaluationProbe: (() -> Void)? = nil
+    var moduleEvaluationProbe: ((TranscriptDetailPresentationModule) -> Void)? = nil
+    var hostedPresentationModule: TranscriptDetailPresentationModule? = nil
+    var findSessionDriverProbe: ((TranscriptFindSessionDriver) -> Void)? = nil
 
     @AppStorage(UserDefaultsAppRuntimePreferences.transcriptAIContextModeKey)
     private var transcriptAIContextModeRaw = TranscriptAIContextMode.richTranscript.rawValue
@@ -279,6 +284,12 @@ struct TranscriptResultView: View {
         identityIsolatedAdaptiveLayout
         .onAppear {
             playbackViewModelProbe?(playerViewModel)
+            findSessionDriverProbe?(
+                TranscriptFindSessionDriver { query in
+                    openFindBar()
+                    setFindQuery(query)
+                }
+            )
             // Lazy migration for existing webm/opus YouTube audio files
             // saved before issue #237's playback fix shipped. The VM
             // transcodes in the background; this callback persists the new
@@ -440,9 +451,37 @@ struct TranscriptResultView: View {
     @ViewBuilder
     private var identityIsolatedAdaptiveLayout: some View {
         if cachedTranscriptionID == nil || cachedTranscriptionID == activeTranscription.id {
-            adaptiveLayoutWithEvaluationProbe
+            if let hostedPresentationModule {
+                focusedPresentationModule(hostedPresentationModule)
+            } else {
+                adaptiveLayoutWithEvaluationProbe
+            }
         } else {
             Color.clear
+        }
+    }
+
+    /// Hosts one real production presentation module for focused correctness
+    /// and performance tests without creating a second implementation path.
+    @ViewBuilder
+    private func focusedPresentationModule(_ module: TranscriptDetailPresentationModule) -> some View {
+        switch module {
+        case .header:
+            headerDomain
+        case .actions:
+            actionsDomain
+        case .transcriptDocument:
+            transcriptDocumentDomain
+        case .findSession:
+            findSessionDomain
+        case .playbackFollow:
+            meetingReadingTurnView
+        case .speakerEditing:
+            if let speakers = activeTranscription.speakers, !speakers.isEmpty {
+                speakerEditingDomain(speakers: speakers, compact: true)
+            }
+        case .aiPanes:
+            aiPanesDomain { chatPane(viewModel: chatViewModel) }
         }
     }
 
@@ -476,12 +515,174 @@ struct TranscriptResultView: View {
         }
     }
 
+    private func presentationDomain<Content: View>(
+        _ module: TranscriptDetailPresentationModule,
+        revision: TranscriptDetailPresentationRevision,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        TranscriptDetailInvalidationDomain(
+            module: module,
+            revision: revision,
+            evaluationProbe: moduleEvaluationProbe,
+            content: content
+        )
+        .equatable()
+    }
+
+    private func aiPanesDomain<Content: View>(
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        presentationDomain(.aiPanes, revision: aiPanesRevision, content: content)
+    }
+
+    private var headerRevision: TranscriptDetailPresentationRevision {
+        TranscriptDetailPresentationRevision([
+            activeTranscription.id.uuidString,
+            displayedTitle,
+            String(describing: activeTranscription.durationMs),
+            String(cachedTextWordCount),
+            String(cachedTimedWordCount),
+            String(speakerCountValue),
+            String(describing: engineAttributionLabel),
+            String(describing: activeTranscription.sourceURL),
+            String(activeTranscription.recoveredFromCrash),
+            String(describing: MeetingPartialCapturePresentation.make(for: activeTranscription)),
+            sourceChipText,
+            expandedSourceChipText,
+            String(headerExpanded),
+            String(backHovered),
+            String(editingTitle),
+            titleDraft,
+            String(titleFocused),
+            cachedMandalaData.radialPoints.map(String.init(describing:)).joined(separator: ","),
+        ])
+    }
+
+    private var actionsRevision: TranscriptDetailPresentationRevision {
+        TranscriptDetailPresentationRevision([
+            activeTranscription.id.uuidString,
+            String(describing: activeTranscription.sourceType),
+            String(describing: activeTranscription.status),
+            String(describing: activeTranscription.filePath),
+            String(copied),
+            String(showingExportOptions),
+            String(describing: selectedExportFormat),
+            String(describing: transcriptExportOptions),
+            String(describing: exportConfirmation?.id),
+            String(showingRetranscribeOptions),
+            String(showingSpeakerCountCorrection),
+            String(describing: speakerCorrectionSource),
+            String(microphoneSpeakerDetection),
+            speakerCorrectionSources.map { String(describing: $0) }.joined(separator: ","),
+            String(speakerCorrectionMetadataLoading),
+            String(describing: speakerCountEditorMode),
+            exactTotalPeople,
+            minimumTotalPeople,
+            maximumTotalPeople,
+            String(describing: speakerCountEditorError),
+            String(describing: viewModel.speakerAttributionCorrectionState),
+            String(pendingDeleteMeetingAudio),
+        ])
+    }
+
+    private var findSessionRevision: TranscriptDetailPresentationRevision {
+        TranscriptDetailPresentationRevision([
+            String(findBarVisible),
+            findModel.query,
+            String(findModel.isSearching),
+            String(describing: findModel.current),
+            String(describing: findModel.displayPosition),
+            String(findScrollToken),
+            String(findFieldFocused),
+            String(describing: transcriptDisplayMode),
+            String(findBlocks.count),
+            String(describing: findBlocks.first?.id),
+            String(describing: findBlocks.last?.id),
+            String(readingTurnContentRevision),
+        ])
+    }
+
+    private var speakerEditingRevision: TranscriptDetailPresentationRevision {
+        TranscriptDetailPresentationRevision([
+            activeTranscription.speakers?.map { "\($0.id):\($0.label)" }.joined(separator: "\u{1f}") ?? "",
+            String(readingTurnContentRevision),
+            String(speakerOverviewExpanded),
+            String(describing: editingSpeakerId),
+            String(describing: editingSpeakerContextID),
+            editingSpeakerLabel,
+            String(speakerRenameFocused),
+        ])
+    }
+
+    private var transcriptDocumentRevision: TranscriptDetailPresentationRevision {
+        TranscriptDetailPresentationRevision([
+            activeTranscription.id.uuidString,
+            String(describing: activeTranscription.status),
+            String(activeTranscription.hasWordTimestamps),
+            String(activeTranscription.isTranscriptEdited),
+            String(describing: activeTranscription.userNotes),
+            String(describing: activeTranscription.calendarEventSnapshot),
+            String(describing: activeTranscription.meetingCaptureReport),
+            String(cachedTranscriptionID == activeTranscription.id),
+            String(readingTurnContentRevision),
+            String(cachedHasPreferredText),
+            String(cachedHasCleanTranscriptText),
+            String(describing: transcriptDisplayMode),
+            String(editingTranscript),
+            transcriptDraft,
+            String(describing: transcriptEditError),
+            String(transcriptEditorFocused),
+            String(notesCopied),
+            String(clampedTranscriptFontScale),
+            String(shouldShowTranscriptAISetupBanner),
+            String(describing: playerViewModel.playerState),
+        ] + findSessionRevision.values + speakerEditingRevision.values)
+    }
+
+    private var aiPanesRevision: TranscriptDetailPresentationRevision {
+        TranscriptDetailPresentationRevision([
+            String(describing: viewModel.selectedTab),
+            String(viewModel.showTabs),
+            String(describing: copiedResultID),
+            String(describing: copiedButtonResultID),
+            String(describing: copiedMessageId),
+            String(describing: hoveredMessageId),
+            String(showConversationPopover),
+            String(describing: hoveredConversationId),
+            String(showGeneratePopover),
+            String(showPromptLibrary),
+            String(describing: showingCancelGenerationAlert),
+            promptResultsViewModel.promptResults.map { "\($0.id):\($0.promptName)" }.joined(separator: "\u{1f}"),
+            promptResultsViewModel.pendingGenerations.map { "\($0.id):\($0.state):\($0.content.hashValue)" }.joined(separator: "\u{1f}"),
+            promptResultsViewModel.visiblePrompts.map { "\($0.id):\($0.name)" }.joined(separator: "\u{1f}"),
+            String(describing: promptResultsViewModel.selectedPrompt?.id),
+            String(promptResultsViewModel.hasPromptResultGenerationCapability),
+            String(promptResultsViewModel.canGenerateManualPromptResult),
+            String(describing: promptResultsViewModel.unreadPromptResultIDs),
+            promptResultsViewModel.extraInstructions,
+            String(describing: promptResultsViewModel.errorMessage),
+            promptResultsViewModel.currentModelName,
+            promptResultsViewModel.availableModels.joined(separator: "\u{1f}"),
+            chatViewModel.messages.map { "\($0.id):\($0.role):\($0.isStreaming)" }.joined(separator: "\u{1f}"),
+            String(chatViewModel.messages.last?.content.hashValue ?? 0),
+            chatViewModel.conversations.map { "\($0.id):\($0.title)" }.joined(separator: "\u{1f}"),
+            String(describing: chatViewModel.currentConversation?.id),
+            String(chatViewModel.canSendMessage),
+            chatViewModel.inputText,
+            String(chatViewModel.isStreaming),
+            String(describing: chatViewModel.errorMessage),
+            chatViewModel.currentModelName,
+            chatViewModel.availableModels.joined(separator: "\u{1f}"),
+            String(chatInputFocused),
+        ])
+    }
+
     // MARK: - Video Split Layout (Left Pane)
 
     /// Left pane in video mode: header card + video player + action bar
     private var videoInfoColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
-            resultHeaderCard
+            headerDomain
                 .padding(.horizontal, DesignSystem.Spacing.md)
                 .padding(.top, DesignSystem.Spacing.md)
 
@@ -494,7 +695,7 @@ struct TranscriptResultView: View {
 
             Divider()
 
-            actionBar
+            actionsDomain
         }
         .alert(
             "Export Failed",
@@ -559,7 +760,7 @@ struct TranscriptResultView: View {
     /// Single-column layout: header + tabs + content + action bar
     private var fullWidthContentColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
-            resultHeaderCard
+            headerDomain
                 .padding(.horizontal, DesignSystem.Spacing.lg)
                 .padding(.top, DesignSystem.Spacing.lg)
 
@@ -599,7 +800,7 @@ struct TranscriptResultView: View {
 
             Divider()
 
-            actionBar
+            actionsDomain
         }
         .alert(
             "Export Failed",
@@ -628,7 +829,13 @@ struct TranscriptResultView: View {
 
     // MARK: - Action Bar
 
-    private var actionBar: some View {
+    private var actionsDomain: some View {
+        presentationDomain(.actions, revision: actionsRevision) {
+            actionBarContent
+        }
+    }
+
+    private var actionBarContent: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
             copyAction
 
@@ -1132,7 +1339,13 @@ struct TranscriptResultView: View {
         }
     }
 
-    private var resultHeaderCard: some View {
+    private var headerDomain: some View {
+        presentationDomain(.header, revision: headerRevision) {
+            resultHeaderCardContent
+        }
+    }
+
+    private var resultHeaderCardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Always-visible compact row: back button + title + metadata + mandala + expand toggle
             HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
@@ -1424,26 +1637,26 @@ struct TranscriptResultView: View {
             if viewModel.showTabs {
                 switch viewModel.selectedTab {
                 case .transcript:
-                    transcriptPane
+                    transcriptDocumentDomain
                 case .result(let id):
                     if promptResultsViewModel.promptResults.contains(where: { $0.id == id }) {
-                        promptResultContentPane(promptResultID: id)
+                        aiPanesDomain { promptResultContentPane(promptResultID: id) }
                     } else {
-                        transcriptPane
+                        transcriptDocumentDomain
                             .onAppear { viewModel.selectedTab = .transcript }
                     }
                 case .generation(let id):
                     if promptResultsViewModel.pendingGeneration(id: id) != nil {
-                        pendingGenerationPane(generationID: id)
+                        aiPanesDomain { pendingGenerationPane(generationID: id) }
                     } else {
-                        transcriptPane
+                        transcriptDocumentDomain
                             .onAppear { viewModel.selectedTab = .transcript }
                     }
                 case .chat:
-                    chatPane(viewModel: chatViewModel)
+                    aiPanesDomain { chatPane(viewModel: chatViewModel) }
                 }
             } else {
-                transcriptPane
+                transcriptDocumentDomain
             }
         }
         .padding(DesignSystem.Spacing.lg)
@@ -1471,10 +1684,16 @@ struct TranscriptResultView: View {
         return DesignSystem.Spacing.md
     }
 
-    private var transcriptPane: some View {
+    private var transcriptDocumentDomain: some View {
+        presentationDomain(.transcriptDocument, revision: transcriptDocumentRevision) {
+            transcriptPaneContent
+        }
+    }
+
+    private var transcriptPaneContent: some View {
         VStack(spacing: 0) {
             if findBarVisible {
-                transcriptFindToolbar
+                findSessionDomain
             }
             if transcriptDisplayMode == .timed,
                usesMeetingReadingSurface,
@@ -1531,14 +1750,14 @@ struct TranscriptResultView: View {
                               usesMeetingReadingSurface,
                               !cachedReadingTurns.isEmpty {
                         if let speakers = activeTranscription.speakers, !speakers.isEmpty {
-                            compactMeetingSpeakerSummaryPanel(speakers: speakers)
+                            speakerEditingDomain(speakers: speakers, compact: true)
                         }
                         meetingReadingTurnView
                     } else if transcriptDisplayMode == .timed,
                               let timestamps = activeTranscription.wordTimestamps,
                               !timestamps.isEmpty {
                         if let speakers = activeTranscription.speakers, !speakers.isEmpty {
-                            speakerSummaryPanel(speakers: speakers)
+                            speakerEditingDomain(speakers: speakers, compact: false)
                         }
                         timestampedView(words: timestamps)
                     } else if cachedHasPreferredText {
@@ -1552,7 +1771,15 @@ struct TranscriptResultView: View {
             }
             .background {
                 if !usesMeetingReadingSurface {
-                    NonMeetingTranscriptPlaybackObserver(playerViewModel: playerViewModel) { oldValue, newValue in
+                    NonMeetingTranscriptPlaybackObserver(
+                        playerViewModel: playerViewModel,
+                        evaluationProbe: {
+                            TranscriptDetailPresentationInstrumentation.record(
+                                .playbackFollow,
+                                probe: moduleEvaluationProbe
+                            )
+                        }
+                    ) { oldValue, newValue in
                         guard playerViewModel.isPlaying else { return }
                         // Detect seek (large time jump) — re-sync transcript regardless of pause state
                         if autoScrollPaused && abs(newValue - oldValue) > 2000 {
@@ -1659,6 +1886,12 @@ struct TranscriptResultView: View {
     /// Pinned find toolbar at the top of the reading pane. Stays visible while
     /// scrolling (unlike a row inside the ScrollView) and never overlaps the
     /// header controls (unlike a floating overlay).
+    private var findSessionDomain: some View {
+        presentationDomain(.findSession, revision: findSessionRevision) {
+            transcriptFindToolbar
+        }
+    }
+
     private var transcriptFindToolbar: some View {
         HStack {
             Spacer()
@@ -1692,6 +1925,7 @@ struct TranscriptResultView: View {
         ZStack {
             Button("") { openFindBar() }
                 .keyboardShortcut("f", modifiers: .command)
+                .accessibilityIdentifier("transcript-find-open-command")
             if findBarVisible, findModel.hasMatches {
                 Button("") { findModel.next(); findScrollToken &+= 1 }
                     .keyboardShortcut("g", modifiers: .command)
@@ -2143,6 +2377,12 @@ struct TranscriptResultView: View {
     }
 
     private var tabBar: some View {
+        presentationDomain(.aiPanes, revision: aiPanesRevision) {
+            tabBarContent
+        }
+    }
+
+    private var tabBarContent: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
                 ForEach(orderedTabs, id: \.self) { tab in
@@ -3321,7 +3561,13 @@ struct TranscriptResultView: View {
                 rebuildSegmentCache()
             },
             bodyPointSize: 15 * clampedTranscriptFontScale,
-            currentHighlight: findCurrentHighlight
+            currentHighlight: findCurrentHighlight,
+            evaluationProbe: {
+                TranscriptDetailPresentationInstrumentation.record(
+                    .playbackFollow,
+                    probe: moduleEvaluationProbe
+                )
+            }
         ) {
             meetingReadingTurnHeader
         }
@@ -3355,7 +3601,7 @@ struct TranscriptResultView: View {
                     .foregroundStyle(DesignSystem.Colors.errorRed)
             }
             if let speakers = activeTranscription.speakers, !speakers.isEmpty {
-                compactMeetingSpeakerSummaryPanel(speakers: speakers)
+                speakerEditingDomain(speakers: speakers, compact: true)
             }
         }
         .padding(.bottom, DesignSystem.Spacing.md)
@@ -3377,6 +3623,17 @@ struct TranscriptResultView: View {
     }
 
     // MARK: - Speaker Summary Panel
+
+    @ViewBuilder
+    private func speakerEditingDomain(speakers: [SpeakerInfo], compact: Bool) -> some View {
+        presentationDomain(.speakerEditing, revision: speakerEditingRevision) {
+            if compact {
+                compactMeetingSpeakerSummaryPanel(speakers: speakers)
+            } else {
+                speakerSummaryPanel(speakers: speakers)
+            }
+        }
+    }
 
     @ViewBuilder
     private func compactMeetingSpeakerSummaryPanel(speakers: [SpeakerInfo]) -> some View {
