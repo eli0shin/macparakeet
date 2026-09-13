@@ -43,6 +43,25 @@ measured 314 ms of initial main-thread CPU and a 7.17 ms worst ordinary scroll
 step. The committed gate drives `MeetingReadingTurnContentView`, which is the
 renderer used by `TranscriptResultView`.
 
+## Playback update profiling
+
+Completed-meeting playback time is observed inside
+`MeetingReadingTurnPlaybackView`, below the transcript detail boundary. The
+playback index resolves the active Reading Turn without realizing preceding
+rows. The AppKit coordinator then updates only the previous and new active rows
+and scrolls only when the target or navigation token changes.
+
+The 1,200-turn playback regression starts at the final Reading Turn, then
+samples 120 one-second ticks including a large backward seek. A local debug run
+reported 34.76 ms of main-thread CPU for the worst tick, below its 100 ms
+regression limit. The renderer kept fewer than 30 rows realized.
+
+In Instruments, select the Points of Interest track and inspect
+`TranscriptPlayback / Reading Turn Presentation Update`. The interval contains
+the main-thread table work for each narrow presentation update. Header
+remeasurement and full-row reloads must not occur in ordinary playback
+intervals.
+
 ## Rejected designs
 
 - **Plain `VStack`:** It creates every off-screen view graph. Initial work grows

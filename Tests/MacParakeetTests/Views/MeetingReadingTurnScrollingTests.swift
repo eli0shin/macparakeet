@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import XCTest
 import MacParakeetCore
+import MacParakeetViewModels
 @testable import MacParakeet
 
 /// Exercises the completed-meeting Reading Turn view in the same adaptive
@@ -25,6 +26,44 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
 
     private final class HeaderState: ObservableObject {
         @Published var showsAISetupBanner = false
+    }
+
+    private final class PlaybackNavigationState: ObservableObject {
+        @Published var findScrollID: Int?
+        @Published var findNavigationToken = 0
+
+        init(findScrollID: Int? = nil) {
+            self.findScrollID = findScrollID
+        }
+    }
+
+    private struct PlaybackHarness: View {
+        @Bindable var player: MediaPlayerViewModel
+        @ObservedObject var navigation: PlaybackNavigationState
+        let controller: MeetingTranscriptPlaybackFollowController
+        let turns: [IdentifiedReadingTurn]
+        let playbackIndex: ReadingTurnPlaybackIndex
+
+        var body: some View {
+            MeetingReadingTurnPlaybackView(
+                playerViewModel: player,
+                followController: controller,
+                turns: turns,
+                playbackIndex: playbackIndex,
+                speakerColorMap: ["microphone": .orange],
+                contentRevision: 0,
+                headerRevision: 0,
+                findScrollID: navigation.findScrollID,
+                findNavigationToken: navigation.findNavigationToken,
+                timestampLabel: { "\($0)" },
+                isTimestampSeekable: true,
+                onTimestampTap: { _ in },
+                onCopyTurn: { _ in },
+                onRenameSpeaker: { _, _ in }
+            ) {
+                Text("Long meeting")
+            }
+        }
     }
 
     private struct HeaderTransitionHarness: View {
@@ -150,6 +189,116 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         )
     }
 
+    func testManualScrollAfterFindCanResumePlaybackFollow() {
+        let rawTurns = (0..<30).map { makePlaybackTurn(index: $0) }
+        let turns = identifiedReadingTurns(rawTurns)
+        let words = (0..<30).map {
+            WordTimestamp(
+                word: "word\($0)",
+                startMs: $0 * 5_000,
+                endMs: $0 * 5_000 + 4_000,
+                confidence: 1,
+                speakerId: "microphone"
+            )
+        }
+        let player = MediaPlayerViewModel(playbackRateDefaults: nil)
+        player.playbackMode = .audio
+        player.isPlaying = true
+        player.currentTimeMs = 29 * 5_000
+        let navigation = PlaybackNavigationState(findScrollID: turns.last?.scrollID)
+        let controller = MeetingTranscriptPlaybackFollowController()
+        let view = CountingHostingView(
+            rootView: AnyView(
+                PlaybackHarness(
+                    player: player,
+                    navigation: navigation,
+                    controller: controller,
+                    turns: turns,
+                    playbackIndex: ReadingTurnPlaybackIndex(turns: rawTurns, words: words)
+                )
+            )
+        )
+        view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        let window = show(view)
+        defer { window.orderOut(nil) }
+
+        guard let tableView = preparedScrollView(in: view)?.documentView as? NSTableView,
+            let scrollView = tableView.enclosingScrollView
+        else {
+            XCTFail("No production Reading Turn table")
+            return
+        }
+        controller.pauseForFindNavigation()
+        controller.handleManualScroll(isPlaying: true)
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        navigation.findScrollID = nil
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        XCTAssertFalse(tableView.rows(in: tableView.visibleRect).contains(30))
+
+        controller.resume()
+        let deadline = Date().addingTimeInterval(1)
+        while !tableView.rows(in: tableView.visibleRect).contains(30), Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+
+        XCTAssertTrue(tableView.rows(in: tableView.visibleRect).contains(30))
+    }
+
+    func testLongMeetingPlaybackTicksRemainBoundedAndStartNearEndDirectly() {
+        let turnCount = 1_200
+        let rawTurns = (0..<turnCount).map { makePlaybackTurn(index: $0) }
+        let turns = identifiedReadingTurns(rawTurns)
+        let words = (0..<turnCount).map {
+            WordTimestamp(
+                word: "word\($0)",
+                startMs: $0 * 5_000,
+                endMs: $0 * 5_000 + 4_000,
+                confidence: 1,
+                speakerId: "microphone"
+            )
+        }
+        let player = MediaPlayerViewModel(playbackRateDefaults: nil)
+        player.playbackMode = .audio
+        player.isPlaying = true
+        player.currentTimeMs = (turnCount - 1) * 5_000
+        let view = CountingHostingView(
+            rootView: AnyView(
+                PlaybackHarness(
+                    player: player,
+                    navigation: PlaybackNavigationState(),
+                    controller: MeetingTranscriptPlaybackFollowController(),
+                    turns: turns,
+                    playbackIndex: ReadingTurnPlaybackIndex(turns: rawTurns, words: words)
+                )
+            )
+        )
+        view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        let window = show(view)
+        defer { window.orderOut(nil) }
+
+        guard let tableView = preparedScrollView(in: view)?.documentView as? NSTableView else {
+            XCTFail("No production Reading Turn table")
+            return
+        }
+        XCTAssertTrue(tableView.rows(in: tableView.visibleRect).contains(turnCount))
+        XCTAssertLessThan(tableView.rows(in: tableView.visibleRect).length, 30)
+
+        var worstTickMilliseconds = 0.0
+        for tick in 0..<120 {
+            let start = threadCPUSeconds()
+            player.currentTimeMs = (turnCount - 24) * 5_000 + tick * 1_000
+            RunLoop.main.run(until: Date().addingTimeInterval(0.001))
+            worstTickMilliseconds = max(
+                worstTickMilliseconds,
+                (threadCPUSeconds() - start) * 1_000
+            )
+        }
+
+        print(String(format: "TRANSCRIPT_PLAYBACK_TICK_MAX_THREAD_CPU_MS=%.6f", worstTickMilliseconds))
+        XCTAssertLessThan(worstTickMilliseconds, 100)
+    }
+
     /// Reports a measurement for the command-level performance gate. XCTest
     /// does not assert a machine-time expectation.
     func testRepresentativeMeetingReportsMainThreadFrameCPU() {
@@ -222,6 +371,18 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         let view = CountingHostingView(rootView: AnyView(content))
         view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
         return view
+    }
+
+    private func makePlaybackTurn(index: Int) -> ReadingTurn {
+        ReadingTurn(
+            id: ReadingTurnIdentity(source: .microphone, speakerId: "microphone", firstWordIndex: index),
+            speakerId: "microphone",
+            speakerLabel: "Me",
+            source: .microphone,
+            timeRange: ReadingTurnTimeRange(startMs: index * 5_000, endMs: index * 5_000 + 4_000),
+            paragraphs: [ReadingTurnParagraph(text: "Playback turn \(index)", wordReferences: [index])],
+            wordReferences: [index]
+        )
     }
 
     private func makeTurn(index: Int, compact: Bool) -> ReadingTurn {

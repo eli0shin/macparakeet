@@ -42,6 +42,21 @@ private struct TranscriptFindBlock: Equatable, Identifiable {
     let text: String
 }
 
+/// Keeps legacy segment and speaker-card playback following below the transcript
+/// detail observation boundary. Completed-meeting Reading Turns use their own
+/// indexed playback boundary.
+private struct NonMeetingTranscriptPlaybackObserver: View {
+    @Bindable var playerViewModel: MediaPlayerViewModel
+    let onTick: (Int, Int) -> Void
+
+    var body: some View {
+        EmptyView()
+            .onChange(of: playerViewModel.currentTimeMs) { oldValue, newValue in
+                onTick(oldValue, newValue)
+            }
+    }
+}
+
 /// Data-driven model for the export confirmation popover.
 /// Using a single `Identifiable` value with `.popover(item:)` ensures
 /// the popover content always has the correct URL and format — no race
@@ -180,6 +195,9 @@ struct TranscriptResultView: View {
     var onStartNew: (() -> Void)?
     var onRetranscribe: ((Transcription, SpeechEngineSelection?) -> Void)?
     var onSetUpAI: (() -> Void)?
+    var playbackViewModelProbe: ((MediaPlayerViewModel) -> Void)? = nil
+    var detailEvaluationProbe: (() -> Void)? = nil
+    var headerEvaluationProbe: (() -> Void)? = nil
 
     @AppStorage(UserDefaultsAppRuntimePreferences.transcriptAIContextModeKey)
     private var transcriptAIContextModeRaw = TranscriptAIContextMode.richTranscript.rawValue
@@ -255,6 +273,7 @@ struct TranscriptResultView: View {
     @State private var autoScrollPaused = false
     @State private var scrollPauseTask: Task<Void, Never>?
     @State private var scrollMonitor: Any?
+    @State private var meetingPlaybackFollowController = MeetingTranscriptPlaybackFollowController()
     @State private var showPromptLibrary = false
     @State private var showGeneratePopover = false
     @State private var showingRetranscribeOptions = false
@@ -284,8 +303,9 @@ struct TranscriptResultView: View {
     ]
 
     var body: some View {
-        adaptiveLayout
+        adaptiveLayoutWithEvaluationProbe
         .onAppear {
+            playbackViewModelProbe?(playerViewModel)
             // Lazy migration for existing webm/opus YouTube audio files
             // saved before issue #237's playback fix shipped. The VM
             // transcodes in the background; this callback persists the new
@@ -354,6 +374,7 @@ struct TranscriptResultView: View {
             lastScrolledSegmentMs = -1
             autoScrollPaused = false
             scrollPauseTask?.cancel()
+            meetingPlaybackFollowController.resume()
             // Reset find for the new transcript (no animation during the swap).
             findBarVisible = false
             findFieldFocused = false
@@ -442,6 +463,11 @@ struct TranscriptResultView: View {
         } message: {
             Text("This action cannot be undone.")
         }
+    }
+
+    private var adaptiveLayoutWithEvaluationProbe: some View {
+        let _ = detailEvaluationProbe?()
+        return adaptiveLayout
     }
 
     @ViewBuilder
@@ -1549,21 +1575,25 @@ struct TranscriptResultView: View {
                 }
                 .padding(DesignSystem.Spacing.lg)
             }
-            .onChange(of: playerViewModel.currentTimeMs) { oldValue, newValue in
-                guard playerViewModel.isPlaying else { return }
-                // Detect seek (large time jump) — re-sync transcript regardless of pause state
-                if autoScrollPaused && abs(newValue - oldValue) > 2000 {
-                    autoScrollPaused = false
-                    scrollPauseTask?.cancel()
-                    lastScrolledSegmentMs = -1
-                }
-                guard !autoScrollPaused else { return }
-                guard !cachedSegments.isEmpty else { return }
-                if let targetId = autoScrollTarget(for: newValue),
-                   targetId != lastScrolledSegmentMs {
-                    lastScrolledSegmentMs = targetId
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        proxy.scrollTo(targetId, anchor: .center)
+            .background {
+                if !usesMeetingReadingSurface {
+                    NonMeetingTranscriptPlaybackObserver(playerViewModel: playerViewModel) { oldValue, newValue in
+                        guard playerViewModel.isPlaying else { return }
+                        // Detect seek (large time jump) — re-sync transcript regardless of pause state
+                        if autoScrollPaused && abs(newValue - oldValue) > 2000 {
+                            autoScrollPaused = false
+                            scrollPauseTask?.cancel()
+                            lastScrolledSegmentMs = -1
+                        }
+                        guard !autoScrollPaused else { return }
+                        guard !cachedSegments.isEmpty else { return }
+                        if let targetId = autoScrollTarget(for: newValue),
+                           targetId != lastScrolledSegmentMs {
+                            lastScrolledSegmentMs = targetId
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                proxy.scrollTo(targetId, anchor: .center)
+                            }
+                        }
                     }
                 }
             }
@@ -1611,7 +1641,11 @@ struct TranscriptResultView: View {
                 NSEvent.removeMonitor(existing)
             }
             scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-                if self.playerViewModel.isPlaying {
+                if self.usesMeetingReadingSurface {
+                    self.meetingPlaybackFollowController.handleManualScroll(
+                        isPlaying: self.playerViewModel.isPlaying
+                    )
+                } else if self.playerViewModel.isPlaying {
                     if self.findPausedAutoScroll {
                         // Manual scroll takes ownership and should start the
                         // normal bounded pause below, not inherit find's pause.
@@ -1641,6 +1675,7 @@ struct TranscriptResultView: View {
             }
             scrollPauseTask?.cancel()
             autoScrollPaused = false
+            meetingPlaybackFollowController.resume()
         }
     }
 
@@ -1743,6 +1778,7 @@ struct TranscriptResultView: View {
     /// Resume playback-follow only if find navigation owns the pause; manual
     /// scroll pauses keep their normal 5-second lifetime.
     private func releaseFindOwnedAutoScrollPause() {
+        meetingPlaybackFollowController.releaseFindNavigationPause()
         if findPausedAutoScroll {
             autoScrollPaused = false
             scrollPauseTask?.cancel()
@@ -1840,7 +1876,8 @@ struct TranscriptResultView: View {
     }
 
     private var transcriptPaneHeader: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
+        let _ = headerEvaluationProbe?()
+        return HStack(spacing: DesignSystem.Spacing.sm) {
             Label("Transcript", systemImage: "text.alignleft")
                 .font(DesignSystem.Typography.sectionTitle)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -3284,24 +3321,16 @@ struct TranscriptResultView: View {
     }
 
     private var meetingReadingTurnView: some View {
-        let current = findCurrentHighlight
-        let activeID = playerViewModel.playbackMode == .none
-            ? nil
-            : readingTurnScrollTarget(
-                for: playerViewModel.currentTimeMs,
-                in: cachedReadingTurns,
-                playbackIndex: cachedReadingTurnPlaybackIndex
-            )
-        let findTarget = findBarVisible ? findCurrentScrollTargetID : nil
-        let playbackTarget = playerViewModel.isPlaying && !autoScrollPaused ? activeID : nil
-        return MeetingReadingTurnContentView(
+        MeetingReadingTurnPlaybackView(
+            playerViewModel: playerViewModel,
+            followController: meetingPlaybackFollowController,
             turns: cachedReadingTurns,
+            playbackIndex: cachedReadingTurnPlaybackIndex,
             speakerColorMap: cachedSpeakerColorMap,
             contentRevision: readingTurnContentRevision,
             headerRevision: meetingReadingHeaderRevision,
-            activeScrollID: activeID,
-            navigationScrollID: findTarget ?? playbackTarget,
-            navigationToken: findTarget == nil ? (activeID ?? 0) : findScrollToken,
+            findScrollID: findBarVisible ? findCurrentScrollTargetID : nil,
+            findNavigationToken: findScrollToken,
             timestampLabel: { formatTimestamp(ms: $0) },
             isTimestampSeekable: playerViewModel.playerState == .ready,
             onTimestampTap: { startMs in
@@ -3309,8 +3338,7 @@ struct TranscriptResultView: View {
                 if !playerViewModel.isPlaying {
                     playerViewModel.togglePlayPause()
                 }
-                autoScrollPaused = false
-                scrollPauseTask?.cancel()
+                meetingPlaybackFollowController.resume()
             },
             onCopyTurn: { turn in
                 let passage = MeetingTranscriptPresentationDocument(turns: [turn])
@@ -3325,7 +3353,7 @@ struct TranscriptResultView: View {
                 rebuildSegmentCache()
             },
             bodyPointSize: 15 * clampedTranscriptFontScale,
-            currentHighlight: current
+            currentHighlight: findCurrentHighlight
         ) {
             meetingReadingTurnHeader
         }
