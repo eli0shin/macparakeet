@@ -49,7 +49,6 @@ struct MeetingReadingTurnContentView<SpeakerLabelContent: View>: View {
     let onTimestampTap: (Int) -> Void
     let onCopyTurn: (ReadingTurn) -> Void
     var bodyFont: Font = DesignSystem.Typography.bodyLarge
-    var highlightRangesByScrollID: [Int: [NSRange]] = [:]
     var currentHighlight: (id: Int, range: NSRange)?
 
     var body: some View {
@@ -70,7 +69,6 @@ struct MeetingReadingTurnContentView<SpeakerLabelContent: View>: View {
             onTimestampTap: onTimestampTap,
             onCopyTurn: onCopyTurn,
             bodyFont: bodyFont,
-            highlightRanges: highlightRangesByScrollID[identified.scrollID] ?? [],
             currentRange: currentHighlight?.id == identified.scrollID
                 ? currentHighlight?.range
                 : nil
@@ -100,7 +98,6 @@ private struct MeetingReadingTurnCard<SpeakerLabelContent: View>: View {
     let onTimestampTap: (Int) -> Void
     let onCopyTurn: (ReadingTurn) -> Void
     let bodyFont: Font
-    let highlightRanges: [NSRange]
     let currentRange: NSRange?
 
     private var turn: ReadingTurn { identified.turn }
@@ -164,13 +161,12 @@ private struct MeetingReadingTurnCard<SpeakerLabelContent: View>: View {
     }
 
     private var bodyText: Text {
-        guard !highlightRanges.isEmpty else {
+        guard let currentRange else {
             return Text(turn.text).font(bodyFont)
         }
         return Text(
             TranscriptFindHighlight.attributed(
                 turn.text,
-                ranges: highlightRanges,
                 current: currentRange,
                 baseFont: bodyFont
             ))

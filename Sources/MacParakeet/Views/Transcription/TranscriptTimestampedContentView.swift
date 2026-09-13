@@ -148,8 +148,6 @@ struct TranscriptTimestampedContentView<SpeakerLabelContent: View>: View {
     /// User-adjustable reading size for the transcript body (U4). Defaults to the
     /// design-system `bodyLarge` so existing call sites are unaffected.
     var bodyFont: Font = DesignSystem.Typography.bodyLarge
-    /// In-transcript find highlights (U2), keyed by a row's `startMs`.
-    var highlightRangesByStartMs: [Int: [NSRange]] = [:]
     /// The single emphasized ("current") match, identified by its row `startMs`.
     var currentHighlight: (id: Int, range: NSRange)?
 
@@ -174,7 +172,6 @@ struct TranscriptTimestampedContentView<SpeakerLabelContent: View>: View {
                     timestampLabel: timestampLabel,
                     isTimestampSeekable: isTimestampSeekable,
                     bodyFont: bodyFont,
-                    highlightRangesByStartMs: highlightRangesByStartMs,
                     currentHighlight: currentHighlight,
                     onTimestampTap: onTimestampTap
                 )
@@ -196,7 +193,6 @@ struct TranscriptTimestampedContentView<SpeakerLabelContent: View>: View {
                         isSeekable: isTimestampSeekable,
                         bodyFont: bodyFont,
                         showRowBackground: true,
-                        highlightRanges: highlightRangesByStartMs[segment.startMs] ?? [],
                         currentRange: currentHighlight?.id == segment.startMs ? currentHighlight?.range : nil,
                         onPlayFromHere: { onTimestampTap(segment.startMs) }
                     )
@@ -223,7 +219,6 @@ private struct TranscriptTurnCardView<SpeakerLabelContent: View>: View {
     let timestampLabel: (Int) -> String
     let isTimestampSeekable: Bool
     var bodyFont: Font
-    var highlightRangesByStartMs: [Int: [NSRange]] = [:]
     var currentHighlight: (id: Int, range: NSRange)?
     let onTimestampTap: (Int) -> Void
 
@@ -281,7 +276,6 @@ private struct TranscriptTurnCardView<SpeakerLabelContent: View>: View {
             isSeekable: isTimestampSeekable,
             bodyFont: bodyFont,
             showRowBackground: false,
-            highlightRanges: highlightRangesByStartMs[segment.startMs] ?? [],
             currentRange: currentHighlight?.id == segment.startMs ? currentHighlight?.range : nil,
             onPlayFromHere: { onTimestampTap(segment.startMs) }
         )
@@ -329,9 +323,6 @@ private struct TranscriptSegmentRow: View {
     /// Flat list rows draw their own active/inactive surface; turn-card rows sit
     /// inside the card and pass `false`.
     var showRowBackground: Bool
-    /// In-transcript find matches inside this row's text (U2). Empty on the
-    /// fast path keeps the row a plain `Text`.
-    var highlightRanges: [NSRange] = []
     /// The emphasized match within this row, if the find cursor is on it.
     var currentRange: NSRange?
     let onPlayFromHere: () -> Void
@@ -377,18 +368,17 @@ private struct TranscriptSegmentRow: View {
     }
 
     /// Plain `Text` on the idle fast path; an attributed, highlighted `Text`
-    /// only when this row carries find matches.
+    /// only for the row that owns the current match.
     private var bodyTextCore: Text {
-        guard !highlightRanges.isEmpty else {
+        guard let currentRange else {
             return Text(text).font(bodyFont)
         }
         return Text(
             TranscriptFindHighlight.attributed(
-            text,
-            ranges: highlightRanges,
-            current: currentRange,
-            baseFont: bodyFont
-        ))
+                text,
+                current: currentRange,
+                baseFont: bodyFont
+            ))
     }
 
     private var hoverActions: some View {
