@@ -130,7 +130,7 @@ struct SonicMandalaView: View {
 // MARK: - Mandala Data
 
 /// Encapsulates the radial data points that define a mandala's shape.
-struct MandalaData {
+struct MandalaData: Sendable {
     /// Normalized radial values (0...1) — one per "petal" around the circle.
     let radialPoints: [CGFloat]
 

@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@064-precompute-transcript-derived-display-data
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
