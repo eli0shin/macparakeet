@@ -42,3 +42,12 @@ editing entry.
   according to an explicit tested policy.
 - [ ] Focused performance tests cover initial render, resize/reflow, selection,
   a high-match-count query, and a match near the end of the document.
+
+## Resolution
+
+Moved final-transcript Text mode to a native long-document TextKit surface with
+bounded layout, range-based find navigation, current-match highlighting,
+cross-paragraph selection, and explicit edit viewport preservation. Focused
+long-document coverage and CI passed. Merged as
+[PR #78](https://github.com/eli0shin/macparakeet/pull/78) in commit
+`7fa71212`.

@@ -35,6 +35,7 @@ frame.
 - `064`: precompute transcript-derived display data.
 - `065`: split transcript detail into narrow invalidation domains.
 - `066`: optimize the long-transcript Text surface.
+- `067`: measure the combined release path and identify remaining dominant work.
 
 ## Program acceptance criteria
 
