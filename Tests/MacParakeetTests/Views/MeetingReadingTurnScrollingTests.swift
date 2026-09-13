@@ -189,7 +189,7 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         )
     }
 
-    func testManualScrollAfterFindResumesPlaybackFollowAfterFiveSecondPolicy() {
+    func testManualScrollAfterFindCanResumePlaybackFollow() {
         let rawTurns = (0..<30).map { makePlaybackTurn(index: $0) }
         let turns = identifiedReadingTurns(rawTurns)
         let words = (0..<30).map {
@@ -206,7 +206,7 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         player.isPlaying = true
         player.currentTimeMs = 29 * 5_000
         let navigation = PlaybackNavigationState(findScrollID: turns.last?.scrollID)
-        let controller = MeetingTranscriptPlaybackFollowController(manualPauseDuration: .milliseconds(20))
+        let controller = MeetingTranscriptPlaybackFollowController()
         let view = CountingHostingView(
             rootView: AnyView(
                 PlaybackHarness(
@@ -236,7 +236,11 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.01))
         XCTAssertFalse(tableView.rows(in: tableView.visibleRect).contains(30))
 
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        controller.resume()
+        let deadline = Date().addingTimeInterval(1)
+        while !tableView.rows(in: tableView.visibleRect).contains(30), Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
 
         XCTAssertTrue(tableView.rows(in: tableView.visibleRect).contains(30))
     }
