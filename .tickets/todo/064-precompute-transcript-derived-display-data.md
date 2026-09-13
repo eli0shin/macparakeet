@@ -3,8 +3,7 @@ Assigned-To:
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
-Blocked-By:
-  - 063-isolate-playback-updates-from-transcript-layout
+Blocked-By: []
 ---
 
 # Precompute transcript-derived display data
