@@ -3,7 +3,8 @@ Assigned-To:
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
-Blocked-By: []
+Blocked-By:
+  - 062-replace-eager-reading-turn-layout-with-scalable-rendering
 ---
 
 # Isolate playback updates from transcript layout

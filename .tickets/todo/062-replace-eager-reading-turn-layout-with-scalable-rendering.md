@@ -3,7 +3,8 @@ Assigned-To:
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
-Blocked-By: []
+Blocked-By:
+  - 061-bound-transcript-find-highlighting-and-navigation-work
 ---
 
 # Replace eager Reading Turn layout with scalable rendering

@@ -3,7 +3,8 @@ Assigned-To:
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
-Blocked-By: []
+Blocked-By:
+  - 065-split-transcript-detail-into-narrow-invalidation-domains
 ---
 
 # Optimize long transcript Text mode rendering

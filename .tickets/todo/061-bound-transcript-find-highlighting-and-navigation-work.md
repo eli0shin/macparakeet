@@ -3,7 +3,8 @@ Assigned-To:
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
-Blocked-By: []
+Blocked-By:
+  - 060-make-transcript-find-input-nonblocking
 ---
 
 # Bound transcript find highlighting and navigation work
