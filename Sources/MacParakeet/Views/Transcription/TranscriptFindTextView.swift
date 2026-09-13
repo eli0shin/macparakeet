@@ -8,11 +8,13 @@ struct TranscriptFindTextView: NSViewRepresentable {
     let text: String
     let currentRange: NSRange?
     let fontScale: Double
+    let navigationToken: Int
 
     final class Coordinator {
         var text = ""
         var fontScale: Double?
         var highlightedRange: NSRange?
+        var navigationToken: Int?
         var measuredWidth: CGFloat?
         var measuredSize: CGSize?
     }
@@ -91,6 +93,57 @@ struct TranscriptFindTextView: NSViewRepresentable {
             layoutManager: textView.layoutManager,
             replacing: coordinator.highlightedRange
         )
+        if coordinator.navigationToken != navigationToken {
+            coordinator.navigationToken = navigationToken
+            scrollCurrentRangeToVisible(in: textView, coordinator: coordinator)
+        }
+    }
+
+    /// Resolve the current match through the same TextKit layout that renders
+    /// the transcript. Waiting one main-actor turn lets SwiftUI install or move
+    /// the representable before `scrollToVisible` walks to the outer clip view.
+    private func scrollCurrentRangeToVisible(
+        in textView: NSTextView,
+        coordinator: Coordinator
+    ) {
+        let token = navigationToken
+        let range = currentRange
+        let textSnapshot = text
+        Task { @MainActor [weak textView, weak coordinator] in
+            await Task.yield()
+            guard let textView, let coordinator,
+                  coordinator.navigationToken == token,
+                  coordinator.text == textSnapshot,
+                  let range,
+                  let rect = Self.matchRect(
+                      range,
+                      in: textSnapshot,
+                      layoutManager: textView.layoutManager,
+                      textContainer: textView.textContainer
+                  ) else { return }
+            textView.scrollToVisible(rect.insetBy(dx: 0, dy: -40))
+        }
+    }
+
+    /// Returns the current match rectangle from the existing TextKit layout.
+    /// No second text view or prefix layout is created.
+    static func matchRect(
+        _ currentRange: NSRange,
+        in text: String,
+        layoutManager: NSLayoutManager?,
+        textContainer: NSTextContainer?
+    ) -> NSRect? {
+        guard let layoutManager, let textContainer,
+              TranscriptFindHighlight.textNavigationProgress(current: currentRange, in: text) != nil else {
+            return nil
+        }
+        let glyphRange = layoutManager.glyphRange(
+            forCharacterRange: currentRange,
+            actualCharacterRange: nil
+        )
+        guard glyphRange.length > 0 else { return nil }
+        layoutManager.ensureLayout(forCharacterRange: currentRange)
+        return layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
     }
 
     /// Updates only a bounded TextKit temporary attribute. The transcript text

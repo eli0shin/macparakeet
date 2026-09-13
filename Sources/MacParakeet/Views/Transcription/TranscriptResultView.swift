@@ -216,7 +216,6 @@ struct TranscriptResultView: View {
     private var transcriptFontScale: Double = 1.0
     private static let transcriptFontScaleRange: ClosedRange<Double> = 0.85...1.4
     private static let transcriptFontScaleStep: Double = 0.1
-    private static let textFindAnchorBaseID = -1_000_000
     // In-transcript find (Transcript Detail Refresh / U2). The matcher is the
     // testable `TranscriptFindModel`; this view owns the bar's visibility, the
     // ordered blocks fed to the model, and the scroll wiring.
@@ -1564,10 +1563,12 @@ struct TranscriptResultView: View {
             // Find navigation: scroll the current match into view. Pausing
             // auto-scroll keeps playback-follow from yanking the view back.
             .onChange(of: findScrollToken) {
-                guard findBarVisible, let target = findCurrentScrollTargetID else { return }
+                guard findBarVisible, findModel.current != nil else { return }
                 autoScrollPaused = true
                 findPausedAutoScroll = true
                 scrollPauseTask?.cancel()
+                guard transcriptDisplayMode != .text,
+                      let target = findCurrentScrollTargetID else { return }
                 withAnimation(.easeInOut(duration: 0.25)) {
                     proxy.scrollTo(target, anchor: .center)
                 }
@@ -1692,15 +1693,12 @@ struct TranscriptResultView: View {
         return (id: findBlocks[current.blockIndex].id, range: current.range)
     }
 
-    /// The scroll target for the current match. Timed mode scrolls to the
-    /// owning segment. Text mode scrolls to one proportional overlay target
-    /// without allocating or shaping an invisible transcript prefix.
+    /// The scroll target for the current Timed-mode match. Text mode resolves
+    /// the exact glyph rectangle inside its existing TextKit layout.
     private var findCurrentScrollTargetID: Int? {
         guard findBarVisible, let current = findModel.current,
               findBlocks.indices.contains(current.blockIndex) else { return nil }
-        if transcriptDisplayMode == .text {
-            return currentTextFindNavigationProgress == nil ? nil : Self.textFindAnchorBaseID
-        }
+        guard transcriptDisplayMode != .text else { return nil }
         return findBlocks[current.blockIndex].id
     }
 
@@ -1779,15 +1777,6 @@ struct TranscriptResultView: View {
         } else {
             releaseFindOwnedAutoScrollPause()
         }
-    }
-
-    private var currentTextFindNavigationProgress: Double? {
-        guard findBarVisible, transcriptDisplayMode == .text,
-              let current = findModel.current else { return nil }
-        return TranscriptFindHighlight.textNavigationProgress(
-            current: current.range,
-            in: transcriptText
-        )
     }
 
     /// Persisted scale clamped to the supported range, so a stale or externally
@@ -2027,32 +2016,16 @@ struct TranscriptResultView: View {
         TranscriptFindTextView(
             text: transcriptText,
             currentRange: findFullTextCurrentHighlightRange,
-            fontScale: clampedTranscriptFontScale
+            fontScale: clampedTranscriptFontScale,
+            navigationToken: findScrollToken
         )
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(alignment: .topLeading) {
-            transcriptTextFindAnchor()
-        }
         .padding(DesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
                 .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
         )
-    }
-
-    @ViewBuilder
-    private func transcriptTextFindAnchor() -> some View {
-        if let progress = currentTextFindNavigationProgress {
-            GeometryReader { geometry in
-                Color.clear
-                    .frame(width: 1, height: 1)
-                    .position(x: 0, y: geometry.size.height * progress)
-                    .id(Self.textFindAnchorBaseID)
-            }
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-        }
     }
 
     private func transcriptTimedTextSearchableBlocks() -> some View {

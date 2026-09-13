@@ -213,15 +213,50 @@ final class TranscriptFindModelTests: XCTestCase {
             layoutManager: layoutManager,
             replacing: highlighted
         )
-        let progress = TranscriptFindHighlight.textNavigationProgress(
-            current: distantRange,
-            in: text
+        let matchRect = TranscriptFindTextView.matchRect(
+            distantRange,
+            in: text,
+            layoutManager: layoutManager,
+            textContainer: textContainer
         )
         let elapsed = start.duration(to: clock.now)
 
         XCTAssertEqual(highlighted, distantRange)
-        XCTAssertGreaterThan(progress ?? 0, 0.99)
+        XCTAssertGreaterThan(matchRect?.minY ?? 0, layoutManager.usedRect(for: textContainer).height * 0.99)
         XCTAssertLessThan(elapsed, .milliseconds(16), "Navigation presentation took \(elapsed)")
+    }
+
+    func testTextNavigationUsesLayoutForUnevenParagraphs() {
+        let leadingShortLines = String(repeating: "x\n", count: 500)
+        let text = leadingShortLines + "needle\n" + String(repeating: "trailing prose ", count: 8_000)
+        let range = NSRange(location: leadingShortLines.utf16.count, length: 6)
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 100))
+        textView.isHorizontallyResizable = false
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(
+            width: 600,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.string = text
+        let layoutManager = try! XCTUnwrap(textView.layoutManager)
+        let textContainer = try! XCTUnwrap(textView.textContainer)
+        layoutManager.ensureLayout(for: textContainer)
+
+        let rect = TranscriptFindTextView.matchRect(
+            range,
+            in: text,
+            layoutManager: layoutManager,
+            textContainer: textContainer
+        )
+        let layoutProgress = try! XCTUnwrap(rect).midY
+            / layoutManager.usedRect(for: textContainer).height
+        let characterProgress = try! XCTUnwrap(
+            TranscriptFindHighlight.textNavigationProgress(current: range, in: text)
+        )
+
+        XCTAssertGreaterThan(layoutProgress, 0.2)
+        XCTAssertLessThan(characterProgress, 0.02)
+        XCTAssertGreaterThan(layoutProgress - characterProgress, 0.15)
     }
 
     func testTextNavigationRejectsStaleUnicodeRanges() {
