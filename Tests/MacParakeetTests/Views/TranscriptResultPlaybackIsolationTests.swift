@@ -102,9 +102,9 @@ final class TranscriptResultPlaybackIsolationTests: XCTestCase {
         } else {
             XCTAssertNotNil(findTableView(in: host), "Unedited meeting must render the Reading surface")
         }
-        playerViewModel.playbackMode = .audio
-        playerViewModel.isPlaying = true
-        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        waitForEvaluationCountsToSettle {
+            (detailEvaluationCount, headerEvaluationCount)
+        }
         let settledDetailCount = detailEvaluationCount
         let settledHeaderCount = headerEvaluationCount
 
@@ -117,6 +117,23 @@ final class TranscriptResultPlaybackIsolationTests: XCTestCase {
         XCTAssertGreaterThan(settledHeaderCount, 0)
         XCTAssertEqual(detailEvaluationCount, settledDetailCount)
         XCTAssertEqual(headerEvaluationCount, settledHeaderCount)
+    }
+
+    private func waitForEvaluationCountsToSettle(readCounts: () -> (Int, Int)) {
+        let deadline = Date().addingTimeInterval(2)
+        var previousCounts = readCounts()
+        var stableSince = Date()
+        while Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            let currentCounts = readCounts()
+            if currentCounts != previousCounts {
+                previousCounts = currentCounts
+                stableSince = Date()
+            } else if Date().timeIntervalSince(stableSince) >= 0.5 {
+                return
+            }
+        }
+        XCTFail("Completed meeting detail did not settle before playback ticks")
     }
 
     private func isSurfaceReady(
