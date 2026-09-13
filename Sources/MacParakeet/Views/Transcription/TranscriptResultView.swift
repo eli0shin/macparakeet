@@ -201,6 +201,7 @@ struct TranscriptResultView: View {
     private var transcriptFontScale: Double = 1.0
     private static let transcriptFontScaleRange: ClosedRange<Double> = 0.85...1.4
     private static let transcriptFontScaleStep: Double = 0.1
+    private static let textSurfaceScrollTargetID = Int.min
     // In-transcript find (Transcript Detail Refresh / U2). The matcher is the
     // testable `TranscriptFindModel`; this view owns the bar's visibility, the
     // ordered blocks fed to the model, and the scroll wiring.
@@ -270,7 +271,6 @@ struct TranscriptResultView: View {
     @State private var showingCancelGenerationAlert: UUID?
     @FocusState private var chatInputFocused: Bool
     @FocusState private var titleFocused: Bool
-    @FocusState private var transcriptEditorFocused: Bool
     @FocusState private var speakerRenameFocused: Bool
     @FocusState private var findFieldFocused: Bool
 
@@ -631,7 +631,6 @@ struct TranscriptResultView: View {
             String(editingTranscript),
             transcriptDraft,
             String(describing: transcriptEditError),
-            String(transcriptEditorFocused),
             String(notesCopied),
             String(clampedTranscriptFontScale),
             String(shouldShowTranscriptAISetupBanner),
@@ -1744,8 +1743,11 @@ struct TranscriptResultView: View {
                         meetingTranscriptProcessingState(presentation)
                     }
 
-                    if editingTranscript {
-                        transcriptEditor
+                    if transcriptDisplayMode == .text,
+                       editingTranscript || cachedHasPreferredText {
+                        // Keep one structural identity while edit mode changes so
+                        // the native selection and viewport remain in place.
+                        transcriptTextBlock
                     } else if transcriptDisplayMode == .timed,
                               usesMeetingReadingSurface,
                               !cachedReadingTurns.isEmpty {
@@ -1806,8 +1808,7 @@ struct TranscriptResultView: View {
                 autoScrollPaused = true
                 findPausedAutoScroll = true
                 scrollPauseTask?.cancel()
-                guard transcriptDisplayMode != .text,
-                      let target = findCurrentScrollTargetID else { return }
+                guard let target = findCurrentScrollTargetID else { return }
                 withAnimation(.easeInOut(duration: 0.25)) {
                     proxy.scrollTo(target, anchor: .center)
                 }
@@ -1945,12 +1946,13 @@ struct TranscriptResultView: View {
         return (id: findBlocks[current.blockIndex].id, range: current.range)
     }
 
-    /// The scroll target for the current Timed-mode match. Text mode resolves
-    /// the exact glyph rectangle inside its existing TextKit layout.
+    /// Text mode first centers its finite native surface in the outer scroll
+    /// view, then centers the exact glyph range inside that surface. Timed mode
+    /// scrolls directly to the matching block.
     private var findCurrentScrollTargetID: Int? {
         guard findBarVisible, let current = findModel.current,
               findBlocks.indices.contains(current.blockIndex) else { return nil }
-        guard transcriptDisplayMode != .text else { return nil }
+        guard transcriptDisplayMode != .text else { return Self.textSurfaceScrollTargetID }
         return findBlocks[current.blockIndex].id
     }
 
@@ -2211,73 +2213,42 @@ struct TranscriptResultView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var transcriptEditor: some View {
-        TextEditor(text: $transcriptDraft)
-            .font(DesignSystem.Typography.bodyLarge)
-            .foregroundStyle(DesignSystem.Colors.textPrimary)
-            .lineSpacing(6)
-            .scrollContentBackground(.hidden)
-            .focused($transcriptEditorFocused)
-            .padding(DesignSystem.Spacing.md)
-            .frame(minHeight: 320)
-            .background(
-                RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.75))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                    .strokeBorder(DesignSystem.Colors.accent.opacity(0.30), lineWidth: 1)
-            )
-    }
-
     private var shouldShowTranscriptAISetupBanner: Bool {
         !viewModel.llmAvailable
             && !viewModel.hasPromptResultTabs
             && !viewModel.hasConversations
     }
 
-    @ViewBuilder
     private var transcriptTextBlock: some View {
-        if findBarVisible {
-            transcriptTextBlockSearchable()
-        } else {
-            Text(transcriptText)
-                .font(scaledTranscriptFont)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                .textSelection(.enabled)
-                .lineSpacing(6)
-                .padding(DesignSystem.Spacing.lg)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
-                )
-        }
-    }
-
-    @ViewBuilder
-    private func transcriptTextBlockSearchable() -> some View {
-        if transcriptDisplayMode == .text {
-            transcriptFullTextSearchableBlock()
-        } else {
-            transcriptTimedTextSearchableBlocks()
-        }
-    }
-
-    private func transcriptFullTextSearchableBlock() -> some View {
         TranscriptFindTextView(
-            text: transcriptText,
+            text: editingTranscript ? transcriptDraft : transcriptText,
             currentRange: findFullTextCurrentHighlightRange,
             fontScale: clampedTranscriptFontScale,
-            navigationToken: findScrollToken
+            navigationToken: findScrollToken,
+            isEditable: editingTranscript,
+            onTextChange: { updatedText in
+                guard editingTranscript else { return }
+                transcriptDraft = updatedText
+            }
         )
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Text mode owns a finite native viewport. TextKit can then lay out
+        // visible text only instead of reporting a complete document height to
+        // the enclosing SwiftUI scroll view.
+        .frame(minHeight: 320, idealHeight: 520, maxHeight: 640)
         .padding(DesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(editingTranscript ? 0.75 : 0.6))
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
+                .strokeBorder(
+                    editingTranscript ? DesignSystem.Colors.accent.opacity(0.30) : .clear,
+                    lineWidth: 1
+                )
+        )
+        .id(Self.textSurfaceScrollTargetID)
     }
 
     private func transcriptTimedTextSearchableBlocks() -> some View {
@@ -4088,9 +4059,6 @@ struct TranscriptResultView: View {
         transcriptDisplayModeBeforeEdit = transcriptDisplayMode
         editingTranscript = true
         transcriptDisplayMode = .text
-        Task { @MainActor in
-            transcriptEditorFocused = true
-        }
     }
 
     private func cancelTranscriptEdit() {
