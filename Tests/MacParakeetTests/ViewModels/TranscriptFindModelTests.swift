@@ -1,4 +1,6 @@
+import AppKit
 import XCTest
+@testable import MacParakeet
 @testable import MacParakeetViewModels
 
 @MainActor
@@ -153,6 +155,131 @@ final class TranscriptFindModelTests: XCTestCase {
         XCTAssertEqual(model.currentMatchIndex, 0)
         model.prev(); XCTAssertEqual(model.currentMatchIndex, 2)
         model.prev(); XCTAssertEqual(model.currentMatchIndex, 1)
+    }
+
+    /// Matching time is intentionally outside this measurement. Once a very
+    /// common query has settled, publishing the current result into the reading
+    /// surface must fit within one 16 ms frame and must style only that result.
+    func testCommonQueryDistantNavigationPresentationStaysWithinOneFrame() async {
+        let block = String(repeating: "a ", count: 30)
+        let blocks = Array(repeating: block, count: 7_680)
+        let resultCount = 230_400
+        let model = await model(blocks, query: "a")
+        XCTAssertEqual(model.matchCount, resultCount)
+
+        let clock = ContinuousClock()
+        let start = clock.now
+        model.prev() // Wrap from the first result to the distant final result.
+        let current = try! XCTUnwrap(model.current)
+        _ = TranscriptFindHighlight.attributed(
+            blocks[current.blockIndex],
+            current: current.range,
+            baseFont: .body
+        )
+        let elapsed = start.duration(to: clock.now)
+
+        XCTAssertEqual(model.displayPosition?.current, resultCount)
+        XCTAssertEqual(current.blockIndex, blocks.count - 1)
+        XCTAssertLessThan(elapsed, .milliseconds(16), "Result presentation took \(elapsed)")
+    }
+
+    func testDistantTextNavigationTargetStaysWithinOneFrame() {
+        let text = String(repeating: "A long transcript line. ", count: 50_000)
+        let firstRange = NSRange(location: 0, length: 4)
+        let distantRange = NSRange(location: text.utf16.count - 10, length: 4)
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 100))
+        textView.isHorizontallyResizable = false
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(
+            width: 600,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.string = text
+        let layoutManager = try! XCTUnwrap(textView.layoutManager)
+        let textContainer = try! XCTUnwrap(textView.textContainer)
+        layoutManager.ensureLayout(for: textContainer)
+        var highlighted = TranscriptFindTextView.applyHighlight(
+            firstRange,
+            in: text,
+            layoutManager: layoutManager,
+            replacing: nil
+        )
+
+        let clock = ContinuousClock()
+        let start = clock.now
+        highlighted = TranscriptFindTextView.applyHighlight(
+            distantRange,
+            in: text,
+            layoutManager: layoutManager,
+            replacing: highlighted
+        )
+        let matchRect = TranscriptFindTextView.matchRect(
+            distantRange,
+            in: text,
+            layoutManager: layoutManager,
+            textContainer: textContainer
+        )
+        let elapsed = start.duration(to: clock.now)
+
+        XCTAssertEqual(highlighted, distantRange)
+        XCTAssertGreaterThan(matchRect?.minY ?? 0, layoutManager.usedRect(for: textContainer).height * 0.99)
+        XCTAssertLessThan(elapsed, .milliseconds(16), "Navigation presentation took \(elapsed)")
+    }
+
+    func testTextNavigationUsesLayoutForUnevenParagraphs() {
+        let leadingShortLines = String(repeating: "x\n", count: 500)
+        let text = leadingShortLines + "needle\n" + String(repeating: "trailing prose ", count: 8_000)
+        let range = NSRange(location: leadingShortLines.utf16.count, length: 6)
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 100))
+        textView.isHorizontallyResizable = false
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(
+            width: 600,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.string = text
+        let layoutManager = try! XCTUnwrap(textView.layoutManager)
+        let textContainer = try! XCTUnwrap(textView.textContainer)
+        layoutManager.ensureLayout(for: textContainer)
+
+        let rect = TranscriptFindTextView.matchRect(
+            range,
+            in: text,
+            layoutManager: layoutManager,
+            textContainer: textContainer
+        )
+        let layoutProgress = try! XCTUnwrap(rect).midY
+            / layoutManager.usedRect(for: textContainer).height
+        let characterProgress = try! XCTUnwrap(
+            TranscriptFindHighlight.textNavigationProgress(current: range, in: text)
+        )
+
+        XCTAssertGreaterThan(layoutProgress, 0.2)
+        XCTAssertLessThan(characterProgress, 0.02)
+        XCTAssertGreaterThan(layoutProgress - characterProgress, 0.15)
+    }
+
+    func testTextNavigationRejectsStaleUnicodeRanges() {
+        let text = "😀 café"
+        XCTAssertNotNil(
+            TranscriptFindHighlight.textNavigationProgress(
+                current: NSRange(location: 3, length: 4),
+                in: text
+            )
+        )
+        XCTAssertNil(
+            TranscriptFindHighlight.textNavigationProgress(
+                current: NSRange(location: 1, length: 1),
+                in: text
+            ),
+            "A range inside the emoji's UTF-16 surrogate pair must not be used"
+        )
+        XCTAssertNil(
+            TranscriptFindHighlight.textNavigationProgress(
+                current: NSRange(location: 99, length: 1),
+                in: text
+            )
+        )
     }
 
     func testNavigationNoOpWhenNoMatches() async {

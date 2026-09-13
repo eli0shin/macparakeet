@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@061-bound-transcript-find-highlighting-and-navigation-work
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive

@@ -1,33 +1,53 @@
 import SwiftUI
 
-/// Builds the highlighted `AttributedString` for an in-transcript find match
-/// (Transcript Detail Refresh / U2). Shared by the Timed-mode segment rows and
-/// the Text-mode full transcript so the highlight treatment stays identical.
+/// Builds the highlighted `AttributedString` for the current in-transcript
+/// find match. Search can return hundreds of thousands of matches, so rendering
+/// deliberately styles one range instead of doing work proportional to the
+/// total result count or the number of off-screen Reading Turns.
 ///
-/// Ranges are UTF-16 `NSRange`s relative to `text` (as produced by
-/// `TranscriptFindModel`). The "current" match gets a stronger background and a
-/// bold weight; the others get a quiet accent wash. Coral comes only through
+/// The range is a UTF-16 `NSRange` relative to `text` (as produced by
+/// `TranscriptFindModel`). Coral comes only through
 /// `DesignSystem.Colors.accent` tokens — never a hosting-root tint.
 enum TranscriptFindHighlight {
     static func attributed(
         _ text: String,
-        ranges: [NSRange],
-        current: NSRange?,
+        current: NSRange,
         baseFont: Font
     ) -> AttributedString {
         var attr = AttributedString(text)
         attr.font = baseFont
-        for nsRange in ranges {
-            guard let range = attributedRange(nsRange, in: text, attr: attr) else { continue }
-            let isCurrent = (nsRange == current)
-            attr[range].backgroundColor = isCurrent
-                ? DesignSystem.Colors.accent.opacity(0.55)
-                : DesignSystem.Colors.accent.opacity(0.22)
-            if isCurrent {
-                attr[range].font = baseFont.bold()
-            }
-        }
+        guard let range = attributedRange(current, in: text, attr: attr) else { return attr }
+        attr[range].backgroundColor = DesignSystem.Colors.accent.opacity(0.55)
+        attr[range].font = baseFont.bold()
         return attr
+    }
+
+    /// Returns a proportional target inside the rendered full-text block.
+    /// This uses the validated UTF-16 match range without creating or laying
+    /// out an invisible transcript prefix. The target is exact for uniform
+    /// wrapping and remains a close navigation target for normal prose.
+    static func textNavigationProgress(current: NSRange, in text: String) -> Double? {
+        let utf16 = text.utf16
+        let count = utf16.count
+        guard count > 0,
+              current.location >= 0,
+              current.length >= 0,
+              current.location <= count,
+              current.length <= count - current.location,
+              let lowerUTF16 = utf16.index(
+                  utf16.startIndex,
+                  offsetBy: current.location,
+                  limitedBy: utf16.endIndex
+              ),
+              let upperUTF16 = utf16.index(
+                  lowerUTF16,
+                  offsetBy: current.length,
+                  limitedBy: utf16.endIndex
+              ),
+              lowerUTF16.samePosition(in: text.unicodeScalars) != nil,
+              upperUTF16.samePosition(in: text.unicodeScalars) != nil else { return nil }
+        let midpoint = Double(current.location) + (Double(current.length) / 2)
+        return min(max(midpoint / Double(count), 0), 1)
     }
 
     /// Converts a UTF-16 `NSRange` over `string` into the matching
