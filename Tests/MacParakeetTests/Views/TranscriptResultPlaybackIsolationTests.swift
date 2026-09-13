@@ -18,7 +18,7 @@ final class TranscriptResultPlaybackIsolationTests: XCTestCase {
     private func assertPlaybackTicksDoNotRebuildDetailOrHeader(isTranscriptEdited: Bool) {
         let words = [
             WordTimestamp(word: "hello", startMs: 0, endMs: 4_000, confidence: 1, speakerId: "microphone"),
-            WordTimestamp(word: "world", startMs: 4_001, endMs: 8_000, confidence: 1, speakerId: "system")
+            WordTimestamp(word: "world", startMs: 4_001, endMs: 8_000, confidence: 1, speakerId: "system"),
         ]
         let turns = [
             ReadingTurn(
@@ -38,7 +38,7 @@ final class TranscriptResultPlaybackIsolationTests: XCTestCase {
                 timeRange: ReadingTurnTimeRange(startMs: 4_001, endMs: 8_000),
                 paragraphs: [ReadingTurnParagraph(text: "world", wordReferences: [1])],
                 wordReferences: [1]
-            )
+            ),
         ]
         let transcription = Transcription(
             fileName: "Meeting.m4a",
@@ -48,7 +48,7 @@ final class TranscriptResultPlaybackIsolationTests: XCTestCase {
             wordTimestamps: words,
             speakers: [
                 SpeakerInfo(id: "microphone", label: "Me"),
-                SpeakerInfo(id: "system", label: "Speaker 1")
+                SpeakerInfo(id: "system", label: "Speaker 1"),
             ],
             readingDocument: MeetingTranscriptPresentationDocument(turns: turns),
             status: .completed,
