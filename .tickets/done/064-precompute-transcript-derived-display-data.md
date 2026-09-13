@@ -40,3 +40,11 @@ status changes.
   calls to instrumented transcript-scale derivation functions.
 - [ ] Initial cached content remains correct while an updated snapshot prepares;
   no previous recording's values appear in the new detail.
+
+## Resolution
+
+Moved transcript-scale display derivation into an immutable background-prepared
+snapshot with exact invalidation inputs and stale-result protection. Preparation,
+rendered playback-isolation, recovery, and CI coverage passed. Merged as
+[PR #76](https://github.com/eli0shin/macparakeet/pull/76) in commit
+`18f7df4e`.

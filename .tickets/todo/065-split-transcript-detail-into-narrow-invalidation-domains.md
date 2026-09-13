@@ -3,8 +3,7 @@ Assigned-To:
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
-Blocked-By:
-  - 064-precompute-transcript-derived-display-data
+Blocked-By: []
 ---
 
 # Split transcript detail into narrow invalidation domains
