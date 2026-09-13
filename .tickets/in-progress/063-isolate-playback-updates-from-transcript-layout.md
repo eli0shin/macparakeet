@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@063-isolate-playback-updates-from-transcript-layout
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive

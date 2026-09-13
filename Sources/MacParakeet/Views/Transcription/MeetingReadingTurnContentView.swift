@@ -1,6 +1,13 @@
 import AppKit
 import SwiftUI
 import MacParakeetCore
+import MacParakeetViewModels
+import os
+
+private let meetingPlaybackSignposter = OSSignposter(
+    subsystem: "com.macparakeet",
+    category: "TranscriptPlayback"
+)
 
 struct IdentifiedReadingTurn: Identifiable, Sendable {
     let turn: ReadingTurn
@@ -39,6 +46,181 @@ func readingTurnScrollTarget(
     }
     return turns.filter { ($0.turn.timeRange?.startMs ?? .max) <= currentMs }
         .max { ($0.turn.timeRange?.startMs ?? .min) < ($1.turn.timeRange?.startMs ?? .min) }?.scrollID
+}
+
+@MainActor @Observable
+final class MeetingTranscriptPlaybackFollowController {
+    private enum PauseOwner {
+        case find
+        case manualScroll
+    }
+
+    private let manualPauseDuration: Duration
+    private var pauseOwner: PauseOwner?
+    private var resumeTask: Task<Void, Never>?
+    private(set) var navigationToken = 0
+
+    init(manualPauseDuration: Duration = .seconds(5)) {
+        self.manualPauseDuration = manualPauseDuration
+    }
+
+    var followsPlayback: Bool { pauseOwner == nil }
+
+    func handlePlaybackTick(from oldValue: Int, to newValue: Int, isPlaying: Bool) {
+        guard isPlaying, pauseOwner != nil, abs(newValue - oldValue) > 2_000 else { return }
+        resume()
+    }
+
+    func pauseForFindNavigation() {
+        resumeTask?.cancel()
+        pauseOwner = .find
+    }
+
+    func releaseFindNavigationPause() {
+        guard pauseOwner == .find else { return }
+        resume()
+    }
+
+    func handleManualScroll(isPlaying: Bool) {
+        guard isPlaying else { return }
+        resumeTask?.cancel()
+        pauseOwner = .manualScroll
+        resumeTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: manualPauseDuration)
+            guard !Task.isCancelled else { return }
+            resume()
+        }
+    }
+
+    func resume() {
+        resumeTask?.cancel()
+        resumeTask = nil
+        if pauseOwner != nil { navigationToken &+= 1 }
+        pauseOwner = nil
+    }
+}
+
+/// The narrow observation boundary for completed-meeting playback. Playback
+/// ticks invalidate this view, not the transcript detail that supplies its
+/// header, search controls, and immutable Reading Turns.
+struct MeetingReadingTurnPlaybackView<Header: View>: View {
+    @Bindable var playerViewModel: MediaPlayerViewModel
+    let followController: MeetingTranscriptPlaybackFollowController
+    let turns: [IdentifiedReadingTurn]
+    let playbackIndex: ReadingTurnPlaybackIndex?
+    let speakerColorMap: [String: Color]
+    let header: Header
+    let contentRevision: Int
+    let headerRevision: Int
+    let findScrollID: Int?
+    let findNavigationToken: Int
+    let timestampLabel: (Int) -> String
+    let isTimestampSeekable: Bool
+    let onTimestampTap: (Int) -> Void
+    let onCopyTurn: (ReadingTurn) -> Void
+    let onRenameSpeaker: (String, String) -> Void
+    let bodyPointSize: CGFloat
+    var currentHighlight: (id: Int, range: NSRange)?
+
+    init(
+        playerViewModel: MediaPlayerViewModel,
+        followController: MeetingTranscriptPlaybackFollowController,
+        turns: [IdentifiedReadingTurn],
+        playbackIndex: ReadingTurnPlaybackIndex?,
+        speakerColorMap: [String: Color],
+        contentRevision: Int,
+        headerRevision: Int,
+        findScrollID: Int?,
+        findNavigationToken: Int,
+        timestampLabel: @escaping (Int) -> String,
+        isTimestampSeekable: Bool,
+        onTimestampTap: @escaping (Int) -> Void,
+        onCopyTurn: @escaping (ReadingTurn) -> Void,
+        onRenameSpeaker: @escaping (String, String) -> Void,
+        bodyPointSize: CGFloat = 15,
+        currentHighlight: (id: Int, range: NSRange)? = nil,
+        @ViewBuilder header: () -> Header
+    ) {
+        self.playerViewModel = playerViewModel
+        self.followController = followController
+        self.turns = turns
+        self.playbackIndex = playbackIndex
+        self.speakerColorMap = speakerColorMap
+        self.header = header()
+        self.contentRevision = contentRevision
+        self.headerRevision = headerRevision
+        self.findScrollID = findScrollID
+        self.findNavigationToken = findNavigationToken
+        self.timestampLabel = timestampLabel
+        self.isTimestampSeekable = isTimestampSeekable
+        self.onTimestampTap = onTimestampTap
+        self.onCopyTurn = onCopyTurn
+        self.onRenameSpeaker = onRenameSpeaker
+        self.bodyPointSize = bodyPointSize
+        self.currentHighlight = currentHighlight
+    }
+
+    var body: some View {
+        let activeID =
+            playerViewModel.playbackMode == .none
+            ? nil
+            : readingTurnScrollTarget(
+                for: playerViewModel.currentTimeMs,
+                in: turns,
+                playbackIndex: playbackIndex
+            )
+        let playbackScrollID =
+            playerViewModel.isPlaying && followController.followsPlayback
+            ? activeID
+            : nil
+
+        MeetingReadingTurnContentView(
+            turns: turns,
+            speakerColorMap: speakerColorMap,
+            contentRevision: contentRevision,
+            headerRevision: headerRevision,
+            activeScrollID: activeID,
+            navigationScrollID: findScrollID ?? playbackScrollID,
+            navigationToken: findScrollID == nil ? followController.navigationToken : findNavigationToken,
+            timestampLabel: timestampLabel,
+            isTimestampSeekable: isTimestampSeekable,
+            onTimestampTap: onTimestampTap,
+            onCopyTurn: onCopyTurn,
+            onRenameSpeaker: onRenameSpeaker,
+            bodyPointSize: bodyPointSize,
+            currentHighlight: currentHighlight
+        ) {
+            header
+        }
+        .onChange(of: playerViewModel.currentTimeMs) { oldValue, newValue in
+            followController.handlePlaybackTick(
+                from: oldValue,
+                to: newValue,
+                isPlaying: playerViewModel.isPlaying
+            )
+        }
+        .onChange(of: findNavigationToken) {
+            guard findScrollID != nil else { return }
+            followController.pauseForFindNavigation()
+        }
+    }
+}
+
+func changedReadingTurnPresentationScrollIDs(
+    previousActiveID: Int?,
+    activeID: Int?,
+    previousHighlight: (id: Int, range: NSRange)?,
+    highlight: (id: Int, range: NSRange)?
+) -> Set<Int> {
+    var changed: [Int] = []
+    if previousActiveID != activeID {
+        changed.append(contentsOf: [previousActiveID, activeID].compactMap { $0 })
+    }
+    if previousHighlight?.id != highlight?.id || previousHighlight?.range != highlight?.range {
+        changed.append(contentsOf: [previousHighlight?.id, highlight?.id].compactMap { $0 })
+    }
+    return Set(changed)
 }
 
 /// The completed-meeting Reading surface. `NSTableView` realizes only visible
@@ -137,6 +319,7 @@ struct MeetingReadingTurnContentView<Header: View>: NSViewRepresentable {
         private var contentSignature: ContentSignature
         private var measuredWidth: CGFloat = 0
         private var lastHeaderRevision: Int
+        private var lastIsTimestampSeekable: Bool
         private var lastNavigationToken: Int?
         private var lastNavigationID: Int?
         weak var tableView: NSTableView?
@@ -146,6 +329,7 @@ struct MeetingReadingTurnContentView<Header: View>: NSViewRepresentable {
             self.parent = parent
             contentSignature = ContentSignature(parent)
             lastHeaderRevision = parent.headerRevision
+            lastIsTimestampSeekable = parent.isTimestampSeekable
             super.init()
             rebuildScrollRows()
         }
@@ -185,11 +369,19 @@ struct MeetingReadingTurnContentView<Header: View>: NSViewRepresentable {
         }
 
         func update(parent: MeetingReadingTurnContentView) {
+            let interval = meetingPlaybackSignposter.beginInterval("Reading Turn Presentation Update")
+            defer {
+                meetingPlaybackSignposter.endInterval("Reading Turn Presentation Update", interval)
+            }
+
+            let previousParent = self.parent
             let previousSignature = contentSignature
             let previousHeaderRevision = lastHeaderRevision
+            let previousSeekable = lastIsTimestampSeekable
             self.parent = parent
             contentSignature = ContentSignature(parent)
             lastHeaderRevision = parent.headerRevision
+            lastIsTimestampSeekable = parent.isTimestampSeekable
 
             guard let tableView else { return }
             let width = tableView.bounds.width
@@ -202,8 +394,10 @@ struct MeetingReadingTurnContentView<Header: View>: NSViewRepresentable {
             } else if widthChanged {
                 heightCache.removeAll(keepingCapacity: true)
                 tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<tableView.numberOfRows))
-            } else {
+            } else if previousSeekable != parent.isTimestampSeekable {
                 updateVisibleRows(in: tableView)
+            } else {
+                updateChangedPresentationRows(from: previousParent, in: tableView)
             }
             measuredWidth = width
 
@@ -242,12 +436,32 @@ struct MeetingReadingTurnContentView<Header: View>: NSViewRepresentable {
             let rows = tableView.rows(in: tableView.visibleRect)
             guard rows.location != NSNotFound else { return }
             for row in rows.location..<(rows.location + rows.length) where row > 0 {
-                if let view = tableView.view(atColumn: 0, row: row, makeIfNecessary: false)
-                    as? ReadingTurnTableCellView
-                {
-                    configure(view, row: row)
-                }
+                updateRowIfVisible(row, in: tableView)
             }
+        }
+
+        private func updateChangedPresentationRows(
+            from previous: MeetingReadingTurnContentView,
+            in tableView: NSTableView
+        ) {
+            let changedScrollIDs = changedReadingTurnPresentationScrollIDs(
+                previousActiveID: previous.activeScrollID,
+                activeID: parent.activeScrollID,
+                previousHighlight: previous.currentHighlight,
+                highlight: parent.currentHighlight
+            )
+            for scrollID in changedScrollIDs {
+                guard let row = scrollRows[scrollID] else { continue }
+                updateRowIfVisible(row, in: tableView)
+            }
+        }
+
+        private func updateRowIfVisible(_ row: Int, in tableView: NSTableView) {
+            guard
+                let view = tableView.view(atColumn: 0, row: row, makeIfNecessary: false)
+                    as? ReadingTurnTableCellView
+            else { return }
+            configure(view, row: row)
         }
 
         private func configure(_ view: ReadingTurnTableCellView, row: Int) {
@@ -273,8 +487,12 @@ struct MeetingReadingTurnContentView<Header: View>: NSViewRepresentable {
         }
 
         private func navigateIfNeeded(in tableView: NSTableView) {
-            guard let scrollID = parent.navigationScrollID,
-                lastNavigationID != scrollID || lastNavigationToken != parent.navigationToken,
+            guard let scrollID = parent.navigationScrollID else {
+                lastNavigationID = nil
+                lastNavigationToken = nil
+                return
+            }
+            guard lastNavigationID != scrollID || lastNavigationToken != parent.navigationToken,
                 let row = scrollRows[scrollID]
             else { return }
             lastNavigationID = scrollID
