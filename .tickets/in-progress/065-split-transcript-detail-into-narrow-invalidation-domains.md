@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@065-split-transcript-detail-into-narrow-invalidation-domains
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive

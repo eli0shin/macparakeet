@@ -122,6 +122,7 @@ struct MeetingReadingTurnPlaybackView<Header: View>: View {
     let onRenameSpeaker: (String, String) -> Void
     let bodyPointSize: CGFloat
     var currentHighlight: (id: Int, range: NSRange)?
+    var evaluationProbe: (() -> Void)?
 
     init(
         playerViewModel: MediaPlayerViewModel,
@@ -140,6 +141,7 @@ struct MeetingReadingTurnPlaybackView<Header: View>: View {
         onRenameSpeaker: @escaping (String, String) -> Void,
         bodyPointSize: CGFloat = 15,
         currentHighlight: (id: Int, range: NSRange)? = nil,
+        evaluationProbe: (() -> Void)? = nil,
         @ViewBuilder header: () -> Header
     ) {
         self.playerViewModel = playerViewModel
@@ -159,6 +161,7 @@ struct MeetingReadingTurnPlaybackView<Header: View>: View {
         self.onRenameSpeaker = onRenameSpeaker
         self.bodyPointSize = bodyPointSize
         self.currentHighlight = currentHighlight
+        self.evaluationProbe = evaluationProbe
     }
 
     var body: some View {
@@ -194,6 +197,7 @@ struct MeetingReadingTurnPlaybackView<Header: View>: View {
             header
         }
         .onChange(of: playerViewModel.currentTimeMs) { oldValue, newValue in
+            evaluationProbe?()
             followController.handlePlaybackTick(
                 from: oldValue,
                 to: newValue,
