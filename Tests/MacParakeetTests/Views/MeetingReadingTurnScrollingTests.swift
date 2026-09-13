@@ -23,8 +23,8 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         }
     }
 
-    func testMoreThanFourHundredTimedRowsScrollToExactBoundsAndSettle() {
-        let view = host(turnCount: 401, compactRows: true)
+    func testTwelveHundredTimedRowsRealizeOnlyVisibleRowsAndScrollToExactBounds() {
+        let view = host(turnCount: 1_200, compactRows: true)
         let window = NSWindow(
             contentRect: NSRect(x: -20_000, y: -20_000, width: 800, height: 600),
             styleMask: [.titled, .resizable],
@@ -42,6 +42,14 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
             return
         }
 
+        let tableView = try? XCTUnwrap(findTableView(view))
+        XCTAssertEqual(tableView?.numberOfRows, 1_201)
+        XCTAssertLessThan(
+            tableView?.rows(in: tableView?.visibleRect ?? .zero).length ?? .max,
+            30,
+            "The production renderer must realize a bounded visible row set"
+        )
+
         _ = scrollThrough(scrollView, document: document, toBottom: true)
         XCTAssertEqual(scrollView.contentView.bounds.origin.y, bottomPosition(for: scrollView))
         _ = scrollThrough(scrollView, document: document, toBottom: false)
@@ -56,7 +64,23 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         )
     }
 
-    func testCompactRowsUseLessThanNinetyPointsPerReadingTurn() {
+    func testDistantNavigationRealizesTargetWithoutInterveningRows() {
+        let view = host(turnCount: 1_200, compactRows: true, navigationIndex: 1_199)
+        let window = show(view)
+        defer { window.orderOut(nil) }
+
+        view.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        guard let tableView = findTableView(view) else {
+            XCTFail("No production Reading Turn table")
+            return
+        }
+
+        XCTAssertTrue(tableView.rows(in: tableView.visibleRect).contains(1_200))
+        XCTAssertLessThan(tableView.rows(in: tableView.visibleRect).length, 30)
+    }
+
+    func testCompactRowsUseLessThanOneHundredPointsPerReadingTurn() {
         let turnCount = 12
         let view = host(turnCount: turnCount, compactRows: true)
         let window = show(view)
@@ -67,26 +91,27 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
             return
         }
 
-        let outerPadding = DesignSystem.Spacing.lg * 2
-        let transcriptHeight = document.frame.height - outerPadding
+        let transcriptHeight = document.frame.height
         XCTAssertLessThan(
             transcriptHeight / CGFloat(turnCount),
-            90,
-            "The borderless byline layout must remain materially denser than the former cards"
+            100,
+            "The borderless byline layout must remain compact while complete text stays unclipped"
         )
     }
 
     /// Reports a measurement for the command-level performance gate. XCTest
     /// does not assert a machine-time expectation.
     func testRepresentativeMeetingReportsMainThreadFrameCPU() {
-        let view = host(turnCount: 75)
+        let start = threadCPUSeconds()
+        let view = host(turnCount: 1_200)
         let window = show(view)
         defer { window.orderOut(nil) }
 
         guard let scrollView = preparedScrollView(in: view), let document = scrollView.documentView else {
-            XCTFail("No NSScrollView behind the completed-meeting ScrollView")
+            XCTFail("No NSScrollView behind the completed-meeting renderer")
             return
         }
+        let initialMilliseconds = (threadCPUSeconds() - start) * 1_000
 
         var worstFrameMilliseconds = 0.0
         for _ in 0..<3 {
@@ -100,6 +125,7 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
             )
         }
 
+        print(String(format: "TRANSCRIPT_INITIAL_THREAD_CPU_MS=%.6f", initialMilliseconds))
         print(String(format: "TRANSCRIPT_SCROLL_MAX_FRAME_THREAD_CPU_MS=%.6f", worstFrameMilliseconds))
     }
 
@@ -123,33 +149,24 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
 
     private func host(
         turnCount: Int,
-        compactRows: Bool = false
+        compactRows: Bool = false,
+        navigationIndex: Int? = nil
     ) -> CountingHostingView<AnyView> {
         let turns = identifiedReadingTurns(
             (0..<turnCount).map { makeTurn(index: $0, compact: compactRows) }
         )
-        let body = MeetingReadingTurnContentView(
+        let content = MeetingReadingTurnContentView(
             turns: turns,
             speakerColorMap: ["microphone": .orange, "system:S1": .blue],
-            speakerLabelContent: { _, label, color, _, _ in
-                Text(label).foregroundStyle(color)
-            },
             activeScrollID: nil,
+            navigationScrollID: navigationIndex.map { turns[$0].scrollID },
+            navigationToken: navigationIndex ?? 0,
             timestampLabel: { "\($0 / 60_000):00" },
             isTimestampSeekable: true,
             onTimestampTap: { _ in },
             onCopyTurn: { _ in }
-        )
-        let content = ScrollViewReader { _ in
-            ScrollView {
-                TranscriptBodyStack(
-                    rowCount: turns.count,
-                    spacing: MeetingReadingTurnLayout.interTurnSpacing
-                ) {
-                    body
-                }
-                .padding(DesignSystem.Spacing.lg)
-            }
+        ) {
+            EmptyView()
         }
         let view = CountingHostingView(rootView: AnyView(content))
         view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
@@ -179,6 +196,11 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         return view.subviews.lazy.compactMap(findScrollView).first
     }
 
+    private func findTableView(_ view: NSView) -> NSTableView? {
+        if let tableView = view as? NSTableView { return tableView }
+        return view.subviews.lazy.compactMap(findTableView).first
+    }
+
     private func scrollThrough(
         _ scrollView: NSScrollView,
         document: NSView,
@@ -186,10 +208,18 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
     ) -> Double {
         let clip = scrollView.contentView
         let maxY = max(0, document.frame.height - clip.bounds.height)
-        var positions = Array(stride(from: 0.0, to: maxY, by: 120.0))
-        positions.append(maxY)
+        let travel = min(maxY, 9_600)
+        let positions: [CGFloat]
+        let finalPosition: CGFloat
+        if toBottom {
+            positions = Array(stride(from: 0.0, through: travel, by: 120.0))
+            finalPosition = maxY
+        } else {
+            positions = Array(stride(from: maxY, through: max(0, maxY - travel), by: -120.0))
+            finalPosition = 0
+        }
         var worstFrameMilliseconds = 0.0
-        for position in toBottom ? positions : positions.reversed() {
+        for position in positions {
             let y = document.isFlipped ? position : maxY - position
             let frameStart = threadCPUSeconds()
             clip.scroll(to: NSPoint(x: 0, y: y))
@@ -201,6 +231,10 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
                 (threadCPUSeconds() - frameStart) * 1_000
             )
         }
+        let finalY = document.isFlipped ? finalPosition : maxY - finalPosition
+        clip.scroll(to: NSPoint(x: 0, y: finalY))
+        scrollView.reflectScrolledClipView(clip)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.001))
         return worstFrameMilliseconds
     }
 

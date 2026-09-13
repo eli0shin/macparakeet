@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@062-replace-eager-reading-turn-layout-with-scalable-rendering
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive

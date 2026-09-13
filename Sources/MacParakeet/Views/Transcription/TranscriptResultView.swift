@@ -246,6 +246,7 @@ struct TranscriptResultView: View {
     /// The completed-meeting UI groups consecutive contributions by speaker.
     @State private var cachedReadingTurns: [IdentifiedReadingTurn] = []
     @State private var cachedReadingTurnPlaybackIndex: ReadingTurnPlaybackIndex?
+    @State private var readingTurnContentRevision = 0
     @State private var cachedHasSpeakers: Bool = false
     @State private var cachedSpeakerColorMap: [String: Color] = [:]
     @State private var cachedSpeakerLabelMap: [String: String] = [:]
@@ -1474,6 +1475,12 @@ struct TranscriptResultView: View {
             if findBarVisible {
                 transcriptFindToolbar
             }
+            if transcriptDisplayMode == .timed,
+               usesMeetingReadingSurface,
+               !cachedReadingTurns.isEmpty {
+                meetingReadingTurnView
+                    .padding(DesignSystem.Spacing.lg)
+            } else {
             ScrollViewReader { proxy in
             ScrollView {
                 TranscriptBodyStack(
@@ -1572,6 +1579,7 @@ struct TranscriptResultView: View {
                 withAnimation(.easeInOut(duration: 0.25)) {
                     proxy.scrollTo(target, anchor: .center)
                 }
+            }
             }
             }
         }
@@ -3284,21 +3292,16 @@ struct TranscriptResultView: View {
                 in: cachedReadingTurns,
                 playbackIndex: cachedReadingTurnPlaybackIndex
             )
+        let findTarget = findBarVisible ? findCurrentScrollTargetID : nil
+        let playbackTarget = playerViewModel.isPlaying && !autoScrollPaused ? activeID : nil
         return MeetingReadingTurnContentView(
             turns: cachedReadingTurns,
             speakerColorMap: cachedSpeakerColorMap,
-            speakerLabelContent: { speakerID, speakerLabel, speakerColor, renameContextID, isRenameButtonVisuallyRevealed in
-                speakerLabelView(
-                    speaker: SpeakerInfo(id: speakerID, label: speakerLabel),
-                    color: speakerColor,
-                    contextID: renameContextID,
-                    font: DesignSystem.Typography.body.weight(.semibold),
-                    renameButtonOpacity: SpeakerRenameAccessibility.renameButtonOpacity(
-                        isVisuallyRevealed: isRenameButtonVisuallyRevealed
-                    )
-                )
-            },
+            contentRevision: readingTurnContentRevision,
+            headerRevision: meetingReadingHeaderRevision,
             activeScrollID: activeID,
+            navigationScrollID: findTarget ?? playbackTarget,
+            navigationToken: findTarget == nil ? (activeID ?? 0) : findScrollToken,
             timestampLabel: { formatTimestamp(ms: $0) },
             isTimestampSeekable: playerViewModel.playerState == .ready,
             onTimestampTap: { startMs in
@@ -3317,9 +3320,63 @@ struct TranscriptResultView: View {
                 )
                 showCopiedFeedback()
             },
-            bodyFont: scaledTranscriptFont,
+            onRenameSpeaker: { speakerID, label in
+                viewModel.renameSpeaker(id: speakerID, to: label)
+                rebuildSegmentCache()
+            },
+            bodyPointSize: 15 * clampedTranscriptFontScale,
             currentHighlight: current
-        )
+        ) {
+            meetingReadingTurnHeader
+        }
+    }
+
+    @ViewBuilder
+    private var meetingReadingTurnHeader: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            transcriptPaneHeader
+
+            if let partialCapture = MeetingPartialCapturePresentation.make(for: activeTranscription) {
+                meetingPartialCaptureBanner(partialCapture)
+            }
+            if activeTranscription.sourceType == .meeting,
+               activeTranscription.status != .processing,
+               !activeTranscription.hasWordTimestamps,
+               let banner = meetingNoWordTimestampsBannerPresentation {
+                meetingNoWordTimestampsBanner(banner)
+            }
+            if shouldShowTranscriptAISetupBanner { chatConfigurationBanner }
+            if let snapshot = activeTranscription.calendarEventSnapshot {
+                SavedMeetingCalendarContextSection(snapshot: snapshot)
+            }
+            if let userNotes = activeTranscription.userNotes,
+               !userNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                meetingNotesSection(userNotes)
+            }
+            if let error = transcriptEditError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.errorRed)
+            }
+            if let speakers = activeTranscription.speakers, !speakers.isEmpty {
+                compactMeetingSpeakerSummaryPanel(speakers: speakers)
+            }
+        }
+        .padding(.bottom, DesignSystem.Spacing.md)
+    }
+
+    private var meetingReadingHeaderRevision: Int {
+        var hasher = Hasher()
+        hasher.combine(activeTranscription.id)
+        hasher.combine(activeTranscription.userNotes)
+        hasher.combine(activeTranscription.calendarEventSnapshot != nil)
+        hasher.combine(activeTranscription.hasWordTimestamps)
+        hasher.combine(meetingNoWordTimestampsBannerPresentation?.message)
+        hasher.combine(activeTranscription.speakers?.map { "\($0.id):\($0.label)" })
+        hasher.combine(speakerOverviewExpanded)
+        hasher.combine(transcriptEditError)
+        hasher.combine(clampedTranscriptFontScale)
+        return hasher.finalize()
     }
 
     // MARK: - Speaker Summary Panel
@@ -3709,6 +3766,7 @@ struct TranscriptResultView: View {
         cachedReadingDocument = snapshot.readingDocument
         cachedReadingTurns = snapshot.readingTurns
         cachedReadingTurnPlaybackIndex = snapshot.playbackIndex
+        readingTurnContentRevision &+= 1
         cachedSegments = snapshot.segments
         cachedIdentifiedTurnCards = snapshot.identifiedTurnCards
         cachedHasSpeakers = snapshot.hasSpeakers
