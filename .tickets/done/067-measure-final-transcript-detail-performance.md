@@ -49,3 +49,13 @@ created before the parent closes.
   private meeting content, identifiers, paths, or profiler captures.
 - [ ] Any remaining failed program criterion is fixed or recorded as a precise
   follow-up blocker before this ticket is completed.
+
+## Resolution
+
+Added the public-safe combined release gate and Time Profiler workflow for the
+production 1,200-turn, 72,000-word fixture. The evidence identified five failed
+paths and created precise serialized follow-ups for cold Reading layout, Reading
+scrolling, Reading playback follow, settled-find presentation, and Reading find
+input, followed by a final gate rerun. Merged as
+[PR #79](https://github.com/eli0shin/macparakeet/pull/79) in commit
+`602fd35a`. Parent ticket 059 remains open until those follow-ups pass.
