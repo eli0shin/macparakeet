@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@061-bound-transcript-find-highlighting-and-navigation-work
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
@@ -40,3 +40,11 @@ without shaping the transcript twice.
   changed text.
 - [ ] Focused tests include a very common query with a high match count and
   distant-match navigation.
+
+## Resolution
+
+Implemented current-result-only highlighting, stable TextKit-backed Text mode,
+and glyph-rectangle navigation without duplicate prefix layout. High-match,
+Unicode, and distant-navigation coverage passed with CI. Merged as
+[PR #73](https://github.com/eli0shin/macparakeet/pull/73) in commit
+`61e93188`.

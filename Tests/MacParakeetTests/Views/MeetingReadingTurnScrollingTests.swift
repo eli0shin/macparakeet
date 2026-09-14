@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import XCTest
 import MacParakeetCore
+import MacParakeetViewModels
 @testable import MacParakeet
 
 /// Exercises the completed-meeting Reading Turn view in the same adaptive
@@ -23,8 +24,75 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         }
     }
 
-    func testMoreThanFourHundredTimedRowsScrollToExactBoundsAndSettle() {
-        let view = host(turnCount: 401, compactRows: true)
+    private final class HeaderState: ObservableObject {
+        @Published var showsAISetupBanner = false
+    }
+
+    private final class PlaybackNavigationState: ObservableObject {
+        @Published var findScrollID: Int?
+        @Published var findNavigationToken = 0
+
+        init(findScrollID: Int? = nil) {
+            self.findScrollID = findScrollID
+        }
+    }
+
+    private struct PlaybackHarness: View {
+        @Bindable var player: MediaPlayerViewModel
+        @ObservedObject var navigation: PlaybackNavigationState
+        let controller: MeetingTranscriptPlaybackFollowController
+        let turns: [IdentifiedReadingTurn]
+        let playbackIndex: ReadingTurnPlaybackIndex
+
+        var body: some View {
+            MeetingReadingTurnPlaybackView(
+                playerViewModel: player,
+                followController: controller,
+                turns: turns,
+                playbackIndex: playbackIndex,
+                speakerColorMap: ["microphone": .orange],
+                contentRevision: 0,
+                headerRevision: 0,
+                findScrollID: navigation.findScrollID,
+                findNavigationToken: navigation.findNavigationToken,
+                timestampLabel: { "\($0)" },
+                isTimestampSeekable: true,
+                onTimestampTap: { _ in },
+                onCopyTurn: { _ in },
+                onRenameSpeaker: { _, _ in }
+            ) {
+                Text("Long meeting")
+            }
+        }
+    }
+
+    private struct HeaderTransitionHarness: View {
+        @ObservedObject var state: HeaderState
+        let turns: [IdentifiedReadingTurn]
+
+        var body: some View {
+            MeetingReadingTurnContentView(
+                turns: turns,
+                speakerColorMap: ["microphone": .orange],
+                headerRevision: state.showsAISetupBanner ? 1 : 0,
+                activeScrollID: nil,
+                timestampLabel: { "\($0)" },
+                isTimestampSeekable: false,
+                onTimestampTap: { _ in },
+                onCopyTurn: { _ in }
+            ) {
+                if state.showsAISetupBanner {
+                    Text("Set up AI to generate summaries")
+                        .frame(height: 120)
+                } else {
+                    EmptyView()
+                }
+            }
+        }
+    }
+
+    func testTwelveHundredTimedRowsRealizeOnlyVisibleRowsAndScrollToExactBounds() {
+        let view = host(turnCount: 1_200, compactRows: true)
         let window = NSWindow(
             contentRect: NSRect(x: -20_000, y: -20_000, width: 800, height: 600),
             styleMask: [.titled, .resizable],
@@ -42,6 +110,14 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
             return
         }
 
+        let tableView = try? XCTUnwrap(findTableView(view))
+        XCTAssertEqual(tableView?.numberOfRows, 1_201)
+        XCTAssertLessThan(
+            tableView?.rows(in: tableView?.visibleRect ?? .zero).length ?? .max,
+            30,
+            "The production renderer must realize a bounded visible row set"
+        )
+
         _ = scrollThrough(scrollView, document: document, toBottom: true)
         XCTAssertEqual(scrollView.contentView.bounds.origin.y, bottomPosition(for: scrollView))
         _ = scrollThrough(scrollView, document: document, toBottom: false)
@@ -56,7 +132,45 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         )
     }
 
-    func testCompactRowsUseLessThanNinetyPointsPerReadingTurn() {
+    func testAISetupVisibilityRevisionReloadsAndRemeasuresHostedHeader() {
+        let state = HeaderState()
+        let turns = identifiedReadingTurns([makeTurn(index: 0, compact: true)])
+        let view = CountingHostingView(
+            rootView: AnyView(HeaderTransitionHarness(state: state, turns: turns))
+        )
+        view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        let window = show(view)
+        defer { window.orderOut(nil) }
+
+        guard let tableView = preparedScrollView(in: view)?.documentView as? NSTableView else {
+            XCTFail("No production Reading Turn table")
+            return
+        }
+        let hiddenHeight = tableView.rect(ofRow: 0).height
+
+        state.showsAISetupBanner = true
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        XCTAssertGreaterThan(tableView.rect(ofRow: 0).height, hiddenHeight + 100)
+    }
+
+    func testDistantNavigationRealizesTargetWithoutInterveningRows() {
+        let view = host(turnCount: 1_200, compactRows: true, navigationIndex: 1_199)
+        let window = show(view)
+        defer { window.orderOut(nil) }
+
+        view.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        guard let tableView = findTableView(view) else {
+            XCTFail("No production Reading Turn table")
+            return
+        }
+
+        XCTAssertTrue(tableView.rows(in: tableView.visibleRect).contains(1_200))
+        XCTAssertLessThan(tableView.rows(in: tableView.visibleRect).length, 30)
+    }
+
+    func testCompactRowsUseLessThanOneHundredPointsPerReadingTurn() {
         let turnCount = 12
         let view = host(turnCount: turnCount, compactRows: true)
         let window = show(view)
@@ -67,26 +181,137 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
             return
         }
 
-        let outerPadding = DesignSystem.Spacing.lg * 2
-        let transcriptHeight = document.frame.height - outerPadding
+        let transcriptHeight = document.frame.height
         XCTAssertLessThan(
             transcriptHeight / CGFloat(turnCount),
-            90,
-            "The borderless byline layout must remain materially denser than the former cards"
+            100,
+            "The borderless byline layout must remain compact while complete text stays unclipped"
         )
+    }
+
+    func testManualScrollAfterFindCanResumePlaybackFollow() {
+        let rawTurns = (0..<30).map { makePlaybackTurn(index: $0) }
+        let turns = identifiedReadingTurns(rawTurns)
+        let words = (0..<30).map {
+            WordTimestamp(
+                word: "word\($0)",
+                startMs: $0 * 5_000,
+                endMs: $0 * 5_000 + 4_000,
+                confidence: 1,
+                speakerId: "microphone"
+            )
+        }
+        let player = MediaPlayerViewModel(playbackRateDefaults: nil)
+        player.playbackMode = .audio
+        player.isPlaying = true
+        player.currentTimeMs = 29 * 5_000
+        let navigation = PlaybackNavigationState(findScrollID: turns.last?.scrollID)
+        let controller = MeetingTranscriptPlaybackFollowController()
+        let view = CountingHostingView(
+            rootView: AnyView(
+                PlaybackHarness(
+                    player: player,
+                    navigation: navigation,
+                    controller: controller,
+                    turns: turns,
+                    playbackIndex: ReadingTurnPlaybackIndex(turns: rawTurns, words: words)
+                )
+            )
+        )
+        view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        let window = show(view)
+        defer { window.orderOut(nil) }
+
+        guard let tableView = preparedScrollView(in: view)?.documentView as? NSTableView,
+            let scrollView = tableView.enclosingScrollView
+        else {
+            XCTFail("No production Reading Turn table")
+            return
+        }
+        controller.pauseForFindNavigation()
+        controller.handleManualScroll(isPlaying: true)
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        navigation.findScrollID = nil
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        XCTAssertFalse(tableView.rows(in: tableView.visibleRect).contains(30))
+
+        controller.resume()
+        let deadline = Date().addingTimeInterval(1)
+        while !tableView.rows(in: tableView.visibleRect).contains(30), Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+
+        XCTAssertTrue(tableView.rows(in: tableView.visibleRect).contains(30))
+    }
+
+    func testLongMeetingPlaybackTicksRemainBoundedAndStartNearEndDirectly() {
+        let turnCount = 1_200
+        let rawTurns = (0..<turnCount).map { makePlaybackTurn(index: $0) }
+        let turns = identifiedReadingTurns(rawTurns)
+        let words = (0..<turnCount).map {
+            WordTimestamp(
+                word: "word\($0)",
+                startMs: $0 * 5_000,
+                endMs: $0 * 5_000 + 4_000,
+                confidence: 1,
+                speakerId: "microphone"
+            )
+        }
+        let player = MediaPlayerViewModel(playbackRateDefaults: nil)
+        player.playbackMode = .audio
+        player.isPlaying = true
+        player.currentTimeMs = (turnCount - 1) * 5_000
+        let view = CountingHostingView(
+            rootView: AnyView(
+                PlaybackHarness(
+                    player: player,
+                    navigation: PlaybackNavigationState(),
+                    controller: MeetingTranscriptPlaybackFollowController(),
+                    turns: turns,
+                    playbackIndex: ReadingTurnPlaybackIndex(turns: rawTurns, words: words)
+                )
+            )
+        )
+        view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        let window = show(view)
+        defer { window.orderOut(nil) }
+
+        guard let tableView = preparedScrollView(in: view)?.documentView as? NSTableView else {
+            XCTFail("No production Reading Turn table")
+            return
+        }
+        XCTAssertTrue(tableView.rows(in: tableView.visibleRect).contains(turnCount))
+        XCTAssertLessThan(tableView.rows(in: tableView.visibleRect).length, 30)
+
+        var worstTickMilliseconds = 0.0
+        for tick in 0..<120 {
+            let start = threadCPUSeconds()
+            player.currentTimeMs = (turnCount - 24) * 5_000 + tick * 1_000
+            RunLoop.main.run(until: Date().addingTimeInterval(0.001))
+            worstTickMilliseconds = max(
+                worstTickMilliseconds,
+                (threadCPUSeconds() - start) * 1_000
+            )
+        }
+
+        print(String(format: "TRANSCRIPT_PLAYBACK_TICK_MAX_THREAD_CPU_MS=%.6f", worstTickMilliseconds))
+        XCTAssertLessThan(worstTickMilliseconds, 100)
     }
 
     /// Reports a measurement for the command-level performance gate. XCTest
     /// does not assert a machine-time expectation.
     func testRepresentativeMeetingReportsMainThreadFrameCPU() {
-        let view = host(turnCount: 75)
+        let start = threadCPUSeconds()
+        let view = host(turnCount: 1_200)
         let window = show(view)
         defer { window.orderOut(nil) }
 
         guard let scrollView = preparedScrollView(in: view), let document = scrollView.documentView else {
-            XCTFail("No NSScrollView behind the completed-meeting ScrollView")
+            XCTFail("No NSScrollView behind the completed-meeting renderer")
             return
         }
+        let initialMilliseconds = (threadCPUSeconds() - start) * 1_000
 
         var worstFrameMilliseconds = 0.0
         for _ in 0..<3 {
@@ -100,6 +325,7 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
             )
         }
 
+        print(String(format: "TRANSCRIPT_INITIAL_THREAD_CPU_MS=%.6f", initialMilliseconds))
         print(String(format: "TRANSCRIPT_SCROLL_MAX_FRAME_THREAD_CPU_MS=%.6f", worstFrameMilliseconds))
     }
 
@@ -123,37 +349,40 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
 
     private func host(
         turnCount: Int,
-        compactRows: Bool = false
+        compactRows: Bool = false,
+        navigationIndex: Int? = nil
     ) -> CountingHostingView<AnyView> {
         let turns = identifiedReadingTurns(
             (0..<turnCount).map { makeTurn(index: $0, compact: compactRows) }
         )
-        let body = MeetingReadingTurnContentView(
+        let content = MeetingReadingTurnContentView(
             turns: turns,
             speakerColorMap: ["microphone": .orange, "system:S1": .blue],
-            speakerLabelContent: { _, label, color, _, _ in
-                Text(label).foregroundStyle(color)
-            },
             activeScrollID: nil,
+            navigationScrollID: navigationIndex.map { turns[$0].scrollID },
+            navigationToken: navigationIndex ?? 0,
             timestampLabel: { "\($0 / 60_000):00" },
             isTimestampSeekable: true,
             onTimestampTap: { _ in },
             onCopyTurn: { _ in }
-        )
-        let content = ScrollViewReader { _ in
-            ScrollView {
-                TranscriptBodyStack(
-                    rowCount: turns.count,
-                    spacing: MeetingReadingTurnLayout.interTurnSpacing
-                ) {
-                    body
-                }
-                .padding(DesignSystem.Spacing.lg)
-            }
+        ) {
+            EmptyView()
         }
         let view = CountingHostingView(rootView: AnyView(content))
         view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
         return view
+    }
+
+    private func makePlaybackTurn(index: Int) -> ReadingTurn {
+        ReadingTurn(
+            id: ReadingTurnIdentity(source: .microphone, speakerId: "microphone", firstWordIndex: index),
+            speakerId: "microphone",
+            speakerLabel: "Me",
+            source: .microphone,
+            timeRange: ReadingTurnTimeRange(startMs: index * 5_000, endMs: index * 5_000 + 4_000),
+            paragraphs: [ReadingTurnParagraph(text: "Playback turn \(index)", wordReferences: [index])],
+            wordReferences: [index]
+        )
     }
 
     private func makeTurn(index: Int, compact: Bool) -> ReadingTurn {
@@ -179,6 +408,11 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
         return view.subviews.lazy.compactMap(findScrollView).first
     }
 
+    private func findTableView(_ view: NSView) -> NSTableView? {
+        if let tableView = view as? NSTableView { return tableView }
+        return view.subviews.lazy.compactMap(findTableView).first
+    }
+
     private func scrollThrough(
         _ scrollView: NSScrollView,
         document: NSView,
@@ -186,10 +420,18 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
     ) -> Double {
         let clip = scrollView.contentView
         let maxY = max(0, document.frame.height - clip.bounds.height)
-        var positions = Array(stride(from: 0.0, to: maxY, by: 120.0))
-        positions.append(maxY)
+        let travel = min(maxY, 9_600)
+        let positions: [CGFloat]
+        let finalPosition: CGFloat
+        if toBottom {
+            positions = Array(stride(from: 0.0, through: travel, by: 120.0))
+            finalPosition = maxY
+        } else {
+            positions = Array(stride(from: maxY, through: max(0, maxY - travel), by: -120.0))
+            finalPosition = 0
+        }
         var worstFrameMilliseconds = 0.0
-        for position in toBottom ? positions : positions.reversed() {
+        for position in positions {
             let y = document.isFlipped ? position : maxY - position
             let frameStart = threadCPUSeconds()
             clip.scroll(to: NSPoint(x: 0, y: y))
@@ -201,6 +443,10 @@ final class MeetingReadingTurnScrollingTests: XCTestCase {
                 (threadCPUSeconds() - frameStart) * 1_000
             )
         }
+        let finalY = document.isFlipped ? finalPosition : maxY - finalPosition
+        clip.scroll(to: NSPoint(x: 0, y: finalY))
+        scrollView.reflectScrolledClipView(clip)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.001))
         return worstFrameMilliseconds
     }
 

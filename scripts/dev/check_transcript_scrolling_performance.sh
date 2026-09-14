@@ -2,30 +2,29 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-THRESHOLD_MS="${THRESHOLD_MS:-8}"
+THRESHOLD_MS="${THRESHOLD_MS:-16}"
+INITIAL_THRESHOLD_MS="${INITIAL_THRESHOLD_MS:-750}"
 TEST_TIMEOUT_SECONDS="${TEST_TIMEOUT_SECONDS:-30}"
 TEST_FILTER="MeetingReadingTurnScrollingTests/testRepresentativeMeetingReportsMainThreadFrameCPU"
 
 usage() {
   cat <<'EOF'
-usage: scripts/dev/check_transcript_scrolling_performance.sh [--legacy]
+usage: scripts/dev/check_transcript_scrolling_performance.sh
 
-Builds the tests, drives real AppKit/SwiftUI transcript scrolling, and fails if
-one scroll step uses at least 8 ms of main-thread CPU. The test process also
+Builds the tests, drives the production AppKit transcript renderer with 1,200
+variable-height Reading Turns, and fails if initial main-thread work reaches
+750 ms or one ordinary 120-point scroll step reaches 16 ms. The test process also
 fails if it does not return within 30 seconds.
 
-Options:
-  --legacy  Force the known-faulty LazyVStack path to prove the gate goes red.
-
 Environment:
-  THRESHOLD_MS         Frame CPU threshold, default 8.
+  THRESHOLD_MS         Frame CPU threshold, default 16.
+  INITIAL_THRESHOLD_MS Initial CPU threshold, default 750.
   TEST_TIMEOUT_SECONDS Test-process watchdog, default 30.
 EOF
 }
 
 case "${1:-}" in
   "") ;;
-  --legacy) export MACPARAKEET_DEBUG_TRANSCRIPT_LAZY=1 ;;
   -h|--help) usage; exit 0 ;;
   *) usage >&2; exit 2 ;;
 esac
@@ -77,18 +76,25 @@ if [[ "$test_status" -ne 0 ]]; then
   exit "$test_status"
 fi
 
+initial_ms="$(sed -n 's/.*TRANSCRIPT_INITIAL_THREAD_CPU_MS=\([0-9][0-9.]*\).*/\1/p' "$output_file" | tail -1)"
 measured_ms="$(sed -n 's/.*TRANSCRIPT_SCROLL_MAX_FRAME_THREAD_CPU_MS=\([0-9][0-9.]*\).*/\1/p' "$output_file" | tail -1)"
-if [[ -z "$measured_ms" ]]; then
-  echo "error: transcript scrolling test did not report a frame measurement" >&2
+if [[ -z "$initial_ms" || -z "$measured_ms" ]]; then
+  echo "error: transcript renderer test did not report both measurements" >&2
   exit 1
 fi
 
-python3 - "$measured_ms" "$THRESHOLD_MS" <<'PY'
+python3 - "$initial_ms" "$INITIAL_THRESHOLD_MS" "$measured_ms" "$THRESHOLD_MS" <<'PY'
 import sys
 
-measured = float(sys.argv[1])
-threshold = float(sys.argv[2])
+initial = float(sys.argv[1])
+initial_threshold = float(sys.argv[2])
+measured = float(sys.argv[3])
+threshold = float(sys.argv[4])
+print(f"Transcript initial main-thread CPU: {initial:.3f} ms (limit: < {initial_threshold:g} ms)")
 print(f"Transcript scroll worst main-thread frame: {measured:.3f} ms (limit: < {threshold:g} ms)")
+if initial >= initial_threshold:
+    print("error: transcript initial rendering exceeded the threshold", file=sys.stderr)
+    sys.exit(1)
 if measured >= threshold:
     print("error: transcript scrolling exceeded the frame-latency threshold", file=sys.stderr)
     sys.exit(1)

@@ -1,6 +1,9 @@
 import XCTest
 @testable import MacParakeetCore
 
+// The runtime gate seam is debug-only. Release performance builds exclude this
+// suite without changing the optimized product path under measurement.
+#if DEBUG
 /// Pins the macOS-14 SIGBUS invariant at the `STTRuntime` boundary: work run
 /// through the runtime's injected ``ANEInferenceGate`` serializes.
 ///
@@ -127,3 +130,4 @@ final class STTRuntimeInferenceGatingTests: XCTestCase {
         XCTAssertEqual(released, 2, "With serialization disabled both inferences must enter the gate concurrently")
     }
 }
+#endif

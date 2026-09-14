@@ -34,27 +34,18 @@ final class MeetingTranscriptGroupingVisualEvidenceTests: XCTestCase {
     ) throws {
         let size = NSSize(width: 700, height: 420)
         let identified = identifiedReadingTurns(document.turns)
-        let root = ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                Text("Completed meeting transcript")
-                    .font(DesignSystem.Typography.pageTitle)
-                MeetingReadingTurnContentView(
-                    turns: identified,
-                    speakerColorMap: ["microphone": .orange, "system:S1": .blue],
-                    speakerLabelContent: { _, label, color, _, _ in
-                        Text(label)
-                            .font(DesignSystem.Typography.body.weight(.semibold))
-                            .foregroundStyle(color)
-                    },
-                    activeScrollID: identified.first?.scrollID,
-                    timestampLabel: evidenceTimestamp,
-                    isTimestampSeekable: true,
-                    onTimestampTap: { _ in },
-                    onCopyTurn: { _ in }
-                )
-            }
-            .padding(DesignSystem.Spacing.lg)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        let root = MeetingReadingTurnContentView(
+            turns: identified,
+            speakerColorMap: ["microphone": .orange, "system:S1": .blue],
+            activeScrollID: identified.first?.scrollID,
+            timestampLabel: evidenceTimestamp,
+            isTimestampSeekable: true,
+            onTimestampTap: { _ in },
+            onCopyTurn: { _ in }
+        ) {
+            Text("Completed meeting transcript")
+                .font(DesignSystem.Typography.pageTitle)
+                .padding(DesignSystem.Spacing.lg)
         }
         .frame(width: size.width, height: size.height)
         .background(DesignSystem.Colors.surface)

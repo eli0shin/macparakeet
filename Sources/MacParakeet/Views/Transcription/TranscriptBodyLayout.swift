@@ -4,8 +4,9 @@ import SwiftUI
 /// Decides how the timed transcript body is laid out.
 ///
 /// On macOS 26, selectable variable-height rows can trap a `LazyVStack` in a
-/// self-feeding layout loop after the user scrolls down and back up. A plain
-/// stack has no lazy view cache, so all production transcripts use it.
+/// self-feeding layout loop after the user scrolls down and back up. General
+/// timed and Text surfaces therefore keep the stable eager stack. Completed-
+/// meeting Reading Turns use their dedicated AppKit virtualized renderer.
 struct TranscriptBodyStack<Content: View>: View {
     let rowCount: Int
     let spacing: CGFloat

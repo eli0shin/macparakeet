@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@060-make-transcript-find-input-nonblocking
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
@@ -42,3 +42,11 @@ behavior.
   keyboard navigation remain covered by focused tests.
 - [ ] The UI exposes a non-blocking searching state instead of reporting a
   transient false “No results.”
+
+## Resolution
+
+Implemented immediate draft-query publication, debounced off-main matching,
+bounded cancellation checks, stale-generation rejection, and a non-blocking
+searching state. Focused coverage and CI passed. Merged as
+[PR #72](https://github.com/eli0shin/macparakeet/pull/72) in commit
+`6226045c`.

@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@062-replace-eager-reading-turn-layout-with-scalable-rendering
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
@@ -47,3 +47,12 @@ from profiler evidence and a public-safe prototype before changing production.
   simplified look-alike.
 - [ ] The PR records rejected prototypes and measured reasons, including any
   SwiftUI `List`, lazy stack, or TextKit trade-offs.
+
+## Resolution
+
+Replaced the eager Reading Turn stack with an AppKit table that realizes visible
+rows, caches exact measurements, and navigates directly to distant turns. The
+production 1,200-turn regression, behavior coverage, and CI passed. Design
+trade-offs and debug measurements are recorded in the repository. Merged as
+[PR #74](https://github.com/eli0shin/macparakeet/pull/74) in commit
+`31145a9f`.

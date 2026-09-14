@@ -170,6 +170,10 @@ final class HistoryCommandTests: XCTestCase {
         XCTAssertNil(try repo.fetch(id: transcription.id))
     }
 
+    // These destructive-path fixtures need the debug-only app-state root so a
+    // test can never target real user data. Keep them in debug test builds;
+    // release performance builds still compile the remaining CLI contracts.
+    #if DEBUG
     func testDeleteTranscriptionCommandKeepsRecordWhenOwnedAudioCleanupFails() throws {
         let appState = try useTemporaryAppState()
         defer { resetTemporaryAppState(appState) }
@@ -304,6 +308,7 @@ final class HistoryCommandTests: XCTestCase {
         XCTAssertEqual(decoded["hadAudioPath"] as? Bool, true)
         XCTAssertNil(try repo.fetch(id: transcription.id)?.filePath)
     }
+    #endif
 
     func testClearMeetingAudioCommandRemovesAudioAndPreservesArtifactFolders() throws {
         let dbURL = temporaryDatabaseURL()
@@ -670,6 +675,7 @@ final class HistoryCommandTests: XCTestCase {
             .appendingPathComponent("macparakeet-cli-asset-\(UUID().uuidString).\(pathExtension)")
     }
 
+    #if DEBUG
     private func useTemporaryAppState() throws -> (url: URL, previous: String?) {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("macparakeet-cli-app-state-\(UUID().uuidString)", isDirectory: true)
@@ -687,5 +693,6 @@ final class HistoryCommandTests: XCTestCase {
         }
         try? FileManager.default.removeItem(at: state.url)
     }
+    #endif
 
 }

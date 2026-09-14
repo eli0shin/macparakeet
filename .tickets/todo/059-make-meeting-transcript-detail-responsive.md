@@ -35,6 +35,13 @@ frame.
 - `064`: precompute transcript-derived display data.
 - `065`: split transcript detail into narrow invalidation domains.
 - `066`: optimize the long-transcript Text surface.
+- `067`: measure the combined release path and identify remaining dominant work.
+- `068`: reduce the cold Reading layout transaction below its release budget.
+- `069`: bound ordinary Reading row realization and scrolling.
+- `070`: bound Reading playback-follow updates.
+- `071`: bound settled-find presentation in Reading and Text modes.
+- `072`: bound the remaining Reading find-input work.
+- `073`: rerun the final combined release gate and Time Profiler workflow.
 
 ## Program acceptance criteria
 

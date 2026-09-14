@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@063-isolate-playback-updates-from-transcript-layout
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
@@ -37,3 +37,12 @@ behavior correct.
   realization of preceding Reading Turns.
 - [ ] Focused tests cover normal ticks, large seeks, manual scrolling, and find
   navigation during playback.
+
+## Resolution
+
+Moved completed-meeting playback observation below the broad detail boundary,
+limited updates to affected visible rows and changed navigation targets, and
+isolated legacy non-meeting playback behavior. Long-meeting, integration, and
+CI coverage passed. Merged as
+[PR #75](https://github.com/eli0shin/macparakeet/pull/75) in commit
+`ef2e5fc8`.

@@ -32,6 +32,9 @@ final class ModelLifecycleCommandTests: XCTestCase {
         )
     }
 
+    // The fixture insertion hook is debug-only so production cannot write a
+    // false migration ledger entry. Release performance builds omit this test.
+    #if DEBUG
     func testHealthDatabaseProbeReportsSchemaSkewForFutureMigration() throws {
         let dbURL = temporaryDatabaseURL()
         defer { try? FileManager.default.removeItem(at: dbURL) }
@@ -46,6 +49,7 @@ final class ModelLifecycleCommandTests: XCTestCase {
         XCTAssertTrue(report.error?.contains("Upgrade macparakeet-cli") == true)
         XCTAssertTrue(report.error?.contains("v99.0-future-app-migration") == true)
     }
+    #endif
 
     func testResolveWhisperDownloadModelRequiresWhisperPrefix() throws {
         XCTAssertEqual(
