@@ -81,13 +81,8 @@ final class SavedMeetingCalendarVisualEvidenceTests: XCTestCase {
         snapshot: MeetingCalendarSnapshot?
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title)
-                    .font(DesignSystem.Typography.sectionTitle)
-                if let confidence = snapshot?.confidence {
-                    SavedMeetingCalendarConnectionBadge(confidence: confidence)
-                }
-            }
+            Text(title)
+                .font(DesignSystem.Typography.sectionTitle)
             if let snapshot {
                 SavedMeetingCalendarContextSection(snapshot: snapshot)
             }

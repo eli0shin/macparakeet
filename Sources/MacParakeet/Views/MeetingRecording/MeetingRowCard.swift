@@ -161,11 +161,6 @@ struct MeetingRowCard<MenuContent: View>: View {
                 .contentTransition(.opacity)
                 .layoutPriority(1)
 
-            if let confidence = transcription.calendarEventSnapshot?.confidence {
-                SavedMeetingCalendarConnectionBadge(confidence: confidence)
-                    .layoutPriority(0)
-            }
-
             speakerInline
                 .layoutPriority(0)
 

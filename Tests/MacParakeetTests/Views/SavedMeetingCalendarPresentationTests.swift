@@ -3,29 +3,6 @@ import MacParakeetCore
 @testable import MacParakeet
 
 final class SavedMeetingCalendarPresentationTests: XCTestCase {
-    func testConfirmedAndProbableMatchesUseDistinctCopy() {
-        XCTAssertEqual(
-            SavedMeetingCalendarPresentation.connectionTitle(for: .confirmed),
-            "Calendar"
-        )
-        XCTAssertEqual(
-            SavedMeetingCalendarPresentation.confidenceTitle(for: .confirmed),
-            "Confirmed calendar event"
-        )
-        XCTAssertEqual(
-            SavedMeetingCalendarPresentation.connectionTitle(for: .probable),
-            "Possible match"
-        )
-        XCTAssertEqual(
-            SavedMeetingCalendarPresentation.confidenceTitle(for: .probable),
-            "Possible calendar match"
-        )
-        XCTAssertTrue(
-            SavedMeetingCalendarPresentation.confidenceDetail(for: .probable)
-                .contains("Verify the match")
-        )
-    }
-
     func testPeopleUseAvailableNamesAndEmailsAndOmitEmptyEntries() {
         XCTAssertEqual(
             SavedMeetingCalendarPresentation.personText(
