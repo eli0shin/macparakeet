@@ -449,17 +449,16 @@ struct TranscriptResultView: View {
         }
     }
 
-    @ViewBuilder
-    private var identityIsolatedAdaptiveLayout: some View {
-        if cachedTranscriptionID == nil || cachedTranscriptionID == activeTranscription.id {
-            if let hostedPresentationModule {
-                focusedPresentationModule(hostedPresentationModule)
-            } else {
-                adaptiveLayoutWithEvaluationProbe
-            }
-        } else {
-            Color.clear
+    /// Erase the adaptive root before AppKit hosts it. This keeps the cold
+    /// AttributeGraph transaction from specializing every detail branch.
+    private var identityIsolatedAdaptiveLayout: AnyView {
+        guard cachedTranscriptionID == nil || cachedTranscriptionID == activeTranscription.id else {
+            return AnyView(Color.clear)
         }
+        if let hostedPresentationModule {
+            return AnyView(focusedPresentationModule(hostedPresentationModule))
+        }
+        return AnyView(adaptiveLayoutWithEvaluationProbe)
     }
 
     /// Hosts one real production presentation module for focused correctness
@@ -760,47 +759,56 @@ struct TranscriptResultView: View {
     /// Single-column layout: header + tabs + content + action bar
     private var fullWidthContentColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
-            headerDomain
-                .padding(.horizontal, DesignSystem.Spacing.lg)
-                .padding(.top, DesignSystem.Spacing.lg)
+            // Keep independent detail modules opaque to the outer stack. The
+            // modules retain their own identities and interactions while the
+            // cold stack sizes a shallow graph.
+            AnyView(
+                headerDomain
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .padding(.top, DesignSystem.Spacing.lg)
+            )
 
-            HStack {
-                if viewModel.showTabs {
-                    tabBar
-                }
-                Spacer(minLength: DesignSystem.Spacing.md)
-
+            AnyView(
                 HStack {
-                    if playerViewModel.playbackMode == .video && !showVideoPanel {
-                        Button {
-                            withAnimation(DesignSystem.Animation.contentSwap) {
-                                showVideoPanel = true
-                            }
-                            // Lazy-load: extract YouTube stream only when user wants video
-                            if playerViewModel.needsVideoStreamLoad {
-                                Task {
-                                    await playerViewModel.load(for: transcription)
-                                }
-                            }
-                        } label: {
-                            Label("Show Video", systemImage: "play.rectangle")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        }
-                        .buttonStyle(.plain)
+                    if viewModel.showTabs {
+                        tabBar
                     }
-                }
-                .layoutPriority(1)
-            }
-            .padding(.horizontal, DesignSystem.Spacing.lg)
-            .padding(.top, DesignSystem.Spacing.md)
+                    Spacer(minLength: DesignSystem.Spacing.md)
 
-            contentArea
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    HStack {
+                        if playerViewModel.playbackMode == .video && !showVideoPanel {
+                            Button {
+                                withAnimation(DesignSystem.Animation.contentSwap) {
+                                    showVideoPanel = true
+                                }
+                                // Lazy-load: extract YouTube stream only when user wants video
+                                if playerViewModel.needsVideoStreamLoad {
+                                    Task {
+                                        await playerViewModel.load(for: transcription)
+                                    }
+                                }
+                            } label: {
+                                Label("Show Video", systemImage: "play.rectangle")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .layoutPriority(1)
+                }
+                .padding(.horizontal, DesignSystem.Spacing.lg)
+                .padding(.top, DesignSystem.Spacing.md)
+            )
+
+            AnyView(
+                contentArea
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            )
 
             Divider()
 
-            actionsDomain
+            AnyView(actionsDomain)
         }
         .alert(
             "Export Failed",

@@ -101,6 +101,36 @@ Text playback, scrolling, and direct find input meet the one-frame target. The
 final playback-follow correction proved that Reading playback does not yet meet
 it.
 
+### Ticket 068 cold Reading correction
+
+Ticket 068 erased the adaptive transcript-detail root and each independent
+full-width module before the outer SwiftUI stack hosts and sizes them. This
+keeps the same header, speaker overview, actions, search, playback, selection,
+editing, accessibility, and native Reading Turn table. It does not defer the
+surface or show a progress indicator.
+
+A release run on the documented fixture and machine measured:
+
+| Reading metric | Before ticket 068 | After ticket 068 |
+|---|---:|---:|
+| Initial total | 757.88 ms | 422.23 ms |
+| Largest initial update | 516.95 ms | 190.71 ms |
+
+The largest initial Reading update fell by 63.1% and now passes the 250 ms
+microhang limit. Total Reading readiness remains below 1,000 ms. The complete
+strict gate still reports the separately tracked Reading scrolling,
+playback-follow, and settled-find failures; ticket 068 does not relax those
+budgets.
+
+A new release Time Profiler recording used the same command and fixture. In the
+first contiguous cold-construction sample group containing
+`FinalTranscriptDetailPerformanceTests.measure`, sampled main-thread stacks
+fell from 253 to 38. Stacks containing `AG::Graph::UpdateStack::update` fell
+from 142 to 32. The remaining samples still enter AttributeGraph and SwiftUI
+stack layout, but the erased boundaries prevent the outer stack from
+specializing and sizing the complete adaptive detail graph in one transaction.
+No profiler capture is committed.
+
 ## Time Profiler evidence
 
 A release Time Profiler recording used the exact command above and the same
@@ -119,24 +149,24 @@ The Hangs instrument did not emit an automatic potential-hang row for the XCTest
 process, so this conclusion uses the gate's per-update CPU measurements and the
 Time Profiler call tree rather than an automatic hang classification.
 
-The recording's Points of Interest events showed narrow transcript-detail
-module evaluation and `TranscriptPlayback / Reading Turn Presentation Update`
-intervals. The final playback-follow measurement reached about 42 ms in Reading
-and 6 ms in Text. The gate confirmed that the largest initial Reading
-transaction exceeds its 250 ms
-microhang budget. Settled find causes a smaller SwiftUI/AttributeGraph and
-Core Animation presentation transaction in both modes; those measured updates
-remain between 43 and 117 ms. These stalls are explained, but they do not meet the
-program's responsiveness target.
+The ticket 067 recording's Points of Interest events showed narrow
+transcript-detail module evaluation and
+`TranscriptPlayback / Reading Turn Presentation Update` intervals. Its final
+playback-follow measurement reached about 42 ms in Reading and 6 ms in Text.
+That historical gate confirmed that the largest initial Reading transaction
+exceeded its 250 ms microhang budget before ticket 068. Settled find caused a
+smaller SwiftUI/AttributeGraph and Core Animation presentation transaction in
+both modes; those measured updates remained between 43 and 117 ms. These stalls
+were explained, but they did not meet the program's responsiveness target.
 
 ## Remaining blocker
 
 The strict gate intentionally fails. Parent ticket 059 must not close until a
 follow-up does all of the following:
 
-1. Remove or split the remaining cold `TranscriptResultView`/Reading-header
+1. ~~Remove or split the remaining cold `TranscriptResultView`/Reading-header
    SwiftUI type and layout transaction so no initial main-thread update reaches
-   250 ms. The current Reading result is about 424 ms.
+   250 ms.~~ Ticket 068 reduced this update to 190.71 ms.
 2. Keep native Reading row realization below 16 ms during ordinary scrolling.
    The current worst sampled update is about 39 ms.
 3. Keep Reading playback-follow updates below 16 ms. The current worst ordinary
