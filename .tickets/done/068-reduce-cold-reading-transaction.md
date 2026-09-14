@@ -34,3 +34,12 @@ interactions unchanged.
 - [ ] Header, speaker overview, actions, search, playback, selection, editing,
   accessibility, and exact document bounds remain correct.
 - [ ] No budget is increased and no spinner masks synchronous work.
+
+## Resolution
+
+Reduced the largest cold Reading update from 516.95 ms to 190.71 ms and total
+Reading readiness from 757.88 ms to 422.23 ms on the documented release fixture.
+Time Profiler showed a substantial reduction in AttributeGraph update samples;
+all existing budgets remained unchanged. Merged as
+[PR #80](https://github.com/eli0shin/macparakeet/pull/80) in commit
+`17e2483a`.

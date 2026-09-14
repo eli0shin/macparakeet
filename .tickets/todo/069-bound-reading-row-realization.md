@@ -3,8 +3,7 @@ Assigned-To:
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
-Blocked-By:
-  - 068-reduce-cold-reading-transaction
+Blocked-By: []
 ---
 
 # Bound Reading row realization
