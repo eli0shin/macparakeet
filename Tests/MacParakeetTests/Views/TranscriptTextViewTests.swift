@@ -4,6 +4,9 @@ import MacParakeetCore
 import MacParakeetViewModels
 @testable import MacParakeet
 
+// The attributed-string inspection hook is excluded from production builds.
+// Keep these visual token contracts in the normal debug test lane.
+#if DEBUG
 @MainActor
 final class TranscriptTextViewTests: XCTestCase {
     func testLiveTranscriptBodyTextUsesDesignSystemPrimaryColor() throws {
@@ -109,3 +112,4 @@ final class TranscriptTextViewTests: XCTestCase {
         return resolved
     }
 }
+#endif

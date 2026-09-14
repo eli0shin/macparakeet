@@ -104,13 +104,13 @@ final class MeetingTranscriptPlaybackFollowController {
 /// The narrow observation boundary for completed-meeting playback. Playback
 /// ticks invalidate this view, not the transcript detail that supplies its
 /// header, search controls, and immutable Reading Turns.
-struct MeetingReadingTurnPlaybackView<Header: View>: View {
+struct MeetingReadingTurnPlaybackView: View {
     @Bindable var playerViewModel: MediaPlayerViewModel
     let followController: MeetingTranscriptPlaybackFollowController
     let turns: [IdentifiedReadingTurn]
     let playbackIndex: ReadingTurnPlaybackIndex?
     let speakerColorMap: [String: Color]
-    let header: Header
+    let header: AnyView
     let contentRevision: Int
     let headerRevision: Int
     let findScrollID: Int?
@@ -124,7 +124,7 @@ struct MeetingReadingTurnPlaybackView<Header: View>: View {
     var currentHighlight: (id: Int, range: NSRange)?
     var evaluationProbe: (() -> Void)?
 
-    init(
+    init<Header: View>(
         playerViewModel: MediaPlayerViewModel,
         followController: MeetingTranscriptPlaybackFollowController,
         turns: [IdentifiedReadingTurn],
@@ -149,7 +149,7 @@ struct MeetingReadingTurnPlaybackView<Header: View>: View {
         self.turns = turns
         self.playbackIndex = playbackIndex
         self.speakerColorMap = speakerColorMap
-        self.header = header()
+        self.header = AnyView(header())
         self.contentRevision = contentRevision
         self.headerRevision = headerRevision
         self.findScrollID = findScrollID
@@ -231,10 +231,10 @@ func changedReadingTurnPresentationScrollIDs(
 /// Reading Turns. Its delegate supplies stable cached heights for the complete
 /// document, so exact bounds and distant navigation do not depend on estimated
 /// SwiftUI lazy layout.
-struct MeetingReadingTurnContentView<Header: View>: NSViewRepresentable {
+struct MeetingReadingTurnContentView: NSViewRepresentable {
     let turns: [IdentifiedReadingTurn]
     let speakerColorMap: [String: Color]
-    let header: Header
+    let header: AnyView
     let contentRevision: Int
     let headerRevision: Int
     let activeScrollID: Int?
@@ -248,7 +248,7 @@ struct MeetingReadingTurnContentView<Header: View>: NSViewRepresentable {
     var bodyPointSize: CGFloat = 15
     var currentHighlight: (id: Int, range: NSRange)?
 
-    init(
+    init<Header: View>(
         turns: [IdentifiedReadingTurn],
         speakerColorMap: [String: Color],
         contentRevision: Int = 0,
@@ -267,7 +267,7 @@ struct MeetingReadingTurnContentView<Header: View>: NSViewRepresentable {
     ) {
         self.turns = turns
         self.speakerColorMap = speakerColorMap
-        self.header = header()
+        self.header = AnyView(header())
         self.contentRevision = contentRevision
         self.headerRevision = headerRevision
         self.activeScrollID = activeScrollID
@@ -581,7 +581,7 @@ private struct ContentSignature: Equatable {
     let pointSize: CGFloat
     let revision: Int
 
-    init<Header>(_ parent: MeetingReadingTurnContentView<Header>) {
+    init(_ parent: MeetingReadingTurnContentView) {
         count = parent.turns.count
         firstID = parent.turns.first?.id
         lastID = parent.turns.last?.id

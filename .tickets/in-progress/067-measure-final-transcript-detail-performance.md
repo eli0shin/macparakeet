@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@067-measure-final-transcript-detail-performance
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive

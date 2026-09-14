@@ -165,6 +165,7 @@ struct TranscriptResultView: View {
     var moduleEvaluationProbe: ((TranscriptDetailPresentationModule) -> Void)? = nil
     var hostedPresentationModule: TranscriptDetailPresentationModule? = nil
     var findSessionDriverProbe: ((TranscriptFindSessionDriver) -> Void)? = nil
+    var findSessionStateProbe: ((String, Bool, Int) -> Void)? = nil
 
     @AppStorage(UserDefaultsAppRuntimePreferences.transcriptAIContextModeKey)
     private var transcriptAIContextModeRaw = TranscriptAIContextMode.richTranscript.rawValue
@@ -1697,10 +1698,12 @@ struct TranscriptResultView: View {
             if transcriptDisplayMode == .timed,
                usesMeetingReadingSurface,
                !cachedReadingTurns.isEmpty {
-                meetingReadingTurnView
-                    .padding(DesignSystem.Spacing.lg)
+                AnyView(
+                    meetingReadingTurnView
+                        .padding(DesignSystem.Spacing.lg)
+                )
             } else {
-            ScrollViewReader { proxy in
+            AnyView(ScrollViewReader { proxy in
             ScrollView {
                 TranscriptBodyStack(
                     rowCount: transcriptBodyRowCount,
@@ -1813,7 +1816,7 @@ struct TranscriptResultView: View {
                     proxy.scrollTo(target, anchor: .center)
                 }
             }
-            }
+            })
             }
         }
         .background(
@@ -1894,7 +1897,12 @@ struct TranscriptResultView: View {
     }
 
     private var transcriptFindToolbar: some View {
-        HStack {
+        let _ = findSessionStateProbe?(
+            findModel.query,
+            findModel.isSearching,
+            findModel.matchCount
+        )
+        return HStack {
             Spacer()
             transcriptFindBar
         }
@@ -1973,8 +1981,8 @@ struct TranscriptResultView: View {
         guard !editingTranscript else { return }
         if !findBarVisible {
             withAnimation(DesignSystem.Animation.contentSwap) { findBarVisible = true }
+            rebuildFindBlocks()
         }
-        rebuildFindBlocks()
         Task { @MainActor in findFieldFocused = true }
     }
 

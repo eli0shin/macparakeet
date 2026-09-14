@@ -3,6 +3,9 @@ import FluidAudio
 @testable import MacParakeetCore
 import XCTest
 
+// This suite uses debug-only STT fixture seams. Release performance builds
+// exclude it without compiling debug runtime behavior into the product.
+#if DEBUG
 /// Unit coverage for the dictation trailing-silence pad (issue #562). The
 /// CoreML Parakeet model cannot run in CI, so these exercise the padding
 /// mechanism and the WAV decode round-trip that feed it, not the WER outcome.
@@ -198,3 +201,4 @@ private actor DictationPadCustomVocabularyRescorer: CustomVocabularyRescoring {
         requests
     }
 }
+#endif
