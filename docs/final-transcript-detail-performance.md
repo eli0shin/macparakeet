@@ -149,15 +149,15 @@ The Hangs instrument did not emit an automatic potential-hang row for the XCTest
 process, so this conclusion uses the gate's per-update CPU measurements and the
 Time Profiler call tree rather than an automatic hang classification.
 
-The recording's Points of Interest events showed narrow transcript-detail
-module evaluation and `TranscriptPlayback / Reading Turn Presentation Update`
-intervals. The final playback-follow measurement reached about 42 ms in Reading
-and 6 ms in Text. The gate confirmed that the largest initial Reading
-transaction exceeds its 250 ms
-microhang budget. Settled find causes a smaller SwiftUI/AttributeGraph and
-Core Animation presentation transaction in both modes; those measured updates
-remain between 43 and 117 ms. These stalls are explained, but they do not meet the
-program's responsiveness target.
+The ticket 067 recording's Points of Interest events showed narrow
+transcript-detail module evaluation and
+`TranscriptPlayback / Reading Turn Presentation Update` intervals. Its final
+playback-follow measurement reached about 42 ms in Reading and 6 ms in Text.
+That historical gate confirmed that the largest initial Reading transaction
+exceeded its 250 ms microhang budget before ticket 068. Settled find caused a
+smaller SwiftUI/AttributeGraph and Core Animation presentation transaction in
+both modes; those measured updates remained between 43 and 117 ms. These stalls
+were explained, but they did not meet the program's responsiveness target.
 
 ## Remaining blocker
 
