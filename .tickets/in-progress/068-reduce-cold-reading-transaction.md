@@ -1,5 +1,5 @@
 ---
-Assigned-To:
+Assigned-To: macparakeet@068-reduce-cold-reading-transaction
 Tags:
   - performance
 Parent: 059-make-meeting-transcript-detail-responsive
