@@ -2,6 +2,9 @@ import FluidAudio
 @testable import MacParakeetCore
 import XCTest
 
+// This suite uses the debug-only vocabulary rescoring seam. The production
+// release test build excludes it without enabling debug runtime behavior.
+#if DEBUG
 final class CustomVocabularyBoostingTests: XCTestCase {
     func testMapperUsesEnabledBlankReplacementWordsOnly() {
         let vocabulary = CustomVocabularyBoostingVocabulary.mapping(
@@ -339,3 +342,4 @@ private actor FakeCustomVocabularyRescorer: CustomVocabularyRescoring {
 private enum TestError: Error {
     case expected
 }
+#endif
