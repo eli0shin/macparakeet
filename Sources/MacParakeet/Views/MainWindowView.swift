@@ -51,7 +51,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
 struct MainWindowView: View {
     @Bindable var state: MainWindowState
-    @State private var showGlobalCancelConfirmation = false
+    @State private var showingOtherProcessingJobs = false
 
     let transcriptionViewModel: TranscriptionViewModel
     let historyViewModel: DictationHistoryViewModel
@@ -68,6 +68,7 @@ struct MainWindowView: View {
     let libraryViewModel: TranscriptionLibraryViewModel
     let meetingsWorkspaceViewModel: MeetingsWorkspaceViewModel
     let meetingPillViewModel: MeetingRecordingPillViewModel
+    @Bindable var offlineProcessingViewModel: OfflineProcessingViewModel
     let onRecordMeeting: () -> Void
     let onRecordMeetingFromWorkspace: () -> Void
     let onPauseToggleMeeting: (() -> Void)?
@@ -77,17 +78,6 @@ struct MainWindowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let notice = customWordsViewModel.recognitionStatus.message {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle")
-                    Text(notice).font(.callout)
-                    Spacer()
-                    Button("Dismiss") { customWordsViewModel.recognitionStatus.message = nil }
-                        .parakeetAction(.secondary)
-                }
-                .padding()
-                .background(.yellow.opacity(0.1))
-            }
             NavigationSplitView {
                 List(selection: $state.selectedItem) {
                     Section {
@@ -184,7 +174,8 @@ struct MainWindowView: View {
                                 },
                                 onSetUpAI: {
                                     state.navigateToSettings(tab: .ai)
-                                }
+                                },
+                                offlineProcessingViewModel: offlineProcessingViewModel
                             )
                         } else {
                             TranscriptionLibraryView(
@@ -290,22 +281,14 @@ struct MainWindowView: View {
                 }
             }
 
-            if showGlobalProgressBar {
-                globalTranscriptionBottomBar
+            if !offlineProcessingViewModel.jobs.isEmpty {
+                universalProcessingBottomBar
             }
         }
         .frame(
             minWidth: 860,
             minHeight: DesignSystem.Layout.windowMinHeight
         )
-        .alert("Cancel All Transcriptions?", isPresented: $showGlobalCancelConfirmation) {
-            Button("Cancel All", role: .destructive) {
-                transcriptionViewModel.cancelBatch()
-            }
-            Button("Continue", role: .cancel) {}
-        } message: {
-            Text("This stops the remaining files in the batch. Files already transcribed are kept in your Library.")
-        }
         .onChange(of: transcriptionViewModel.isTranscribing) { _, isTranscribing in
             if !isTranscribing {
                 state.showingProgressDetail = false
@@ -327,12 +310,6 @@ struct MainWindowView: View {
                 historyViewModel.exitBulkSelection()
             }
         }
-    }
-
-    /// Show the global bottom bar when transcribing on any tab except Transcribe (which has its own detailed view)
-    private var showGlobalProgressBar: Bool {
-        (transcriptionViewModel.isTranscribing || transcriptionViewModel.isBatchActive)
-            && state.selectedItem != .transcribe
     }
 
     private var transformReservedHotkeys: [TransformShortcutReservedHotkey] {
@@ -368,100 +345,153 @@ struct MainWindowView: View {
         )
     }
 
-    private var globalTranscriptionBottomBar: some View {
+    private var universalProcessingBottomBar: some View {
+        VStack(spacing: 0) {
+            if showingOtherProcessingJobs, !offlineProcessingViewModel.otherJobs.isEmpty {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    HStack {
+                        Text("OTHER PROCESSING")
+                        Spacer()
+                        Text("\(offlineProcessingViewModel.otherJobs.count) ACTIVE")
+                    }
+                    .font(DesignSystem.Typography.micro.weight(.semibold))
+                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+
+                    ForEach(Array(offlineProcessingViewModel.otherJobs)) { job in
+                        processingJobRow(job, isFocused: false)
+                            .padding(.horizontal, DesignSystem.Spacing.sm)
+                            .background(
+                                RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
+                                    .fill(DesignSystem.Colors.surface)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
+                                    .strokeBorder(DesignSystem.Colors.border.opacity(0.7), lineWidth: 0.5)
+                            )
+                    }
+                }
+                .padding(DesignSystem.Spacing.sm)
+                .background(DesignSystem.Colors.contentBackground)
+                .overlay(alignment: .bottom) { Divider() }
+            }
+
+            if let focusedJob = offlineProcessingViewModel.focusedJob {
+                processingJobRow(focusedJob, isFocused: true)
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .padding(.vertical, DesignSystem.Spacing.sm)
+            }
+        }
+        .background(DesignSystem.Colors.cardBackground)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private func processingJobRow(
+        _ job: OfflineProcessingViewModel.Job,
+        isFocused: Bool
+    ) -> some View {
         HStack(spacing: DesignSystem.Spacing.md) {
-            SpinnerRingView(size: 18, revolutionDuration: 2.0, tintColor: DesignSystem.Colors.accent)
+            Image(systemName: processingIcon(for: job.operation))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(job.operation.locality == .ai ? Color.purple : DesignSystem.Colors.accent)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill((job.operation.locality == .ai ? Color.purple : DesignSystem.Colors.accent).opacity(0.1))
+                )
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(transcriptionViewModel.transcribingFileName)
+                    Text(job.title)
                         .font(DesignSystem.Typography.caption.weight(.semibold))
                         .lineLimit(1)
                         .truncationMode(.middle)
 
-                    Text("On-device")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundStyle(DesignSystem.Colors.successGreen)
+                    Text(job.operation.locality == .ai ? "AI" : "On-device")
+                        .font(DesignSystem.Typography.micro.weight(.bold))
+                        .foregroundStyle(job.operation.locality == .ai ? Color.purple : DesignSystem.Colors.successGreen)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Capsule().fill(DesignSystem.Colors.successGreen.opacity(0.12)))
+                        .background(
+                            Capsule().fill(
+                                (job.operation.locality == .ai ? Color.purple : DesignSystem.Colors.successGreen)
+                                    .opacity(0.1)
+                            )
+                        )
                 }
 
-                HStack(spacing: 6) {
-                    Text(
-                        transcriptionViewModel.isBatchActive
-                            ? transcriptionViewModel.batchStatusHeadline
-                            : transcriptionViewModel.progressHeadline
-                    )
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(.secondary)
+                Text(job.operation.title)
+                    .font(DesignSystem.Typography.micro)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .lineLimit(1)
+            }
+            .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
 
-                    Text("\u{00B7}")
-                        .foregroundStyle(.tertiary)
-
-                    Text("Safe to browse elsewhere")
+            Group {
+                if let fraction = job.fraction {
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        ProgressView(value: fraction)
+                            .progressViewStyle(.linear)
+                            .tint(DesignSystem.Colors.accent)
+                            .frame(width: 110)
+                        Text("\(Int((fraction * 100).rounded()))%")
+                            .font(DesignSystem.Typography.micro.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .frame(width: 30, alignment: .trailing)
+                    }
+                } else {
+                    Text(job.operation.detail)
                         .font(DesignSystem.Typography.micro)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
+                        .frame(width: 150, alignment: .leading)
                 }
             }
 
-            if let fraction = transcriptionViewModel.transcriptionProgress {
-                Spacer(minLength: DesignSystem.Spacing.sm)
-
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    ProgressView(value: fraction)
-                        .progressViewStyle(.linear)
-                        .tint(DesignSystem.Colors.accent)
-                        .frame(width: 96)
-
-                    Text("\(Int((fraction * 100).rounded()))%")
-                        .font(DesignSystem.Typography.caption.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(minWidth: 32, alignment: .trailing)
+            if isFocused, !offlineProcessingViewModel.otherJobs.isEmpty {
+                Button(showingOtherProcessingJobs ? "Hide other jobs" : "\(offlineProcessingViewModel.otherJobs.count) more") {
+                    showingOtherProcessingJobs.toggle()
                 }
+                .parakeetAction(.secondary)
+                .controlSize(.small)
             }
 
-            Spacer()
-
-            if transcriptionViewModel.isBatchActive {
-                Button {
-                    showGlobalCancelConfirmation = true
-                } label: {
-                    Text("Cancel all")
-                        .font(DesignSystem.Typography.caption.weight(.semibold))
-                        .foregroundStyle(DesignSystem.Colors.errorRed)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: DesignSystem.Layout.buttonCornerRadius)
-                                .fill(DesignSystem.Colors.errorRed.opacity(0.1))
-                        )
-                }
-                .buttonStyle(.plain)
-            } else {
-                Button {
-                    transcriptionViewModel.currentTranscription = nil
-                    state.selectedItem = .transcribe
-                } label: {
-                    Text("View")
-                        .font(DesignSystem.Typography.caption.weight(.semibold))
-                        .foregroundStyle(DesignSystem.Colors.accent)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: DesignSystem.Layout.buttonCornerRadius)
-                                .fill(DesignSystem.Colors.accent.opacity(0.1))
-                        )
-                }
-                .buttonStyle(.plain)
-            }
+            processingAction(for: job)
         }
-        .padding(.horizontal, DesignSystem.Spacing.lg)
-        .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.cardBackground)
-        .overlay(alignment: .top) {
-            Divider()
+        .frame(minHeight: isFocused ? 42 : 38)
+    }
+
+    @ViewBuilder
+    private func processingAction(for job: OfflineProcessingViewModel.Job) -> some View {
+        if job.canCancel {
+            Button("Cancel") {
+                offlineProcessingViewModel.cancel(id: job.id)
+            }
+            .parakeetAction(.secondary)
+            .controlSize(.small)
+        } else if transcriptionViewModel.currentTranscription?.id != job.itemID {
+            Button("View") {
+                if let itemID = job.itemID,
+                   transcriptionViewModel.selectTranscription(id: itemID) {
+                    state.navigateToTranscription(from: .library)
+                } else {
+                    state.selectedItem = .transcribe
+                }
+            }
+            .parakeetAction(.secondary)
+            .controlSize(.small)
+        }
+    }
+
+    private func processingIcon(for operation: OfflineProcessingViewModel.Operation) -> String {
+        switch operation {
+        case .preparing, .preparingSpeechModel: "cpu"
+        case .waiting: "clock"
+        case .downloading: "arrow.down.circle"
+        case .converting: "waveform.path.ecg"
+        case .transcribing: "waveform"
+        case .identifyingSpeakers, .adjustingSpeakers: "person.2"
+        case .formatting, .finalizing: "doc.text"
+        case .generatingTitle, .generatingResult: "sparkles"
         }
     }
 }

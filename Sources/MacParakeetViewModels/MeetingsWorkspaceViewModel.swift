@@ -109,9 +109,13 @@ public final class MeetingsWorkspaceViewModel {
     public func configure(
         transcriptionRepo: TranscriptionRepositoryProtocol,
         quickPromptRepo: QuickPromptRepositoryProtocol? = nil,
-        promptRepo: PromptRepositoryProtocol? = nil
+        promptRepo: PromptRepositoryProtocol? = nil,
+        offlineProcessingViewModel: OfflineProcessingViewModel? = nil
     ) {
-        recentMeetingsViewModel.configure(transcriptionRepo: transcriptionRepo)
+        recentMeetingsViewModel.configure(
+            transcriptionRepo: transcriptionRepo,
+            offlineProcessingViewModel: offlineProcessingViewModel
+        )
         if let quickPromptRepo {
             quickPromptsViewModel.configure(repo: quickPromptRepo)
         }

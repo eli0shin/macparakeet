@@ -159,6 +159,7 @@ struct TranscriptResultView: View {
     var onStartNew: (() -> Void)?
     var onRetranscribe: ((Transcription, SpeechEngineSelection?) -> Void)?
     var onSetUpAI: (() -> Void)?
+    var offlineProcessingViewModel: OfflineProcessingViewModel? = nil
     var playbackViewModelProbe: ((MediaPlayerViewModel) -> Void)? = nil
     var detailEvaluationProbe: (() -> Void)? = nil
     var headerEvaluationProbe: (() -> Void)? = nil
@@ -194,6 +195,8 @@ struct TranscriptResultView: View {
     @State private var editingTranscript = false
     @State private var transcriptDraft = ""
     @State private var transcriptEditError: String?
+    @State private var processingIssuesExpanded = false
+    @State private var dismissedProcessingIssueIDs: Set<UUID> = []
     @State private var transcriptDisplayMode: TranscriptDisplayMode = .text
     @State private var transcriptDisplayModeBeforeEdit: TranscriptDisplayMode?
     /// User-adjustable transcript reading size (Transcript Detail Refresh / U4).
@@ -390,6 +393,7 @@ struct TranscriptResultView: View {
             if findBarVisible { rebuildFindBlocks() }
         }
         .onChange(of: activeTranscription.status) {
+            dismissedProcessingIssueIDs.remove(activeTranscription.id)
             rebuildSegmentCache()
             syncTranscriptDisplayMode()
             if findBarVisible { rebuildFindBlocks() }
@@ -1750,6 +1754,10 @@ struct TranscriptResultView: View {
                             .foregroundStyle(DesignSystem.Colors.errorRed)
                     }
 
+                    if !processingIssues.isEmpty {
+                        processingIssuesState
+                    }
+
                     if let presentation = meetingTranscriptProcessingPresentation {
                         meetingTranscriptProcessingState(presentation)
                     }
@@ -2197,6 +2205,85 @@ struct TranscriptResultView: View {
         return "Edit the transcript text"
     }
 
+    private var processingIssues: [OfflineProcessingViewModel.Issue] {
+        var issues = offlineProcessingViewModel?.issues(for: activeTranscription.id) ?? []
+        if activeTranscription.status == .error,
+           let message = activeTranscription.errorMessage,
+           !issues.contains(where: { $0.detail == message }) {
+            issues.insert(
+                OfflineProcessingViewModel.Issue(
+                    id: activeTranscription.id,
+                    itemID: activeTranscription.id,
+                    title: "Processing failed",
+                    detail: message
+                ),
+                at: 0
+            )
+        }
+        return issues.filter { !dismissedProcessingIssueIDs.contains($0.id) }
+    }
+
+    private var processingIssuesState: some View {
+        VStack(spacing: 0) {
+            Button {
+                processingIssuesExpanded.toggle()
+            } label: {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Image(systemName: processingIssuesExpanded ? "chevron.down" : "chevron.right")
+                        .font(DesignSystem.Typography.micro)
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(DesignSystem.Colors.warningAmber)
+                    Text("\(processingIssues.count) processing \(processingIssues.count == 1 ? "issue" : "issues")")
+                        .font(DesignSystem.Typography.caption.weight(.semibold))
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .frame(minHeight: 38)
+
+            if processingIssuesExpanded {
+                Divider()
+                ForEach(processingIssues) { issue in
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Text(issue.title)
+                            .font(DesignSystem.Typography.caption.weight(.semibold))
+                            .lineLimit(1)
+                        Spacer()
+                        if let recoveryTitle = issue.recoveryTitle {
+                            Button(recoveryTitle) {
+                                offlineProcessingViewModel?.recover(issueID: issue.id)
+                            }
+                            .parakeetAction(.secondary)
+                            .controlSize(.small)
+                        }
+                        Button {
+                            dismissedProcessingIssueIDs.insert(issue.id)
+                            offlineProcessingViewModel?.dismiss(issueID: issue.id)
+                        } label: {
+                            Image(systemName: "xmark")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .help("Dismiss issue")
+                    }
+                    .padding(.horizontal, DesignSystem.Spacing.md)
+                    .frame(minHeight: 38)
+                    .help(issue.detail)
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
+                .fill(DesignSystem.Colors.warningAmber.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
+                .strokeBorder(DesignSystem.Colors.warningAmber.opacity(0.3), lineWidth: 0.6)
+        )
+    }
+
     private var meetingTranscriptProcessingPresentation: MeetingTranscriptProcessingPresentation? {
         MeetingTranscriptProcessingPresentation.make(
             sourceType: activeTranscription.sourceType,
@@ -2209,7 +2296,8 @@ struct TranscriptResultView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             HStack(spacing: DesignSystem.Spacing.sm) {
-                ParakeetSpinner(.inline, tint: DesignSystem.Colors.accent)
+                Image(systemName: "waveform")
+                    .foregroundStyle(DesignSystem.Colors.accent)
                 Text(presentation.title)
                     .font(DesignSystem.Typography.body.weight(.semibold))
                     .foregroundStyle(DesignSystem.Colors.textPrimary)

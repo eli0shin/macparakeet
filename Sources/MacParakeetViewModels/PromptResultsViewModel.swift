@@ -93,6 +93,7 @@ public final class PromptResultsViewModel {
     private var cliConfigStore: LocalCLIConfigStore?
     private var llmClient: LLMClientProtocol?
     private var currentTranscriptionID: UUID?
+    private var offlineProcessingViewModel: OfflineProcessingViewModel?
     private var streamingTask: Task<Void, Never>?
     private var modelListTask: Task<Void, Never>?
     private var persistedContentLoadTask: Task<Void, Never>?
@@ -165,7 +166,8 @@ public final class PromptResultsViewModel {
         configStore: LLMConfigStoreProtocol? = nil,
         llmClient: LLMClientProtocol? = nil,
         cardGenerator: CardGenerating? = nil,
-        cliConfigStore: LocalCLIConfigStore = LocalCLIConfigStore()
+        cliConfigStore: LocalCLIConfigStore = LocalCLIConfigStore(),
+        offlineProcessingViewModel: OfflineProcessingViewModel? = nil
     ) {
         self.llmService = llmService
         self.promptRepo = promptRepo
@@ -176,6 +178,7 @@ public final class PromptResultsViewModel {
         self.llmClient = llmClient
         self.cardGenerator = cardGenerator
         self.cliConfigStore = cliConfigStore
+        self.offlineProcessingViewModel = offlineProcessingViewModel
         loadVisiblePrompts()
         refreshModelInfo()
     }
@@ -439,8 +442,28 @@ public final class PromptResultsViewModel {
 
     public func generateKnowledgeCard(transcriptionId: UUID) {
         guard let cardGenerator else { return }
+        let operationID = UUID()
+        let itemTitle: String
+        do {
+            itemTitle =
+                try transcriptionRepo?.fetch(id: transcriptionId)?.effectiveDisplayTitle
+                ?? "Transcript"
+        } catch {
+            itemTitle = "Transcript"
+        }
+        offlineProcessingViewModel?.start(
+            OfflineProcessingViewModel.Job(
+                id: operationID,
+                itemID: transcriptionId,
+                title: itemTitle,
+                operation: .generatingResult(name: "knowledge card")
+            )
+        )
+
         let logger = logger
-        Task.detached(priority: .utility) {
+        let processing = offlineProcessingViewModel
+        Task(priority: .utility) {
+            defer { processing?.finish(id: operationID) }
             do {
                 _ = try await cardGenerator.generate(
                     transcriptionId: transcriptionId,
@@ -449,6 +472,14 @@ public final class PromptResultsViewModel {
             } catch {
                 logger.warning(
                     "Knowledge card generation failed: \(error.localizedDescription, privacy: .private)"
+                )
+                processing?.reportIssue(
+                    OfflineProcessingViewModel.Issue(
+                        id: operationID,
+                        itemID: transcriptionId,
+                        title: "Knowledge card could not be generated",
+                        detail: error.localizedDescription
+                    )
                 )
             }
         }
@@ -465,12 +496,17 @@ public final class PromptResultsViewModel {
             streamingTask?.cancel()
             return
         }
+        let generationID = pendingGenerations[index].id
         pendingGenerations.remove(at: index)
+        offlineProcessingViewModel?.finish(id: generationID)
     }
 
     private func cancelAllGenerations() {
         streamingTask?.cancel()
         streamingTask = nil
+        for generation in pendingGenerations {
+            offlineProcessingViewModel?.finish(id: generation.id)
+        }
         pendingGenerations = []
     }
 
@@ -498,21 +534,40 @@ public final class PromptResultsViewModel {
             replacingPromptResultID: replacingPromptResultID
         )
         pendingGenerations.append(generation)
+        let itemTitle: String
+        do {
+            itemTitle =
+                try transcriptionRepo?.fetch(id: transcriptionId)?.effectiveDisplayTitle
+                ?? prompt.name
+        } catch {
+            itemTitle = prompt.name
+        }
+        offlineProcessingViewModel?.start(
+            OfflineProcessingViewModel.Job(
+                id: generation.id,
+                itemID: transcriptionId,
+                title: itemTitle,
+                operation: .waiting(detail: "Queued behind other AI processing"),
+                canCancel: true
+            ),
+            onCancel: { [weak self] in self?.cancelGeneration(id: generation.id) }
+        )
         processNextQueuedGeneration()
         return generation.id
     }
 
     private func processNextQueuedGeneration() {
         guard streamingTask == nil, llmService != nil else { return }
-        guard let currentTranscriptionID else { return }
-        guard
-            let nextIndex = pendingGenerations.firstIndex(where: {
-            $0.state == .queued && $0.transcriptionId == currentTranscriptionID
-            })
+        guard let nextIndex = pendingGenerations.firstIndex(where: { $0.state == .queued })
         else { return }
 
         pendingGenerations[nextIndex].state = .streaming
         let generation = pendingGenerations[nextIndex]
+        offlineProcessingViewModel?.update(
+            id: generation.id,
+            operation: .generatingResult(name: generation.promptName),
+            fraction: nil
+        )
         let generationID = generation.id
         let systemPrompt = assembledSystemPrompt(
             promptContent: generation.promptContent,
@@ -580,6 +635,7 @@ public final class PromptResultsViewModel {
         }
 
         pendingGenerations.remove(at: index)
+        offlineProcessingViewModel?.finish(id: generationID)
         streamingTask = nil
         errorMessage = nil
 
@@ -609,15 +665,35 @@ public final class PromptResultsViewModel {
         if let index = pendingGenerations.firstIndex(where: { $0.id == generationID }) {
             pendingGenerations.remove(at: index)
         }
+        offlineProcessingViewModel?.finish(id: generationID)
         streamingTask = nil
         processNextQueuedGeneration()
     }
 
     private func finishFailedGeneration(id generationID: UUID, error: Error) {
         logger.error("Failed to generate prompt result error=\(error.localizedDescription, privacy: .public)")
-        if let index = pendingGenerations.firstIndex(where: { $0.id == generationID }) {
-            pendingGenerations[index].state = .failed(message: error.localizedDescription)
+        guard let index = pendingGenerations.firstIndex(where: { $0.id == generationID }) else {
+            offlineProcessingViewModel?.finish(id: generationID)
+            streamingTask = nil
+            processNextQueuedGeneration()
+            return
         }
+        pendingGenerations[index].state = .failed(message: error.localizedDescription)
+        let generation = pendingGenerations[index]
+        offlineProcessingViewModel?.finish(id: generationID)
+        offlineProcessingViewModel?.reportIssue(
+            OfflineProcessingViewModel.Issue(
+                id: generationID,
+                itemID: generation.transcriptionId,
+                title: "\(generation.promptName) could not be generated",
+                detail: error.localizedDescription,
+                recoveryTitle: "Retry"
+            ),
+            onRecover: { [weak self] in
+                self?.offlineProcessingViewModel?.dismiss(issueID: generationID)
+                _ = self?.retryGeneration(id: generationID)
+            }
+        )
         streamingTask = nil
         errorMessage = error.localizedDescription
         processNextQueuedGeneration()

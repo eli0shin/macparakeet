@@ -159,6 +159,7 @@ public final class TranscriptionLibraryViewModel {
 
     private var transcriptionRepo: TranscriptionRepositoryProtocol?
     private var folderRepo: LibraryFolderRepositoryProtocol?
+    private var offlineProcessingViewModel: OfflineProcessingViewModel?
     private var loadTask: Task<Void, Never>?
     private var folderLoadTask: Task<Void, Never>?
     private var searchDebounceTask: Task<Void, Never>?
@@ -175,10 +176,12 @@ public final class TranscriptionLibraryViewModel {
 
     public func configure(
         transcriptionRepo: TranscriptionRepositoryProtocol,
-        folderRepo: LibraryFolderRepositoryProtocol? = nil
+        folderRepo: LibraryFolderRepositoryProtocol? = nil,
+        offlineProcessingViewModel: OfflineProcessingViewModel? = nil
     ) {
         self.transcriptionRepo = transcriptionRepo
         self.folderRepo = folderRepo
+        self.offlineProcessingViewModel = offlineProcessingViewModel
     }
 
     public var folderTree: [LibraryFolderNode] {
@@ -528,10 +531,22 @@ public final class TranscriptionLibraryViewModel {
 
         regeneratingMeetingTitleIDs.insert(transcription.id)
         errorMessage = nil
+        let operationID = UUID()
+        offlineProcessingViewModel?.start(
+            OfflineProcessingViewModel.Job(
+                id: operationID,
+                itemID: transcription.id,
+                title: transcription.effectiveDisplayTitle,
+                operation: .generatingTitle
+            )
+        )
 
         return Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.regeneratingMeetingTitleIDs.remove(transcription.id) }
+            defer {
+                self.regeneratingMeetingTitleIDs.remove(transcription.id)
+                self.offlineProcessingViewModel?.finish(id: operationID)
+            }
             do {
                 let full = try await Task.detached(priority: .userInitiated) {
                     try repo.fetch(id: transcription.id) ?? transcription
@@ -542,7 +557,13 @@ public final class TranscriptionLibraryViewModel {
                 self.logger.error(
                     "Failed to regenerate meeting title: \(error.localizedDescription, privacy: .private)"
                 )
-                self.errorMessage = "Failed to regenerate meeting title: \(error.localizedDescription)"
+                self.offlineProcessingViewModel?.reportIssue(
+                    OfflineProcessingViewModel.Issue(
+                        itemID: transcription.id,
+                        title: "Meeting title could not be generated",
+                        detail: error.localizedDescription
+                    )
+                )
                 try? self.refreshLoadedTranscription(id: transcription.id)
             }
         }

@@ -245,6 +245,7 @@ public final class TranscriptionViewModel {
     private let isNemotronModelDownloaded: () -> Bool
     private let isCohereModelDownloaded: () -> Bool
     public var promptResultsViewModel: PromptResultsViewModel?
+    public private(set) var offlineProcessingViewModel: OfflineProcessingViewModel?
 
     public init(
         defaults: UserDefaults = .standard,
@@ -293,7 +294,8 @@ public final class TranscriptionViewModel {
         llmService: LLMServiceProtocol? = nil,
         promptResultRepo: PromptResultRepositoryProtocol? = nil,
         meetingArtifactStore: MeetingArtifactStoring? = nil,
-        promptResultsViewModel: PromptResultsViewModel? = nil
+        promptResultsViewModel: PromptResultsViewModel? = nil,
+        offlineProcessingViewModel: OfflineProcessingViewModel? = nil
     ) {
         self.transcriptionService = transcriptionService
         self.audioTrackService = audioTrackService
@@ -306,9 +308,23 @@ public final class TranscriptionViewModel {
             self.meetingArtifactStore = meetingArtifactStore
         }
         self.promptResultsViewModel = promptResultsViewModel
+        self.offlineProcessingViewModel = offlineProcessingViewModel
         isConfigured = true
         clearError()
         loadTranscriptions()
+    }
+
+    @discardableResult
+    public func selectTranscription(id: UUID) -> Bool {
+        guard let repo = transcriptionRepo else { return false }
+        do {
+            guard let transcription = try repo.fetch(id: id) else { return false }
+            currentTranscription = transcription
+            return true
+        } catch {
+            logger.error("Failed to open processing item error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public)")
+            return false
+        }
     }
 
     public func loadTranscriptions() {
@@ -839,7 +855,8 @@ public final class TranscriptionViewModel {
             source: .localFile,
             fileName: original.fileName,
             clearCurrent: true,
-            speechEngine: speechEngineOverride
+            speechEngine: speechEngineOverride,
+            itemID: original.id
         )
         let retranscriptionSource: TelemetryTranscriptionSource = switch original.sourceType {
         case .file:
@@ -939,6 +956,16 @@ public final class TranscriptionViewModel {
         let taskID = UUID()
         activeSpeakerAttributionTaskID = taskID
         speakerAttributionCorrectionState = .running(message: "Preparing saved audio…")
+        offlineProcessingViewModel?.start(
+            OfflineProcessingViewModel.Job(
+                id: taskID,
+                itemID: original.id,
+                title: original.effectiveDisplayTitle,
+                operation: .adjustingSpeakers,
+                canCancel: true
+            ),
+            onCancel: { [weak self] in self?.cancelMeetingSpeakerAttributionCorrection() }
+        )
         speakerAttributionTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
@@ -946,6 +973,11 @@ public final class TranscriptionViewModel {
                     Task { @MainActor [weak self] in
                         guard self?.activeSpeakerAttributionTaskID == taskID else { return }
                         self?.speakerAttributionCorrectionState = .running(message: Self.speakerAttributionProgressMessage(progress))
+                        self?.offlineProcessingViewModel?.update(
+                            id: taskID,
+                            operation: .adjustingSpeakers,
+                            fraction: progress.fraction
+                        )
                     }
                 }
                 let result = try await service.correctMeetingSpeakerAttribution(existing: original, recording: recording, selection: selection, onProgress: progressHandler)
@@ -960,6 +992,7 @@ public final class TranscriptionViewModel {
                 speakerAttributionTask = nil
                 activeSpeakerAttributionTaskID = nil
                 speakerAttributionCorrectionState = .idle
+                offlineProcessingViewModel?.finish(id: taskID)
                 if currentTranscription?.id == result.id { currentTranscription = latest }
                 loadTranscriptions()
             } catch is CancellationError {
@@ -967,11 +1000,20 @@ public final class TranscriptionViewModel {
                 speakerAttributionTask = nil
                 activeSpeakerAttributionTaskID = nil
                 speakerAttributionCorrectionState = .idle
+                offlineProcessingViewModel?.finish(id: taskID)
             } catch {
                 guard activeSpeakerAttributionTaskID == taskID else { return }
                 speakerAttributionTask = nil
                 activeSpeakerAttributionTaskID = nil
                 speakerAttributionCorrectionState = .failed(message: error.localizedDescription)
+                offlineProcessingViewModel?.finish(id: taskID)
+                offlineProcessingViewModel?.reportIssue(
+                    OfflineProcessingViewModel.Issue(
+                        itemID: original.id,
+                        title: "Speakers could not be adjusted",
+                        detail: error.localizedDescription
+                    )
+                )
             }
         }
     }
@@ -1043,6 +1085,9 @@ public final class TranscriptionViewModel {
         batchQueue.removeAll()
         transcriptionTask?.cancel()
         transcriptionTask = nil
+        if let activeTranscriptionTaskID {
+            offlineProcessingViewModel?.finish(id: activeTranscriptionTaskID)
+        }
         activeTranscriptionTaskID = nil
         resetBatchState()
         endTranscription()
@@ -1183,7 +1228,8 @@ public final class TranscriptionViewModel {
         source: SourceKind,
         fileName: String,
         clearCurrent: Bool = false,
-        speechEngine: SpeechEngineSelection? = nil
+        speechEngine: SpeechEngineSelection? = nil,
+        itemID: UUID? = nil
     ) -> UUID {
         transcriptionTask?.cancel()
 
@@ -1199,6 +1245,16 @@ public final class TranscriptionViewModel {
             : nil
         transcribingFileName = fileName
         beginTranscription(source: source)
+        offlineProcessingViewModel?.start(
+            OfflineProcessingViewModel.Job(
+                id: taskID,
+                itemID: itemID,
+                title: fileName,
+                operation: .preparing,
+                canCancel: true
+            ),
+            onCancel: { [weak self] in self?.cancelTranscription() }
+        )
 
         if clearCurrent {
             currentTranscription = nil
@@ -1223,6 +1279,8 @@ public final class TranscriptionViewModel {
     ) {
         guard activeTranscriptionTaskID == taskID else { return }
         transcriptionTask = nil
+        offlineProcessingViewModel?.associate(id: taskID, with: result.id)
+        offlineProcessingViewModel?.finish(id: taskID)
         activeTranscriptionTaskID = nil
         endTranscription()
 
@@ -1372,6 +1430,17 @@ public final class TranscriptionViewModel {
     private func completeFailedTranscription(taskID: UUID, error: Error, failedURL: String? = nil) {
         guard activeTranscriptionTaskID == taskID else { return }
         transcriptionTask = nil
+        let failedItemID = offlineProcessingViewModel?.jobs.first(where: { $0.id == taskID })?.itemID
+        offlineProcessingViewModel?.finish(id: taskID)
+        if let failedItemID {
+            offlineProcessingViewModel?.reportIssue(
+                OfflineProcessingViewModel.Issue(
+                    itemID: failedItemID,
+                    title: "Processing failed",
+                    detail: error.localizedDescription
+                )
+            )
+        }
         activeTranscriptionTaskID = nil
         endTranscription()
 
@@ -1414,6 +1483,7 @@ public final class TranscriptionViewModel {
     private func completeCancelledTranscription(taskID: UUID) {
         guard activeTranscriptionTaskID == taskID else { return }
         transcriptionTask = nil
+        offlineProcessingViewModel?.finish(id: taskID)
         activeTranscriptionTaskID = nil
         clearError()
         endTranscription()
@@ -1474,6 +1544,28 @@ public final class TranscriptionViewModel {
             whisperVariant: whisperVariant,
             nemotronVariant: nemotronVariant
         )
+        let jobID = taskID ?? activeTranscriptionTaskID
+        if let jobID {
+            offlineProcessingViewModel?.update(
+                id: jobID,
+                operation: Self.offlineOperation(from: progress),
+                fraction: progress.fraction
+            )
+        }
+    }
+
+    private static func offlineOperation(
+        from progress: TranscriptionProgress
+    ) -> OfflineProcessingViewModel.Operation {
+        switch progress {
+        case .converting: .converting
+        case .downloading: .downloading
+        case .preparingSpeechModel: .preparingSpeechModel
+        case .transcribing: .transcribing
+        case .identifyingSpeakers: .identifyingSpeakers
+        case .formatting: .formatting
+        case .finalizing: .finalizing
+        }
     }
 
     private static func mapPhase(from progress: TranscriptionProgress) -> ProgressPhase {

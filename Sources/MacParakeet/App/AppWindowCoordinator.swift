@@ -22,6 +22,7 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
     private let libraryViewModel: TranscriptionLibraryViewModel
     private let meetingsWorkspaceViewModel: MeetingsWorkspaceViewModel
     private let meetingPillViewModel: MeetingRecordingPillViewModel
+    private let offlineProcessingViewModel: OfflineProcessingViewModel
     private let onRecordMeeting: () -> Void
     private let onRecordMeetingFromWorkspace: () -> Void
     private let onPauseToggleMeeting: (() -> Void)?
@@ -48,6 +49,7 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
         libraryViewModel: TranscriptionLibraryViewModel,
         meetingsWorkspaceViewModel: MeetingsWorkspaceViewModel,
         meetingPillViewModel: MeetingRecordingPillViewModel,
+        offlineProcessingViewModel: OfflineProcessingViewModel,
         onRecordMeeting: @escaping () -> Void,
         onRecordMeetingFromWorkspace: @escaping () -> Void,
         onPauseToggleMeeting: (() -> Void)? = nil,
@@ -70,6 +72,7 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
         self.libraryViewModel = libraryViewModel
         self.meetingsWorkspaceViewModel = meetingsWorkspaceViewModel
         self.meetingPillViewModel = meetingPillViewModel
+        self.offlineProcessingViewModel = offlineProcessingViewModel
         self.onRecordMeeting = onRecordMeeting
         self.onRecordMeetingFromWorkspace = onRecordMeetingFromWorkspace
         self.onPauseToggleMeeting = onPauseToggleMeeting
@@ -162,6 +165,7 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
             libraryViewModel: libraryViewModel,
             meetingsWorkspaceViewModel: meetingsWorkspaceViewModel,
             meetingPillViewModel: meetingPillViewModel,
+            offlineProcessingViewModel: offlineProcessingViewModel,
             onRecordMeeting: onRecordMeeting,
             onRecordMeetingFromWorkspace: onRecordMeetingFromWorkspace,
             onPauseToggleMeeting: onPauseToggleMeeting,

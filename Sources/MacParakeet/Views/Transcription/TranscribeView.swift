@@ -61,13 +61,9 @@ struct TranscribeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Group {
-                if viewModel.isTranscribing {
-                    transcribingView
-                } else {
-                    dropZoneView
-                }
-            }
+            dropZoneView
+                .allowsHitTesting(!viewModel.isTranscribing)
+                .opacity(viewModel.isTranscribing ? 0.65 : 1)
 
             if let warning = aiFormatterWarningMessage {
                 warningBanner(warning)

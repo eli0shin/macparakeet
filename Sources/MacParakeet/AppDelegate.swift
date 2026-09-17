@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let promptResultsViewModel = PromptResultsViewModel()
     private let promptsViewModel = PromptsViewModel()
     private let transformsViewModel = TransformsViewModel()
+    private let offlineProcessingViewModel = OfflineProcessingViewModel()
     private let mainWindowState = MainWindowState()
     /// Long-lived companion for the meeting recording pill + Transcribe-tab tile.
     /// `MeetingRecordingFlowCoordinator` writes state into it; both the floating
@@ -85,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         promptResultsViewModel: promptResultsViewModel,
         promptsViewModel: promptsViewModel,
         transformsViewModel: transformsViewModel,
+        offlineProcessingViewModel: offlineProcessingViewModel,
         mainWindowState: mainWindowState,
         meetingPillViewModel: meetingPillViewModel
     )
@@ -178,6 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         libraryViewModel: libraryViewModel,
         meetingsWorkspaceViewModel: meetingsWorkspaceViewModel,
         meetingPillViewModel: meetingPillViewModel,
+        offlineProcessingViewModel: offlineProcessingViewModel,
         onRecordMeeting: { [weak self] in
             self?.toggleMeetingRecording(originatesFromWindow: true)
         },

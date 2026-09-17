@@ -1,5 +1,6 @@
 import Foundation
 import MacParakeetCore
+import MacParakeetViewModels
 import OSLog
 
 @MainActor
@@ -82,6 +83,7 @@ final class MeetingTranscriptionQueue {
     private let transcriptionRepo: TranscriptionRepositoryProtocol
     private let meetingRecordingSettlement: MeetingRecordingSettlement
     private let finalizationOwnershipClaimer: any MeetingFinalizationOwnershipClaiming
+    private let offlineProcessingViewModel: OfflineProcessingViewModel?
 
     private var pendingItems: [Item] = []
     private var activeItem: Item?
@@ -96,12 +98,14 @@ final class MeetingTranscriptionQueue {
         transcriptionRepo: TranscriptionRepositoryProtocol,
         meetingRecordingSettlement: MeetingRecordingSettlement,
         finalizationOwnershipClaimer: any MeetingFinalizationOwnershipClaiming =
-            MeetingRecordingLockFileStore()
+            MeetingRecordingLockFileStore(),
+        offlineProcessingViewModel: OfflineProcessingViewModel? = nil
     ) {
         self.transcriptionService = transcriptionService
         self.transcriptionRepo = transcriptionRepo
         self.meetingRecordingSettlement = meetingRecordingSettlement
         self.finalizationOwnershipClaimer = finalizationOwnershipClaimer
+        self.offlineProcessingViewModel = offlineProcessingViewModel
     }
 
     var snapshot: Snapshot {
@@ -126,6 +130,14 @@ final class MeetingTranscriptionQueue {
             return false
         }
         pendingItems.append(item)
+        offlineProcessingViewModel?.start(
+            OfflineProcessingViewModel.Job(
+                id: item.transcriptionID,
+                itemID: item.transcriptionID,
+                title: item.recording.displayName,
+                operation: .waiting(detail: "Queued behind other offline processing")
+            )
+        )
         notifyStateChanged()
         startNextIfNeeded()
         return true
@@ -152,6 +164,11 @@ final class MeetingTranscriptionQueue {
         guard activeTask == nil, activeItem == nil, !pendingItems.isEmpty else { return }
         let item = pendingItems.removeFirst()
         activeItem = item
+        offlineProcessingViewModel?.update(
+            id: item.transcriptionID,
+            operation: .preparing,
+            fraction: nil
+        )
         notifyStateChanged()
 
         activeTask = Task { @MainActor [weak self] in
@@ -171,11 +188,23 @@ final class MeetingTranscriptionQueue {
                     "queued_meeting_transcription_already_completed id=\(transcription.id.uuidString, privacy: .public)"
                 )
                 await restoreFinalizationOwnershipIfNeeded(for: originalItem)
+                offlineProcessingViewModel?.dismiss(issueID: transcription.id)
                 finishActiveItem(nil)
                 return
             }
             if activeItem?.transcriptionID != item.transcriptionID {
+                if let previousID = activeItem?.transcriptionID {
+                    offlineProcessingViewModel?.finish(id: previousID)
+                }
                 activeItem = item
+                offlineProcessingViewModel?.start(
+                    OfflineProcessingViewModel.Job(
+                        id: item.transcriptionID,
+                        itemID: item.transcriptionID,
+                        title: item.recording.displayName,
+                        operation: .preparing
+                    )
+                )
                 notifyStateChanged()
             }
         } catch {
@@ -183,6 +212,7 @@ final class MeetingTranscriptionQueue {
                 "queued_meeting_transcription_prepare_failed session=\(originalItem.recording.sessionID.uuidString, privacy: .public) error_type=\(TelemetryErrorClassifier.classify(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
             )
             await restoreFinalizationOwnershipIfNeeded(for: originalItem)
+            reportProcessingIssue(for: originalItem, error: error)
             finishActiveItem(.failure(item: originalItem, error: error))
             return
         }
@@ -193,7 +223,11 @@ final class MeetingTranscriptionQueue {
                 try await transcriptionService.finalizeMeetingTranscription(
                     recording: item.recording,
                     updating: item.transcriptionID,
-                    onProgress: nil
+                    onProgress: { [weak self] progress in
+                        Task { @MainActor [weak self] in
+                            self?.updateOfflineProgress(progress, for: item.transcriptionID)
+                        }
+                    }
                 )
             }
         } catch {
@@ -202,6 +236,7 @@ final class MeetingTranscriptionQueue {
             )
             await markFailed(item, error: error)
             await restoreFinalizationOwnershipIfNeeded(for: item)
+            reportProcessingIssue(for: item, error: error)
             finishActiveItem(.failure(item: item, error: error))
             return
         }
@@ -218,7 +253,32 @@ final class MeetingTranscriptionQueue {
             )
             await restoreFinalizationOwnershipIfNeeded(for: item)
         }
+        offlineProcessingViewModel?.dismiss(issueID: item.transcriptionID)
         finishActiveItem(.success(item: item, transcription: transcription))
+    }
+
+    private func reportProcessingIssue(for item: Item, error: Error) {
+        offlineProcessingViewModel?.reportIssue(
+            OfflineProcessingViewModel.Issue(
+                id: item.transcriptionID,
+                itemID: item.transcriptionID,
+                title: "Meeting processing failed",
+                detail: error.localizedDescription,
+                recoveryTitle: "Retry"
+            ),
+            onRecover: { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    do {
+                        if try await self.enqueueClaimingFinalizationOwnership(item) {
+                            self.offlineProcessingViewModel?.dismiss(issueID: item.transcriptionID)
+                        }
+                    } catch {
+                        self.reportProcessingIssue(for: item, error: error)
+                    }
+                }
+            }
+        )
     }
 
     private func ensureProcessingRow(for item: Item) async throws -> ProcessingAdmission {
@@ -303,6 +363,9 @@ final class MeetingTranscriptionQueue {
     }
 
     private func finishActiveItem(_ completion: Completion?) {
+        if let activeItem {
+            offlineProcessingViewModel?.finish(id: activeItem.transcriptionID)
+        }
         activeTask = nil
         activeItem = nil
         if let completion {
@@ -311,6 +374,24 @@ final class MeetingTranscriptionQueue {
         notifyStateChanged()
         resumeIdleWaitersIfNeeded()
         startNextIfNeeded()
+    }
+
+    private func updateOfflineProgress(_ progress: TranscriptionProgress, for id: UUID) {
+        let operation: OfflineProcessingViewModel.Operation =
+            switch progress {
+            case .converting: .converting
+            case .downloading: .downloading
+            case .preparingSpeechModel: .preparingSpeechModel
+            case .transcribing: .transcribing
+            case .identifyingSpeakers: .identifyingSpeakers
+            case .formatting: .formatting
+            case .finalizing: .finalizing
+            }
+        offlineProcessingViewModel?.update(
+            id: id,
+            operation: operation,
+            fraction: progress.fraction
+        )
     }
 
     private func notifyStateChanged() {

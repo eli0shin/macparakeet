@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Universal Processing Progress Prototype — MacParakeet</title>
+  <!-- Three variants of universal offline-processing progress, switchable via ?variant=A|B|C. -->
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #252624;
+      --secondary: #666963;
+      --tertiary: #858780;
+      --line: #d9dad6;
+      --line-strong: #c7c8c4;
+      --sidebar: #e9e8e4;
+      --paper: #f7f6f2;
+      --surface: #ffffff;
+      --raised: #f0efeb;
+      --accent: #e86b3b;
+      --accent-soft: #fff0e9;
+      --green: #22765f;
+      --green-soft: #e8f4ef;
+      --blue: #3d6f98;
+      --blue-soft: #eaf1f7;
+      --purple: #7259a6;
+      --purple-soft: #f0ecf8;
+      --warning: #996210;
+      --warning-soft: #fbf2df;
+      --danger: #ad3d36;
+      --danger-soft: #fbeceb;
+      --shadow: 0 13px 36px rgb(30 31 29 / 16%);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: #d9d8d4; color: var(--ink); }
+    body { padding: 24px; }
+    button { font: inherit; color: inherit; }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .prototype-frame {
+      position: relative;
+      width: min(1180px, calc(100vw - 48px));
+      height: min(780px, calc(100vh - 112px));
+      min-height: 560px;
+      margin: auto;
+      overflow: hidden;
+      border: 1px solid #b9bab6;
+      border-radius: 13px;
+      background: var(--paper);
+      box-shadow: 0 22px 70px rgb(0 0 0 / 22%);
+    }
+
+    .titlebar {
+      height: 38px;
+      display: grid;
+      grid-template-columns: 80px 1fr 80px;
+      align-items: center;
+      padding: 0 13px;
+      border-bottom: 1px solid var(--line);
+      background: #efeeea;
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .traffic { display: flex; gap: 7px; }
+    .traffic i { width: 11px; height: 11px; border-radius: 50%; background: #d16b62; }
+    .traffic i:nth-child(2) { background: #d5a647; }
+    .traffic i:nth-child(3) { background: #69a65f; }
+    .titlebar-title { text-align: center; }
+
+    .app-shell {
+      display: grid;
+      grid-template-columns: 190px minmax(0, 1fr);
+      height: calc(100% - 38px);
+      padding-bottom: var(--bar-space, 62px);
+    }
+    .sidebar {
+      overflow: hidden;
+      padding: 17px 12px;
+      border-right: 1px solid #d3d3cf;
+      background: var(--sidebar);
+    }
+    .brand { display: flex; align-items: center; gap: 9px; padding: 2px 8px 19px; font-size: 14px; font-weight: 730; }
+    .brand-mark { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 8px; background: var(--accent); color: #4b1c0c; font-weight: 800; }
+    .nav-section { margin-top: 12px; padding: 0 9px 5px; color: var(--tertiary); font-size: 9px; font-weight: 760; letter-spacing: .08em; text-transform: uppercase; }
+    .nav-item { display: flex; align-items: center; gap: 9px; margin: 2px 0; padding: 8px 10px; border-radius: 7px; color: #555852; font-size: 13px; }
+    .nav-item.active { background: #d5d4d0; color: var(--ink); font-weight: 650; }
+    .nav-icon { width: 15px; color: #6a6d67; text-align: center; }
+
+    main { min-width: 0; overflow: auto; background: var(--paper); }
+    .page { max-width: 900px; margin: auto; padding: 23px 32px 60px; }
+    .page-head { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
+    .back { margin-bottom: 12px; color: var(--secondary); font-size: 12px; }
+    .eyebrow { color: var(--secondary); font-size: 10px; font-weight: 730; letter-spacing: .07em; text-transform: uppercase; }
+    h1 { margin: 5px 0 5px; font-size: 25px; letter-spacing: -.025em; }
+    .meta { margin: 0; color: var(--secondary); font-size: 12px; }
+    .page-actions { display: flex; gap: 7px; padding-top: 21px; }
+    .quiet-button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); font-size: 12px; }
+    .tabs { display: flex; gap: 20px; margin-top: 22px; border-bottom: 1px solid var(--line); }
+    .tab { padding: 0 1px 9px; color: var(--secondary); font-size: 13px; }
+    .tab.active { margin-bottom: -1px; border-bottom: 2px solid var(--accent); color: var(--ink); font-weight: 650; }
+
+    .prototype-note {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 17px 0;
+      padding: 9px 11px;
+      border: 1px dashed #c69982;
+      border-radius: 8px;
+      background: #fff7f1;
+      color: #704f40;
+      font-size: 11px;
+    }
+    .scenario-controls { display: flex; flex-wrap: wrap; gap: 5px; }
+    .scenario-button { padding: 5px 8px; border: 1px solid #d7b7a7; border-radius: 6px; background: #fffdfa; color: #6a4d40; font-size: 10px; cursor: pointer; }
+    .scenario-button.active { border-color: var(--accent); background: var(--accent-soft); color: #8b3618; font-weight: 700; }
+
+    .status-area { margin: 0 0 16px; }
+    .processing-card, .issue-card {
+      padding: 14px 15px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface);
+    }
+    .processing-card { display: flex; align-items: flex-start; gap: 11px; }
+    .status-symbol { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border-radius: 8px; background: var(--blue-soft); color: var(--blue); font-size: 15px; }
+    .status-copy { min-width: 0; }
+    .status-title { margin: 0 0 3px; font-size: 13px; font-weight: 700; }
+    .status-detail { margin: 0; color: var(--secondary); font-size: 12px; line-height: 1.42; }
+    .issue-card { border-color: #e3c999; background: #fffdf8; }
+    .issue-head { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+    .issue-head strong { font-size: 13px; }
+    .issue-count { padding: 2px 6px; border-radius: 10px; background: var(--warning-soft); color: var(--warning); font-size: 9px; font-weight: 760; }
+    .issue-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 9px 0; border-top: 1px solid #eee2cc; }
+    .issue-icon { color: var(--warning); text-align: center; }
+    .issue-row strong { display: block; margin-bottom: 2px; font-size: 12px; }
+    .issue-row p { margin: 0; color: var(--secondary); font-size: 11px; line-height: 1.4; }
+    .issue-actions { display: flex; align-items: center; gap: 5px; }
+    .retry, .dismiss-issue { padding: 5px 8px; border: 1px solid #d9bc85; border-radius: 6px; background: white; color: #744a09; font-size: 10px; cursor: pointer; }
+    .dismiss-issue { border-color: var(--line); color: var(--secondary); }
+
+    /* Three compact, expandable item-owned issue treatments. */
+    .compact-issues { overflow: hidden; border: 1px solid #e1d2b5; border-radius: 8px; background: #fffdf9; }
+    .compact-issues-head { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 10px; border-bottom: 1px solid #eee4d1; font-size: 11px; font-weight: 700; }
+    .compact-issue + .compact-issue { border-top: 1px solid #eee4d1; }
+    .compact-issue-line { display: grid; grid-template-columns: 18px minmax(0, 1fr) 25px; align-items: center; gap: 6px; min-height: 37px; padding: 0 7px 0 10px; }
+    .compact-issue-line .issue-icon { font-size: 11px; }
+    .issue-toggle { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+    .issue-toggle strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+    .disclosure { color: var(--tertiary); font-size: 9px; }
+    .issue-x { display: grid; place-items: center; width: 23px; height: 23px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--secondary); font-size: 15px; cursor: pointer; }
+    .issue-x:hover { background: var(--raised); }
+    .compact-issue-detail { padding: 0 40px 9px 34px; color: var(--secondary); font-size: 10px; line-height: 1.42; }
+    .compact-issue-detail p { margin: 0 0 7px; }
+    .issues-b { display: grid; gap: 6px; }
+    .issues-b .compact-issue { border: 1px solid #e1d2b5; border-radius: 8px; background: #fffdf9; }
+    .issues-c { overflow: hidden; border: 1px solid #e1d2b5; border-radius: 8px; background: #fffdf9; }
+    .issues-c-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; min-height: 38px; padding: 0 8px 0 10px; }
+    .issues-c-summary .issue-toggle { font-weight: 700; }
+    .issues-c-list { border-top: 1px solid #eee4d1; background: white; }
+    .issue-static-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 37px; padding: 0 7px 0 12px; }
+    .issue-static-line + .issue-static-line { border-top: 1px solid #eeeeea; }
+    .issue-static-line strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+    .issue-static-actions { display: flex; align-items: center; gap: 5px; }
+
+    .transcript-card { min-height: 270px; padding: 17px 19px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+    .transcript-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 13px; }
+    .transcript-head strong { font-size: 14px; }
+    .reading-toggle { padding: 4px 8px; border-radius: 6px; background: var(--raised); color: var(--secondary); font-size: 10px; }
+    .turn { display: grid; grid-template-columns: 94px minmax(0, 1fr); gap: 14px; padding: 12px 3px; border-top: 1px solid #ecece8; }
+    .turn:first-of-type { border-top: 0; }
+    .speaker { color: #4e514c; font-size: 11px; font-weight: 700; }
+    .speaker small { display: block; margin-top: 3px; color: var(--tertiary); font-weight: 500; }
+    .turn p { margin: 0; color: #3e403d; font-family: Charter, Georgia, serif; font-size: 13px; line-height: 1.52; }
+    .skeleton { color: var(--tertiary); font-size: 12px; }
+
+    /* Product processing bar — all variants remain inside the app window. */
+    .product-bar {
+      position: absolute;
+      z-index: 12;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      border-top: 1px solid var(--line-strong);
+      background: rgb(251 250 247 / 98%);
+      box-shadow: 0 -5px 18px rgb(30 31 29 / 8%);
+    }
+    .job-icon { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border-radius: 8px; font-size: 13px; }
+    .job-icon.local { background: var(--blue-soft); color: var(--blue); }
+    .job-icon.ai { background: var(--purple-soft); color: var(--purple); }
+    .job-icon.file { background: var(--green-soft); color: var(--green); }
+    .job-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; }
+    .job-phase { overflow: hidden; color: var(--secondary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .locality { padding: 2px 5px; border-radius: 8px; background: var(--green-soft); color: var(--green); font-size: 8px; font-weight: 790; letter-spacing: .03em; text-transform: uppercase; }
+    .bar-action { padding: 5px 9px; border: 0; border-radius: 6px; background: var(--accent-soft); color: #a74422; font-size: 10px; font-weight: 690; cursor: pointer; }
+    .bar-action.secondary { background: var(--raised); color: var(--secondary); }
+    .real-progress { overflow: hidden; height: 4px; border-radius: 4px; background: #dfdfda; }
+    .real-progress i { display: block; width: var(--value); height: 100%; background: var(--accent); }
+    .percent { color: var(--secondary); font: 10px ui-monospace, SFMono-Regular, monospace; }
+
+    /* Variant A — one focused operation, secondary work behind a count. */
+    .variant-a { min-height: 58px; }
+    .a-row { display: grid; grid-template-columns: auto minmax(180px, 1fr) 170px auto auto; align-items: center; gap: 11px; min-height: 58px; padding: 7px 18px; }
+    .a-copy { min-width: 0; }
+    .a-title-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .a-more { position: relative; }
+    .a-popover { position: absolute; right: 0; bottom: 40px; width: 355px; padding: 7px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+    .a-popover[hidden] { display: none; }
+    .popover-title { padding: 5px 7px 7px; color: var(--secondary); font-size: 9px; font-weight: 760; letter-spacing: .06em; text-transform: uppercase; }
+    .popover-job { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 7px; border-top: 1px solid #eeeeea; }
+
+    /* Variant B — A's focused bar with full-detail concurrent bars above it. */
+    .variant-b { min-height: 58px; }
+    .b-stack { padding: 7px 18px; border-bottom: 1px solid var(--line); background: #f5f4f0; }
+    .b-stack[hidden] { display: none; }
+    .b-stack-head { display: flex; justify-content: space-between; padding: 2px 1px 7px; color: var(--secondary); font-size: 9px; font-weight: 760; letter-spacing: .06em; text-transform: uppercase; }
+    .b-other-job { display: grid; grid-template-columns: auto minmax(180px, 1fr) 170px auto; align-items: center; gap: 11px; min-height: 52px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+    .b-other-job + .b-other-job { margin-top: 6px; }
+    .b-other-progress { display: grid; grid-template-columns: minmax(90px, 1fr) auto; align-items: center; gap: 7px; min-width: 0; }
+
+    /* Variant C — summary rail with an optional inspector above it. */
+    .variant-c { min-height: 50px; }
+    .c-summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 50px; padding: 7px 18px; }
+    .c-stage-line { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .stage-chip { padding: 3px 7px; border-radius: 9px; background: var(--raised); color: var(--secondary); font-size: 9px; white-space: nowrap; }
+    .stage-chip.active { background: var(--accent-soft); color: #a74422; font-weight: 700; }
+    .c-drawer { padding: 10px 17px 12px; border-bottom: 1px solid var(--line); background: #f5f4f0; }
+    .c-drawer[hidden] { display: none; }
+    .c-drawer-head { display: flex; justify-content: space-between; margin-bottom: 7px; color: var(--secondary); font-size: 10px; }
+    .c-table { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+    .c-job { display: grid; grid-template-columns: minmax(150px, 1fr) 130px 145px 48px; align-items: center; gap: 10px; min-height: 37px; padding: 6px 10px; border-top: 1px solid #ecece8; font-size: 10px; }
+    .c-job:first-child { border-top: 0; }
+    .c-job strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+
+    .prototype-switcher {
+      position: fixed;
+      z-index: 30;
+      left: 50%;
+      bottom: 7px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px;
+      border-radius: 14px;
+      background: #202220;
+      color: white;
+      box-shadow: 0 10px 34px rgb(0 0 0 / 28%);
+    }
+    .prototype-switcher button { width: 32px; height: 32px; border: 0; border-radius: 8px; background: #3a3d3a; color: white; cursor: pointer; }
+    .variant-label { min-width: 220px; text-align: center; }
+    .variant-label strong { display: block; font-size: 11px; }
+    .variant-label span { color: #b6bbb6; font-size: 9px; }
+
+    @media (max-width: 850px) {
+      body { padding: 0; }
+      .prototype-frame { width: 100vw; height: calc(100vh - 58px); min-height: 542px; border: 0; border-radius: 0; }
+      .app-shell { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .page { padding: 18px 15px 70px; }
+      .prototype-note { display: block; }
+      .scenario-controls { margin-top: 8px; }
+      .a-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+      .a-progress, .a-locality { display: none; }
+      .b-other-job { grid-template-columns: auto minmax(0, 1fr) auto; }
+      .b-other-progress { display: none; }
+      .c-stage-line .stage-chip:nth-of-type(n+3) { display: none; }
+      .turn { grid-template-columns: 72px minmax(0, 1fr); }
+      .issues-c { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <section class="prototype-frame" aria-label="MacParakeet offline processing prototype">
+    <header class="titlebar">
+      <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="titlebar-title">MacParakeet</div>
+      <div></div>
+    </header>
+
+    <div class="app-shell" id="app-shell">
+      <aside class="sidebar" aria-label="Application navigation">
+        <div class="brand"><span class="brand-mark">M</span> MacParakeet</div>
+        <div class="nav-section">Capture</div>
+        <div class="nav-item"><span class="nav-icon">⌁</span>Transcribe</div>
+        <div class="nav-item active"><span class="nav-icon">▦</span>Library</div>
+        <div class="nav-item"><span class="nav-icon">◷</span>Dictations</div>
+        <div class="nav-item"><span class="nav-icon">♬</span>Meetings</div>
+        <div class="nav-section">Tools</div>
+        <div class="nav-item"><span class="nav-icon">✦</span>Transforms</div>
+        <div class="nav-item"><span class="nav-icon">◫</span>Vocabulary</div>
+        <div class="nav-item"><span class="nav-icon">⚙</span>Settings</div>
+      </aside>
+
+      <main>
+        <div class="page">
+          <div class="back">‹ Library</div>
+          <header class="page-head">
+            <div>
+              <div class="eyebrow" id="page-eyebrow">Meeting · Today, 10:00 AM</div>
+              <h1 id="page-title">Atlas launch readiness review</h1>
+              <p class="meta" id="page-meta">42 min · System and microphone audio · Audio saved</p>
+            </div>
+            <div class="page-actions"><button class="quiet-button">Find</button><button class="quiet-button">Export</button></div>
+          </header>
+          <nav class="tabs" aria-label="Meeting content"><div class="tab">Notes</div><div class="tab active">Transcript</div><div class="tab">Ask</div></nav>
+
+          <section class="prototype-note">
+            <strong>THROWAWAY PROTOTYPE</strong>
+            <div class="scenario-controls" aria-label="Prototype scenarios">
+              <button class="scenario-button" data-scenario="single">One job</button>
+              <button class="scenario-button active" data-scenario="multiple">Concurrent work</button>
+              <button class="scenario-button" data-scenario="ai">Transcript ready + AI</button>
+              <button class="scenario-button" data-scenario="failure">Item issues</button>
+            </div>
+          </section>
+
+          <section class="status-area" id="status-area" aria-live="polite"></section>
+
+          <section class="transcript-card">
+            <div class="transcript-head"><strong>Transcript</strong><span class="reading-toggle">Reading</span></div>
+            <div id="transcript-body"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <section class="product-bar" id="product-bar" aria-label="Offline processing"></section>
+  </section>
+
+  <nav class="prototype-switcher" aria-label="Prototype variant switcher">
+    <button id="previous" aria-label="Previous variant">←</button>
+    <div class="variant-label"><strong id="variant-name"></strong><span>Prototype switcher · Left and Right Arrow keys</span></div>
+    <button id="next" aria-label="Next variant">→</button>
+  </nav>
+
+  <script>
+    const variants = Object.freeze([
+      { key: "A", name: "Focus bar", note: "One foreground operation; secondary work opens from a count" },
+      { key: "B", name: "Focused stack", note: "Focused bar; other jobs open as equally detailed bars above it" },
+      { key: "C", name: "Summary + inspector", note: "Small summary rail; details expand above it" }
+    ]);
+
+    const jobs = Object.freeze([
+      { id: "atlas", title: "Atlas launch readiness review", phase: "Transcribing meeting", detail: "Running speech recognition", type: "local", icon: "⌁", percent: 68, action: "View" },
+      { id: "planning", title: "Q3 planning session", phase: "Writing Action Items", detail: "1 of 2 auto-notes", type: "ai", icon: "✦", percent: null, action: "View" },
+      { id: "interview", title: "customer-interview.m4a", phase: "Waiting to transcribe", detail: "Queued behind meeting audio", type: "file", icon: "▤", percent: null, action: "Cancel" }
+    ]);
+
+    let scenario = new URLSearchParams(location.search).get("scenario") || "multiple";
+    let variantKey = (new URLSearchParams(location.search).get("variant") || "A").toUpperCase();
+    if (!variants.some(item => item.key === variantKey)) variantKey = "A";
+    let detailsOpen = false;
+    let selectedJobID = "atlas";
+    let issueListOpen = false;
+    const dismissedIssues = new Set();
+    const expandedIssues = new Set();
+
+    function activeJobs() {
+      if (scenario === "single") return [jobs[0]];
+      if (scenario === "ai" || scenario === "failure") return [];
+      return jobs;
+    }
+
+    function icon(job) {
+      return `<span class="job-icon ${job.type}" aria-hidden="true">${job.icon}</span>`;
+    }
+
+    function progress(job) {
+      if (job.percent == null) return `<span class="job-phase">${job.detail}</span>`;
+      return `<div class="real-progress" style="--value:${job.percent}%"><i></i></div><span class="percent">${job.percent}%</span>`;
+    }
+
+    function actionButton(job, secondary = false) {
+      if (job.action !== "View") return `<button class="bar-action ${secondary ? "secondary" : ""}">${job.action}</button>`;
+      if (selectedJobID === job.id) return `<span></span>`;
+      return `<button class="bar-action ${secondary ? "secondary" : ""}" data-view-job="${job.id}">View</button>`;
+    }
+
+    function renderStatusArea() {
+      const area = document.getElementById("status-area");
+      const body = document.getElementById("transcript-body");
+      const pageJob = jobs.find(job => job.id === selectedJobID) || jobs[0];
+      document.getElementById("page-title").textContent = pageJob.title;
+      document.getElementById("page-eyebrow").textContent = pageJob.id === "interview" ? "Audio file · Added today" : "Meeting · Today, 10:00 AM";
+      document.getElementById("page-meta").textContent = pageJob.id === "interview" ? "Local audio · Waiting for offline transcription" : "42 min · System and microphone audio · Audio saved";
+
+      if (scenario === "failure") {
+        const issues = [
+          { id: "notes", title: "Action Items could not be generated", detail: "The transcript is complete. The configured AI provider stopped before it returned this note.", action: "Retry" },
+          { id: "vocabulary", title: "Vocabulary hints were not applied", detail: "Speech recognition completed without custom vocabulary hints. The transcript remains available.", action: null }
+        ].filter(issue => !dismissedIssues.has(issue.id));
+        const issueRow = issue => {
+          const expanded = expandedIssues.has(issue.id);
+          return `<article class="compact-issue">
+            <div class="compact-issue-line"><span class="issue-icon">!</span><button class="issue-toggle" data-toggle-issue="${issue.id}" aria-expanded="${expanded}"><span class="disclosure">${expanded ? "▼" : "▶"}</span><strong>${issue.title}</strong></button><button class="issue-x" data-dismiss-issue="${issue.id}" aria-label="Dismiss ${issue.title}">×</button></div>
+            ${expanded ? `<div class="compact-issue-detail"><p>${issue.detail}</p>${issue.action ? `<button class="retry">${issue.action}</button>` : ""}</div>` : ""}
+          </article>`;
+        };
+        if (!issues.length) {
+          area.innerHTML = "";
+        } else if (variantKey === "A") {
+          area.innerHTML = `<section class="compact-issues" aria-label="Processing issues"><div class="compact-issues-head"><span class="issue-icon">!</span><span>Processing issues</span><span class="issue-count">${issues.length}</span></div>${issues.map(issueRow).join("")}</section>`;
+        } else {
+          const staticRow = issue => `<div class="issue-static-line"><strong>${issue.title}</strong><div class="issue-static-actions">${issue.action ? `<button class="retry">${issue.action}</button>` : ""}<button class="issue-x" data-dismiss-issue="${issue.id}" aria-label="Dismiss ${issue.title}">×</button></div></div>`;
+          area.innerHTML = `<section class="issues-c" aria-label="Processing issues"><div class="issues-c-summary"><button class="issue-toggle" id="issue-list-toggle" aria-expanded="${issueListOpen}"><span class="disclosure">${issueListOpen ? "▼" : "▶"}</span><strong>${issues.length} processing ${issues.length === 1 ? "issue" : "issues"}</strong></button><span></span></div>${issueListOpen ? `<div class="issues-c-list">${issues.map(staticRow).join("")}</div>` : ""}</section>`;
+        }
+      } else if (scenario === "ai") {
+        area.innerHTML = "";
+      } else if (pageJob.id === "planning") {
+        area.innerHTML = `<article class="processing-card"><span class="status-symbol">✓</span><div class="status-copy"><p class="status-title">Transcript ready</p><p class="status-detail">You can read and export this meeting now. ${pageJob.phase} is still running.</p></div></article>`;
+      } else if (pageJob.id === "interview") {
+        area.innerHTML = `<article class="processing-card"><span class="status-symbol">▤</span><div class="status-copy"><p class="status-title">Waiting to transcribe</p><p class="status-detail">This file is queued behind current meeting processing. You can browse elsewhere.</p></div></article>`;
+      } else {
+        area.innerHTML = `<article class="processing-card"><span class="status-symbol">⌁</span><div class="status-copy"><p class="status-title">Transcribing meeting</p><p class="status-detail">Your audio is saved. Offline processing continues while you browse elsewhere.</p></div></article>`;
+      }
+
+      if ((scenario === "single" || scenario === "multiple") && pageJob.id !== "planning") {
+        body.innerHTML = `<p class="skeleton">The final transcript will appear here when speech recognition and formatting finish.</p>`;
+      } else {
+        body.innerHTML = `
+          <div class="turn"><div class="speaker">Nadia Chen<small>00:12</small></div><p>Thanks, everyone. This is the final Atlas launch readiness review. We need one release decision and named owners for the remaining risks.</p></div>
+          <div class="turn"><div class="speaker">Me<small>00:41</small></div><p>The candidate has been stable since Friday. Yesterday’s cache test exposed one slow recovery case that we should discuss before approval.</p></div>
+          <div class="turn"><div class="speaker">Marcus Webb<small>01:01</small></div><p>The sustained-load run completed at three times expected launch traffic. No data was lost, but support guidance should cover stale status during queue recovery.</p></div>`;
+      }
+    }
+
+    function renderA(currentJobs) {
+      if (!currentJobs.length) return "";
+      const primary = currentJobs[0];
+      const remaining = currentJobs.slice(1);
+      return `<div class="variant-a">
+        <div class="a-row">
+          ${icon(primary)}
+          <div class="a-copy"><div class="a-title-line"><span class="job-title">${primary.title}</span><span class="locality">${primary.type === "ai" ? "AI" : "On-device"}</span></div><div class="job-phase">${primary.phase}</div></div>
+          <div class="a-progress">${primary.percent == null ? `<span class="job-phase">${primary.detail}</span>` : `<div style="display:grid;grid-template-columns:1fr auto;gap:7px;align-items:center">${progress(primary)}</div>`}</div>
+          ${remaining.length ? `<div class="a-more"><button class="bar-action secondary" id="a-more">${remaining.length} more</button><div class="a-popover" id="a-popover" ${detailsOpen ? "" : "hidden"}><div class="popover-title">Other processing</div>${remaining.map(job => `<div class="popover-job">${icon(job)}<div><div class="job-title">${job.title}</div><div class="job-phase">${job.phase}</div></div>${actionButton(job, true)}</div>`).join("")}</div></div>` : "<span></span>"}
+          ${actionButton(primary)}
+        </div>
+      </div>`;
+    }
+
+    function renderB(currentJobs) {
+      if (!currentJobs.length) return "";
+      const primary = currentJobs[0];
+      const remaining = currentJobs.slice(1);
+      return `<div class="variant-b">
+        <div class="b-stack" ${detailsOpen && remaining.length ? "" : "hidden"}>
+          <div class="b-stack-head"><span>Other processing</span><span>${remaining.length} active</span></div>
+          ${remaining.map(job => `<article class="b-other-job">${icon(job)}<div><div class="job-title">${job.title}</div><div class="job-phase">${job.phase}</div></div><div class="b-other-progress">${progress(job)}</div>${actionButton(job, true)}</article>`).join("")}
+        </div>
+        <div class="a-row">
+          ${icon(primary)}
+          <div class="a-copy"><div class="a-title-line"><span class="job-title">${primary.title}</span><span class="locality">${primary.type === "ai" ? "AI" : "On-device"}</span></div><div class="job-phase">${primary.phase}</div></div>
+          <div class="a-progress">${primary.percent == null ? `<span class="job-phase">${primary.detail}</span>` : `<div style="display:grid;grid-template-columns:1fr auto;gap:7px;align-items:center">${progress(primary)}</div>`}</div>
+          ${remaining.length ? `<button class="bar-action secondary" id="b-more">${detailsOpen ? "Hide other jobs" : `${remaining.length} more`}</button>` : "<span></span>"}
+          ${actionButton(primary)}
+        </div>
+      </div>`;
+    }
+
+    function renderC(currentJobs) {
+      if (!currentJobs.length) return "";
+      const primary = currentJobs[0];
+      return `<div class="variant-c">
+        <div class="c-drawer" id="c-drawer" ${detailsOpen ? "" : "hidden"}>
+          <div class="c-drawer-head"><strong>Offline processing</strong><span>${currentJobs.length} active</span></div>
+          <div class="c-table">${currentJobs.map(job => `<div class="c-job"><strong>${job.title}</strong><span>${job.phase}</span><span>${job.percent == null ? job.detail : `${job.percent}% complete`}</span>${actionButton(job, true)}</div>`).join("")}</div>
+        </div>
+        <div class="c-summary">
+          ${icon(primary)}
+          <div class="c-stage-line"><span class="job-title">${currentJobs.length === 1 ? primary.title : `${currentJobs.length} items processing`}</span><span class="stage-chip active">${primary.phase}</span>${currentJobs.slice(1).map(job => `<span class="stage-chip">${job.phase}</span>`).join("")}</div>
+          <span class="percent">${primary.percent == null ? "" : `${primary.percent}%`}</span>
+          <button class="bar-action secondary" id="c-details">${detailsOpen ? "Hide" : "Details"}</button>
+        </div>
+      </div>`;
+    }
+
+    function render() {
+      const currentJobs = activeJobs();
+      const variant = variants.find(item => item.key === variantKey);
+      document.getElementById("variant-name").textContent = `${variant.key} — ${variant.name}`;
+      document.querySelector(".variant-label span").textContent = variant.note;
+      document.querySelectorAll(".scenario-button").forEach(button => button.classList.toggle("active", button.dataset.scenario === scenario));
+
+      const bar = document.getElementById("product-bar");
+      bar.innerHTML = variantKey === "A" ? renderA(currentJobs) : variantKey === "B" ? renderB(currentJobs) : renderC(currentJobs);
+      bar.style.display = currentJobs.length ? "block" : "none";
+      document.getElementById("app-shell").style.setProperty("--bar-space", currentJobs.length ? "59px" : "0px");
+      renderStatusArea();
+
+      document.getElementById("a-more")?.addEventListener("click", () => { detailsOpen = !detailsOpen; render(); });
+      document.getElementById("b-more")?.addEventListener("click", () => { detailsOpen = !detailsOpen; render(); });
+      document.getElementById("c-details")?.addEventListener("click", () => { detailsOpen = !detailsOpen; render(); });
+      document.querySelectorAll("[data-view-job]").forEach(button => button.addEventListener("click", () => {
+        selectedJobID = button.dataset.viewJob;
+        render();
+        document.querySelector("main").scrollTop = 0;
+      }));
+      document.querySelectorAll("[data-toggle-issue]").forEach(button => button.addEventListener("click", () => {
+        const id = button.dataset.toggleIssue;
+        expandedIssues.has(id) ? expandedIssues.delete(id) : expandedIssues.add(id);
+        render();
+      }));
+      document.getElementById("issue-list-toggle")?.addEventListener("click", () => { issueListOpen = !issueListOpen; render(); });
+      document.querySelectorAll("[data-dismiss-issue]").forEach(button => button.addEventListener("click", () => {
+        dismissedIssues.add(button.dataset.dismissIssue);
+        expandedIssues.delete(button.dataset.dismissIssue);
+        render();
+      }));
+    }
+
+    function setVariant(delta) {
+      const index = variants.findIndex(item => item.key === variantKey);
+      variantKey = variants[(index + delta + variants.length) % variants.length].key;
+      detailsOpen = false;
+      dismissedIssues.clear();
+      expandedIssues.clear();
+      issueListOpen = false;
+      const url = new URL(location.href);
+      url.searchParams.set("variant", variantKey);
+      url.searchParams.set("scenario", scenario);
+      history.replaceState({}, "", url);
+      render();
+    }
+
+    document.getElementById("previous").addEventListener("click", () => setVariant(-1));
+    document.getElementById("next").addEventListener("click", () => setVariant(1));
+    document.querySelectorAll(".scenario-button").forEach(button => button.addEventListener("click", () => {
+      scenario = button.dataset.scenario;
+      detailsOpen = false;
+      selectedJobID = "atlas";
+      dismissedIssues.clear();
+      expandedIssues.clear();
+      issueListOpen = false;
+      const url = new URL(location.href);
+      url.searchParams.set("variant", variantKey);
+      url.searchParams.set("scenario", scenario);
+      history.replaceState({}, "", url);
+      render();
+    }));
+    document.addEventListener("keydown", event => {
+      if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+      if (event.key === "ArrowLeft") setVariant(-1);
+      if (event.key === "ArrowRight") setVariant(1);
+    });
+
+    render();
+  </script>
+</body>
+</html>

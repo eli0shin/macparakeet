@@ -167,6 +167,7 @@ final class MeetingRecordingFlowCoordinator {
         meetingRecordingSettlement: MeetingRecordingSettlement,
         finalizationOwnershipClaimer: any MeetingFinalizationOwnershipClaiming =
             MeetingRecordingLockFileStore(),
+        offlineProcessingViewModel: OfflineProcessingViewModel? = nil,
         meetingTranscriptionQueue: MeetingTranscriptionQueue? = nil,
         onMenuBarIconUpdate: @escaping (BreathWaveIcon.MenuBarState) -> Void,
         onOpenMainWindow: @escaping @MainActor @Sendable () -> Void = {},
@@ -200,7 +201,8 @@ final class MeetingRecordingFlowCoordinator {
                 transcriptionService: transcriptionService,
                 transcriptionRepo: transcriptionRepo,
                 meetingRecordingSettlement: meetingRecordingSettlement,
-                finalizationOwnershipClaimer: finalizationOwnershipClaimer
+                finalizationOwnershipClaimer: finalizationOwnershipClaimer,
+                offlineProcessingViewModel: offlineProcessingViewModel
             )
         self.onMenuBarIconUpdate = onMenuBarIconUpdate
         self.onOpenMainWindow = onOpenMainWindow

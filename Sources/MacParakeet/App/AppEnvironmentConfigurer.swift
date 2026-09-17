@@ -57,6 +57,7 @@ final class AppEnvironmentConfigurer {
     private let promptResultsViewModel: PromptResultsViewModel
     private let promptsViewModel: PromptsViewModel
     private let transformsViewModel: TransformsViewModel
+    private let offlineProcessingViewModel: OfflineProcessingViewModel
     private let mainWindowState: MainWindowState
     private let meetingPillViewModel: MeetingRecordingPillViewModel
     private weak var liveMeetingCoordinator: MeetingRecordingFlowCoordinator?
@@ -75,6 +76,7 @@ final class AppEnvironmentConfigurer {
         promptResultsViewModel: PromptResultsViewModel,
         promptsViewModel: PromptsViewModel,
         transformsViewModel: TransformsViewModel,
+        offlineProcessingViewModel: OfflineProcessingViewModel,
         mainWindowState: MainWindowState,
         meetingPillViewModel: MeetingRecordingPillViewModel
     ) {
@@ -91,6 +93,7 @@ final class AppEnvironmentConfigurer {
         self.promptResultsViewModel = promptResultsViewModel
         self.promptsViewModel = promptsViewModel
         self.transformsViewModel = transformsViewModel
+        self.offlineProcessingViewModel = offlineProcessingViewModel
         self.mainWindowState = mainWindowState
         self.meetingPillViewModel = meetingPillViewModel
     }
@@ -115,17 +118,20 @@ final class AppEnvironmentConfigurer {
             llmService: hasLLMConfig ? env.llmService : nil,
             promptResultRepo: env.promptResultRepo,
             meetingArtifactStore: env.meetingArtifactStore,
-            promptResultsViewModel: promptResultsViewModel
+            promptResultsViewModel: promptResultsViewModel,
+            offlineProcessingViewModel: offlineProcessingViewModel
         )
         historyViewModel.configure(dictationRepo: env.dictationRepo)
         libraryViewModel.configure(
             transcriptionRepo: env.transcriptionRepo,
-            folderRepo: env.libraryFolderRepo
+            folderRepo: env.libraryFolderRepo,
+            offlineProcessingViewModel: offlineProcessingViewModel
         )
         meetingsWorkspaceViewModel.configure(
             transcriptionRepo: env.transcriptionRepo,
             quickPromptRepo: env.quickPromptRepo,
-            promptRepo: env.promptRepo
+            promptRepo: env.promptRepo,
+            offlineProcessingViewModel: offlineProcessingViewModel
         )
         settingsViewModel.configure(
             permissionService: env.permissionService,
@@ -222,7 +228,8 @@ final class AppEnvironmentConfigurer {
             meetingArtifactStore: env.meetingArtifactStore,
             configStore: env.llmConfigStore,
             llmClient: env.llmClient,
-            cardGenerator: hasLLMConfig ? env.cardGenerationService : nil
+            cardGenerator: hasLLMConfig ? env.cardGenerationService : nil,
+            offlineProcessingViewModel: offlineProcessingViewModel
         )
 
         chatViewModel.onConversationsChanged = { [weak self] transcriptionID, hasConversations in
@@ -344,6 +351,7 @@ final class AppEnvironmentConfigurer {
             pillViewModel: meetingPillViewModel,
             meetingRecordingSettlement: env.meetingRecordingSettlement,
             finalizationOwnershipClaimer: env.meetingRecordingLockFileStore,
+            offlineProcessingViewModel: offlineProcessingViewModel,
             onMenuBarIconUpdate: { _ in callbacks.onMenuBarIconUpdate() },
             onOpenMainWindow: callbacks.onOpenMainWindow,
             onTranscriptionReady: { [weak self] transcription in
