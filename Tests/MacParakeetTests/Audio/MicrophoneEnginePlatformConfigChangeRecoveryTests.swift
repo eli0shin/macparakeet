@@ -497,7 +497,7 @@ final class MicrophoneEnginePlatformConfigChangeRecoveryTests: XCTestCase {
         wait(for: [unexpectedStopExpectation], timeout: 1.0)
 
         XCTAssertFalse(platform.isEngineRunning)
-        XCTAssertEqual(invocationLock.withLock { $0 }, 2, "initial start + one silent recovery")
+        XCTAssertEqual(invocationLock.withLock { $0 }, 3, "initial start + silent recovery + fresh-engine retry")
     }
 
     func testStopEngineCancelsSilentRecoveryReadinessTimeout() throws {
@@ -826,9 +826,9 @@ final class MicrophoneEnginePlatformConfigChangeRecoveryTests: XCTestCase {
                 case (1, 10):
                     initialTapHandler.withLock { $0 = tapHandler }
                     tapHandler(signalBuffer.buffer, AVAudioTime(hostTime: 1))
-                case (2, 10):
+                case (2, 10), (3, 10):
                     tapHandler(zeroBuffer.buffer, AVAudioTime(hostTime: 2))
-                case (3, 20):
+                case (4, 20):
                     tapHandler(zeroBuffer.buffer, AVAudioTime(hostTime: 3))
                 default:
                     XCTFail("Unexpected start attempt \(invocation) for device \(String(describing: deviceID))")
@@ -853,7 +853,7 @@ final class MicrophoneEnginePlatformConfigChangeRecoveryTests: XCTestCase {
         platform.checkCallbackLivenessNowForTesting()
 
         XCTAssertTrue(platform.isEngineRunning)
-        XCTAssertEqual(invocationCount.withLock { $0 }, 3)
+        XCTAssertEqual(invocationCount.withLock { $0 }, 4)
         XCTAssertEqual(
             deliveredBufferCount.withLock { $0 },
             2,

@@ -4,6 +4,328 @@ import XCTest
 @testable import MacParakeetCore
 
 final class MicrophoneEnginePlatformStartupReadinessTests: XCTestCase {
+    func testFailedEngineIsReleasedBeforeFallbackWithoutConfigurationNotification() throws {
+        try assertFailedEngineIsReleasedBeforeFallback(postConfigurationChange: false)
+    }
+
+    func testFailedEngineIsReleasedBeforeFallbackWithQueuedConfigurationNotification() throws {
+        try assertFailedEngineIsReleasedBeforeFallback(postConfigurationChange: true)
+    }
+
+    private func assertFailedEngineIsReleasedBeforeFallback(postConfigurationChange: Bool) throws {
+        let failedEngine = OSAllocatedUnfairLock<WeakReadinessEngine?>(initialState: nil)
+        let starts = OSAllocatedUnfairLock(initialState: 0)
+        let buffer = UncheckedSendableAudioPCMBuffer(makeStartupReadinessBuffer(nonZero: true))
+        let platform = AVAudioEngineMicrophonePlatform(
+            deviceAttemptsBuilder: {
+                [
+                    .implicitSystemDefault(resolvedDeviceID: 10),
+                    MeetingInputDeviceAttempt(source: .builtIn, deviceID: 20),
+                ]
+            },
+            inputDeviceSetter: { _, _ in true },
+            bluetoothInputState: { $0 == 10 },
+            engineStarter: { engine, _, _, tapHandler in
+                let start = starts.withLock { count in
+                    count += 1
+                    return count
+                }
+                if start == 1 {
+                    failedEngine.withLock { $0 = WeakReadinessEngine(engine) }
+                    if postConfigurationChange {
+                        NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: engine)
+                    }
+                    throw NSError(domain: NSOSStatusErrorDomain, code: -10868)
+                }
+                XCTAssertNil(
+                    failedEngine.withLock { $0?.engine },
+                    "A queued notification must not keep the failed engine alive while fallback starts"
+                )
+                tapHandler(buffer.buffer, AVAudioTime(hostTime: 1))
+            }
+        )
+        defer { platform.stopEngine() }
+
+        try platform.configureAndStart(vpioEnabled: false, bufferSize: 256, tapHandler: { _, _ in })
+        XCTAssertEqual(starts.withLock { $0 }, 2)
+    }
+
+    func testConfigurationRecoveryReleasesOldEngineBeforeStartingReplacement() throws {
+        let oldEngine = OSAllocatedUnfairLock<WeakReadinessEngine?>(initialState: nil)
+        let starts = OSAllocatedUnfairLock(initialState: 0)
+        let replacementStarted = expectation(description: "replacement starts without retaining old engine")
+        let buffer = UncheckedSendableAudioPCMBuffer(makeStartupReadinessBuffer(nonZero: true))
+        let platform = AVAudioEngineMicrophonePlatform(
+            engineStarter: { engine, _, _, tapHandler in
+                let start = starts.withLock { count in
+                    count += 1
+                    return count
+                }
+                if start == 1 {
+                    oldEngine.withLock { $0 = WeakReadinessEngine(engine) }
+                    NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: engine)
+                } else {
+                    XCTAssertNil(oldEngine.withLock { $0?.engine }, "Recovery must not retain the retired engine")
+                    replacementStarted.fulfill()
+                }
+                tapHandler(buffer.buffer, AVAudioTime(hostTime: 1))
+            }
+        )
+        defer { platform.stopEngine() }
+
+        try platform.configureAndStart(vpioEnabled: false, bufferSize: 256, tapHandler: { _, _ in })
+        wait(for: [replacementStarted], timeout: 1)
+        XCTAssertTrue(platform.isEngineRunning)
+        XCTAssertEqual(starts.withLock { $0 }, 2)
+    }
+
+    func testReadinessTimeoutRebuildsAndRetriesSameRouteBeforeFallback() throws {
+        let selected = MeetingInputDeviceAttempt(source: .selected(uid: "bose"), deviceID: 10)
+        let engines = OSAllocatedUnfairLock(initialState: [AVAudioEngine]())
+        let selectedDevices = OSAllocatedUnfairLock(initialState: [AudioDeviceID]())
+        let buffer = UncheckedSendableAudioPCMBuffer(makeStartupReadinessBuffer(nonZero: true))
+        let platform = AVAudioEngineMicrophonePlatform(
+            deviceAttemptsBuilder: {
+                [selected, MeetingInputDeviceAttempt(source: .builtIn, deviceID: 20)]
+            },
+            inputDeviceSetter: { deviceID, _ in
+                selectedDevices.withLock { $0.append(deviceID) }
+                return true
+            },
+            startupReadinessTimeout: 0,
+            bluetoothInputState: { $0 == 10 },
+            engineStarter: { engine, _, _, tapHandler in
+                let count = engines.withLock { engines in
+                    engines.append(engine)
+                    return engines.count
+                }
+                if count == 2 {
+                    tapHandler(buffer.buffer, AVAudioTime(hostTime: 1))
+                }
+            }
+        )
+        defer { platform.stopEngine() }
+
+        try platform.configureAndStart(vpioEnabled: false, bufferSize: 256, tapHandler: { _, _ in })
+
+        XCTAssertEqual(selectedDevices.withLock { $0 }, [10, 10])
+        XCTAssertEqual(platform.lastSucceededAttempt, selected)
+        let startedEngines = engines.withLock { $0 }
+        XCTAssertEqual(startedEngines.count, 2)
+        XCTAssertFalse(startedEngines[0] === startedEngines[1])
+    }
+
+    func testReadinessFailureDoesNotCarryIntoNextSubscription() async throws {
+        let engines = OSAllocatedUnfairLock(initialState: [AVAudioEngine]())
+        let buffer = UncheckedSendableAudioPCMBuffer(makeStartupReadinessBuffer(nonZero: true))
+        let platform = AVAudioEngineMicrophonePlatform(
+            deviceAttemptsBuilder: {
+                [MeetingInputDeviceAttempt(source: .selected(uid: "bose"), deviceID: 10)]
+            },
+            inputDeviceSetter: { _, _ in true },
+            startupReadinessTimeout: 0,
+            bluetoothInputState: { _ in true },
+            engineStarter: { engine, _, _, tapHandler in
+                let count = engines.withLock { engines in
+                    engines.append(engine)
+                    return engines.count
+                }
+                // First subscription exhausts both attempts. The next one gets
+                // its own reset budget and succeeds on its second engine.
+                if count == 4 {
+                    tapHandler(buffer.buffer, AVAudioTime(hostTime: 1))
+                }
+            }
+        )
+        let stream = SharedMicrophoneStream(platform: platform, bufferSize: 256)
+
+        do {
+            _ = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+            XCTFail("Both readiness deadlines must expire before subscription fails")
+        } catch let error as SharedMicrophoneStream.SubscribeError {
+            guard case .engineStartFailed = error else { return XCTFail("Unexpected error: \(error)") }
+        }
+        XCTAssertEqual(engines.withLock { $0.count }, 2)
+        XCTAssertEqual(stream.diagnostics.subscriberCount, 0)
+        XCTAssertFalse(stream.diagnostics.engineRunning)
+        XCTAssertFalse(platform.isEngineRunning)
+        XCTAssertNil(platform.lastSucceededAttempt)
+        XCTAssertFalse(platform.preparedEngineStateForTesting.prepared)
+
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+        XCTAssertTrue(stream.diagnostics.engineRunning)
+        XCTAssertEqual(stream.diagnostics.subscriberCount, 1)
+        let startedEngines = engines.withLock { $0 }
+        XCTAssertEqual(startedEngines.count, 4)
+        XCTAssertEqual(Set(startedEngines.map(ObjectIdentifier.init)).count, 4)
+        await stream.unsubscribe(token)
+    }
+
+    func testUnresolvedRouteReadinessTimeoutRebuildsBeforeFailing() throws {
+        let engines = OSAllocatedUnfairLock(initialState: [AVAudioEngine]())
+        let buffer = UncheckedSendableAudioPCMBuffer(makeStartupReadinessBuffer(nonZero: true))
+        let platform = AVAudioEngineMicrophonePlatform(
+            startupReadinessTimeout: 0,
+            engineStarter: { engine, _, _, tapHandler in
+                let count = engines.withLock { engines in
+                    engines.append(engine)
+                    return engines.count
+                }
+                if count == 2 {
+                    tapHandler(buffer.buffer, AVAudioTime(hostTime: 1))
+                }
+            }
+        )
+        defer { platform.stopEngine() }
+
+        try platform.configureAndStart(vpioEnabled: false, bufferSize: 256, tapHandler: { _, _ in })
+
+        XCTAssertTrue(platform.isEngineRunning)
+        let startedEngines = engines.withLock { $0 }
+        XCTAssertEqual(startedEngines.count, 2)
+        XCTAssertFalse(startedEngines[0] === startedEngines[1])
+    }
+
+    func testPreparedReadinessTimeoutUsesOnlyOneFreshEngineRetry() {
+        let engines = OSAllocatedUnfairLock(initialState: [AVAudioEngine]())
+        let platform = AVAudioEngineMicrophonePlatform(
+            deviceAttemptsBuilder: {
+                [MeetingInputDeviceAttempt(source: .builtIn, deviceID: 20)]
+            },
+            inputDeviceSetter: { _, _ in true },
+            startupReadinessTimeout: 0,
+            bluetoothInputState: { _ in false },
+            engineStarter: { engine, _, _, _ in
+                engines.withLock { $0.append(engine) }
+            }
+        )
+        defer { platform.stopEngine() }
+        platform.prepare(vpioEnabled: false, bufferSize: 256, tapHandler: { _, _ in })
+        let preparedEngine = platform.preparedEngineStateForTesting.engine
+
+        XCTAssertThrowsError(
+            try platform.configureAndStart(vpioEnabled: false, bufferSize: 256, tapHandler: { _, _ in })
+        ) { error in
+            XCTAssertEqual(error as? AVAudioEngineMicrophonePlatformError, .initialReadinessTimedOut)
+        }
+
+        let startedEngines = engines.withLock { $0 }
+        XCTAssertEqual(startedEngines.count, 2, "Prepared start plus one reset, not a third readiness wait")
+        XCTAssertTrue(startedEngines.first === preparedEngine)
+        XCTAssertFalse(startedEngines.last === preparedEngine)
+        XCTAssertFalse(platform.isEngineRunning)
+        XCTAssertFalse(platform.preparedEngineStateForTesting.prepared)
+    }
+
+    func testEachEngineGetsItsOwnReadinessDeadline() {
+        let startTimes = OSAllocatedUnfairLock(initialState: [TimeInterval]())
+        let timeout: TimeInterval = 0.02
+        let platform = AVAudioEngineMicrophonePlatform(
+            startupReadinessTimeout: timeout,
+            engineStarter: { _, _, _, _ in
+                startTimes.withLock { $0.append(ProcessInfo.processInfo.systemUptime) }
+            }
+        )
+        defer { platform.stopEngine() }
+
+        XCTAssertThrowsError(
+            try platform.configureAndStart(vpioEnabled: false, bufferSize: 256, tapHandler: { _, _ in })
+        ) { error in
+            XCTAssertEqual(error as? AVAudioEngineMicrophonePlatformError, .initialReadinessTimedOut)
+        }
+        let endedAt = ProcessInfo.processInfo.systemUptime
+        let times = startTimes.withLock { $0 }
+        XCTAssertEqual(times.count, 2)
+        guard times.count == 2 else { return }
+        XCTAssertGreaterThanOrEqual(times[1] - times[0], timeout)
+        XCTAssertGreaterThanOrEqual(endedAt - times[1], timeout)
+        XCTAssertFalse(platform.isEngineRunning)
+    }
+
+    func testLateBufferFromTimedOutEngineCannotSatisfyRetryReadiness() {
+        let previousHandler = OSAllocatedUnfairLock<SharedMicrophoneStream.BufferHandler?>(initialState: nil)
+        let startCount = OSAllocatedUnfairLock(initialState: 0)
+        let deliveredCount = OSAllocatedUnfairLock(initialState: 0)
+        let buffer = UncheckedSendableAudioPCMBuffer(makeStartupReadinessBuffer(nonZero: true))
+        let platform = AVAudioEngineMicrophonePlatform(
+            startupReadinessTimeout: 0,
+            engineStarter: { _, _, _, tapHandler in
+                startCount.withLock { $0 += 1 }
+                let oldHandler = previousHandler.withLock { handler in
+                    let old = handler
+                    handler = tapHandler
+                    return old
+                }
+                oldHandler?(buffer.buffer, AVAudioTime(hostTime: 1))
+            }
+        )
+        defer { platform.stopEngine() }
+
+        XCTAssertThrowsError(
+            try platform.configureAndStart(
+                vpioEnabled: false,
+                bufferSize: 256,
+                tapHandler: { _, _ in deliveredCount.withLock { $0 += 1 } }
+            )
+        ) { error in
+            XCTAssertEqual(error as? AVAudioEngineMicrophonePlatformError, .initialReadinessTimedOut)
+        }
+
+        XCTAssertEqual(startCount.withLock { $0 }, 2)
+        XCTAssertEqual(deliveredCount.withLock { $0 }, 0)
+        XCTAssertFalse(platform.isEngineRunning)
+    }
+
+    func testFormatErrorAfterReadinessResetDoesNotBlockNextStart() throws {
+        let engines = OSAllocatedUnfairLock(initialState: [AVAudioEngine]())
+        let handlers = OSAllocatedUnfairLock(initialState: [SharedMicrophoneStream.BufferHandler]())
+        let buffer = UncheckedSendableAudioPCMBuffer(makeStartupReadinessBuffer(nonZero: true))
+        let deliveredCount = OSAllocatedUnfairLock(initialState: 0)
+        let platform = AVAudioEngineMicrophonePlatform(
+            deviceAttemptsBuilder: {
+                [MeetingInputDeviceAttempt(source: .selected(uid: "bose"), deviceID: 10)]
+            },
+            inputDeviceSetter: { _, _ in true },
+            startupReadinessTimeout: 0,
+            bluetoothInputState: { _ in true },
+            engineStarter: { engine, _, _, tapHandler in
+                handlers.withLock { $0.append(tapHandler) }
+                let count = engines.withLock { engines in
+                    engines.append(engine)
+                    return engines.count
+                }
+                if count == 2 {
+                    throw NSError(domain: NSOSStatusErrorDomain, code: -10868)
+                }
+                if count == 3 {
+                    tapHandler(buffer.buffer, AVAudioTime(hostTime: 1))
+                }
+            }
+        )
+        defer { platform.stopEngine() }
+        let handler: SharedMicrophoneStream.BufferHandler = { _, _ in
+            deliveredCount.withLock { $0 += 1 }
+        }
+
+        XCTAssertThrowsError(
+            try platform.configureAndStart(vpioEnabled: false, bufferSize: 256, tapHandler: handler)
+        ) { error in
+            XCTAssertEqual((error as NSError).code, -10868)
+        }
+        XCTAssertFalse(platform.isEngineRunning)
+        XCTAssertNil(platform.inputFormat)
+
+        try platform.configureAndStart(vpioEnabled: false, bufferSize: 256, tapHandler: handler)
+        let staleHandlers = handlers.withLock { Array($0.prefix(2)) }
+        for staleHandler in staleHandlers {
+            staleHandler(buffer.buffer, AVAudioTime(hostTime: 2))
+        }
+
+        XCTAssertTrue(platform.isEngineRunning)
+        XCTAssertEqual(engines.withLock { Set($0.map(ObjectIdentifier.init)).count }, 3)
+        XCTAssertEqual(deliveredCount.withLock { $0 }, 1, "Failed engines must not retain a live callback")
+    }
+
     func testStartFallsBackWhenPreferredRouteProducesNoBuffer() throws {
         let invocationCount = OSAllocatedUnfairLock(initialState: 0)
         let engines = OSAllocatedUnfairLock(initialState: [AVAudioEngine]())
@@ -28,7 +350,7 @@ final class MicrophoneEnginePlatformStartupReadinessTests: XCTestCase {
                     return value
                 }
                 engines.withLock { $0.append(engine) }
-                if invocation == 2 {
+                if invocation == 3 {
                     tapHandler(buffer.buffer, AVAudioTime(hostTime: 1))
                 }
             }
@@ -41,14 +363,14 @@ final class MicrophoneEnginePlatformStartupReadinessTests: XCTestCase {
             tapHandler: { _, _ in }
         )
 
-        XCTAssertEqual(invocationCount.withLock { $0 }, 2)
+        XCTAssertEqual(invocationCount.withLock { $0 }, 3)
         XCTAssertEqual(
             platform.lastSucceededAttempt,
             .implicitSystemDefault(resolvedDeviceID: 20)
         )
         let startedEngines = engines.withLock { $0 }
-        XCTAssertEqual(startedEngines.count, 2)
-        XCTAssertFalse(startedEngines[0] === startedEngines[1])
+        XCTAssertEqual(startedEngines.count, 3)
+        XCTAssertEqual(Set(startedEngines.map(ObjectIdentifier.init)).count, 3)
     }
 
     func testStartFailsWhenNoRouteProducesABuffer() {
@@ -84,7 +406,7 @@ final class MicrophoneEnginePlatformStartupReadinessTests: XCTestCase {
             )
         }
         XCTAssertFalse(platform.isEngineRunning)
-        XCTAssertEqual(invocationCount.withLock { $0 }, 2)
+        XCTAssertEqual(invocationCount.withLock { $0 }, 4)
     }
 
     func testMissingRouteIdentityDoesNotAcceptZeroFilledBuffer() {
@@ -139,7 +461,7 @@ final class MicrophoneEnginePlatformStartupReadinessTests: XCTestCase {
                     value += 1
                     return value
                 }
-                let buffer = invocation == 1 ? referenceOnlyBuffer : microphoneBuffer
+                let buffer = invocation <= 2 ? referenceOnlyBuffer : microphoneBuffer
                 tapHandler(buffer.buffer, AVAudioTime(hostTime: 1))
             }
         )
@@ -153,7 +475,7 @@ final class MicrophoneEnginePlatformStartupReadinessTests: XCTestCase {
             }
         )
 
-        XCTAssertEqual(invocationCount.withLock { $0 }, 2)
+        XCTAssertEqual(invocationCount.withLock { $0 }, 3)
         XCTAssertEqual(
             platform.lastSucceededAttempt,
             MeetingInputDeviceAttempt(source: .builtIn, deviceID: 20)
@@ -194,7 +516,7 @@ final class MicrophoneEnginePlatformStartupReadinessTests: XCTestCase {
             }
         )
 
-        XCTAssertEqual(invocationCount.withLock { $0 }, 2)
+        XCTAssertEqual(invocationCount.withLock { $0 }, 3)
         XCTAssertEqual(
             platform.lastSucceededAttempt,
             MeetingInputDeviceAttempt(source: .builtIn, deviceID: 20)
@@ -528,4 +850,12 @@ private func makeStartupReadinessBuffer(
         buffer.floatChannelData?[0][0] = 0.001
     }
     return buffer
+}
+
+private final class WeakReadinessEngine: @unchecked Sendable {
+    weak var engine: AVAudioEngine?
+
+    init(_ engine: AVAudioEngine) {
+        self.engine = engine
+    }
 }

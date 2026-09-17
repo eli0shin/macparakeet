@@ -357,13 +357,13 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
     private let deviceAttemptsBuilder: DeviceAttemptsBuilder?
     private let inputDeviceSetter: InputDeviceSetter
     private let engineStarter: EngineStarter?
+    private let operationDiagnostics: MicrophoneOperationDiagnostics
     /// The production schedule spans 31.5 seconds so a Bluetooth handoff that
     /// takes ~20 seconds to settle remains recoverable without an unbounded loop.
     private static let defaultRecoveryRetryDelays: [TimeInterval] = [0.5, 1, 2, 4, 8, 16]
     private static let defaultRecoveryRouteChangeDebounce: TimeInterval = 0.5
-    /// Healthy routes normally deliver their first tap buffer in 100-200 ms.
-    /// One second leaves ample settle time without allowing a silent preferred
-    /// route to consume the meeting recorder's higher-level startup deadline.
+    /// One second without usable frames triggers a fresh-engine retry on the
+    /// same route. Only a second timeout permits fallback or startup failure.
     private static let defaultStartupReadinessTimeout: TimeInterval = 1
     /// Tap callbacks normally arrive many times per second. Five seconds is
     /// long enough to ignore route-settle jitter while matching the existing
@@ -383,6 +383,8 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
     private let zeroFilledTimeout: TimeInterval
     private let callbackStallCheckInterval: TimeInterval
     private var audioEngine = AVAudioEngine()
+    private var engineID = UUID()
+    private var routeSource = "unresolved"
     private var running: Bool = false
     private var lastSucceededAttemptLocked: MeetingInputDeviceAttempt?
     /// Token for the `AVAudioEngine.configurationChangeNotification` observer
@@ -487,6 +489,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         self.deviceAttemptsBuilder = deviceAttemptsBuilder
         self.inputDeviceSetter = inputDeviceSetter
         self.engineStarter = nil
+        self.operationDiagnostics = MicrophoneOperationDiagnostics()
         self.recoveryRetryDelays = Self.defaultRecoveryRetryDelays
         self.recoveryRouteChangeDebounce = Self.defaultRecoveryRouteChangeDebounce
         self.startupReadinessTimeout = Self.defaultStartupReadinessTimeout
@@ -514,11 +517,13 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         callbackStallTimeout: TimeInterval = AVAudioEngineMicrophonePlatform.defaultCallbackStallTimeout,
         zeroFilledTimeout: TimeInterval = AVAudioEngineMicrophonePlatform.defaultZeroFilledTimeout,
         callbackStallCheckInterval: TimeInterval = AVAudioEngineMicrophonePlatform.defaultCallbackStallCheckInterval,
+        operationDiagnostics: MicrophoneOperationDiagnostics = MicrophoneOperationDiagnostics(),
         engineStarter: @escaping EngineStarter
     ) {
         self.deviceAttemptsBuilder = deviceAttemptsBuilder
         self.inputDeviceSetter = inputDeviceSetter
         self.engineStarter = engineStarter
+        self.operationDiagnostics = operationDiagnostics
         self.recoveryRetryDelays = recoveryRetryDelays.map { max(0, $0) }
         self.recoveryRouteChangeDebounce = max(0, recoveryRouteChangeDebounce)
         self.startupReadinessTimeout = max(0, startupReadinessTimeout)
@@ -599,7 +604,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         tapHandler: @escaping @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void
     ) throws {
         startupCancellationGeneration.withLock { $0 &+= 1 }
-        try queue.sync {
+        try onEngineQueue("configure_and_start") {
             cancelRecoveryLocked(clearActiveRequest: true)
             let request = StartRequest(
                 vpioEnabled: vpioEnabled,
@@ -640,7 +645,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         bufferSize: AVAudioFrameCount,
         tapHandler: @escaping @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void
     ) {
-        queue.sync {
+        onEngineQueue("prepare") {
             guard !running, !prepared else { return }
             // Route observation stays active even when preparation is currently
             // suppressed, so a later move from Bluetooth/unresolved to a safe
@@ -650,7 +655,9 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
             // route: walking past it to a later built-in fallback would change
             // which device a real start uses. The attempt retains its routing
             // mode, including implicit System Default.
-            guard let routeSnapshot = deviceAttemptsBuilder?(), !routeSnapshot.isEmpty else {
+            guard let routeSnapshot = engineOperation("resolve_devices", { deviceAttemptsBuilder?() }),
+                !routeSnapshot.isEmpty
+            else {
                 AudioCaptureDiagnostics.append(
                     "shared_mic_engine_prepare_skipped reason=unresolved_route"
                 )
@@ -688,7 +695,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
     public func stopEngine() {
         // Cancel a source-readiness wait before waiting for the platform queue.
         startupCancellationGeneration.withLock { $0 &+= 1 }
-        queue.sync {
+        onEngineQueue("stop") {
             // Explicit stop always wins, including while the physical engine is
             // down between recovery attempts.
             cancelRecoveryLocked(clearActiveRequest: true)
@@ -712,6 +719,28 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
 
     // MARK: - Internals (queue-held)
 
+    private func onEngineQueue<T>(_ operation: String, _ body: () throws -> T) rethrows -> T {
+        let waiting = operationDiagnostics.begin("platform_queue_wait", context: "request=\(operation)")
+        return try queue.sync {
+            waiting.finish()
+            return try engineOperation(operation, body)
+        }
+    }
+
+    private func engineOperation<T>(_ operation: String, _ body: () throws -> T) rethrows -> T {
+        try operationDiagnostics.measure(
+            operation,
+            context: "engine_id=\(engineID.uuidString) source=\(routeSource)",
+            body
+        )
+    }
+
+    private func replaceAudioEngineLocked() {
+        let replacement = engineOperation("engine_create") { AVAudioEngine() }
+        engineOperation("engine_replace") { audioEngine = replacement }
+        engineID = UUID()
+    }
+
     /// Queue-held body of `configureAndStart`. Extracted so that
     /// `recoverFromConfigurationChangeLocked` (already on the platform queue)
     /// can re-run the full start sequence — including the device-fallback
@@ -731,7 +760,9 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
             installRouteChangeObserversLocked()
         }
         let defaultInputGenerationBeforeRouteSnapshot = defaultInputChangeGeneration.withLock { $0 }
-        let currentRouteSnapshot = startNow ? deviceAttemptsBuilder?() : nil
+        routeSource = "unresolved"
+        let currentRouteSnapshot = startNow ? engineOperation("resolve_devices", { deviceAttemptsBuilder?() }) : nil
+        var timedOutPreparedAttempt: MeetingInputDeviceAttempt?
         // Fast path: a matching prepared engine (device + format + tap already
         // paid, same VPIO/buffer/device) — just start it.
         if startNow, !running, prepared,
@@ -742,15 +773,25 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                 bluetoothInputState: bluetoothInputState
             )
         {
-            if try goPreparedLocked(
-                tapHandler: tapHandler,
-                expectedDefaultInputGeneration: preparedAttempt?.usesImplicitSystemDefault == true
-                    ? defaultInputGenerationBeforeRouteSnapshot
-                    : nil,
-                startupCancellationGeneration: cancellationGeneration
-            ) {
-                lastSucceededAttemptLocked = preparedAttempt
-                return
+            let attempt = preparedAttempt
+            routeSource = attempt?.source.logValue ?? "unresolved"
+            do {
+                if try goPreparedLocked(
+                    tapHandler: tapHandler,
+                    expectedDefaultInputGeneration: attempt?.usesImplicitSystemDefault == true
+                        ? defaultInputGenerationBeforeRouteSnapshot
+                        : nil,
+                    startupCancellationGeneration: cancellationGeneration
+                ) {
+                    lastSucceededAttemptLocked = attempt
+                    return
+                }
+            } catch AVAudioEngineMicrophonePlatformError.initialReadinessTimedOut {
+                // The cold start below is already this route's reset attempt.
+                timedOutPreparedAttempt = attempt
+                AudioCaptureDiagnostics.append(
+                    "shared_mic_engine_startup_reset reason=no_first_buffer retry=1 prepared=true"
+                )
             }
         }
         // Anything else is a full (re)configure. A prepared engine already has
@@ -771,17 +812,19 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         let attempts = attemptsOverride ?? currentRouteSnapshot ?? []
         if attempts.isEmpty {
             // No device chain — use whatever the engine's input node picks.
-            try startConfiguredEngineLocked(
-                vpioEnabled: vpioEnabled,
-                bufferSize: bufferSize,
-                tapHandler: tapHandler,
-                startNow: startNow,
-                requiresNonZeroSignal: true,
-                expectedDefaultInputGeneration: startNow
-                    ? defaultInputGenerationBeforeRouteSnapshot
-                    : nil,
-                startupCancellationGeneration: cancellationGeneration
-            )
+            try retryStartupReadinessOnceLocked(cancellationGeneration: cancellationGeneration) {
+                try startConfiguredEngineLocked(
+                    vpioEnabled: vpioEnabled,
+                    bufferSize: bufferSize,
+                    tapHandler: tapHandler,
+                    startNow: startNow,
+                    requiresNonZeroSignal: true,
+                    expectedDefaultInputGeneration: startNow
+                        ? defaultInputGenerationBeforeRouteSnapshot
+                        : nil,
+                    startupCancellationGeneration: cancellationGeneration
+                )
+            }
             if startNow {
                 lastSucceededAttemptLocked = nil
             } else {
@@ -796,49 +839,59 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
 
         var lastError: Error?
         for attempt in attempts {
-            let transport = AudioCaptureDiagnostics.deviceTransportLabel(attempt.deviceID)
+            routeSource = attempt.source.logValue
+            let transport = engineOperation("resolve_transport") {
+                AudioCaptureDiagnostics.deviceTransportLabel(attempt.deviceID)
+            }
             let deviceLabel = AudioCaptureDiagnostics.deviceLabel(attempt.deviceID)
             var setDeviceMilliseconds = "0.000"
-            if let deviceID = attempt.explicitDeviceID {
-                let setDeviceStartedAt = Self.nowNanos()
-                let didSetDevice = inputDeviceSetter(deviceID, audioEngine)
-                let setDeviceEndedAt = Self.nowNanos()
-                setDeviceMilliseconds = Self.elapsedMilliseconds(
-                    from: setDeviceStartedAt,
-                    to: setDeviceEndedAt
-                )
-                guard didSetDevice else {
-                    logger.warning(
-                        "shared_mic_engine_input_device_set_failed source=\(attempt.source.logValue, privacy: .public) transport=\(transport, privacy: .public)"
-                    )
-                    AudioCaptureDiagnostics.append(
-                        "shared_mic_engine_input_device_set_failed source=\(attempt.source.logValue) device=\(deviceLabel) transport=\(transport) set_device_ms=\(setDeviceMilliseconds)"
-                    )
-                    if lastError == nil {
-                        lastError = AVAudioEngineMicrophonePlatformError.deviceSetFailed(attempt)
-                    }
-                    resetEngineLocked()
-                    continue
-                }
-            }
-
             do {
-                let startEngineStartedAt = Self.nowNanos()
-                try startConfiguredEngineLocked(
-                    vpioEnabled: vpioEnabled,
-                    bufferSize: bufferSize,
-                    tapHandler: tapHandler,
-                    startNow: startNow,
-                    // Core Audio can temporarily hide the default device,
-                    // transport, or aggregate topology while a route settles.
-                    // Keep that uncertain window strict so zero-filled
-                    // Bluetooth PCM cannot be mistaken for a ready source.
-                    requiresNonZeroSignal: attempt.deviceID.flatMap(bluetoothInputState) ?? true,
-                    expectedDefaultInputGeneration: startNow && attempt.usesImplicitSystemDefault
-                        ? defaultInputGenerationBeforeRouteSnapshot
-                        : nil,
-                    startupCancellationGeneration: cancellationGeneration
-                )
+                var startEngineStartedAt = Self.nowNanos()
+                try retryStartupReadinessOnceLocked(
+                    cancellationGeneration: cancellationGeneration,
+                    retryAllowed: attempt != timedOutPreparedAttempt
+                ) {
+                    if let deviceID = attempt.explicitDeviceID {
+                        let setDeviceStartedAt = Self.nowNanos()
+                        let didSetDevice = engineOperation("set_input_device") {
+                            inputDeviceSetter(deviceID, audioEngine)
+                        }
+                        let setDeviceEndedAt = Self.nowNanos()
+                        setDeviceMilliseconds = Self.elapsedMilliseconds(
+                            from: setDeviceStartedAt,
+                            to: setDeviceEndedAt
+                        )
+                        guard didSetDevice else {
+                            logger.warning(
+                                "shared_mic_engine_input_device_set_failed source=\(attempt.source.logValue, privacy: .public) transport=\(transport, privacy: .public)"
+                            )
+                            AudioCaptureDiagnostics.append(
+                                "shared_mic_engine_input_device_set_failed source=\(attempt.source.logValue) device=\(deviceLabel) transport=\(transport) set_device_ms=\(setDeviceMilliseconds)"
+                            )
+                            resetEngineLocked()
+                            throw AVAudioEngineMicrophonePlatformError.deviceSetFailed(attempt)
+                        }
+                    }
+
+                    startEngineStartedAt = Self.nowNanos()
+                    try startConfiguredEngineLocked(
+                        vpioEnabled: vpioEnabled,
+                        bufferSize: bufferSize,
+                        tapHandler: tapHandler,
+                        startNow: startNow,
+                        // Core Audio can temporarily hide the default device,
+                        // transport, or aggregate topology while a route settles.
+                        // Keep that uncertain window strict so zero-filled
+                        // Bluetooth PCM cannot be mistaken for a ready source.
+                        requiresNonZeroSignal: engineOperation("resolve_signal_policy") {
+                            attempt.deviceID.flatMap(bluetoothInputState) ?? true
+                        },
+                        expectedDefaultInputGeneration: startNow && attempt.usesImplicitSystemDefault
+                            ? defaultInputGenerationBeforeRouteSnapshot
+                            : nil,
+                        startupCancellationGeneration: cancellationGeneration
+                    )
+                }
                 let startEngineEndedAt = Self.nowNanos()
                 let startEngineMilliseconds = Self.elapsedMilliseconds(
                     from: startEngineStartedAt,
@@ -874,6 +927,12 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                 if error as? AVAudioEngineMicrophonePlatformError == .startupCancelled {
                     throw error
                 }
+                if let platformError = error as? AVAudioEngineMicrophonePlatformError,
+                    case .deviceSetFailed = platformError
+                {
+                    if lastError == nil { lastError = error }
+                    continue
+                }
                 lastError = error
                 let errorType = AudioCaptureDiagnostics.errorType(error)
                 logger.warning(
@@ -888,6 +947,34 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         }
 
         throw lastError ?? AVAudioEngineMicrophonePlatformError.noDeviceAvailable
+    }
+
+    /// The failed start has already discarded its engine and tap. Re-run device
+    /// selection as well as startup so an explicit input is applied to the new
+    /// engine. The retry budget belongs to this call, never to a device or a
+    /// later subscription. Cancellation and other startup errors do not retry.
+    private func retryStartupReadinessOnceLocked(
+        cancellationGeneration: UInt64,
+        retryAllowed: Bool = true,
+        _ start: () throws -> Void
+    ) throws {
+        guard startupCancellationGeneration.withLock({ $0 }) == cancellationGeneration else {
+            throw AVAudioEngineMicrophonePlatformError.startupCancelled
+        }
+        do {
+            try start()
+        } catch AVAudioEngineMicrophonePlatformError.initialReadinessTimedOut {
+            guard retryAllowed else {
+                throw AVAudioEngineMicrophonePlatformError.initialReadinessTimedOut
+            }
+            guard startupCancellationGeneration.withLock({ $0 }) == cancellationGeneration else {
+                throw AVAudioEngineMicrophonePlatformError.startupCancelled
+            }
+            AudioCaptureDiagnostics.append(
+                "shared_mic_engine_startup_reset reason=no_first_buffer retry=1"
+            )
+            try start()
+        }
     }
 
     private func startConfiguredEngineLocked(
@@ -930,13 +1017,15 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
             installedTapHandler.invoke(buffer: buffer, time: time)
         }
         let startupConfigurationGeneration = beginStartupObservationLocked()
+        tapHandlerBox = installedTapHandler
         do {
-            try engineStarter(audioEngine, vpioEnabled, bufferSize, monitoredTapHandler)
+            try engineOperation("engine_start") {
+                try engineStarter(audioEngine, vpioEnabled, bufferSize, monitoredTapHandler)
+            }
         } catch {
             replaceEngineAfterFailureLocked()
             throw error
         }
-        tapHandlerBox = installedTapHandler
         do {
             try waitForStartupReadinessLocked(
                 tapHandler: installedTapHandler,
@@ -980,11 +1069,13 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         var outputFormatMilliseconds = "0.000"
         var installTapMilliseconds = "0.000"
         var audioEngineStartMilliseconds = "0.000"
-        let inputNode = audioEngine.inputNode
+        let inputNode = engineOperation("input_node") { audioEngine.inputNode }
         do {
             let phaseStartedAt = Self.nowNanos()
-            try catchingObjCException {
-                try inputNode.setVoiceProcessingEnabled(vpioEnabled)
+            try engineOperation("set_voice_processing") {
+                try catchingObjCException {
+                    try inputNode.setVoiceProcessingEnabled(vpioEnabled)
+                }
             }
             setVPIOMilliseconds = Self.elapsedMilliseconds(
                 from: phaseStartedAt,
@@ -999,11 +1090,13 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         if vpioEnabled, #available(macOS 14.0, *) {
             do {
                 let phaseStartedAt = Self.nowNanos()
-                try catchingObjCException {
-                    inputNode.voiceProcessingOtherAudioDuckingConfiguration = .init(
-                        enableAdvancedDucking: false,
-                        duckingLevel: .min
-                    )
+                try engineOperation("set_ducking") {
+                    try catchingObjCException {
+                        inputNode.voiceProcessingOtherAudioDuckingConfiguration = .init(
+                            enableAdvancedDucking: false,
+                            duckingLevel: .min
+                        )
+                    }
                 }
                 duckingMilliseconds = Self.elapsedMilliseconds(
                     from: phaseStartedAt,
@@ -1020,8 +1113,10 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                 // physical device, which every other app capturing the same
                 // mic (e.g. a live Zoom call) inherits. Keep the experimental
                 // VPIO path's side effects inside this process.
-                try catchingObjCException {
-                    inputNode.isVoiceProcessingAGCEnabled = false
+                try engineOperation("disable_agc") {
+                    try catchingObjCException {
+                        inputNode.isVoiceProcessingAGCEnabled = false
+                    }
                 }
             } catch {
                 let errorType = AudioCaptureDiagnostics.errorType(error)
@@ -1034,8 +1129,8 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         let liveFormat: AVAudioFormat
         do {
             let phaseStartedAt = Self.nowNanos()
-            liveFormat = try catchingObjCException {
-                inputNode.outputFormat(forBus: 0)
+            liveFormat = try engineOperation("input_output_format") {
+                try catchingObjCException { inputNode.outputFormat(forBus: 0) }
             }
             outputFormatMilliseconds = Self.elapsedMilliseconds(
                 from: phaseStartedAt,
@@ -1064,13 +1159,15 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         )
         do {
             let phaseStartedAt = Self.nowNanos()
-            try catchingObjCException {
-                inputNode.installTap(
-                    onBus: 0,
-                    bufferSize: bufferSize,
-                    format: nil
-                ) { buffer, time in
-                    installedTapHandler.invoke(buffer: buffer, time: time)
+            try engineOperation("install_tap") {
+                try catchingObjCException {
+                    inputNode.installTap(
+                        onBus: 0,
+                        bufferSize: bufferSize,
+                        format: nil
+                    ) { buffer, time in
+                        installedTapHandler.invoke(buffer: buffer, time: time)
+                    }
                 }
             }
             tapHandlerBox = installedTapHandler
@@ -1079,11 +1176,11 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                 to: Self.nowNanos()
             )
         } catch {
-            try? catchingObjCException {
-                inputNode.removeTap(onBus: 0)
+            try? engineOperation("remove_tap") {
+                try catchingObjCException { inputNode.removeTap(onBus: 0) }
             }
-            try? catchingObjCException {
-                try inputNode.setVoiceProcessingEnabled(false)
+            try? engineOperation("disable_voice_processing") {
+                try catchingObjCException { try inputNode.setVoiceProcessingEnabled(false) }
             }
             replaceEngineAfterFailureLocked()
             throw error
@@ -1095,8 +1192,8 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         guard startNow else {
             // Pre-allocate render resources so the eventual `start()` is cheaper.
             // Best-effort: a throw here just means start() does the work instead.
-            try? catchingObjCException {
-                audioEngine.prepare()
+            try? engineOperation("engine_prepare") {
+                try catchingObjCException { audioEngine.prepare() }
             }
             let preparedMilliseconds = Self.elapsedMilliseconds(from: totalStartedAt, to: Self.nowNanos())
             AudioCaptureDiagnostics.append(
@@ -1109,19 +1206,19 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         let startupConfigurationGeneration = beginStartupObservationLocked()
         do {
             let phaseStartedAt = Self.nowNanos()
-            try catchingObjCException {
-                try audioEngine.start()
+            try engineOperation("engine_start") {
+                try catchingObjCException { try audioEngine.start() }
             }
             audioEngineStartMilliseconds = Self.elapsedMilliseconds(
                 from: phaseStartedAt,
                 to: Self.nowNanos()
             )
         } catch {
-            try? catchingObjCException {
-                inputNode.removeTap(onBus: 0)
+            try? engineOperation("remove_tap") {
+                try catchingObjCException { inputNode.removeTap(onBus: 0) }
             }
-            try? catchingObjCException {
-                try inputNode.setVoiceProcessingEnabled(false)
+            try? engineOperation("disable_voice_processing") {
+                try catchingObjCException { try inputNode.setVoiceProcessingEnabled(false) }
             }
             replaceEngineAfterFailureLocked()
             throw error
@@ -1181,7 +1278,8 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
 
     /// Start a prepared engine (only the `audioEngine.start()` cost). Returns
     /// false if it fails, leaving the platform un-prepared so the caller does a
-    /// full configure.
+    /// full configure. A readiness timeout is thrown so that full configure
+    /// counts as the route's one reset attempt. Cancellation is also thrown.
     private func goPreparedLocked(
         tapHandler: @escaping @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void,
         expectedDefaultInputGeneration: UInt64?,
@@ -1211,15 +1309,17 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                     buffer, time in
                     tapHandlerBox.invoke(buffer: buffer, time: time)
                 }
-                try engineStarter(
-                    audioEngine,
-                    preparedVPIO,
-                    preparedBufferSize,
-                    monitoredTapHandler
-                )
+                try engineOperation("engine_start") {
+                    try engineStarter(
+                        audioEngine,
+                        preparedVPIO,
+                        preparedBufferSize,
+                        monitoredTapHandler
+                    )
+                }
             } else {
-                try catchingObjCException {
-                    try audioEngine.start()
+                try engineOperation("engine_start") {
+                    try catchingObjCException { try audioEngine.start() }
                 }
             }
         } catch {
@@ -1238,7 +1338,9 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                 "shared_mic_engine_prepared_discarded reason=\(wasCancelled ? "cancelled" : "no_first_buffer")"
             )
             replaceEngineAfterFailureLocked()
-            if wasCancelled { throw error }
+            if wasCancelled || error as? AVAudioEngineMicrophonePlatformError == .initialReadinessTimedOut {
+                throw error
+            }
             return false
         }
         let readinessConfigurationGeneration =
@@ -1279,25 +1381,25 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
             removeRouteChangeObserversLocked()
         }
         guard engineStarter == nil else {
-            audioEngine = AVAudioEngine()
+            replaceAudioEngineLocked()
             running = false
             lastSucceededAttemptLocked = nil
             return
         }
-        let inputNode = audioEngine.inputNode
-        try? catchingObjCException {
-            inputNode.removeTap(onBus: 0)
+        let inputNode = engineOperation("input_node") { audioEngine.inputNode }
+        try? engineOperation("remove_tap") {
+            try catchingObjCException { inputNode.removeTap(onBus: 0) }
         }
-        try? catchingObjCException {
-            audioEngine.stop()
+        try? engineOperation("engine_stop") {
+            try catchingObjCException { audioEngine.stop() }
         }
-        try? catchingObjCException {
-            try inputNode.setVoiceProcessingEnabled(false)
+        try? engineOperation("disable_voice_processing") {
+            try catchingObjCException { try inputNode.setVoiceProcessingEnabled(false) }
         }
         // Replace the engine. Releasing the old instance tears down the
         // VPAU aggregate device coreaudiod created for it, so a sibling
         // AVAudioEngine in the same process doesn't inherit duplex layout.
-        audioEngine = AVAudioEngine()
+        replaceAudioEngineLocked()
         running = false
         lastSucceededAttemptLocked = nil
     }
@@ -1316,10 +1418,10 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         tapHandlerBox?.clear()
         tapHandlerBox = nil
         removeConfigurationChangeObserverLocked()
-        try? catchingObjCException {
-            audioEngine.stop()
+        try? engineOperation("engine_stop") {
+            try catchingObjCException { audioEngine.stop() }
         }
-        audioEngine = AVAudioEngine()
+        replaceAudioEngineLocked()
         running = false
         lastSucceededAttemptLocked = nil
     }
@@ -1342,19 +1444,26 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
     /// while the watchdog/heartbeat in `AudioRecorder` remain log-only.
     private func installConfigurationChangeObserverLocked() {
         guard configurationChangeObserver == nil else { return }
+        // Carry identity, not the engine, across this queue hop. A strong
+        // capture keeps a failed engine and its audio units alive throughout
+        // the fallback chain, because this block cannot run until it finishes.
+        let observedEngineID = engineID
         let token = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: audioEngine,
             queue: nil
-        ) { [weak self] notification in
-            guard let self, let engine = notification.object as? AVAudioEngine else { return }
+        ) { [weak self] _ in
+            guard let self else { return }
             self.configurationChangeGeneration.withLock { $0 &+= 1 }
-            let engineBox = UncheckedSendableAudioEngine(engine)
-            self.queue.async { [weak self, engineBox] in
+            self.queue.async { [weak self] in
                 guard let self else { return }
-                guard engineBox.wraps(self.audioEngine) else { return }
-                let format = engineBox.inputFormat()
-                let engineIsRunning = engineBox.isEngineRunning()
+                guard observedEngineID == self.engineID else { return }
+                let format = try? self.engineOperation("configuration_input_format") {
+                    try catchingObjCException { self.audioEngine.inputNode.outputFormat(forBus: 0) }
+                }
+                let engineIsRunning = self.engineOperation("configuration_engine_running") {
+                    self.audioEngine.isRunning
+                }
                 let snapshot = (
                     sr: format?.sampleRate ?? 0,
                     ch: format?.channelCount ?? 0,
@@ -1387,7 +1496,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                     self.installRouteChangeObserversLocked()
                     return
                 }
-                self.recoverFromConfigurationChangeLocked(engineBox: engineBox)
+                self.recoverFromConfigurationChangeLocked(engineIsRunning: engineIsRunning)
             }
         }
         configurationChangeObserver = token
@@ -1406,6 +1515,11 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         tapHandler: MutableMicrophoneTapHandler,
         cancellationGeneration: UInt64
     ) throws {
+        let waiting = operationDiagnostics.begin(
+            "first_buffer_wait",
+            context: "engine_id=\(engineID.uuidString) source=\(routeSource) timeout_s=\(startupReadinessTimeout)"
+        )
+        defer { waiting.finish() }
         switch tapHandler.waitForUsableBuffer(
             timeout: startupReadinessTimeout,
             isCancelled: {
@@ -1415,8 +1529,10 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         case .ready:
             return
         case .timedOut:
+            waiting.finish(error: AVAudioEngineMicrophonePlatformError.initialReadinessTimedOut)
             throw AVAudioEngineMicrophonePlatformError.initialReadinessTimedOut
         case .cancelled:
+            waiting.finish(error: AVAudioEngineMicrophonePlatformError.startupCancelled)
             throw AVAudioEngineMicrophonePlatformError.startupCancelled
         }
     }
@@ -1441,7 +1557,9 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
 
     private func removeConfigurationChangeObserverLocked() {
         if let token = configurationChangeObserver {
-            NotificationCenter.default.removeObserver(token)
+            engineOperation("remove_configuration_observer") {
+                NotificationCenter.default.removeObserver(token)
+            }
             configurationChangeObserver = nil
         }
     }
@@ -1454,10 +1572,9 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
     /// retries on fresh engines through the production backoff window. Route
     /// changes trailing-debounce the pending attempt so USB/Bluetooth handoff
     /// bursts do not create a restart storm.
-    private func recoverFromConfigurationChangeLocked(engineBox: UncheckedSendableAudioEngine) {
+    private func recoverFromConfigurationChangeLocked(engineIsRunning: Bool) {
         guard running else { return }
-        guard engineBox.wraps(audioEngine) else { return }
-        guard !engineBox.isEngineRunning() else { return }
+        guard !engineIsRunning else { return }
         guard activeStartRequestLocked != nil else { return }
 
         recoverAfterLivenessFailureLocked(trigger: "configuration_change")
@@ -1846,12 +1963,14 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                 mScope: kAudioObjectPropertyScopeGlobal,
                 mElement: kAudioObjectPropertyElementMain
             )
-            AudioObjectRemovePropertyListenerBlock(
-                AudioObjectID(kAudioObjectSystemObject),
-                &inputAddress,
-                routeListenerQueue,
-                inputBlock
-            )
+            _ = engineOperation("remove_route_observer") {
+                AudioObjectRemovePropertyListenerBlock(
+                    AudioObjectID(kAudioObjectSystemObject),
+                    &inputAddress,
+                    routeListenerQueue,
+                    inputBlock
+                )
+            }
             defaultInputChangeObserver = nil
         }
     }

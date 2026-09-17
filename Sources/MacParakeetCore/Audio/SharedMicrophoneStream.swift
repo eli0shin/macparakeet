@@ -130,6 +130,7 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
     private let engineQueue = DispatchQueue(label: "com.macparakeet.shared-mic-stream.engine")
     private let callbackQueue = DispatchQueue(label: "com.macparakeet.shared-mic-stream.callbacks")
     private let platform: any MicrophoneEnginePlatform
+    private let operationDiagnostics: MicrophoneOperationDiagnostics
     private let bufferSize: AVAudioFrameCount
     private let prewarmRefreshDebounce: TimeInterval
     private let prewarmRefreshGeneration = OSAllocatedUnfairLock(initialState: 0)
@@ -138,13 +139,30 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
     /// `audioEngine.start()`. See `prewarmDictation()`.
     private let autoPrewarmWhenIdle: Bool
 
-    public init(
+    public convenience init(
         platform: any MicrophoneEnginePlatform,
         bufferSize: AVAudioFrameCount = 4096,
         autoPrewarmWhenIdle: Bool = false,
         prewarmRefreshDebounce: TimeInterval = 0.5
     ) {
+        self.init(
+            platform: platform,
+            bufferSize: bufferSize,
+            autoPrewarmWhenIdle: autoPrewarmWhenIdle,
+            prewarmRefreshDebounce: prewarmRefreshDebounce,
+            operationDiagnostics: MicrophoneOperationDiagnostics()
+        )
+    }
+
+    init(
+        platform: any MicrophoneEnginePlatform,
+        bufferSize: AVAudioFrameCount = 4096,
+        autoPrewarmWhenIdle: Bool = false,
+        prewarmRefreshDebounce: TimeInterval = 0.5,
+        operationDiagnostics: MicrophoneOperationDiagnostics
+    ) {
         self.platform = platform
+        self.operationDiagnostics = operationDiagnostics
         self.bufferSize = bufferSize
         self.autoPrewarmWhenIdle = autoPrewarmWhenIdle
         self.prewarmRefreshDebounce = max(0, prewarmRefreshDebounce)
@@ -239,13 +257,19 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
         onEngineDeath: EngineDeathHandler? = nil,
         handler: @escaping BufferHandler
     ) async throws -> SubscriberToken {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<SubscriberToken, Error>) in
+        let token = SubscriberToken()
+        let context =
+            "subscription_id=\(token.id.uuidString) wants_vpio=\(wantsVPIO) blocks_vpio_promotion=\(blocksVPIOPromotion)"
+        let waiting = operationDiagnostics.begin("stream_queue_wait", context: context)
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<SubscriberToken, Error>) in
             engineQueue.async { [weak self] in
+                waiting.finish()
                 guard let self else {
                     cont.resume(throwing: SubscribeError.engineStartFailed("stream deallocated"))
                     return
                 }
-                let token = SubscriberToken()
+                let subscribing = self.operationDiagnostics.begin("subscribe", context: context)
+                defer { subscribing.finish() }
                 let action: EngineAction = self.lock.withLock { state in
                     let act = self.decideSubscribeAction(
                         state: &state,
@@ -278,6 +302,7 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
                     )
                     cont.resume(returning: token)
                 } catch {
+                    subscribing.finish(error: error)
                     let deathCallbacks: [EngineDeathHandler] = self.lock.withLock { state in
                         var callbacks: [EngineDeathHandler] = []
                         if action == .reconfigureToVPIO {
@@ -683,6 +708,8 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
     /// Must be invoked from `engineQueue`. Performs the platform call
     /// synchronously; serialization is provided by `engineQueue` itself.
     private func executeEngineAction(_ action: EngineAction) throws {
+        let operation = operationDiagnostics.begin("stream_engine_action", context: "action=\(action)")
+        defer { operation.finish() }
         switch action {
         case .startEngine(let vpio):
             try platform.configureAndStart(

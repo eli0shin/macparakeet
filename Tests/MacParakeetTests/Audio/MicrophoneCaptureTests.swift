@@ -96,6 +96,24 @@ final class MicrophoneCaptureTests: XCTestCase {
         )
     }
 
+    func testEarlyFirstBufferDoesNotReadPlatformFormat() async throws {
+        let platform = SharedMicTestPlatform()
+        let stream = SharedMicrophoneStream(platform: platform, bufferSize: 1024)
+        let capture = MicrophoneCapture(sharedStream: stream, permissionProvider: { true })
+        let buffer = UncheckedSendableAudioPCMBuffer(makeSharedTestBuffer())
+        platform.afterConfigureAndStartHook = {
+            let readsBeforeCallback = platform.inputFormatReadCount
+            platform.deliverBuffer(buffer.buffer, time: AVAudioTime(hostTime: 0))
+            XCTAssertEqual(
+                platform.inputFormatReadCount, readsBeforeCallback,
+                "The tap must not wait on the platform queue that is still starting the engine"
+            )
+        }
+
+        _ = try await capture.start(processingMode: .raw, handler: { _, _ in }, onStall: nil)
+        await capture.stop()
+    }
+
     func testNoBufferWatchdogAppendsDiagnosticsLine() async throws {
         let platform = SharedMicTestPlatform()
         let stream = SharedMicrophoneStream(platform: platform, bufferSize: 1024)
@@ -863,6 +881,7 @@ private final class SharedMicTestPlatform: MicrophoneEnginePlatform, @unchecked 
     private var _isRunning = false
     private var _configureCalls: [ConfigureCall] = []
     private var _stopCount = 0
+    private var _inputFormatReadCount = 0
     private var _tapHandler: (@Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void)?
     private var _unexpectedStopHandler: (@Sendable () -> Void)?
     var configureAndStartError: Error?
@@ -897,7 +916,12 @@ private final class SharedMicTestPlatform: MicrophoneEnginePlatform, @unchecked 
     }
 
     var inputFormat: AVAudioFormat? {
-        AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)
+        lock.withLock { _inputFormatReadCount += 1 }
+        return AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)
+    }
+
+    var inputFormatReadCount: Int {
+        lock.withLock { _inputFormatReadCount }
     }
 
     var configureAndStartCalls: [ConfigureCall] {
