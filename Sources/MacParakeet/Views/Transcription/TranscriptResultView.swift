@@ -284,7 +284,7 @@ struct TranscriptResultView: View {
         "List any action items mentioned",
     ]
 
-    var body: some View {
+    private var transcriptObservedContent: some View {
         identityIsolatedAdaptiveLayout
         .onAppear {
             playbackViewModelProbe?(playerViewModel)
@@ -414,6 +414,12 @@ struct TranscriptResultView: View {
         .onChange(of: transcriptAIContextModeRaw) {
             chatViewModel.loadTranscript(currentAIContextText, transcriptionId: viewModel.currentTranscription?.id)
         }
+    }
+
+    // Keep the observation groups in separate expressions so the CI Swift
+    // compiler does not need to solve the entire modifier chain at once.
+    private var promptObservedContent: some View {
+        transcriptObservedContent
         .onChange(of: promptResultsViewModel.promptResults.map(\.id)) {
             reconcilePromptResultPresentation()
         }
@@ -428,6 +434,10 @@ struct TranscriptResultView: View {
                 promptResultsViewModel.markPromptResultViewed(id)
             }
         }
+    }
+
+    var body: some View {
+        promptObservedContent
         .onDisappear {
             detailPreparationTask?.cancel()
             detailPreparationTask = nil
