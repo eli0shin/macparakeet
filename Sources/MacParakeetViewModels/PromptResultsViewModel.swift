@@ -2,145 +2,67 @@ import Foundation
 import MacParakeetCore
 import OSLog
 
+/// Presentation state for one open transcript. Saved results come from a scoped
+/// repository observation; background processing never writes this state.
 @MainActor
 @Observable
 public final class PromptResultsViewModel {
-    public struct PendingGeneration: Identifiable, Equatable, Sendable {
-        public enum State: Equatable, Sendable {
-            case queued
-            case streaming
-            /// Terminal: the generation errored. The entry stays in
-            /// `pendingGenerations` so its tab can show the error with
-            /// Retry/Dismiss — removing it on failure made errors look
-            /// like a silent revert to the Transcript tab (#478).
-            case failed(message: String)
+    public typealias PendingGeneration = PromptGenerationQueue.PendingGeneration
 
-            public var isActive: Bool {
-                switch self {
-                case .queued, .streaming: return true
-                case .failed: return false
-                }
-            }
-        }
-
-        public var id: UUID
-        public var transcriptionId: UUID
-        public var promptName: String
-        public var promptContent: String
-        public var extraInstructions: String?
-        public var transcript: String
-        /// Snapshot of `Transcription.userNotes` captured at enqueue time. Used
-        /// both to substitute `{{userNotes}}` in the prompt template and to
-        /// snapshot onto the resulting `PromptResult` (ADR-020 §4, §6).
-        public var userNotes: String?
-        public var replacingPromptResultID: UUID?
-        public var state: State
-        public var content: String
-
-        public init(
-            id: UUID = UUID(),
-            transcriptionId: UUID,
-            promptName: String,
-            promptContent: String,
-            extraInstructions: String?,
-            transcript: String,
-            userNotes: String? = nil,
-            replacingPromptResultID: UUID? = nil,
-            state: State = .queued,
-            content: String = ""
-        ) {
-            self.id = id
-            self.transcriptionId = transcriptionId
-            self.promptName = promptName
-            self.promptContent = promptContent
-            self.extraInstructions = extraInstructions
-            self.transcript = transcript
-            self.userNotes = userNotes
-            self.replacingPromptResultID = replacingPromptResultID
-            self.state = state
-            self.content = content
-        }
-    }
-
-    public var promptResults: [PromptResult] = []
-    public var pendingGenerations: [PendingGeneration] = []
+    public private(set) var promptResults: [PromptResult] = []
+    public private(set) var currentTranscriptionID: UUID?
+    public private(set) var isLoadingResults = false
     public var selectedPrompt: Prompt?
-    public var extraInstructions: String = ""
+    public var extraInstructions = ""
     public var errorMessage: String?
     public var visiblePrompts: [Prompt] = []
     public var pendingDeletePromptResult: PromptResult?
-    public var currentModelName: String = ""
+    public var currentModelName = ""
     public var currentProviderID: LLMProviderID?
     public var availableModels: [String] = []
-    public var unreadPromptResultIDs: Set<UUID> = []
+    public private(set) var unreadPromptResultIDs: Set<UUID> = []
     public var onModelChanged: (() -> Void)?
-    public var onPromptResultsChanged: ((UUID, Bool) -> Void)?
-    public var onGenerationCompleted: ((UUID, UUID) -> Void)?
-    public var onDeletedPromptResult: ((UUID) -> Void)?
-    public var shouldMarkPromptResultUnread: ((UUID) -> Bool)?
 
-    private var llmService: LLMServiceProtocol?
-    private var cardGenerator: CardGenerating?
+    private let generationQueue: PromptGenerationQueue
     private var promptRepo: PromptRepositoryProtocol?
     private var promptResultRepo: PromptResultRepositoryProtocol?
-    /// Read-only access to the underlying transcription so prompt assembly
-    /// can pull `userNotes` for `{{userNotes}}` substitution and snapshotting
-    /// (ADR-020 §4, §6). The legacy `updateSummary` write-back path that
-    /// also lived through this property was removed in v0.7.6.
     private var transcriptionRepo: TranscriptionRepositoryProtocol?
     private var meetingArtifactStore: MeetingArtifactStoring?
     private var configStore: LLMConfigStoreProtocol?
     private var cliConfigStore: LocalCLIConfigStore?
     private var llmClient: LLMClientProtocol?
-    private var currentTranscriptionID: UUID?
-    private var offlineProcessingViewModel: OfflineProcessingViewModel?
-    private var streamingTask: Task<Void, Never>?
-    private var modelListTask: Task<Void, Never>?
-    private var persistedContentLoadTask: Task<Void, Never>?
-    private var persistedContentLoadGeneration = 0
+    @ObservationIgnored private var modelListTask: Task<Void, Never>?
+    @ObservationIgnored private var persistedContentLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var resultsObservationTask: Task<Void, Never>?
+    private var observationID = UUID()
     private let logger = Logger(subsystem: "com.macparakeet.viewmodels", category: "PromptResultsViewModel")
 
-    public var canGeneratePromptResult: Bool {
-        llmService != nil
+    public init(generationQueue: PromptGenerationQueue) {
+        self.generationQueue = generationQueue
     }
 
-    public var canGenerateManualPromptResult: Bool {
-        llmService != nil && selectedPrompt != nil
+    deinit {
+        resultsObservationTask?.cancel()
+        persistedContentLoadTask?.cancel()
+        modelListTask?.cancel()
     }
 
-    public var hasPromptResultGenerationCapability: Bool {
-        llmService != nil
+    public var canGeneratePromptResult: Bool { generationQueue.canGenerate }
+    public var canGenerateManualPromptResult: Bool { canGeneratePromptResult && selectedPrompt != nil }
+    public var hasPromptResultGenerationCapability: Bool { canGeneratePromptResult }
+    public var canSelectModel: Bool { !generationQueue.hasActiveGenerations }
+    public var pendingGenerations: [PendingGeneration] {
+        generationQueue.pendingGenerations.filter { $0.transcriptionId == currentTranscriptionID }
     }
-
-    public var hasPendingGenerations: Bool {
-        !pendingGenerations.isEmpty
-    }
-
-    /// Queued or streaming — excludes failed entries, which only wait for
-    /// the user to retry or dismiss and should not block model switching
-    /// or read as in-flight work.
-    public var hasActiveGenerations: Bool {
-        pendingGenerations.contains { $0.state.isActive }
-    }
-
-    public var isStreaming: Bool {
-        activeStreamingGeneration != nil
-    }
-
-    public var queuedGenerationCount: Int {
-        pendingGenerations.filter { $0.state == .queued }.count
-    }
-
-    public var streamingContent: String {
-        activeStreamingGeneration?.content ?? ""
-    }
-
-    public var streamingPromptResultID: UUID? {
-        activeStreamingGeneration?.id
-    }
-
-    public var streamingPromptName: String {
-        activeStreamingGeneration?.promptName ?? ""
+    public var hasPendingGenerations: Bool { !pendingGenerations.isEmpty }
+    public var hasActiveGenerations: Bool { pendingGenerations.contains { $0.state.isActive } }
+    public var isStreaming: Bool { activeStreamingGeneration != nil }
+    public var queuedGenerationCount: Int { pendingGenerations.filter { $0.state == .queued }.count }
+    public var streamingContent: String { activeStreamingGeneration?.content ?? "" }
+    public var streamingPromptResultID: UUID? { activeStreamingGeneration?.id }
+    public var streamingPromptName: String { activeStreamingGeneration?.promptName ?? "" }
+    private var activeStreamingGeneration: PendingGeneration? {
+        pendingGenerations.first { $0.state == .streaming }
     }
 
     public var modelDisplayName: String {
@@ -151,45 +73,23 @@ public final class PromptResultsViewModel {
         return currentModelName
     }
 
-    private var activeStreamingGeneration: PendingGeneration? {
-        pendingGenerations.first(where: { $0.state == .streaming })
-    }
-
-    public init() {}
-
     public func configure(
-        llmService: LLMServiceProtocol?,
         promptRepo: PromptRepositoryProtocol?,
         promptResultRepo: PromptResultRepositoryProtocol?,
         transcriptionRepo: TranscriptionRepositoryProtocol? = nil,
         meetingArtifactStore: MeetingArtifactStoring? = nil,
         configStore: LLMConfigStoreProtocol? = nil,
         llmClient: LLMClientProtocol? = nil,
-        cardGenerator: CardGenerating? = nil,
-        cliConfigStore: LocalCLIConfigStore = LocalCLIConfigStore(),
-        offlineProcessingViewModel: OfflineProcessingViewModel? = nil
+        cliConfigStore: LocalCLIConfigStore = LocalCLIConfigStore()
     ) {
-        self.llmService = llmService
         self.promptRepo = promptRepo
         self.promptResultRepo = promptResultRepo
         self.transcriptionRepo = transcriptionRepo
         self.meetingArtifactStore = meetingArtifactStore
         self.configStore = configStore
         self.llmClient = llmClient
-        self.cardGenerator = cardGenerator
         self.cliConfigStore = cliConfigStore
-        self.offlineProcessingViewModel = offlineProcessingViewModel
         loadVisiblePrompts()
-        refreshModelInfo()
-    }
-
-    public func updateLLMService(
-        _ service: LLMServiceProtocol?,
-        cardGenerator: CardGenerating? = nil
-    ) {
-        cancelAllGenerations()
-        llmService = service
-        self.cardGenerator = cardGenerator
         refreshModelInfo()
     }
 
@@ -219,7 +119,7 @@ public final class PromptResultsViewModel {
     }
 
     public func selectModel(_ modelName: String) {
-        guard let configStore, currentProviderID != .localCLI, !hasActiveGenerations else { return }
+        guard let configStore, currentProviderID != .localCLI, canSelectModel else { return }
         do {
             try configStore.updateModelName(modelName)
             currentModelName = modelName
@@ -260,87 +160,168 @@ public final class PromptResultsViewModel {
         }
     }
 
+    /// Synchronous initial read for callers that need an immediate snapshot.
+    /// Subsequent changes use the same observation as the asynchronous view load.
     public func loadPromptResults(transcriptionId: UUID) {
-        if currentTranscriptionID != transcriptionId {
-            cancelAllGenerations()
-        }
-        currentTranscriptionID = transcriptionId
-        do {
-            promptResults = try promptResultRepo?.fetchAll(transcriptionId: transcriptionId) ?? []
-            onPromptResultsChanged?(transcriptionId, !promptResults.isEmpty)
-            errorMessage = nil
-        } catch {
-            promptResults = []
-            onPromptResultsChanged?(transcriptionId, false)
-            errorMessage = error.localizedDescription
-        }
-        processNextQueuedGeneration()
+        beginObservation(transcriptionId: transcriptionId, readInitialSnapshot: true)
     }
 
     public func loadPersistedContentAsync(transcriptionId: UUID) {
-        if currentTranscriptionID != transcriptionId {
-            cancelAllGenerations()
-        }
-        currentTranscriptionID = transcriptionId
+        beginObservation(transcriptionId: transcriptionId, readInitialSnapshot: false)
         persistedContentLoadTask?.cancel()
-        persistedContentLoadGeneration += 1
-        let generation = persistedContentLoadGeneration
         let promptRepo = promptRepo
-        let promptResultRepo = promptResultRepo
+        let id = observationID
         persistedContentLoadTask = Task { @MainActor [weak self] in
             let result = await Task.detached(priority: .userInitiated) {
-                let prompts = try promptRepo?.fetchVisible(category: .result) ?? []
-                let results = try promptResultRepo?.fetchAll(transcriptionId: transcriptionId) ?? []
-                return (prompts, results)
+                try promptRepo?.fetchVisible(category: .result) ?? []
             }.result
-            guard let self, !Task.isCancelled,
-                generation == self.persistedContentLoadGeneration,
-                self.currentTranscriptionID == transcriptionId
-            else { return }
+            guard let self, !Task.isCancelled, self.observationID == id else { return }
             switch result {
-            case .success(let content):
-                self.visiblePrompts = content.0
+            case .success(let prompts):
+                self.visiblePrompts = prompts
                 if let selected = self.selectedPrompt,
-                    let refreshed = content.0.first(where: { $0.id == selected.id })
+                    let refreshed = prompts.first(where: { $0.id == selected.id })
                 {
                     self.selectedPrompt = refreshed
                 } else {
-                    self.selectedPrompt = content.0.first(where: { $0.isAutoRun }) ?? content.0.first
+                    self.selectedPrompt = prompts.first(where: { $0.isAutoRun }) ?? prompts.first
                 }
-                self.promptResults = content.1
-                self.onPromptResultsChanged?(transcriptionId, !content.1.isEmpty)
-                self.errorMessage = nil
             case .failure(let error):
-                self.promptResults = []
-                self.onPromptResultsChanged?(transcriptionId, false)
                 self.errorMessage = error.localizedDescription
             }
-            self.persistedContentLoadTask = nil
-            self.processNextQueuedGeneration()
         }
     }
 
-    public func markPromptResultViewed(_ promptResultID: UUID) {
-        unreadPromptResultIDs.remove(promptResultID)
+    private func beginObservation(transcriptionId: UUID, readInitialSnapshot: Bool) {
+        resultsObservationTask?.cancel()
+        persistedContentLoadTask?.cancel()
+        observationID = UUID()
+        let id = observationID
+        let changedTranscript = currentTranscriptionID != transcriptionId
+        currentTranscriptionID = transcriptionId
+        pendingDeletePromptResult = nil
+        errorMessage = nil
+        if changedTranscript {
+            promptResults = []
+            unreadPromptResultIDs = []
+            extraInstructions = ""
+        }
+        isLoadingResults = changedTranscript
+        guard let promptResultRepo else {
+            isLoadingResults = false
+            return
+        }
+        var needsBaseline = changedTranscript
+        if readInitialSnapshot {
+            do {
+                applyResults(try promptResultRepo.fetchAll(transcriptionId: transcriptionId), baseline: needsBaseline)
+                needsBaseline = false
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+        let baseline = needsBaseline
+        resultsObservationTask = Task { @MainActor [weak self] in
+            var needsBaseline = baseline
+            do {
+                for try await results in promptResultRepo.observe(transcriptionId: transcriptionId) {
+                    guard !Task.isCancelled, let self, self.observationID == id else { return }
+                    self.applyResults(results, baseline: needsBaseline)
+                    needsBaseline = false
+                }
+            } catch {
+                guard !Task.isCancelled, let self, self.observationID == id else { return }
+                self.isLoadingResults = false
+                self.errorMessage = error.localizedDescription
+            }
+        }
     }
 
-    public func hasUnreadPromptResult(_ promptResultID: UUID) -> Bool {
-        unreadPromptResultIDs.contains(promptResultID)
+    private func applyResults(_ results: [PromptResult], baseline: Bool) {
+        let scoped = results.filter { $0.transcriptionId == currentTranscriptionID }
+        let ids = Set(scoped.map(\.id))
+        if !baseline {
+            unreadPromptResultIDs.formUnion(ids.subtracting(promptResults.map(\.id)))
+        }
+        unreadPromptResultIDs.formIntersection(ids)
+        promptResults = scoped
+        isLoadingResults = false
     }
 
+    /// Reconcile presentation after a result snapshot or job state changes.
+    /// The database observation can arrive after the queue drops a completed job.
+    /// Read the saved snapshot in that case instead of treating completion as cancellation.
+    public func reconciledTab(_ tab: TranscriptionViewModel.TranscriptTab) -> TranscriptionViewModel.TranscriptTab {
+        var result = tab
+        switch tab {
+        case .generation(let id):
+            if !promptResults.contains(where: { $0.id == id }),
+                pendingGeneration(id: id) == nil, let currentTranscriptionID
+            {
+                // Restart observation so an older buffered snapshot cannot replace
+                // the committed snapshot used to resolve this tab.
+                loadPromptResults(transcriptionId: currentTranscriptionID)
+                if errorMessage != nil { return tab }
+            }
+            if promptResults.contains(where: { $0.id == id }) {
+                result = .result(id: id)
+            } else if pendingGeneration(id: id) == nil {
+                result = .transcript
+            }
+        case .result(let id):
+            if !isLoadingResults && !promptResults.contains(where: { $0.id == id }) {
+                result = .transcript
+            }
+        case .transcript, .chat:
+            break
+        }
+        if case .result(let id) = result { markPromptResultViewed(id) }
+        return result
+    }
+
+    public func markPromptResultViewed(_ id: UUID) { unreadPromptResultIDs.remove(id) }
+    public func hasUnreadPromptResult(_ id: UUID) -> Bool { unreadPromptResultIDs.contains(id) }
     public func pendingGeneration(id: UUID) -> PendingGeneration? {
-        pendingGenerations.first(where: { $0.id == id })
+        pendingGenerations.first { $0.id == id }
     }
-
     public func pendingGenerations(for transcriptionId: UUID) -> [PendingGeneration] {
         pendingGenerations.filter { $0.transcriptionId == transcriptionId }
     }
-
     public func hasPendingGeneration(promptName: String, transcriptionId: UUID) -> Bool {
         pendingGenerations.contains {
-            $0.transcriptionId == transcriptionId && $0.promptName == promptName
-                && $0.state.isActive
+            $0.transcriptionId == transcriptionId && $0.promptName == promptName && $0.state.isActive
         }
+    }
+
+    @discardableResult
+    public func generatePromptResult(transcript: String, transcriptionId: UUID) -> UUID? {
+        guard currentTranscriptionID == transcriptionId, let selectedPrompt else { return nil }
+        let instructions = extraInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        return generationQueue.generatePromptResult(
+            transcript: transcript, transcriptionId: transcriptionId, prompt: selectedPrompt,
+            extraInstructions: instructions.isEmpty ? nil : instructions
+        )
+    }
+
+    @discardableResult
+    public func regeneratePromptResult(_ result: PromptResult, transcript: String) -> UUID? {
+        guard result.transcriptionId == currentTranscriptionID else { return nil }
+        return generationQueue.regeneratePromptResult(result, transcript: transcript)
+    }
+
+    public func cancelStreaming() {
+        if let id = streamingPromptResultID { cancelGeneration(id: id) }
+    }
+
+    public func cancelGeneration(id: UUID) {
+        guard pendingGeneration(id: id) != nil else { return }
+        generationQueue.cancelGeneration(id: id)
+    }
+
+    @discardableResult
+    public func retryGeneration(id: UUID) -> UUID? {
+        guard pendingGeneration(id: id) != nil else { return nil }
+        return generationQueue.retryGeneration(id: id)
     }
 
     public func confirmDelete() {
@@ -350,15 +331,9 @@ public final class PromptResultsViewModel {
     }
 
     public func deletePromptResult(_ promptResult: PromptResult) {
-        guard let promptResultRepo else { return }
+        guard promptResult.transcriptionId == currentTranscriptionID, let promptResultRepo else { return }
         do {
             _ = try promptResultRepo.delete(id: promptResult.id)
-            promptResults.removeAll { $0.id == promptResult.id }
-            unreadPromptResultIDs.remove(promptResult.id)
-            if let transcriptionID = currentTranscriptionID {
-                onPromptResultsChanged?(transcriptionID, !promptResults.isEmpty)
-            }
-            onDeletedPromptResult?(promptResult.id)
             let transcriptionID = promptResult.transcriptionId
             Task { [weak self] in
                 await self?.refreshMeetingArtifacts(transcriptionId: transcriptionID)
@@ -369,399 +344,16 @@ public final class PromptResultsViewModel {
         }
     }
 
-    @discardableResult
-    public func generatePromptResult(transcript: String, transcriptionId: UUID) -> UUID? {
-        guard let prompt = selectedPrompt else { return nil }
-        return enqueueGeneration(
-            transcript: transcript,
-            transcriptionId: transcriptionId,
-            prompt: prompt,
-            extraInstructions: normalizedExtraInstructions(extraInstructions),
-            userNotes: fetchUserNotes(for: transcriptionId)
-        )
-    }
-
-    @discardableResult
-    public func regeneratePromptResult(_ promptResult: PromptResult, transcript: String) -> UUID? {
-        let prompt = Prompt(
-            name: promptResult.promptName,
-            content: promptResult.promptContent,
-            isBuiltIn: false,
-            sortOrder: 0
-        )
-        // Regeneration re-snapshots from the *current* notes on the row — if
-        // the user edited notes between summary generations they expect the
-        // new summary to reflect the new notes. The original summary's
-        // snapshot remains untouched on its row (ADR-020 §6).
-        return enqueueGeneration(
-            transcript: transcript,
-            transcriptionId: promptResult.transcriptionId,
-            prompt: prompt,
-            extraInstructions: promptResult.extraInstructions,
-            userNotes: fetchUserNotes(for: promptResult.transcriptionId),
-            replacingPromptResultID: promptResult.id
-        )
-    }
-
-    @discardableResult
-    public func autoGeneratePromptResults(
-        transcript: String,
-        transcriptionId: UUID,
-        sourceType: Transcription.SourceType
-    ) -> [UUID] {
-        guard transcript.contains(where: { !$0.isWhitespace }) else { return [] }
-
-        generateKnowledgeCard(transcriptionId: transcriptionId)
-
-        let autoPrompts: [Prompt]
-        do {
-            autoPrompts = try promptRepo?.fetchAutoRunPrompts(for: sourceType) ?? []
-        } catch {
-            logger.warning(
-                "Skipping auto-run prompts because preferences could not be loaded: \(error.localizedDescription, privacy: .private)"
-            )
-            return []
-        }
-        guard !autoPrompts.isEmpty else { return [] }
-
-        let userNotes = fetchUserNotes(for: transcriptionId)
-        var queuedIDs: [UUID] = []
-        for prompt in autoPrompts {
-            if let id = enqueueGeneration(
-                transcript: transcript,
-                transcriptionId: transcriptionId,
-                prompt: prompt,
-                extraInstructions: nil,
-                userNotes: userNotes
-            ) {
-                queuedIDs.append(id)
-            }
-        }
-        return queuedIDs
-    }
-
-    public func generateKnowledgeCard(transcriptionId: UUID) {
-        guard let cardGenerator else { return }
-        let operationID = UUID()
-        let itemTitle: String
-        do {
-            itemTitle =
-                try transcriptionRepo?.fetch(id: transcriptionId)?.effectiveDisplayTitle
-                ?? "Transcript"
-        } catch {
-            itemTitle = "Transcript"
-        }
-        offlineProcessingViewModel?.start(
-            OfflineProcessingViewModel.Job(
-                id: operationID,
-                itemID: transcriptionId,
-                title: itemTitle,
-                operation: .generatingResult(name: "knowledge card")
-            )
-        )
-
-        let logger = logger
-        let processing = offlineProcessingViewModel
-        Task(priority: .utility) {
-            defer { processing?.finish(id: operationID) }
-            do {
-                _ = try await cardGenerator.generate(
-                    transcriptionId: transcriptionId,
-                    force: false
-                )
-            } catch {
-                logger.warning(
-                    "Knowledge card generation failed: \(error.localizedDescription, privacy: .private)"
-                )
-                processing?.reportIssue(
-                    OfflineProcessingViewModel.Issue(
-                        id: operationID,
-                        itemID: transcriptionId,
-                        title: "Knowledge card could not be generated",
-                        detail: error.localizedDescription
-                    )
-                )
-            }
-        }
-    }
-
-    public func cancelStreaming() {
-        guard let generationID = streamingPromptResultID else { return }
-        cancelGeneration(id: generationID)
-    }
-
-    public func cancelGeneration(id: UUID) {
-        guard let index = pendingGenerations.firstIndex(where: { $0.id == id }) else { return }
-        if pendingGenerations[index].state == .streaming {
-            streamingTask?.cancel()
-            return
-        }
-        let generationID = pendingGenerations[index].id
-        pendingGenerations.remove(at: index)
-        offlineProcessingViewModel?.finish(id: generationID)
-    }
-
-    private func cancelAllGenerations() {
-        streamingTask?.cancel()
-        streamingTask = nil
-        for generation in pendingGenerations {
-            offlineProcessingViewModel?.finish(id: generation.id)
-        }
-        pendingGenerations = []
-    }
-
-    @discardableResult
-    private func enqueueGeneration(
-        transcript: String,
-        transcriptionId: UUID,
-        prompt: Prompt,
-        extraInstructions: String?,
-        userNotes: String? = nil,
-        replacingPromptResultID: UUID? = nil
-    ) -> UUID? {
-        guard llmService != nil else { return nil }
-
-        currentTranscriptionID = transcriptionId
-        errorMessage = nil
-
-        let generation = PendingGeneration(
-            transcriptionId: transcriptionId,
-            promptName: prompt.name,
-            promptContent: prompt.content,
-            extraInstructions: extraInstructions,
-            transcript: transcript,
-            userNotes: userNotes,
-            replacingPromptResultID: replacingPromptResultID
-        )
-        pendingGenerations.append(generation)
-        let itemTitle: String
-        do {
-            itemTitle =
-                try transcriptionRepo?.fetch(id: transcriptionId)?.effectiveDisplayTitle
-                ?? prompt.name
-        } catch {
-            itemTitle = prompt.name
-        }
-        offlineProcessingViewModel?.start(
-            OfflineProcessingViewModel.Job(
-                id: generation.id,
-                itemID: transcriptionId,
-                title: itemTitle,
-                operation: .waiting(detail: "Queued behind other AI processing"),
-                canCancel: true
-            ),
-            onCancel: { [weak self] in self?.cancelGeneration(id: generation.id) }
-        )
-        processNextQueuedGeneration()
-        return generation.id
-    }
-
-    private func processNextQueuedGeneration() {
-        guard streamingTask == nil, llmService != nil else { return }
-        guard let nextIndex = pendingGenerations.firstIndex(where: { $0.state == .queued })
-        else { return }
-
-        pendingGenerations[nextIndex].state = .streaming
-        let generation = pendingGenerations[nextIndex]
-        offlineProcessingViewModel?.update(
-            id: generation.id,
-            operation: .generatingResult(name: generation.promptName),
-            fraction: nil
-        )
-        let generationID = generation.id
-        let systemPrompt = assembledSystemPrompt(
-            promptContent: generation.promptContent,
-            extraInstructions: generation.extraInstructions,
-            userNotes: generation.userNotes,
-            transcript: generation.transcript
-        )
-
-        streamingTask = Task { @MainActor [weak self] in
-            guard let self, let llmService = self.llmService else { return }
-            do {
-                let stream = llmService.generatePromptResultStream(
-                    transcript: generation.transcript,
-                    systemPrompt: systemPrompt
-                )
-                for try await token in stream {
-                    appendStreamingToken(token, to: generationID)
-                }
-                guard !Task.isCancelled else {
-                    finishCancelledGeneration(id: generationID)
-                    return
-                }
-                try await finishGeneration(id: generationID)
-            } catch is CancellationError {
-                finishCancelledGeneration(id: generationID)
-            } catch {
-                finishFailedGeneration(id: generationID, error: error)
-            }
-        }
-    }
-
-    private func appendStreamingToken(_ token: String, to generationID: UUID) {
-        guard let index = pendingGenerations.firstIndex(where: { $0.id == generationID }) else { return }
-        pendingGenerations[index].content += token
-    }
-
-    private func finishGeneration(id generationID: UUID) async throws {
-        guard let index = pendingGenerations.firstIndex(where: { $0.id == generationID }) else {
-            streamingTask = nil
-            processNextQueuedGeneration()
-            return
-        }
-
-        let generation = pendingGenerations[index]
-        guard generation.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
-            throw LLMError.streamingError("prompt result returned an empty response")
-        }
-        let timestamp = Date()
-        let promptResult = PromptResult(
-            id: generation.id,
-            transcriptionId: generation.transcriptionId,
-            promptName: generation.promptName,
-            promptContent: generation.promptContent,
-            extraInstructions: generation.extraInstructions,
-            content: generation.content,
-            userNotesSnapshot: generation.userNotes,
-            createdAt: timestamp,
-            updatedAt: timestamp
-        )
-
-        if let replacingPromptResultID = generation.replacingPromptResultID {
-            try promptResultRepo?.replace(promptResult, deletingExistingID: replacingPromptResultID)
-        } else {
-            try promptResultRepo?.save(promptResult)
-        }
-
-        pendingGenerations.remove(at: index)
-        offlineProcessingViewModel?.finish(id: generationID)
-        streamingTask = nil
-        errorMessage = nil
-
-        if currentTranscriptionID == generation.transcriptionId {
-            if let replacingPromptResultID = generation.replacingPromptResultID {
-                unreadPromptResultIDs.remove(replacingPromptResultID)
-                promptResults.removeAll { $0.id == replacingPromptResultID }
-            }
-            promptResults.insert(promptResult, at: 0)
-        }
-
-        await refreshMeetingArtifacts(transcriptionId: generation.transcriptionId)
-
-        onPromptResultsChanged?(generation.transcriptionId, true)
-        onGenerationCompleted?(generation.id, promptResult.id)
-        if let replacingPromptResultID = generation.replacingPromptResultID {
-            onDeletedPromptResult?(replacingPromptResultID)
-        }
-        if shouldMarkPromptResultUnread?(promptResult.id) ?? true {
-            unreadPromptResultIDs.insert(promptResult.id)
-        }
-
-        processNextQueuedGeneration()
-    }
-
-    private func finishCancelledGeneration(id generationID: UUID) {
-        if let index = pendingGenerations.firstIndex(where: { $0.id == generationID }) {
-            pendingGenerations.remove(at: index)
-        }
-        offlineProcessingViewModel?.finish(id: generationID)
-        streamingTask = nil
-        processNextQueuedGeneration()
-    }
-
-    private func finishFailedGeneration(id generationID: UUID, error: Error) {
-        logger.error("Failed to generate prompt result error=\(error.localizedDescription, privacy: .public)")
-        guard let index = pendingGenerations.firstIndex(where: { $0.id == generationID }) else {
-            offlineProcessingViewModel?.finish(id: generationID)
-            streamingTask = nil
-            processNextQueuedGeneration()
-            return
-        }
-        pendingGenerations[index].state = .failed(message: error.localizedDescription)
-        let generation = pendingGenerations[index]
-        offlineProcessingViewModel?.finish(id: generationID)
-        offlineProcessingViewModel?.reportIssue(
-            OfflineProcessingViewModel.Issue(
-                id: generationID,
-                itemID: generation.transcriptionId,
-                title: "\(generation.promptName) could not be generated",
-                detail: error.localizedDescription,
-                recoveryTitle: "Retry"
-            ),
-            onRecover: { [weak self] in
-                self?.offlineProcessingViewModel?.dismiss(issueID: generationID)
-                _ = self?.retryGeneration(id: generationID)
-            }
-        )
-        streamingTask = nil
-        errorMessage = error.localizedDescription
-        processNextQueuedGeneration()
-    }
-
-    /// Re-enqueue a failed generation with the same inputs it was originally
-    /// captured with (transcript, notes snapshot, replace target). Returns
-    /// the new generation's ID so the caller can keep its tab selected.
-    @discardableResult
-    public func retryGeneration(id: UUID) -> UUID? {
-        // llmService gates enqueueGeneration; checking it before removal
-        // keeps the failed card (and its error) when retry can't start.
-        guard llmService != nil,
-              let index = pendingGenerations.firstIndex(where: { $0.id == id }),
-              case .failed = pendingGenerations[index].state
-        else { return nil }
-        let failed = pendingGenerations.remove(at: index)
-        return enqueueGeneration(
-            transcript: failed.transcript,
-            transcriptionId: failed.transcriptionId,
-            prompt: Prompt(
-                name: failed.promptName,
-                content: failed.promptContent,
-                isBuiltIn: false,
-                sortOrder: 0
-            ),
-            extraInstructions: failed.extraInstructions,
-            userNotes: failed.userNotes,
-            replacingPromptResultID: failed.replacingPromptResultID
-        )
-    }
-
-    private func assembledSystemPrompt(
-        promptContent: String,
-        extraInstructions: String?,
-        userNotes: String? = nil,
-        transcript: String? = nil
-    ) -> String {
-        PromptSystemPromptAssembler.assemble(
-            promptContent: promptContent,
-            extraInstructions: extraInstructions,
-            userNotes: userNotes,
-            transcript: transcript
-        )
-    }
-
-    private func fetchUserNotes(for transcriptionId: UUID) -> String? {
-        guard let transcriptionRepo else { return nil }
-        do {
-            return try transcriptionRepo.fetch(id: transcriptionId)?.userNotes
-        } catch {
-            logger.warning(
-                "Failed to fetch userNotes for transcription \(transcriptionId.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)"
-            )
-            return nil
-        }
-    }
-
     /// Refreshes meeting artifacts; failures are logged and never surfaced or thrown, and refresh never blocks or fails the triggering user action.
     private func refreshMeetingArtifacts(transcriptionId: UUID) async {
         guard let meetingArtifactStore,
-              let transcriptionRepo,
-              let promptResultRepo
+            let transcriptionRepo,
+            let promptResultRepo
         else { return }
 
         do {
             guard let transcription = try transcriptionRepo.fetch(id: transcriptionId),
-                  transcription.sourceType == .meeting
+                transcription.sourceType == .meeting
             else { return }
             let promptResults = try promptResultRepo.fetchAll(transcriptionId: transcriptionId)
             _ = try await Task.detached(priority: .utility) {
@@ -777,8 +369,4 @@ public final class PromptResultsViewModel {
         }
     }
 
-    private func normalizedExtraInstructions(_ value: String) -> String? {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
 }

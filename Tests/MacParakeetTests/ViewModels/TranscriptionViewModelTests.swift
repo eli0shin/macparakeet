@@ -3469,7 +3469,7 @@ final class TranscriptionViewModelTests: XCTestCase {
         promptRepo.prompts = Prompt.builtInPrompts()
         XCTAssertTrue(promptRepo.prompts.contains(where: { $0.isAutoRun }),
                       "Test fixture must include at least one auto-run prompt for this regression to be meaningful")
-        let promptResultsVM = PromptResultsViewModel()
+        let promptResultsVM = PromptGenerationQueue()
         let cardGenerator = RetranscriptionCardGenerator()
         promptResultsVM.configure(
             llmService: llm,
@@ -3483,7 +3483,7 @@ final class TranscriptionViewModelTests: XCTestCase {
             transcriptionRepo: mockRepo,
             llmService: llm,
             promptResultRepo: mockPromptResultRepo,
-            promptResultsViewModel: promptResultsVM
+            promptGenerationQueue: promptResultsVM
         )
 
         viewModel.retranscribe(original)
@@ -3518,7 +3518,7 @@ final class TranscriptionViewModelTests: XCTestCase {
         llm.streamTokens = ["ok"]
         let promptRepo = MockPromptRepository()
         promptRepo.prompts = Prompt.builtInPrompts()
-        let promptResultsVM = PromptResultsViewModel()
+        let promptResultsVM = PromptGenerationQueue()
         promptResultsVM.configure(
             llmService: llm,
             promptRepo: promptRepo,
@@ -3530,7 +3530,7 @@ final class TranscriptionViewModelTests: XCTestCase {
             transcriptionRepo: mockRepo,
             llmService: llm,
             promptResultRepo: mockPromptResultRepo,
-            promptResultsViewModel: promptResultsVM
+            promptGenerationQueue: promptResultsVM
         )
 
         viewModel.transcribeFile(url: URL(fileURLWithPath: "/tmp/audio.mp3"))
@@ -3552,7 +3552,7 @@ final class TranscriptionViewModelTests: XCTestCase {
         llm.streamDelayNs = 1_000_000_000
         let promptRepo = MockPromptRepository()
         promptRepo.prompts = Prompt.builtInPrompts()
-        let promptResultsVM = PromptResultsViewModel()
+        let promptResultsVM = PromptGenerationQueue()
         promptResultsVM.configure(
             llmService: llm,
             promptRepo: promptRepo,
@@ -3563,7 +3563,7 @@ final class TranscriptionViewModelTests: XCTestCase {
             transcriptionRepo: mockRepo,
             llmService: llm,
             promptResultRepo: mockPromptResultRepo,
-            promptResultsViewModel: promptResultsVM
+            promptGenerationQueue: promptResultsVM
         )
         let transcription = Transcription(
             fileName: "meeting.wav",
@@ -3612,7 +3612,7 @@ final class TranscriptionViewModelTests: XCTestCase {
         llm.streamDelayNs = 1_000_000_000
         let promptRepo = MockPromptRepository()
         promptRepo.prompts = Prompt.builtInPrompts()
-        let promptResultsVM = PromptResultsViewModel()
+        let promptResultsVM = PromptGenerationQueue()
         promptResultsVM.configure(
             llmService: llm,
             promptRepo: promptRepo,
@@ -3623,7 +3623,7 @@ final class TranscriptionViewModelTests: XCTestCase {
             transcriptionRepo: mockRepo,
             llmService: llm,
             promptResultRepo: mockPromptResultRepo,
-            promptResultsViewModel: promptResultsVM
+            promptGenerationQueue: promptResultsVM
         )
         let transcription = Transcription(
             fileName: "meeting.wav",

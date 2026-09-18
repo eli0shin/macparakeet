@@ -52,7 +52,7 @@ private struct EvidenceHost: View {
 
     private let transcriptionViewModel = TranscriptionViewModel()
     private let chatViewModel = TranscriptChatViewModel()
-    private let promptResultsViewModel = PromptResultsViewModel()
+    private let promptResultsViewModel = PromptResultsViewModel(generationQueue: PromptGenerationQueue())
     private let promptsViewModel = PromptsViewModel()
     private let meetingPillViewModel = MeetingRecordingPillViewModel()
 

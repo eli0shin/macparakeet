@@ -414,6 +414,15 @@ struct TranscriptResultView: View {
         .onChange(of: transcriptAIContextModeRaw) {
             chatViewModel.loadTranscript(currentAIContextText, transcriptionId: viewModel.currentTranscription?.id)
         }
+        .onChange(of: promptResultsViewModel.promptResults.map(\.id)) {
+            reconcilePromptResultPresentation()
+        }
+        .onChange(of: promptResultsViewModel.pendingGenerations.map(\.id)) {
+            reconcilePromptResultPresentation()
+        }
+        .onChange(of: promptResultsViewModel.isLoadingResults) {
+            reconcilePromptResultPresentation()
+        }
         .onChange(of: viewModel.selectedTab) {
             if case .result(let id) = viewModel.selectedTab {
                 promptResultsViewModel.markPromptResultViewed(id)
@@ -1655,14 +1664,12 @@ struct TranscriptResultView: View {
                         aiPanesDomain { promptResultContentPane(promptResultID: id) }
                     } else {
                         transcriptDocumentDomain
-                            .onAppear { viewModel.selectedTab = .transcript }
                     }
                 case .generation(let id):
                     if promptResultsViewModel.pendingGeneration(id: id) != nil {
                         aiPanesDomain { pendingGenerationPane(generationID: id) }
                     } else {
                         transcriptDocumentDomain
-                            .onAppear { viewModel.selectedTab = .transcript }
                     }
                 case .chat:
                     aiPanesDomain { chatPane(viewModel: chatViewModel) }
@@ -2436,6 +2443,13 @@ struct TranscriptResultView: View {
         )
     }
 
+    private func reconcilePromptResultPresentation() {
+        guard promptResultsViewModel.currentTranscriptionID == transcription.id else { return }
+        viewModel.selectedTab = promptResultsViewModel.reconciledTab(viewModel.selectedTab)
+        viewModel.hasPromptResultTabs = !promptResultsViewModel.promptResults.isEmpty
+            || promptResultsViewModel.hasPendingGenerations
+    }
+
     // MARK: - Tab Bar
 
     private var orderedTabs: [TranscriptionViewModel.TranscriptTab] {
@@ -2877,7 +2891,7 @@ struct TranscriptResultView: View {
                     currentModel: promptResultsViewModel.currentModelName,
                     displayName: promptResultsViewModel.modelDisplayName,
                     availableModels: promptResultsViewModel.availableModels,
-                    disabled: promptResultsViewModel.hasActiveGenerations,
+                    disabled: !promptResultsViewModel.canSelectModel,
                     onSelect: { promptResultsViewModel.selectModel($0) }
                 )
             }

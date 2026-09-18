@@ -57,7 +57,7 @@ private struct TranscribeViewAccessibilityHost: View {
     @State private var showingProgressDetail = false
 
     private let chatViewModel = TranscriptChatViewModel()
-    private let promptResultsViewModel = PromptResultsViewModel()
+    private let promptResultsViewModel = PromptResultsViewModel(generationQueue: PromptGenerationQueue())
     private let promptsViewModel = PromptsViewModel()
     private let meetingPillViewModel = MeetingRecordingPillViewModel()
 

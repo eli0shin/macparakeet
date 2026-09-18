@@ -825,6 +825,7 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
     var formatTranscriptLatencyMs = 0
     var streamTokens: [String] = ["Hello", " world"]
     var streamTokenBatches: [[String]] = []
+    var promptResultStream: (@Sendable () -> AsyncThrowingStream<String, Error>)?
     var streamDelayNs: UInt64 = 0
     var errorToThrow: Error?
     var summarizeCallCount = 0
@@ -955,6 +956,7 @@ final class MockLLMService: LLMServiceProtocol, @unchecked Sendable {
         summarizeCallCount += 1
         lastSummaryTranscript = transcript
         lastSummarySystemPrompt = systemPrompt
+        if let promptResultStream { return promptResultStream() }
         let tokens: [String]
         if streamTokenBatches.isEmpty {
             tokens = streamTokens
@@ -1142,7 +1144,28 @@ final class MockPromptRepository: PromptRepositoryProtocol, @unchecked Sendable 
 // MARK: - MockPromptResultRepository
 
 final class MockPromptResultRepository: PromptResultRepositoryProtocol, @unchecked Sendable {
-    var promptResults: [PromptResult] = []
+    private let observationLock = NSLock()
+    private var observers: [UUID: (UUID, AsyncThrowingStream<[PromptResult], Error>.Continuation)] = [:]
+    var promptResults: [PromptResult] = [] {
+        didSet {
+            let observers = observationLock.withLock { Array(self.observers.values) }
+            for (transcriptionID, continuation) in observers {
+                continuation.yield((try? fetchAll(transcriptionId: transcriptionID)) ?? [])
+            }
+        }
+    }
+
+    func observe(transcriptionId: UUID) -> AsyncThrowingStream<[PromptResult], Error> {
+        AsyncThrowingStream { continuation in
+            let id = UUID()
+            observationLock.withLock { observers[id] = (transcriptionId, continuation) }
+            continuation.yield((try? fetchAll(transcriptionId: transcriptionId)) ?? [])
+            continuation.onTermination = { [weak self] _ in
+                guard let self else { return }
+                _ = self.observationLock.withLock { self.observers.removeValue(forKey: id) }
+            }
+        }
+    }
     var saveCalls: [PromptResult] = []
     var replaceCalls: [(promptResult: PromptResult, deletingExistingID: UUID?)] = []
     var deleteCalls: [UUID] = []

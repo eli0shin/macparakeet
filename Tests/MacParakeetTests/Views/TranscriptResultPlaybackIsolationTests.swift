@@ -65,7 +65,7 @@ final class TranscriptResultPlaybackIsolationTests: XCTestCase {
             transcription: transcription,
             viewModel: transcriptionViewModel,
             chatViewModel: TranscriptChatViewModel(),
-            promptResultsViewModel: PromptResultsViewModel(),
+            promptResultsViewModel: PromptResultsViewModel(generationQueue: PromptGenerationQueue()),
             promptsViewModel: PromptsViewModel(),
             customWords: [],
             playbackViewModelProbe: { playerViewModel = $0 },

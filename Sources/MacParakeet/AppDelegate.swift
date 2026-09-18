@@ -46,7 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let meetingsLibraryViewModel = TranscriptionLibraryViewModel(scope: .meetings)
     private let llmSettingsViewModel = LLMSettingsViewModel()
     private let chatViewModel = TranscriptChatViewModel()
-    private let promptResultsViewModel = PromptResultsViewModel()
+    private let promptGenerationQueue = PromptGenerationQueue()
+    private lazy var promptResultsViewModel = PromptResultsViewModel(generationQueue: promptGenerationQueue)
     private let promptsViewModel = PromptsViewModel()
     private let transformsViewModel = TransformsViewModel()
     private let offlineProcessingViewModel = OfflineProcessingViewModel()
@@ -84,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         llmSettingsViewModel: llmSettingsViewModel,
         chatViewModel: chatViewModel,
         promptResultsViewModel: promptResultsViewModel,
+        promptGenerationQueue: promptGenerationQueue,
         promptsViewModel: promptsViewModel,
         transformsViewModel: transformsViewModel,
         offlineProcessingViewModel: offlineProcessingViewModel,

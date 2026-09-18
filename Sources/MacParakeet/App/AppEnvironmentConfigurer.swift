@@ -55,6 +55,7 @@ final class AppEnvironmentConfigurer {
     private let llmSettingsViewModel: LLMSettingsViewModel
     private let chatViewModel: TranscriptChatViewModel
     private let promptResultsViewModel: PromptResultsViewModel
+    private let promptGenerationQueue: PromptGenerationQueue
     private let promptsViewModel: PromptsViewModel
     private let transformsViewModel: TransformsViewModel
     private let offlineProcessingViewModel: OfflineProcessingViewModel
@@ -74,6 +75,7 @@ final class AppEnvironmentConfigurer {
         llmSettingsViewModel: LLMSettingsViewModel,
         chatViewModel: TranscriptChatViewModel,
         promptResultsViewModel: PromptResultsViewModel,
+        promptGenerationQueue: PromptGenerationQueue,
         promptsViewModel: PromptsViewModel,
         transformsViewModel: TransformsViewModel,
         offlineProcessingViewModel: OfflineProcessingViewModel,
@@ -91,6 +93,7 @@ final class AppEnvironmentConfigurer {
         self.llmSettingsViewModel = llmSettingsViewModel
         self.chatViewModel = chatViewModel
         self.promptResultsViewModel = promptResultsViewModel
+        self.promptGenerationQueue = promptGenerationQueue
         self.promptsViewModel = promptsViewModel
         self.transformsViewModel = transformsViewModel
         self.offlineProcessingViewModel = offlineProcessingViewModel
@@ -118,7 +121,7 @@ final class AppEnvironmentConfigurer {
             llmService: hasLLMConfig ? env.llmService : nil,
             promptResultRepo: env.promptResultRepo,
             meetingArtifactStore: env.meetingArtifactStore,
-            promptResultsViewModel: promptResultsViewModel,
+            promptGenerationQueue: promptGenerationQueue,
             offlineProcessingViewModel: offlineProcessingViewModel
         )
         historyViewModel.configure(dictationRepo: env.dictationRepo)
@@ -216,7 +219,7 @@ final class AppEnvironmentConfigurer {
             conversationRepo: env.chatConversationRepo
         )
 
-        promptResultsViewModel.configure(
+        promptGenerationQueue.configure(
             llmService: hasLLMConfig ? env.llmService : nil,
             promptRepo: env.promptRepo,
             promptResultRepo: env.promptResultRepo,
@@ -226,10 +229,16 @@ final class AppEnvironmentConfigurer {
             // into the chat path that ADR-020's 2026-05-02 amendment relies on.
             transcriptionRepo: env.transcriptionRepo,
             meetingArtifactStore: env.meetingArtifactStore,
-            configStore: env.llmConfigStore,
-            llmClient: env.llmClient,
             cardGenerator: hasLLMConfig ? env.cardGenerationService : nil,
             offlineProcessingViewModel: offlineProcessingViewModel
+        )
+        promptResultsViewModel.configure(
+            promptRepo: env.promptRepo,
+            promptResultRepo: env.promptResultRepo,
+            transcriptionRepo: env.transcriptionRepo,
+            meetingArtifactStore: env.meetingArtifactStore,
+            configStore: env.llmConfigStore,
+            llmClient: env.llmClient
         )
 
         chatViewModel.onConversationsChanged = { [weak self] transcriptionID, hasConversations in
@@ -245,29 +254,6 @@ final class AppEnvironmentConfigurer {
 
         promptResultsViewModel.onModelChanged = { [weak self] in
             self?.chatViewModel.refreshModelInfo()
-        }
-
-        promptResultsViewModel.onPromptResultsChanged = { [weak self] transcriptionID, hasPromptResults in
-            guard self?.transcriptionViewModel.currentTranscription?.id == transcriptionID else { return }
-            self?.transcriptionViewModel.hasPromptResultTabs = hasPromptResults
-        }
-
-        promptResultsViewModel.onGenerationCompleted = { [weak self] generationID, promptResultID in
-            self?.transcriptionViewModel.handleGenerationCompleted(generationID, promptResultID: promptResultID)
-        }
-
-        promptResultsViewModel.onDeletedPromptResult = { [weak self] promptResultID in
-            self?.transcriptionViewModel.handlePromptResultDeleted(promptResultID)
-        }
-
-        promptResultsViewModel.shouldMarkPromptResultUnread = { [weak self] promptResultID in
-            guard let self else { return true }
-            if case .result(let id) = self.transcriptionViewModel.selectedTab,
-                id == promptResultID
-            {
-                return false
-            }
-            return true
         }
 
         transcriptionViewModel.onTranscribingChanged = { _ in
@@ -533,10 +519,11 @@ final class AppEnvironmentConfigurer {
         let service: LLMService? = hasConfig ? env.llmService : nil
         transcriptionViewModel.updateLLMAvailability(hasConfig, llmService: service)
         chatViewModel.updateLLMService(service)
-        promptResultsViewModel.updateLLMService(
+        promptGenerationQueue.updateLLMService(
             service,
             cardGenerator: hasConfig ? env.cardGenerationService : nil
         )
+        promptResultsViewModel.refreshModelInfo()
         transformsViewModel.setHasLLMProvider(hasConfig)
         liveMeetingCoordinator?.updateLLMService(service)
     }
