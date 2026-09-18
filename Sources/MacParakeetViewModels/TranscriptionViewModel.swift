@@ -201,16 +201,6 @@ public final class TranscriptionViewModel {
     }
     public private(set) var isConfigured = false
 
-    public func handlePromptResultDeleted(_ deletedID: UUID) {
-        guard case .result(let selectedID) = selectedTab, selectedID == deletedID else { return }
-        selectedTab = .transcript
-    }
-
-    public func handleGenerationCompleted(_ generationID: UUID, promptResultID: UUID) {
-        guard case .generation(let selectedID) = selectedTab, selectedID == generationID else { return }
-        selectedTab = .result(id: promptResultID)
-    }
-
     private var transcriptionService: TranscriptionServiceProtocol?
     private var audioTrackService: AudioTrackSelectingTranscriptionService?
     private var transcriptionRepo: TranscriptionRepositoryProtocol?
@@ -244,7 +234,7 @@ public final class TranscriptionViewModel {
     private let isWhisperModelDownloaded: () -> Bool
     private let isNemotronModelDownloaded: () -> Bool
     private let isCohereModelDownloaded: () -> Bool
-    public var promptResultsViewModel: PromptResultsViewModel?
+    public var promptGenerationQueue: PromptGenerationQueue?
     public private(set) var offlineProcessingViewModel: OfflineProcessingViewModel?
 
     public init(
@@ -294,7 +284,7 @@ public final class TranscriptionViewModel {
         llmService: LLMServiceProtocol? = nil,
         promptResultRepo: PromptResultRepositoryProtocol? = nil,
         meetingArtifactStore: MeetingArtifactStoring? = nil,
-        promptResultsViewModel: PromptResultsViewModel? = nil,
+        promptGenerationQueue: PromptGenerationQueue? = nil,
         offlineProcessingViewModel: OfflineProcessingViewModel? = nil
     ) {
         self.transcriptionService = transcriptionService
@@ -307,7 +297,7 @@ public final class TranscriptionViewModel {
         if let meetingArtifactStore {
             self.meetingArtifactStore = meetingArtifactStore
         }
-        self.promptResultsViewModel = promptResultsViewModel
+        self.promptGenerationQueue = promptGenerationQueue
         self.offlineProcessingViewModel = offlineProcessingViewModel
         isConfigured = true
         clearError()
@@ -917,7 +907,7 @@ public final class TranscriptionViewModel {
                 updatedResult.updatedAt = Date()
                 do {
                     try transcriptionRepo?.save(updatedResult)
-                    promptResultsViewModel?.generateKnowledgeCard(
+                    promptGenerationQueue?.generateKnowledgeCard(
                         transcriptionId: updatedResult.id
                     )
                     // Skip auto-run prompts on retranscribe — they would duplicate the existing tabs.
@@ -1411,7 +1401,7 @@ public final class TranscriptionViewModel {
         }
         guard runAutoPrompts else { return }
         let text = aiContextText(for: transcription)
-        promptResultsViewModel?.autoGeneratePromptResults(
+        promptGenerationQueue?.autoGeneratePromptResults(
             transcript: text,
             transcriptionId: transcription.id,
             sourceType: transcription.sourceType

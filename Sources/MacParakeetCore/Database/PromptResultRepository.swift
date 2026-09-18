@@ -5,6 +5,8 @@ public protocol PromptResultRepositoryProtocol: Sendable {
     func save(_ promptResult: PromptResult) throws
     func replace(_ promptResult: PromptResult, deletingExistingID: UUID?) throws
     func fetchAll(transcriptionId: UUID) throws -> [PromptResult]
+    /// Initial snapshot followed by committed changes for this transcript.
+    func observe(transcriptionId: UUID) -> AsyncThrowingStream<[PromptResult], Error>
     func delete(id: UUID) throws -> Bool
     func deleteAll(transcriptionId: UUID) throws
     func hasPromptResults(transcriptionId: UUID) throws -> Bool
@@ -57,6 +59,28 @@ public final class PromptResultRepository: PromptResultRepositoryProtocol {
                 .filter(PromptResult.Columns.transcriptionId == transcriptionId)
                 .order(PromptResult.Columns.createdAt.desc)
                 .fetchAll(db)
+        }
+    }
+
+    public func observe(transcriptionId: UUID) -> AsyncThrowingStream<[PromptResult], Error> {
+        let observation = ValueObservation.tracking { db in
+            try PromptResult
+                .filter(PromptResult.Columns.transcriptionId == transcriptionId)
+                .order(PromptResult.Columns.createdAt.desc)
+                .fetchAll(db)
+        }
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    for try await results in observation.values(in: dbQueue) {
+                        continuation.yield(results)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 

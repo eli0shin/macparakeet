@@ -79,7 +79,7 @@ final class FinalTranscriptDetailPerformanceTests: XCTestCase {
             transcription: fixture.transcription,
             viewModel: transcriptionViewModel,
             chatViewModel: TranscriptChatViewModel(),
-            promptResultsViewModel: PromptResultsViewModel(),
+            promptResultsViewModel: PromptResultsViewModel(generationQueue: PromptGenerationQueue()),
             promptsViewModel: PromptsViewModel(),
             customWords: [],
             playbackViewModelProbe: { player = $0 },

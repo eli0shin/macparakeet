@@ -284,7 +284,7 @@ struct TranscriptResultView: View {
         "List any action items mentioned",
     ]
 
-    var body: some View {
+    private var transcriptObservedContent: some View {
         identityIsolatedAdaptiveLayout
         .onAppear {
             playbackViewModelProbe?(playerViewModel)
@@ -414,11 +414,30 @@ struct TranscriptResultView: View {
         .onChange(of: transcriptAIContextModeRaw) {
             chatViewModel.loadTranscript(currentAIContextText, transcriptionId: viewModel.currentTranscription?.id)
         }
+    }
+
+    // Keep the observation groups in separate expressions so the CI Swift
+    // compiler does not need to solve the entire modifier chain at once.
+    private var promptObservedContent: some View {
+        transcriptObservedContent
+        .onChange(of: promptResultsViewModel.promptResults.map(\.id)) {
+            reconcilePromptResultPresentation()
+        }
+        .onChange(of: promptResultsViewModel.pendingGenerations.map(\.id)) {
+            reconcilePromptResultPresentation()
+        }
+        .onChange(of: promptResultsViewModel.isLoadingResults) {
+            reconcilePromptResultPresentation()
+        }
         .onChange(of: viewModel.selectedTab) {
             if case .result(let id) = viewModel.selectedTab {
                 promptResultsViewModel.markPromptResultViewed(id)
             }
         }
+    }
+
+    var body: some View {
+        promptObservedContent
         .onDisappear {
             detailPreparationTask?.cancel()
             detailPreparationTask = nil
@@ -1655,14 +1674,12 @@ struct TranscriptResultView: View {
                         aiPanesDomain { promptResultContentPane(promptResultID: id) }
                     } else {
                         transcriptDocumentDomain
-                            .onAppear { viewModel.selectedTab = .transcript }
                     }
                 case .generation(let id):
                     if promptResultsViewModel.pendingGeneration(id: id) != nil {
                         aiPanesDomain { pendingGenerationPane(generationID: id) }
                     } else {
                         transcriptDocumentDomain
-                            .onAppear { viewModel.selectedTab = .transcript }
                     }
                 case .chat:
                     aiPanesDomain { chatPane(viewModel: chatViewModel) }
@@ -2436,6 +2453,13 @@ struct TranscriptResultView: View {
         )
     }
 
+    private func reconcilePromptResultPresentation() {
+        guard promptResultsViewModel.currentTranscriptionID == transcription.id else { return }
+        viewModel.selectedTab = promptResultsViewModel.reconciledTab(viewModel.selectedTab)
+        viewModel.hasPromptResultTabs = !promptResultsViewModel.promptResults.isEmpty
+            || promptResultsViewModel.hasPendingGenerations
+    }
+
     // MARK: - Tab Bar
 
     private var orderedTabs: [TranscriptionViewModel.TranscriptTab] {
@@ -2877,7 +2901,7 @@ struct TranscriptResultView: View {
                     currentModel: promptResultsViewModel.currentModelName,
                     displayName: promptResultsViewModel.modelDisplayName,
                     availableModels: promptResultsViewModel.availableModels,
-                    disabled: promptResultsViewModel.hasActiveGenerations,
+                    disabled: !promptResultsViewModel.canSelectModel,
                     onSelect: { promptResultsViewModel.selectModel($0) }
                 )
             }
