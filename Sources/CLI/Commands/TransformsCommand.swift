@@ -1092,6 +1092,15 @@ func appHotkeyCollision(
             .bareModifierDictation
         ),
         (
+            "cancel dictation",
+            HotkeyTrigger.current(
+                defaults: defaults,
+                defaultsKey: HotkeyTrigger.cancelDictationDefaultsKey,
+                fallback: .defaultCancelDictation
+            ),
+            .exclusive
+        ),
+        (
             "meeting recording",
             HotkeyTrigger.current(
                 defaults: defaults,

@@ -219,10 +219,21 @@ final class AppHotkeyCoordinator {
             onHotkeyConflict(conflict.trigger, conflict.conflicts)
         }
 
+        let cancelTrigger = Self.cancelDictationTrigger(
+            configured: settingsViewModel.cancelDictationHotkeyTrigger,
+            otherTriggers: [
+                settingsViewModel.hotkeyTrigger,
+                settingsViewModel.pushToTalkHotkeyTrigger,
+                AppFeatures.meetingRecordingEnabled ? settingsViewModel.meetingHotkeyTrigger : .disabled,
+                settingsViewModel.fileTranscriptionHotkeyTrigger,
+                settingsViewModel.youtubeTranscriptionHotkeyTrigger,
+            ]
+        )
         let activeRecordingMode = dictationRecordingModeProvider()
         let managers = plan.specs.compactMap { spec in
             startDictationHotkey(
                 trigger: spec.trigger,
+                cancelTrigger: cancelTrigger,
                 gestureMode: spec.gestureMode,
                 startupDebounceMs: spec.startupDebounceMs,
                 holdToTalkStopTailMs: spec.holdToTalkStopTailMs,
@@ -234,6 +245,12 @@ final class AppHotkeyCoordinator {
         onDictationHotkeyManagersChanged(managers)
     }
 
+    /// Never let cancellation shadow a configured start/stop or auxiliary shortcut.
+    static func cancelDictationTrigger(configured: HotkeyTrigger, otherTriggers: [HotkeyTrigger]) -> HotkeyTrigger {
+        guard !otherTriggers.contains(where: { configured.conflicts(with: $0) }) else { return .disabled }
+        return configured
+    }
+
     private func stopDictationHotkeys() {
         dictationHotkeyManagers.forEach { $0.stop() }
         dictationHotkeyManagers = []
@@ -242,6 +259,7 @@ final class AppHotkeyCoordinator {
 
     private func startDictationHotkey(
         trigger: HotkeyTrigger,
+        cancelTrigger: HotkeyTrigger,
         gestureMode: HotkeyGestureController.Mode,
         startupDebounceMs: Int = FnKeyStateMachine.defaultStartupDebounceMs,
         holdToTalkStopTailMs: Int = 0,
@@ -252,6 +270,7 @@ final class AppHotkeyCoordinator {
 
         let manager = HotkeyManager(
             trigger: trigger,
+            cancelTrigger: cancelTrigger,
             gestureMode: gestureMode,
             startupDebounceMs: startupDebounceMs,
             holdToTalkStopTailMs: holdToTalkStopTailMs

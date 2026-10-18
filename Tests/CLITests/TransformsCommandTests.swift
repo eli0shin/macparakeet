@@ -483,6 +483,19 @@ final class TransformsCommandTests: XCTestCase {
         XCTAssertEqual(decoded["shortcut"] as? String, KeyboardShortcut.parse("ctrl+opt+1")?.displayString)
     }
 
+    func testAppHotkeyCollisionReservesConfiguredCancelShortcut() throws {
+        let suiteName = "com.macparakeet.tests.transforms.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let shortcut = try XCTUnwrap(KeyboardShortcut.parse("cmd+shift+k"))
+        shortcut.hotkeyTrigger.save(to: defaults, defaultsKey: HotkeyTrigger.cancelDictationDefaultsKey)
+        let collision = try XCTUnwrap(appHotkeyCollision(for: shortcut, defaults: defaults))
+        XCTAssertTrue(String(describing: collision).contains("cancel dictation"))
+
+        HotkeyTrigger.disabled.save(to: defaults, defaultsKey: HotkeyTrigger.cancelDictationDefaultsKey)
+        XCTAssertNil(appHotkeyCollision(for: shortcut, defaults: defaults))
+    }
+
     func testAppHotkeyCollisionAllowsChordSharingBareModifierDictationHotkey() throws {
         let suiteName = "com.macparakeet.tests.transforms.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

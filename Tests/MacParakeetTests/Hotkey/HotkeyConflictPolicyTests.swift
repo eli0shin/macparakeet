@@ -23,7 +23,8 @@ final class HotkeyConflictPolicyTests: XCTestCase {
         fileTranscription: HotkeyTrigger = .disabled,
         youtubeTranscription: HotkeyTrigger = .disabled,
         transformHotkeys: [Prompt] = [],
-        meetingRecordingEnabled: Bool = true
+        meetingRecordingEnabled: Bool = true,
+        cancelDictation: HotkeyTrigger = .defaultCancelDictation
     ) -> HotkeyConflictPolicy.SettingsSnapshot {
         HotkeyConflictPolicy.SettingsSnapshot(
             handsFree: handsFree,
@@ -32,8 +33,39 @@ final class HotkeyConflictPolicyTests: XCTestCase {
             fileTranscription: fileTranscription,
             youtubeTranscription: youtubeTranscription,
             transformHotkeys: transformHotkeys,
-            meetingRecordingEnabled: meetingRecordingEnabled
+            meetingRecordingEnabled: meetingRecordingEnabled,
+            cancelDictation: cancelDictation
         )
+    }
+
+    func testCancelCannotOverlapStartStopOrAuxiliaryShortcuts() {
+        let state = snapshot(handsFree: .fn, pushToTalk: .control, meeting: .defaultMeetingRecording)
+        for candidate: HotkeyTrigger in [.fn, .control, .defaultMeetingRecording] {
+            guard case .blocked = HotkeyConflictPolicy.settingsValidation(
+                candidate: candidate, surface: .cancelDictation, snapshot: state
+            ) else {
+                return XCTFail("Cancel must not shadow \(candidate.displayName)")
+            }
+        }
+        XCTAssertEqual(
+            HotkeyConflictPolicy.settingsValidation(
+                candidate: .defaultCancelDictation, surface: .cancelDictation, snapshot: state
+            ), .allowed
+        )
+    }
+
+    func testOtherHotkeysCannotTakeCancelShortcut() {
+        let cancel = HotkeyTrigger.chord(modifiers: ["command"], keyCode: 0)
+        let state = snapshot(cancelDictation: cancel)
+        for surface: HotkeyConflictPolicy.Surface in [
+            .handsFreeDictation, .pushToTalk, .meetingRecording, .fileTranscription, .youtubeTranscription,
+        ] {
+            guard case .blocked = HotkeyConflictPolicy.settingsValidation(
+                candidate: cancel, surface: surface, snapshot: state
+            ) else {
+                return XCTFail("Other hotkeys must not take the cancel shortcut")
+            }
+        }
     }
 
     func testTransformShortcutCollisionMessagesAreSnapshotted() {

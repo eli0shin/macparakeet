@@ -91,6 +91,12 @@ public final class SettingsViewModel {
             Telemetry.send(hotkeyTrigger.customizedEvent(surface: .dictation))
         }
     }
+    public var cancelDictationHotkeyTrigger: HotkeyTrigger {
+        didSet {
+            cancelDictationHotkeyTrigger.save(to: defaults, defaultsKey: HotkeyTrigger.cancelDictationDefaultsKey)
+            NotificationCenter.default.post(name: .macParakeetHotkeyTriggerDidChange, object: nil)
+        }
+    }
     public var pushToTalkHotkeyTrigger: HotkeyTrigger {
         didSet {
             pushToTalkHotkeyTrigger.save(to: defaults, defaultsKey: HotkeyTrigger.pushToTalkDefaultsKey)
@@ -764,6 +770,16 @@ public final class SettingsViewModel {
         let resolvedDictationHotkeys = Self.resolveDictationHotkeyTriggers(defaults: defaults)
         hotkeyTrigger = resolvedDictationHotkeys.handsFree
         pushToTalkHotkeyTrigger = resolvedDictationHotkeys.pushToTalk
+        let cancelTrigger = HotkeyTrigger.current(
+            defaults: defaults,
+            defaultsKey: HotkeyTrigger.cancelDictationDefaultsKey,
+            fallback: .defaultCancelDictation
+        )
+        if case .blocked = cancelTrigger.cancelDictationValidation {
+            cancelDictationHotkeyTrigger = .defaultCancelDictation
+        } else {
+            cancelDictationHotkeyTrigger = cancelTrigger
+        }
         if resolvedDictationHotkeys.shouldPersistHandsFree {
             resolvedDictationHotkeys.handsFree.save(to: defaults)
         }

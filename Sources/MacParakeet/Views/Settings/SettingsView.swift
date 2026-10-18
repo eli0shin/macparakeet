@@ -1054,6 +1054,37 @@ struct SettingsView: View {
                     }
                 }
 
+                Divider()
+
+                HStack(alignment: .center) {
+                    rowText(
+                        title: "Cancel hands-free dictation",
+                        detail: "Cancel without pasting. Push to talk still uses Escape."
+                    )
+                    Spacer(minLength: DesignSystem.Spacing.md)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        HotkeyRecorderView(
+                            trigger: $viewModel.cancelDictationHotkeyTrigger,
+                            defaultTrigger: .defaultCancelDictation,
+                            allowsEscape: true,
+                            additionalValidation: { candidate in
+                                HotkeyConflictPolicy.settingsValidation(
+                                    candidate: candidate,
+                                    surface: .cancelDictation,
+                                    snapshot: hotkeyConflictSnapshot
+                                )
+                            },
+                            onRecordingStateChanged: onHotkeyRecordingStateChanged
+                        )
+                        if let conflict = conflictMessage(
+                            trigger: viewModel.cancelDictationHotkeyTrigger,
+                            surface: .cancelDictation
+                        ) {
+                            hotkeyConflictText(conflict)
+                        }
+                    }
+                }
+
                 if !viewModel.hotkeyTrigger.isDisabled || !viewModel.pushToTalkHotkeyTrigger.isDisabled {
                     Divider()
 
@@ -1499,7 +1530,8 @@ struct SettingsView: View {
             fileTranscription: viewModel.fileTranscriptionHotkeyTrigger,
             youtubeTranscription: viewModel.youtubeTranscriptionHotkeyTrigger,
             transformHotkeys: transformHotkeys,
-            meetingRecordingEnabled: AppFeatures.meetingRecordingEnabled
+            meetingRecordingEnabled: AppFeatures.meetingRecordingEnabled,
+            cancelDictation: viewModel.cancelDictationHotkeyTrigger
         )
     }
 

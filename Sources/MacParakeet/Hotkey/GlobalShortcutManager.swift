@@ -96,6 +96,12 @@ public final class GlobalShortcutManager {
         modifierChordBlockedUntilRelease = false
     }
 
+    /// Feed an event without installing a tap. Dictation uses the same matcher
+    /// for its contextual cancel shortcut, leaving event propagation unchanged.
+    func processEvent(type: CGEventType, event: CGEvent) {
+        _ = handleEvent(type: type, event: event)
+    }
+
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap = eventTap {
@@ -254,7 +260,7 @@ public final class GlobalShortcutManager {
         return shouldSwallow ? nil : Unmanaged.passUnretained(event)
     }
 
-    private func recoverFromDisabledTap(flags: CGEventFlags? = nil) {
+    func recoverFromDisabledTap(flags: CGEventFlags? = nil) {
         recoverFromDisabledTap(flags: flags, triggerKeyPressed: currentPhysicalTriggerKeyIsPressed())
     }
 

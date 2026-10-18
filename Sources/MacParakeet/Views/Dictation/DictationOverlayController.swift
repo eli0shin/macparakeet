@@ -156,7 +156,11 @@ final class DictationOverlayController: DictationOverlayControlling {
 
         let x = point.x
         if x >= pillLeft && x < pillLeft + 45 {
-            overlayViewModel.hoverTooltip = "Cancel (Esc)"
+            let trigger = HotkeyTrigger.current(
+                defaultsKey: HotkeyTrigger.cancelDictationDefaultsKey,
+                fallback: .defaultCancelDictation
+            )
+            overlayViewModel.hoverTooltip = trigger.isDisabled ? "Cancel" : "Cancel (\(trigger.displayName))"
         } else if x > pillRight - 45 && x <= pillRight {
             if overlayViewModel.sessionKind == .command {
                 overlayViewModel.hoverTooltip = "Stop & apply (Fn+Control)"
