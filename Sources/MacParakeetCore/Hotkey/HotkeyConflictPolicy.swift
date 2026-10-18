@@ -63,6 +63,7 @@ public enum SettingsDictationHotkeyConflictPolicy {
 public enum HotkeyConflictPolicy {
     public enum Surface: Equatable, Sendable {
         case handsFreeDictation
+        case cancelDictation
         case pushToTalk
         case meetingRecording
         case fileTranscription
@@ -111,6 +112,7 @@ public enum HotkeyConflictPolicy {
     public struct SettingsSnapshot: Sendable {
         public let handsFree: HotkeyTrigger
         public let pushToTalk: HotkeyTrigger
+        public let cancelDictation: HotkeyTrigger
         public let meeting: HotkeyTrigger
         public let fileTranscription: HotkeyTrigger
         public let youtubeTranscription: HotkeyTrigger
@@ -124,10 +126,12 @@ public enum HotkeyConflictPolicy {
             fileTranscription: HotkeyTrigger,
             youtubeTranscription: HotkeyTrigger,
             transformHotkeys: [Prompt],
-            meetingRecordingEnabled: Bool
+            meetingRecordingEnabled: Bool,
+            cancelDictation: HotkeyTrigger = .defaultCancelDictation
         ) {
             self.handsFree = handsFree
             self.pushToTalk = pushToTalk
+            self.cancelDictation = cancelDictation
             self.meeting = meeting
             self.fileTranscription = fileTranscription
             self.youtubeTranscription = youtubeTranscription
@@ -190,6 +194,9 @@ public enum HotkeyConflictPolicy {
         surface: Surface,
         snapshot: SettingsSnapshot
     ) -> Conflict? {
+        if surface != .cancelDictation, trigger.conflicts(with: snapshot.cancelDictation) {
+            return Conflict(name: "cancel dictation", trigger: snapshot.cancelDictation)
+        }
         switch surface {
         case .handsFreeDictation:
             if let conflict = dictationPeerConflict(
@@ -217,6 +224,15 @@ public enum HotkeyConflictPolicy {
                 for: trigger,
                 selfMode: .bareModifierDictation,
                 among: dictationPeerCandidates(snapshot: snapshot)
+            )
+
+        case .cancelDictation:
+            return firstConflict(
+                for: trigger,
+                among: [
+                    NamedCandidate(name: "hands-free mode", trigger: snapshot.handsFree),
+                    NamedCandidate(name: "push to talk", trigger: snapshot.pushToTalk),
+                ] + dictationPeerCandidates(snapshot: snapshot)
             )
 
         case .meetingRecording:
@@ -299,7 +315,9 @@ public enum HotkeyConflictPolicy {
         surface: Surface,
         conflict: Conflict
     ) -> Bool {
-        !(surface == .handsFreeDictation && conflict.name == "push to talk")
+        // A conflicting cancel shortcut stands down, not the existing action.
+        conflict.name != "cancel dictation"
+            && !(surface == .handsFreeDictation && conflict.name == "push to talk")
     }
 
     private static func dictationPeerCandidates(snapshot: SettingsSnapshot) -> [NamedCandidate] {

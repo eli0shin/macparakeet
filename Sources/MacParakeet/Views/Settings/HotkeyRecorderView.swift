@@ -16,6 +16,7 @@ struct HotkeyRecorderView: View {
 
     @Binding var trigger: HotkeyTrigger
     var defaultTrigger: HotkeyTrigger = .fn
+    var allowsEscape: Bool = false
     var displayLabelOverride: String? = nil
     var defaultLabelOverride: String? = nil
     var additionalValidation: ((HotkeyTrigger) -> HotkeyTrigger.ValidationResult)? = nil
@@ -176,8 +177,8 @@ struct HotkeyRecorderView: View {
             if event.type == .keyDown {
                 let keyCode = event.keyCode
 
-                // Escape cancels recording mode
-                if keyCode == 53 {
+                // Cancel-shortcut recorders can capture Escape; their Cancel button still exits.
+                if keyCode == 53 && !allowsEscape {
                     stopRecording()
                     return nil
                 }
@@ -516,8 +517,12 @@ struct HotkeyRecorderView: View {
         stopRecording()
     }
 
+    static func validation(for candidate: HotkeyTrigger, allowsEscape: Bool) -> HotkeyTrigger.ValidationResult {
+        allowsEscape ? candidate.cancelDictationValidation : candidate.validation
+    }
+
     private func combinedValidation(for candidate: HotkeyTrigger) -> HotkeyTrigger.ValidationResult {
-        let primary = candidate.validation
+        let primary = Self.validation(for: candidate, allowsEscape: allowsEscape)
         let secondary = additionalValidation?(candidate) ?? .allowed
 
         switch (primary, secondary) {

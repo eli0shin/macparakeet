@@ -377,6 +377,7 @@ public struct HotkeyTrigger: Sendable {
     public static let fnSpace: HotkeyTrigger = .chord(modifiers: ["fn"], keyCode: 49)
     public static let defaultDictation: HotkeyTrigger = .fn
     public static let defaultPushToTalk: HotkeyTrigger = .fn
+    public static let defaultCancelDictation: HotkeyTrigger = .fromKeyCode(53)
     public static let defaultMeetingRecording: HotkeyTrigger = .chord(modifiers: ["command", "shift"], keyCode: 46)
 
     public static func isDefaultDictationGesturePreset(
@@ -462,6 +463,12 @@ public struct HotkeyTrigger: Sendable {
         case .modifierChord:
             return Self.validateModifierChord(modifierChordComponents)
         }
+    }
+
+    /// Escape is valid for the cancel action, but remains reserved elsewhere.
+    public var cancelDictationValidation: ValidationResult {
+        if keyCode == 53 { return .allowed }
+        return validation
     }
 
     private static func validateKeyCode(_ keyCode: UInt16?) -> ValidationResult {
@@ -687,6 +694,7 @@ public struct HotkeyTrigger: Sendable {
 
     public static let defaultsKey = "hotkeyTrigger"
     public static let pushToTalkDefaultsKey = "pushToTalkHotkeyTrigger"
+    public static let cancelDictationDefaultsKey = "cancelDictationHotkeyTrigger"
     public static let meetingDefaultsKey = "meetingHotkeyTrigger"
     public static let fileTranscriptionDefaultsKey = "fileTranscriptionHotkeyTrigger"
     public static let youtubeTranscriptionDefaultsKey = "youtubeTranscriptionHotkeyTrigger"

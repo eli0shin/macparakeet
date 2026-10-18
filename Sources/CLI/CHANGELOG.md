@@ -89,6 +89,12 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ## [Unreleased]
 
+### Dictation cancel shortcut
+
+- Transform shortcut validation now reserves the configurable hands-free dictation
+  cancel shortcut, preventing a Transform from intercepting cancellation. Existing
+  JSON schemas and exit codes are unchanged.
+
 ### Calendar participant details
 
 - Human-readable `calendar upcoming` output now lists available organizer and

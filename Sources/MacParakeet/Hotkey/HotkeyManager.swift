@@ -20,6 +20,14 @@ public final class HotkeyManager {
 
     private let gestureController: HotkeyGestureController
     private let trigger: HotkeyTrigger
+    private let cancelTrigger: HotkeyTrigger
+    private let cancelShortcutMatcher: GlobalShortcutManager
+    private var cancelShortcutMatched = false
+    private var lastRecordingMode: FnKeyStateMachine.RecordingMode?
+
+    private var usesEscapeToCancel: Bool {
+        cancelTrigger == .defaultCancelDictation || gestureMode == .holdOnly || lastRecordingMode == .holdToTalk
+    }
     private let gestureMode: HotkeyGestureController.Mode
     private let holdToTalkStopTailMs: Int
     private let targetMask: CGEventFlags?
@@ -61,12 +69,15 @@ public final class HotkeyManager {
 
     public init(
         trigger: HotkeyTrigger = .fn,
+        cancelTrigger: HotkeyTrigger = .defaultCancelDictation,
         gestureMode: HotkeyGestureController.Mode = .doubleTapAndHold,
         tapThresholdMs: Int = FnKeyStateMachine.defaultTapThresholdMs,
         startupDebounceMs: Int = FnKeyStateMachine.defaultStartupDebounceMs,
         holdToTalkStopTailMs: Int = 0
     ) {
         self.trigger = trigger
+        self.cancelTrigger = cancelTrigger
+        self.cancelShortcutMatcher = GlobalShortcutManager(trigger: cancelTrigger)
         self.gestureMode = gestureMode
         self.holdToTalkStopTailMs = max(0, holdToTalkStopTailMs)
         self.gestureController = HotkeyGestureController(
@@ -77,6 +88,10 @@ public final class HotkeyManager {
         self.tapThresholdMs = self.gestureController.tapThresholdMs
         self.targetMask = trigger.kind == .modifier ? ModifierKeyMatcher.mask(for: trigger.modifierName) : nil
         self.requiredChordFlags = trigger.chordEventFlags
+        cancelShortcutMatcher.onTrigger = { [weak self] in
+            guard let self, !self.usesEscapeToCancel else { return }
+            self.cancelShortcutMatched = true
+        }
     }
 
     deinit {
@@ -99,11 +114,9 @@ public final class HotkeyManager {
         // Guard against double-start: stop existing tap to prevent leaking it
         if eventTap != nil { stop() }
 
-        var eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
+        let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
             | (1 << CGEventType.keyDown.rawValue)
-        if trigger.kind == .keyCode || trigger.kind == .chord {
-            eventMask |= (1 << CGEventType.keyUp.rawValue)
-        }
+            | (1 << CGEventType.keyUp.rawValue)
 
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -163,6 +176,8 @@ public final class HotkeyManager {
         eventTap = nil
         runLoopSource = nil
         installedRunLoop = nil
+        lastRecordingMode = nil
+        cancelShortcutMatcher.stop()
         targetModifierWasPressed = false
         previousModifierFlags = []
         targetModifierGestureIsActive = false
@@ -185,6 +200,17 @@ public final class HotkeyManager {
             if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
             recoverFromDisabledTap()
             return Unmanaged.passUnretained(event)
+        }
+
+        cancelShortcutMatched = false
+        cancelShortcutMatcher.processEvent(type: type, event: event)
+        // Always run trigger bookkeeping first: e.g. Fn+cancel is not a bare
+        // Fn tap and must not start dictation when Fn is subsequently released.
+        let shouldCancel = cancelShortcutMatched
+        defer {
+            if shouldCancel {
+                handleOutputs(gestureController.escapePressed())
+            }
         }
 
         switch trigger.kind {
@@ -353,7 +379,7 @@ public final class HotkeyManager {
         keyCode: Int64,
         timestampMs: UInt64
     ) -> [HotkeyGestureController.Output] {
-        if keyCode == 53 { // Escape
+        if keyCode == 53 && usesEscapeToCancel {
             return gestureController.escapePressed()
         } else if !HotkeyTrigger.isFnKeyCode(UInt16(keyCode)) {
             // Skip Fn/Globe key (63/179) — macOS generates a synthetic keyDown
@@ -373,6 +399,10 @@ public final class HotkeyManager {
             return gestureController.interrupted()
         }
         return []
+    }
+
+    func handleEventForTesting(type: CGEventType, event: CGEvent) {
+        _ = handleEvent(type: type, event: event)
     }
 
     // Test seam: lets unit tests exercise the real modifier-path state logic
@@ -525,7 +555,7 @@ public final class HotkeyManager {
                 triggerKeyIsPressed = true
 
                 return (gestureController.triggerPressed(timestampMs: timestampMs), true)
-            } else if keyCode == 53 { // Escape
+            } else if keyCode == 53 && usesEscapeToCancel {
                 return (gestureController.escapePressed(), false)
             } else {
                 // Gesture interruption: a regular key press means the user is typing,
@@ -587,7 +617,7 @@ public final class HotkeyManager {
                 chordModifierReleased = false
 
                 return (gestureController.triggerPressed(timestampMs: timestampMs), true)
-            } else if keyCode == 53 { // Escape
+            } else if keyCode == 53 && usesEscapeToCancel {
                 return (gestureController.escapePressed(), false)
             } else {
                 // Gesture interruption
@@ -701,7 +731,7 @@ public final class HotkeyManager {
         keyCode: Int64,
         timestampMs _: UInt64
     ) -> [HotkeyGestureController.Output] {
-        if keyCode == 53 {
+        if keyCode == 53 && usesEscapeToCancel {
             return gestureController.escapePressed()
         } else if !HotkeyTrigger.isFnKeyCode(UInt16(keyCode)) {
             if modifierChordGestureIsActive {
@@ -735,6 +765,7 @@ public final class HotkeyManager {
     public func resumeRecording(mode: FnKeyStateMachine.RecordingMode) {
         gestureController.resumeRecording(mode: mode)
         activeRecordingMode = mode
+        lastRecordingMode = mode
     }
 
     public func syncRecordingMode(_ mode: FnKeyStateMachine.RecordingMode) {
@@ -795,6 +826,7 @@ public final class HotkeyManager {
         triggerKeyPressed: Bool,
         timestampMs: UInt64
     ) -> [HotkeyGestureController.Output] {
+        cancelShortcutMatcher.recoverFromDisabledTap(flags: flags)
         let triggerPressed = currentPhysicalTriggerIsPressed(
             flags: flags,
             triggerKeyPressed: triggerKeyPressed
@@ -1110,6 +1142,7 @@ public final class HotkeyManager {
             switch output {
             case .startRecording(let mode):
                 activeRecordingMode = mode
+                lastRecordingMode = mode
             case .stopRecording, .cancelRecording, .discardRecording:
                 activeRecordingMode = nil
             default:

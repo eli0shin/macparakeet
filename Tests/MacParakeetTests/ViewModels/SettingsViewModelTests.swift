@@ -2429,6 +2429,31 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.hotkeyTrigger, .defaultDictation)
     }
 
+    func testCancelDictationHotkeyDefaultsToEscapeAndPersistsIndependently() {
+        XCTAssertEqual(viewModel.cancelDictationHotkeyTrigger, .defaultCancelDictation)
+        let shortcut = HotkeyTrigger.chord(modifiers: ["command", "shift"], keyCode: 0)
+        viewModel.cancelDictationHotkeyTrigger = shortcut
+
+        let reloaded = SettingsViewModel(defaults: testDefaults)
+        XCTAssertEqual(reloaded.cancelDictationHotkeyTrigger, shortcut)
+        XCTAssertEqual(reloaded.hotkeyTrigger, .defaultDictation)
+        XCTAssertEqual(reloaded.pushToTalkHotkeyTrigger, .defaultPushToTalk)
+
+        viewModel.cancelDictationHotkeyTrigger = .disabled
+        XCTAssertEqual(SettingsViewModel(defaults: testDefaults).cancelDictationHotkeyTrigger, .disabled)
+    }
+
+    func testCancelDictationHotkeyNotifiesHotkeyRefresh() {
+        let notification = expectation(forNotification: .macParakeetHotkeyTriggerDidChange, object: nil)
+        viewModel.cancelDictationHotkeyTrigger = .fromKeyCode(105)
+        wait(for: [notification], timeout: 1)
+    }
+
+    func testCancelDictationHotkeyFallsBackForCorruptDefaults() {
+        testDefaults.set(Data("invalid".utf8), forKey: HotkeyTrigger.cancelDictationDefaultsKey)
+        XCTAssertEqual(SettingsViewModel(defaults: testDefaults).cancelDictationHotkeyTrigger, .defaultCancelDictation)
+    }
+
     func testPushToTalkHotkeyTriggerDefaultsToFn() {
         XCTAssertEqual(viewModel.pushToTalkHotkeyTrigger, .fn)
     }

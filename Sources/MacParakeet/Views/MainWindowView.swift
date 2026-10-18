@@ -325,6 +325,8 @@ struct MainWindowView: View {
                 conflictMode: .bareModifierDictation
             ),
             TransformShortcutReservedHotkey(
+                name: "cancel dictation", trigger: settingsViewModel.cancelDictationHotkeyTrigger),
+            TransformShortcutReservedHotkey(
                 name: "file transcription", trigger: settingsViewModel.fileTranscriptionHotkeyTrigger),
             TransformShortcutReservedHotkey(
                 name: "video URL transcription", trigger: settingsViewModel.youtubeTranscriptionHotkeyTrigger),

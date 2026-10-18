@@ -4,6 +4,16 @@ import XCTest
 @testable import MacParakeetCore
 
 final class HotkeyRecorderViewTests: XCTestCase {
+    func testEscapeIsAllowedOnlyForCancelShortcutRecording() {
+        let escape = HotkeyTrigger.defaultCancelDictation
+        XCTAssertEqual(HotkeyRecorderView.validation(for: escape, allowsEscape: true), .allowed)
+        guard case .blocked = HotkeyRecorderView.validation(for: escape, allowsEscape: false) else {
+            return XCTFail("Escape must remain reserved in other hotkey recorders")
+        }
+        let chord = HotkeyTrigger.chord(modifiers: ["command"], keyCode: 53)
+        XCTAssertEqual(HotkeyRecorderView.validation(for: chord, allowsEscape: true), .allowed)
+    }
+
     func testStandardBareModifierCaptureRecordsPhysicalModifierSide() {
         let candidate = HotkeyRecorderView.bareModifierTrigger(
             for: "command",

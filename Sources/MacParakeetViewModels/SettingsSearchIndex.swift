@@ -144,6 +144,14 @@ public enum SettingsSearchIndex {
             cardAnchor: "dictation"
         ),
         SettingsSearchEntry(
+            id: "dictation.cancel.hotkey",
+            tab: .capture,
+            title: "Cancel hands-free dictation",
+            subtitle: "in Dictation",
+            keywords: ["cancel", "escape", "esc", "hotkey", "shortcut", "discard", "toggle"],
+            cardAnchor: "dictation"
+        ),
+        SettingsSearchEntry(
             id: "dictation.idle.pill",
             tab: .capture,
             title: "Show idle pill at all times",
