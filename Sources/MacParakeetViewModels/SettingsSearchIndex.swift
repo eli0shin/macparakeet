@@ -459,6 +459,7 @@ public enum SettingsSearchIndex {
                     "formatter", "formatting", "cleanup", "dictation prompt", "app profiles",
                     "smart defaults", "fallback prompt", "bundle id", "category", "rewrite", "polish",
                     "batch size", "maximum turns", "maximum characters", "meeting cleanup limits",
+                    "whole meeting", "no limits", "unlimited",
                     "use for transcripts", "use for dictation", "meeting transcripts",
                     "fix misplaced words", "speaker turn", "speaker boundary"
                 ]
@@ -466,6 +467,7 @@ public enum SettingsSearchIndex {
                     "formatter", "formatting", "cleanup", "dictation prompt",
                     "fallback prompt", "rewrite", "polish",
                     "batch size", "maximum turns", "maximum characters", "meeting cleanup limits",
+                    "whole meeting", "no limits", "unlimited",
                     "use for transcripts", "use for dictation", "meeting transcripts",
                     "fix misplaced words", "speaker turn", "speaker boundary"
                 ],

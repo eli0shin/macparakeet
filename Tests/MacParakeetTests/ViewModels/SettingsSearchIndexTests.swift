@@ -255,6 +255,7 @@ final class SettingsSearchIndexTests: XCTestCase {
         for query in [
             "formatter", "fix misplaced words", "speaker boundary",
             "batch size", "maximum turns", "maximum characters", "meeting cleanup limits",
+            "whole meeting", "no limits", "unlimited",
         ] {
             XCTAssertTrue(
                 Set(SettingsSearchIndex.matches(query).map(\.id)).contains("ai.formatter"),

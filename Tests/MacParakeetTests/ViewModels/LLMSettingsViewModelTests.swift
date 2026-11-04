@@ -168,6 +168,7 @@ final class LLMSettingsViewModelTests: XCTestCase {
         let runtime = UserDefaultsAppRuntimePreferences(defaults: defaults)
         XCTAssertEqual(viewModel.meetingCleanupMaximumTurns, 10)
         XCTAssertEqual(viewModel.meetingCleanupMaximumCharacters, 500)
+        XCTAssertFalse(viewModel.meetingCleanupWholeMeeting)
         XCTAssertEqual(runtime.meetingCleanupBatchLimits, .init())
 
         viewModel.meetingCleanupMaximumTurns = 1_000
@@ -183,6 +184,31 @@ final class LLMSettingsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.meetingCleanupMaximumTurns, 10)
         XCTAssertEqual(viewModel.meetingCleanupMaximumCharacters, 500)
         XCTAssertEqual(runtime.meetingCleanupBatchLimits, .init())
+    }
+
+    func testWholeMeetingPersistsPreservesCustomLimitsAndResets() {
+        let runtime = UserDefaultsAppRuntimePreferences(defaults: defaults)
+        viewModel.meetingCleanupMaximumTurns = 25
+        viewModel.meetingCleanupMaximumCharacters = 5_000
+        viewModel.meetingCleanupWholeMeeting = true
+        viewModel.clearConfiguration()
+
+        XCTAssertEqual(
+            runtime.meetingCleanupBatchLimits,
+            .init(maximumTurns: 25, maximumCharacters: 5_000, wholeMeeting: true)
+        )
+        let reloaded = LLMSettingsViewModel(defaults: defaults)
+        XCTAssertTrue(reloaded.meetingCleanupWholeMeeting)
+        reloaded.meetingCleanupWholeMeeting = false
+        XCTAssertEqual(runtime.meetingCleanupBatchLimits, .init(maximumTurns: 25, maximumCharacters: 5_000))
+        XCTAssertEqual(reloaded.meetingCleanupMaximumTurns, 25)
+        XCTAssertEqual(reloaded.meetingCleanupMaximumCharacters, 5_000)
+
+        reloaded.meetingCleanupWholeMeeting = true
+        reloaded.resetMeetingCleanupBatchLimits()
+        XCTAssertFalse(reloaded.meetingCleanupWholeMeeting)
+        XCTAssertEqual(runtime.meetingCleanupBatchLimits, .init())
+        XCTAssertFalse(LLMSettingsViewModel(defaults: defaults).meetingCleanupWholeMeeting)
     }
 
     func testInvalidMeetingCleanupLimitsRecoverToDefaults() {

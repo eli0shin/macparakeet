@@ -863,11 +863,17 @@ struct LLMSettingsView: View {
             }
 
             Text(
-                "Raise both limits to send more of a meeting at once to a larger model. Applies to new and re-transcribed meetings. Defaults: 10 turns and 500 transcript characters."
+                "Send the whole meeting at once, or tune both limits for your model. Applies to new and re-transcribed meetings. Defaults: 10 turns and 500 transcript characters."
             )
             .font(DesignSystem.Typography.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+
+            Toggle("Whole meeting", isOn: $viewModel.meetingCleanupWholeMeeting)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .font(DesignSystem.Typography.caption)
+                .help("Send every turn in one cleanup request, ignoring the saved turn and character limits.")
 
             HStack(spacing: DesignSystem.Spacing.md) {
                 Text("Maximum turns")
@@ -881,9 +887,12 @@ struct LLMSettingsView: View {
             }
             .textFieldStyle(.roundedBorder)
             .font(DesignSystem.Typography.caption)
+            .disabled(viewModel.meetingCleanupWholeMeeting)
 
             Text(
-                "Enter positive whole numbers. Long turns are sent whole, even above the character limit. Fix misplaced words may add one carried turn beyond these limits. Larger batches may need more provider output capacity or time."
+                viewModel.meetingCleanupWholeMeeting
+                    ? "Sends all meeting turns in one request. Your custom limits are saved for when you switch back. Provider context, output, and timeout limits still apply; a failed request leaves the meeting with standard cleanup."
+                    : "Enter positive whole numbers. Long turns are sent whole, even above the character limit. Fix misplaced words may add one carried turn beyond these limits. Larger batches may need more provider output capacity or time."
             )
             .font(DesignSystem.Typography.caption)
             .foregroundStyle(.secondary)

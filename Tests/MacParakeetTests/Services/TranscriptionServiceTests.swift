@@ -2143,6 +2143,24 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(updated.meetingReadingTurnFormatting?.count, 2)
         let persisted = try XCTUnwrap(transcriptionRepo.fetch(id: updated.id))
         XCTAssertEqual(persisted.meetingReadingTurnFormatting, updated.meetingReadingTurnFormatting)
+
+        settings.meetingCleanupMaximumTurns = 1
+        settings.meetingCleanupMaximumCharacters = 1
+        settings.meetingCleanupWholeMeeting = true
+        await mockSTT.configureSequence(results: results)
+        let wholeMeeting = try await service.retranscribeMeeting(existing: updated, recording: recording)
+        XCTAssertEqual(llm.formatTranscriptCallCount, 4, "Whole meeting bypasses both saved limits")
+        XCTAssertEqual(wholeMeeting.meetingReadingTurnFormatting?.count, 2)
+        let wholeMeetingInput = try XCTUnwrap(llm.formattedTranscripts.last)
+        let wholeMeetingPayload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(wholeMeetingInput.utf8)) as? [String: Any]
+        )
+        XCTAssertEqual((wholeMeetingPayload["entries"] as? [[String: Any]])?.count, 2)
+
+        settings.meetingCleanupWholeMeeting = false
+        await mockSTT.configureSequence(results: results)
+        _ = try await service.retranscribeMeeting(existing: wholeMeeting, recording: recording)
+        XCTAssertEqual(llm.formatTranscriptCallCount, 6, "Switching back restores saved batching limits")
     }
 
     func testMeetingFinalizationAndRetranscriptionReadCurrentSpeakerTurnRepairSetting() async throws {

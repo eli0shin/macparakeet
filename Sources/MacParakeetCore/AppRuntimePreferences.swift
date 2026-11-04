@@ -530,6 +530,7 @@ public final class UserDefaultsAppRuntimePreferences: AppRuntimePreferencesProto
     public static let meetingSpeakerTurnRepairEnabledKey = "meetingSpeakerTurnRepairEnabled"
     public static let meetingCleanupMaximumTurnsKey = "meetingCleanupMaximumTurns"
     public static let meetingCleanupMaximumCharactersKey = "meetingCleanupMaximumCharacters"
+    public static let meetingCleanupWholeMeetingKey = "meetingCleanupWholeMeeting"
     public static let aiFormatterPromptKey = "aiFormatterPrompt"
     /// Master switch for the built-in smart-default formatter prompts
     /// (default on). Off means the resolution chain skips the smart-default
@@ -681,7 +682,8 @@ public final class UserDefaultsAppRuntimePreferences: AppRuntimePreferencesProto
     public var meetingCleanupBatchLimits: MeetingCleanupBatchLimits {
         MeetingCleanupBatchLimits(
             maximumTurns: defaults.integer(forKey: Self.meetingCleanupMaximumTurnsKey),
-            maximumCharacters: defaults.integer(forKey: Self.meetingCleanupMaximumCharactersKey)
+            maximumCharacters: defaults.integer(forKey: Self.meetingCleanupMaximumCharactersKey),
+            wholeMeeting: defaults.bool(forKey: Self.meetingCleanupWholeMeetingKey)
         )
     }
 

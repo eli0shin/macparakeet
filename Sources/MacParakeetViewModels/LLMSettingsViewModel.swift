@@ -461,6 +461,15 @@ public final class LLMSettingsViewModel {
         }
     }
 
+    public var meetingCleanupWholeMeeting: Bool {
+        didSet {
+            defaults.set(
+                meetingCleanupWholeMeeting,
+                forKey: UserDefaultsAppRuntimePreferences.meetingCleanupWholeMeetingKey
+            )
+        }
+    }
+
     public var meetingCleanupMaximumTurns: Int {
         didSet {
             if meetingCleanupMaximumTurns < 1 {
@@ -486,6 +495,7 @@ public final class LLMSettingsViewModel {
     }
 
     public func resetMeetingCleanupBatchLimits() {
+        meetingCleanupWholeMeeting = false
         meetingCleanupMaximumTurns = MeetingCleanupBatchLimits.defaultMaximumTurns
         meetingCleanupMaximumCharacters = MeetingCleanupBatchLimits.defaultMaximumCharacters
     }
@@ -646,6 +656,7 @@ public final class LLMSettingsViewModel {
         self.aiFormatterEnabledForTranscriptions = Self.loadStoredAIFormatterEnabledForTranscriptions(from: defaults)
         self.meetingSpeakerTurnRepairEnabled = Self.loadStoredMeetingSpeakerTurnRepairEnabled(from: defaults)
         let meetingBatchLimits = UserDefaultsAppRuntimePreferences(defaults: defaults).meetingCleanupBatchLimits
+        self.meetingCleanupWholeMeeting = meetingBatchLimits.wholeMeeting
         self.meetingCleanupMaximumTurns = meetingBatchLimits.maximumTurns
         self.meetingCleanupMaximumCharacters = meetingBatchLimits.maximumCharacters
         self.autoGenerateMeetingTitles = Self.loadStoredAutoGenerateMeetingTitles(from: defaults)

@@ -76,7 +76,8 @@ public struct MeetingReadingTurnFormattingBatch: Sendable, Equatable {
 /// cap. Shorter turns are packed up to the character and turn limits (defaults:
 /// 500 characters and 10 turns). Optional boundary repair carries the final
 /// complete returned turn into the next planned request. Failed batches fall
-/// back independently and do not block later batches.
+/// back independently and do not block later batches. Whole-meeting mode sends
+/// all nonempty turns in one request instead.
 public struct MeetingReadingTurnFormatter {
     public typealias FormatRequest = (MeetingReadingTurnFormattingBatch) async throws -> String
     public typealias ProgressHandler = @Sendable (MeetingReadingTurnFormattingProgress) -> Void
@@ -353,6 +354,10 @@ public struct MeetingReadingTurnFormatter {
     }
 
     private func makeBatches(_ parts: [Part], limits: MeetingCleanupBatchLimits) -> [Batch] {
+        if limits.wholeMeeting {
+            return parts.isEmpty ? [] : [Batch(parts: parts)]
+        }
+
         var batches: [Batch] = []
         var shortParts: [Part] = []
         var shortCharacterCount = 0
