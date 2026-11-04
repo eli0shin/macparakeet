@@ -461,6 +461,45 @@ public final class LLMSettingsViewModel {
         }
     }
 
+    public var meetingCleanupWholeMeeting: Bool {
+        didSet {
+            defaults.set(
+                meetingCleanupWholeMeeting,
+                forKey: UserDefaultsAppRuntimePreferences.meetingCleanupWholeMeetingKey
+            )
+        }
+    }
+
+    public var meetingCleanupMaximumTurns: Int {
+        didSet {
+            if meetingCleanupMaximumTurns < 1 {
+                meetingCleanupMaximumTurns = MeetingCleanupBatchLimits.defaultMaximumTurns
+            }
+            defaults.set(
+                meetingCleanupMaximumTurns,
+                forKey: UserDefaultsAppRuntimePreferences.meetingCleanupMaximumTurnsKey
+            )
+        }
+    }
+
+    public var meetingCleanupMaximumCharacters: Int {
+        didSet {
+            if meetingCleanupMaximumCharacters < 1 {
+                meetingCleanupMaximumCharacters = MeetingCleanupBatchLimits.defaultMaximumCharacters
+            }
+            defaults.set(
+                meetingCleanupMaximumCharacters,
+                forKey: UserDefaultsAppRuntimePreferences.meetingCleanupMaximumCharactersKey
+            )
+        }
+    }
+
+    public func resetMeetingCleanupBatchLimits() {
+        meetingCleanupWholeMeeting = false
+        meetingCleanupMaximumTurns = MeetingCleanupBatchLimits.defaultMaximumTurns
+        meetingCleanupMaximumCharacters = MeetingCleanupBatchLimits.defaultMaximumCharacters
+    }
+
     /// Whether completed meeting recordings may use the saved LLM provider to
     /// replace the default timestamp title with a short topic title. Defaults
     /// to `true`; it is still gated at runtime on an actual provider config.
@@ -616,6 +655,10 @@ public final class LLMSettingsViewModel {
         self.aiFormatterEnabledForDictation = Self.loadStoredAIFormatterEnabledForDictation(from: defaults)
         self.aiFormatterEnabledForTranscriptions = Self.loadStoredAIFormatterEnabledForTranscriptions(from: defaults)
         self.meetingSpeakerTurnRepairEnabled = Self.loadStoredMeetingSpeakerTurnRepairEnabled(from: defaults)
+        let meetingBatchLimits = UserDefaultsAppRuntimePreferences(defaults: defaults).meetingCleanupBatchLimits
+        self.meetingCleanupWholeMeeting = meetingBatchLimits.wholeMeeting
+        self.meetingCleanupMaximumTurns = meetingBatchLimits.maximumTurns
+        self.meetingCleanupMaximumCharacters = meetingBatchLimits.maximumCharacters
         self.autoGenerateMeetingTitles = Self.loadStoredAutoGenerateMeetingTitles(from: defaults)
         self.aiFormatterSmartDefaultsPolicy = AIFormatterSmartDefaultsPolicy.current(defaults: defaults)
         self.transcriptAIContextMode = TranscriptAIContextMode.current(defaults: defaults)

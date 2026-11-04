@@ -18,6 +18,7 @@ public protocol AppRuntimePreferencesProtocol: Sendable {
     var aiFormatterEnabledForDictation: Bool { get }
     var aiFormatterEnabledForTranscriptions: Bool { get }
     var meetingSpeakerTurnRepairEnabled: Bool { get }
+    var meetingCleanupBatchLimits: MeetingCleanupBatchLimits { get }
     var aiFormatterPrompt: String { get }
     var transcriptAIContextMode: TranscriptAIContextMode { get }
     var selectedMicrophoneDeviceUID: String? { get }
@@ -527,6 +528,9 @@ public final class UserDefaultsAppRuntimePreferences: AppRuntimePreferencesProto
     public static let aiFormatterEnabledForDictationKey = "aiFormatterEnabledForDictation"
     public static let aiFormatterEnabledForTranscriptionsKey = "aiFormatterEnabledForTranscriptions"
     public static let meetingSpeakerTurnRepairEnabledKey = "meetingSpeakerTurnRepairEnabled"
+    public static let meetingCleanupMaximumTurnsKey = "meetingCleanupMaximumTurns"
+    public static let meetingCleanupMaximumCharactersKey = "meetingCleanupMaximumCharacters"
+    public static let meetingCleanupWholeMeetingKey = "meetingCleanupWholeMeeting"
     public static let aiFormatterPromptKey = "aiFormatterPrompt"
     /// Master switch for the built-in smart-default formatter prompts
     /// (default on). Off means the resolution chain skips the smart-default
@@ -673,6 +677,14 @@ public final class UserDefaultsAppRuntimePreferences: AppRuntimePreferencesProto
 
     public var meetingSpeakerTurnRepairEnabled: Bool {
         defaults.object(forKey: Self.meetingSpeakerTurnRepairEnabledKey) as? Bool ?? false
+    }
+
+    public var meetingCleanupBatchLimits: MeetingCleanupBatchLimits {
+        MeetingCleanupBatchLimits(
+            maximumTurns: defaults.integer(forKey: Self.meetingCleanupMaximumTurnsKey),
+            maximumCharacters: defaults.integer(forKey: Self.meetingCleanupMaximumCharactersKey),
+            wholeMeeting: defaults.bool(forKey: Self.meetingCleanupWholeMeetingKey)
+        )
     }
 
     public var aiFormatterPrompt: String {

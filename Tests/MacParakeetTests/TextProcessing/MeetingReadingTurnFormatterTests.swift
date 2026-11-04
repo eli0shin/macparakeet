@@ -37,6 +37,100 @@ final class MeetingReadingTurnFormatterTests: XCTestCase {
         XCTAssertEqual(result.progress, .init(completedRequests: 3, totalRequests: 3))
     }
 
+    func testRaisedLimitsCanSendAnEntireMeetingInOneRequest() async {
+        let document = makeDocument((0..<40).map { [String(repeating: "a", count: 600) + "\($0)"] })
+        let recorder = BatchRecorder { Self.response(for: $0) }
+
+        let result = await MeetingReadingTurnFormatter().format(
+            document, batchLimits: .init(maximumTurns: 100, maximumCharacters: 100_000)
+        ) { try await recorder.format($0) }
+
+        let batches = await recorder.batches
+        XCTAssertEqual(batches.map { $0.entries.count }, [40])
+        XCTAssertEqual(result.formatting.count, 40)
+        XCTAssertEqual(result.progress, .init(completedRequests: 1, totalRequests: 1))
+    }
+
+    func testWholeMeetingBypassesBothLimitsWithAndWithoutBoundaryRepair() async {
+        let texts = (0..<40).map { String(repeating: "a", count: 600) + "\($0)" }
+        for repairEnabled in [false, true] {
+            let recorder = BatchRecorder { Self.response(for: $0) }
+            let result = await MeetingReadingTurnFormatter().format(
+                makeDocument(texts.map { [$0] }),
+                repairSpeakerTurnBoundaries: repairEnabled,
+                batchLimits: .init(maximumTurns: 1, maximumCharacters: 1, wholeMeeting: true)
+            ) { try await recorder.format($0) }
+
+            let batches = await recorder.batches
+            XCTAssertEqual(batches.map { $0.entries.map(\.text) }, [texts])
+            XCTAssertEqual(result.formatting.count, 40)
+            XCTAssertEqual(result.progress, .init(completedRequests: 1, totalRequests: 1))
+        }
+    }
+
+    func testWholeMeetingSkipsEmptyDocuments() async {
+        let recorder = BatchRecorder { Self.response(for: $0) }
+        let result = await MeetingReadingTurnFormatter().format(
+            makeDocument([]), batchLimits: .init(wholeMeeting: true)
+        ) { try await recorder.format($0) }
+
+        let batches = await recorder.batches
+        XCTAssertTrue(batches.isEmpty)
+        XCTAssertTrue(result.formatting.isEmpty)
+        XCTAssertEqual(result.progress, .init(completedRequests: 0, totalRequests: 0))
+    }
+
+    func testWholeMeetingRequestFailureFallsBackWithoutRebatching() async {
+        let recorder = BatchRecorder { _ in throw URLError(.timedOut) }
+        let result = await MeetingReadingTurnFormatter().format(
+            makeDocument([["first"], ["second"]]),
+            batchLimits: .init(maximumTurns: 1, maximumCharacters: 1, wholeMeeting: true)
+        ) { try await recorder.format($0) }
+
+        let batches = await recorder.batches
+        XCTAssertEqual(batches.map { $0.entries.count }, [2])
+        XCTAssertTrue(result.formatting.isEmpty)
+        XCTAssertFalse(result.wasCancelled)
+        XCTAssertEqual(result.progress, .init(completedRequests: 1, totalRequests: 1))
+    }
+
+    func testCustomTurnLimitAndCharacterLimitAreIndependent() async {
+        let document = makeDocument((0..<7).map { _ in [String(repeating: "a", count: 100)] })
+        for (limits, expected) in [
+            (MeetingCleanupBatchLimits(maximumTurns: 2, maximumCharacters: 10_000), [2, 2, 2, 1]),
+            (MeetingCleanupBatchLimits(maximumTurns: 100, maximumCharacters: 300), [3, 3, 1]),
+        ] {
+            let recorder = BatchRecorder { Self.response(for: $0) }
+            _ = await MeetingReadingTurnFormatter().format(document, batchLimits: limits) {
+                try await recorder.format($0)
+            }
+            let batches = await recorder.batches
+            XCTAssertEqual(batches.map { $0.entries.count }, expected)
+        }
+    }
+
+    func testCustomLimitsPreserveWholeLongTurnsAndRepairCarry() async {
+        let texts = ["abc", "def", String(repeating: "x", count: 50), "ghi"]
+        let recorder = BatchRecorder { Self.response(for: $0) }
+        let result = await MeetingReadingTurnFormatter().format(
+            makeDocument(texts.map { [$0] }),
+            repairSpeakerTurnBoundaries: true,
+            batchLimits: .init(maximumTurns: 2, maximumCharacters: 6)
+        ) { try await recorder.format($0) }
+
+        let batches = await recorder.batches
+        XCTAssertEqual(
+            batches.map { $0.entries.map(\.text) },
+            [
+                ["abc", "def"], ["def", texts[2]], [texts[2], "ghi"],
+            ])
+        XCTAssertEqual(result.formatting.count, 4)
+    }
+
+    func testNonpositiveLimitsUseDefaults() {
+        XCTAssertEqual(MeetingCleanupBatchLimits(maximumTurns: 0, maximumCharacters: -1), .init())
+    }
+
     func testLongReadingTurnIsSentWholeAndAloneWithoutACap() async {
         let longText = "BEGIN" + String(repeating: "x", count: 25_000) + "END"
         let recorder = BatchRecorder { Self.response(for: $0) }

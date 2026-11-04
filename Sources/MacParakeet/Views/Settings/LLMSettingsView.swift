@@ -821,6 +821,8 @@ struct LLMSettingsView: View {
                     )
             }
 
+            meetingCleanupBatchLimitsSection
+
             if AppFeatures.aiFormatterProfilesEnabled {
                 aiFormatterSmartDefaultsSection
             }
@@ -846,6 +848,56 @@ struct LLMSettingsView: View {
             }
         }
         .id("ai.formatter")
+    }
+
+    private var meetingCleanupBatchLimitsSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack {
+                Text("Meeting cleanup batch size")
+                    .font(DesignSystem.Typography.body)
+                Spacer()
+                Button("Reset to defaults") {
+                    viewModel.resetMeetingCleanupBatchLimits()
+                }
+                .font(DesignSystem.Typography.caption)
+            }
+
+            Text(
+                "Send the whole meeting at once, or tune both limits for your model. Applies to new and re-transcribed meetings. Defaults: 10 turns and 500 transcript characters."
+            )
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+            Toggle("Whole meeting", isOn: $viewModel.meetingCleanupWholeMeeting)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .font(DesignSystem.Typography.caption)
+                .help("Send every turn in one cleanup request, ignoring the saved turn and character limits.")
+
+            HStack(spacing: DesignSystem.Spacing.md) {
+                Text("Maximum turns")
+                TextField("10", value: $viewModel.meetingCleanupMaximumTurns, format: .number.grouping(.never))
+                    .frame(width: 90)
+                    .accessibilityLabel("Maximum meeting cleanup turns per batch")
+                Text("Maximum characters")
+                TextField("500", value: $viewModel.meetingCleanupMaximumCharacters, format: .number.grouping(.never))
+                    .frame(width: 110)
+                    .accessibilityLabel("Maximum meeting cleanup characters per batch")
+            }
+            .textFieldStyle(.roundedBorder)
+            .font(DesignSystem.Typography.caption)
+            .disabled(viewModel.meetingCleanupWholeMeeting)
+
+            Text(
+                viewModel.meetingCleanupWholeMeeting
+                    ? "Sends all meeting turns in one request. Your custom limits are saved for when you switch back. Provider context, output, and timeout limits still apply; a failed request leaves the meeting with standard cleanup."
+                    : "Enter positive whole numbers. Long turns are sent whole, even above the character limit. Fix misplaced words may add one carried turn beyond these limits. Larger batches may need more provider output capacity or time."
+            )
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var meetingSpeakerTurnRepairHelp: String {

@@ -71,19 +71,20 @@ public struct MeetingReadingTurnFormattingBatch: Sendable, Equatable {
     }
 }
 
-/// Formats finalized Reading Turns through small, serial requests. Complete
-/// turns of 500 or more characters are always sent alone without a size cap.
-/// Consecutive shorter turns are packed without exceeding 500 characters or
-/// 10 turns. Optional boundary repair carries the final complete returned turn
-/// into the next planned request. Failed batches fall back independently and do
-/// not block later batches.
+/// Formats finalized Reading Turns through configurable, serial requests.
+/// Complete turns at or above the character limit are sent alone without a size
+/// cap. Shorter turns are packed up to the character and turn limits (defaults:
+/// 500 characters and 10 turns). Optional boundary repair carries the final
+/// complete returned turn into the next planned request. Failed batches fall
+/// back independently and do not block later batches. Whole-meeting mode sends
+/// all nonempty turns in one request instead.
 public struct MeetingReadingTurnFormatter {
     public typealias FormatRequest = (MeetingReadingTurnFormattingBatch) async throws -> String
     public typealias ProgressHandler = @Sendable (MeetingReadingTurnFormattingProgress) -> Void
     public typealias DiagnosticSink = @Sendable (MeetingFormattingDiagnostic) async -> Void
 
-    public static let shortTurnBatchCharacterLimit = 500
-    public static let maximumTurnsPerBatch = 10
+    public static let shortTurnBatchCharacterLimit = MeetingCleanupBatchLimits.defaultMaximumCharacters
+    public static let maximumTurnsPerBatch = MeetingCleanupBatchLimits.defaultMaximumTurns
 
     private let diagnosticSink: DiagnosticSink
 
@@ -132,6 +133,7 @@ public struct MeetingReadingTurnFormatter {
     public func format(
         _ document: MeetingTranscriptPresentationDocument,
         repairSpeakerTurnBoundaries: Bool = false,
+        batchLimits: MeetingCleanupBatchLimits = .init(),
         using formatRequest: FormatRequest,
         onProgress: ProgressHandler? = nil
     ) async -> MeetingReadingTurnFormattingResult {
@@ -139,7 +141,7 @@ public struct MeetingReadingTurnFormatter {
             guard turn.deterministicText.contains(where: { !$0.isWhitespace }) else { return nil }
             return Part(id: "turn-\(index)", turn: turn)
         }
-        let batches = makeBatches(parts)
+        let batches = makeBatches(parts, limits: batchLimits)
         var formattingByID: [String: MeetingReadingTurnFormatting] = [:]
         var carry: RollingCarry?
         var completedRequests = 0
@@ -351,7 +353,11 @@ public struct MeetingReadingTurnFormatter {
         parts.compactMap { formattingByID[$0.id] }
     }
 
-    private func makeBatches(_ parts: [Part]) -> [Batch] {
+    private func makeBatches(_ parts: [Part], limits: MeetingCleanupBatchLimits) -> [Batch] {
+        if limits.wholeMeeting {
+            return parts.isEmpty ? [] : [Batch(parts: parts)]
+        }
+
         var batches: [Batch] = []
         var shortParts: [Part] = []
         var shortCharacterCount = 0
@@ -365,12 +371,12 @@ public struct MeetingReadingTurnFormatter {
 
         for part in parts {
             let count = part.turn.deterministicText.count
-            if count >= Self.shortTurnBatchCharacterLimit {
+            if count >= limits.maximumCharacters {
                 flushShortParts()
                 batches.append(Batch(parts: [part]))
             } else if !shortParts.isEmpty,
-                shortParts.count >= Self.maximumTurnsPerBatch
-                    || shortCharacterCount + count > Self.shortTurnBatchCharacterLimit
+                shortParts.count >= limits.maximumTurns
+                    || count > limits.maximumCharacters - shortCharacterCount
             {
                 flushShortParts()
                 shortParts = [part]

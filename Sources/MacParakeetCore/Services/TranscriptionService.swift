@@ -284,6 +284,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
     private let shouldUseAIFormatter: @Sendable () -> Bool
     private let aiFormatterPromptTemplate: @Sendable () -> String
     private let shouldRepairMeetingSpeakerTurnBoundaries: @Sendable () -> Bool
+    private let meetingCleanupBatchLimits: @Sendable () -> MeetingCleanupBatchLimits
     private let shouldAutoGenerateMeetingTitles: @Sendable () -> Bool
     private let shouldKeepDownloadedAudio: @Sendable () -> Bool
     private let shouldDiarize: @Sendable () -> Bool
@@ -340,7 +341,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         meetingAutomationHookRunner: MeetingAutomationHookRunning? = MeetingAutomationHookRunner(),
         meetingCleanedMicrophoneReadinessPolicy: MeetingCleanedMicrophoneReadinessPolicy = .production,
         meetingResidualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() },
-        meetingAudioGain: @escaping @Sendable () -> MeetingAudioGain = { .current() }
+        meetingAudioGain: @escaping @Sendable () -> MeetingAudioGain = { .current() },
+        meetingCleanupBatchLimits: @escaping @Sendable () -> MeetingCleanupBatchLimits = { .init() }
     ) {
         self.init(
             audioProcessor: audioProcessor,
@@ -376,7 +378,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             meetingCleanedMicrophoneReadinessPolicy: meetingCleanedMicrophoneReadinessPolicy,
             meetingFinalizationBenchmarkObserver: nil,
             meetingResidualSuppression: meetingResidualSuppression,
-            meetingAudioGain: meetingAudioGain
+            meetingAudioGain: meetingAudioGain,
+            meetingCleanupBatchLimits: meetingCleanupBatchLimits
         )
     }
 
@@ -414,7 +417,8 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         meetingCleanedMicrophoneReadinessPolicy: MeetingCleanedMicrophoneReadinessPolicy = .production,
         meetingFinalizationBenchmarkObserver: MeetingFinalizationBenchmarkObserver?,
         meetingResidualSuppression: @escaping @Sendable () -> MeetingResidualEchoSuppression = { .current() },
-        meetingAudioGain: @escaping @Sendable () -> MeetingAudioGain = { .current() }
+        meetingAudioGain: @escaping @Sendable () -> MeetingAudioGain = { .current() },
+        meetingCleanupBatchLimits: @escaping @Sendable () -> MeetingCleanupBatchLimits = { .init() }
     ) {
         self.audioProcessor = audioProcessor
         self.sttTranscriber = sttTranscriber
@@ -431,6 +435,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
         self.shouldUseAIFormatter = shouldUseAIFormatter ?? { false }
         self.aiFormatterPromptTemplate = aiFormatterPromptTemplate ?? { AIFormatter.defaultPromptTemplate }
         self.shouldRepairMeetingSpeakerTurnBoundaries = shouldRepairMeetingSpeakerTurnBoundaries ?? { false }
+        self.meetingCleanupBatchLimits = meetingCleanupBatchLimits
         self.shouldAutoGenerateMeetingTitles = shouldAutoGenerateMeetingTitles ?? { false }
         self.shouldKeepDownloadedAudio = shouldKeepDownloadedAudio ?? { true }
         let resolvedShouldDiarize = shouldDiarize ?? { true }
@@ -2534,6 +2539,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService, Aud
             let result = await meetingFormatter.format(
                 deterministicDocument,
                 repairSpeakerTurnBoundaries: repairSpeakerTurnBoundaries,
+                batchLimits: isMeeting ? meetingCleanupBatchLimits() : .init(),
                 using: { batch in
                     let request = try batch.encodedJSON()
                     let outcome = try await transcriptFormatter.format(
