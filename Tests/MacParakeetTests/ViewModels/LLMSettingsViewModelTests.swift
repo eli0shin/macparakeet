@@ -164,6 +164,44 @@ final class LLMSettingsViewModelTests: XCTestCase {
         XCTAssertTrue(LLMSettingsViewModel(defaults: defaults).meetingSpeakerTurnRepairEnabled)
     }
 
+    func testMeetingCleanupLimitsDefaultPersistAndResetThroughRuntimePreferences() {
+        let runtime = UserDefaultsAppRuntimePreferences(defaults: defaults)
+        XCTAssertEqual(viewModel.meetingCleanupMaximumTurns, 10)
+        XCTAssertEqual(viewModel.meetingCleanupMaximumCharacters, 500)
+        XCTAssertEqual(runtime.meetingCleanupBatchLimits, .init())
+
+        viewModel.meetingCleanupMaximumTurns = 1_000
+        viewModel.meetingCleanupMaximumCharacters = 500_000
+        viewModel.clearConfiguration()
+
+        XCTAssertEqual(runtime.meetingCleanupBatchLimits, .init(maximumTurns: 1_000, maximumCharacters: 500_000))
+        let reloaded = LLMSettingsViewModel(defaults: defaults)
+        XCTAssertEqual(reloaded.meetingCleanupMaximumTurns, 1_000)
+        XCTAssertEqual(reloaded.meetingCleanupMaximumCharacters, 500_000)
+
+        viewModel.resetMeetingCleanupBatchLimits()
+        XCTAssertEqual(viewModel.meetingCleanupMaximumTurns, 10)
+        XCTAssertEqual(viewModel.meetingCleanupMaximumCharacters, 500)
+        XCTAssertEqual(runtime.meetingCleanupBatchLimits, .init())
+    }
+
+    func testInvalidMeetingCleanupLimitsRecoverToDefaults() {
+        defaults.set(0, forKey: UserDefaultsAppRuntimePreferences.meetingCleanupMaximumTurnsKey)
+        defaults.set(-10, forKey: UserDefaultsAppRuntimePreferences.meetingCleanupMaximumCharactersKey)
+        let reloaded = LLMSettingsViewModel(defaults: defaults)
+        XCTAssertEqual(reloaded.meetingCleanupMaximumTurns, 10)
+        XCTAssertEqual(reloaded.meetingCleanupMaximumCharacters, 500)
+        XCTAssertEqual(UserDefaultsAppRuntimePreferences(defaults: defaults).meetingCleanupBatchLimits, .init())
+
+        reloaded.meetingCleanupMaximumTurns = -1
+        reloaded.meetingCleanupMaximumCharacters = 0
+        XCTAssertEqual(reloaded.meetingCleanupMaximumTurns, 10)
+        XCTAssertEqual(reloaded.meetingCleanupMaximumCharacters, 500)
+        XCTAssertEqual(defaults.integer(forKey: UserDefaultsAppRuntimePreferences.meetingCleanupMaximumTurnsKey), 10)
+        XCTAssertEqual(
+            defaults.integer(forKey: UserDefaultsAppRuntimePreferences.meetingCleanupMaximumCharactersKey), 500)
+    }
+
     func testAutoGenerateMeetingTitlesDefaultsToTrue() {
         XCTAssertTrue(viewModel.autoGenerateMeetingTitles)
     }

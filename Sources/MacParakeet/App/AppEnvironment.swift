@@ -399,7 +399,8 @@ final class AppEnvironment {
             podcastSearchResolver: PodcastQueryResolver(),
             podcastAudioFetcher: PodcastAudioDownloader(),
             diarizationService: diarizationService,
-            meetingArtifactStore: meetingArtifactStore
+            meetingArtifactStore: meetingArtifactStore,
+            meetingCleanupBatchLimits: { [runtimePreferences] in runtimePreferences.meetingCleanupBatchLimits }
         )
 
         meetingRecordingRecoveryService = MeetingRecordingRecoveryService(

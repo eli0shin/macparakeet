@@ -1,5 +1,6 @@
 import XCTest
 @testable import MacParakeetCore
+@testable import MacParakeetViewModels
 import os
 
 private actor MockYouTubeDownloader: YouTubeDownloading {
@@ -2087,6 +2088,61 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(persisted.readingDocument?.turns.count, 1)
         XCTAssertEqual(persisted.readingDocument?.turns.first?.text, "First point.\n\nFinal point.")
         XCTAssertEqual(persisted.readingDocument?.turns.first?.wordReferences, [0, 2])
+    }
+
+    @MainActor
+    func testSavedCleanupLimitsChangeMeetingFinalizationAndRetranscriptionBatches() async throws {
+        let suite = "meeting-cleanup-integration-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = LLMSettingsViewModel(defaults: defaults)
+        let runtime = UserDefaultsAppRuntimePreferences(defaults: defaults)
+        let first = String(repeating: "first ", count: 100)
+        let second = String(repeating: "second ", count: 100)
+        let results = [
+            STTResult(
+                text: first,
+                words: [
+                    TimestampedWord(word: first, startMs: 0, endMs: 400, confidence: 0.95)
+                ]),
+            STTResult(
+                text: second,
+                words: [
+                    TimestampedWord(word: second, startMs: 500, endMs: 900, confidence: 0.95)
+                ]),
+        ]
+        await mockSTT.configureSequence(results: results)
+        let llm = MockLLMService()
+        llm.formatTranscriptTransform = { $0 }
+        let service = TranscriptionService(
+            audioProcessor: mockAudio,
+            sttTranscriber: mockSTT,
+            transcriptionRepo: transcriptionRepo,
+            llmService: llm,
+            llmRunRepo: llmRunRepo,
+            shouldUseAIFormatter: { true },
+            meetingAutomationHookRunner: nil,
+            meetingCleanupBatchLimits: { runtime.meetingCleanupBatchLimits }
+        )
+        let recording = try makeDualSourceMeetingRecording(displayName: "Batch Limits Meeting")
+        defer { try? FileManager.default.removeItem(at: recording.folderURL) }
+
+        let original = try await service.transcribeMeeting(recording: recording)
+        XCTAssertEqual(llm.formatTranscriptCallCount, 2)
+        XCTAssertEqual(original.meetingReadingTurnFormatting?.count, 2)
+
+        settings.meetingCleanupMaximumTurns = 100
+        settings.meetingCleanupMaximumCharacters = 100_000
+        await mockSTT.configureSequence(results: results)
+        let updated = try await service.retranscribeMeeting(existing: original, recording: recording)
+
+        XCTAssertEqual(llm.formatTranscriptCallCount, 3, "Re-transcription should use one larger request")
+        let input = try XCTUnwrap(llm.formattedTranscripts.last)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(input.utf8)) as? [String: Any])
+        XCTAssertEqual((payload["entries"] as? [[String: Any]])?.count, 2)
+        XCTAssertEqual(updated.meetingReadingTurnFormatting?.count, 2)
+        let persisted = try XCTUnwrap(transcriptionRepo.fetch(id: updated.id))
+        XCTAssertEqual(persisted.meetingReadingTurnFormatting, updated.meetingReadingTurnFormatting)
     }
 
     func testMeetingFinalizationAndRetranscriptionReadCurrentSpeakerTurnRepairSetting() async throws {

@@ -135,10 +135,16 @@ does not rewrite words or diarization regions.
 
 **AI formatting changes presentation text, not transcript evidence.** The
 formatter never sends speaker labels, timestamps, overlap state, or word
-references. A Reading Turn of 500 or more characters is one uncapped request and
-is never split or truncated. Consecutive shorter turns share a request while
-their combined source text stays at or below 500 characters and the planned
-request contains at most 10 turns. Every request and response uses the same JSON
+references. By default, a Reading Turn of 500 or more characters is one uncapped
+request and is never split or truncated. Consecutive shorter turns share a
+request while their combined source text stays at or below 500 characters and
+the planned request contains at most 10 turns. **AI → AI Formatter → Meeting
+cleanup batch size** makes both positive-integer limits configurable for new and
+re-transcribed meetings, with a reset to the existing defaults. Raise both limits
+to batch more of a meeting for larger models; provider output capacity and
+timeouts still apply. A complete turn at or above the configured character limit
+is still sent whole and alone. Timestamped file transcription keeps the defaults.
+Every request and response uses the same JSON
 `entries` contract with transport IDs, including requests that contain one turn.
 Responses are checked for JSON structure and mapped by ID; lexical similarity,
 protected-value, length, and non-empty content heuristics do not run. Valid
