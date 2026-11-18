@@ -27,13 +27,20 @@ struct TranscriptDetailPresentationRevision: Equatable, Sendable {
 @MainActor
 final class TranscriptFindSessionDriver {
     private let setQueryAction: (String) -> Void
+    private let nextAction: () -> Void
 
-    init(setQuery: @escaping (String) -> Void) {
+    init(setQuery: @escaping (String) -> Void, next: @escaping () -> Void = {}) {
         self.setQueryAction = setQuery
+        self.nextAction = next
     }
 
     func setQuery(_ query: String) {
         setQueryAction(query)
+    }
+
+    /// Steps to the next settled match, the same as ⌘G.
+    func next() {
+        nextAction()
     }
 }
 

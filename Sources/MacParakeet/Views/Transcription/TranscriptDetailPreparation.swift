@@ -113,7 +113,7 @@ enum TranscriptDetailPreparation {
         let displayedTurns = transcription.readingDocument != nil
             ? readingDocument.turns
             : MeetingTranscriptDisplayBuilder.build(from: readingDocument).turns
-        let readingTurns = identifiedReadingTurns(displayedTurns)
+        let readingTurns = identifiedReadingTurns(displayedTurns, words: transcription.wordTimestamps)
         let playbackIndex = transcription.wordTimestamps.map {
             ReadingTurnPlaybackIndex(turns: displayedTurns, words: $0)
         }
@@ -160,8 +160,10 @@ enum TranscriptDetailPreparation {
             ),
             speakerLabels: speakerLabels,
             speakerColorIndices: speakerColorIndices,
+            // One block per rendered passage, so a match highlights and
+            // centers the row that contains it.
             readingFindBlocks: readingTurns.map {
-                TranscriptFindBlock(id: $0.scrollID, text: $0.turn.text)
+                TranscriptFindBlock(id: $0.scrollID, text: $0.text)
             },
             segmentFindBlocks: segments.map {
                 TranscriptFindBlock(id: $0.startMs, text: $0.text)

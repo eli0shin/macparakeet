@@ -14,6 +14,10 @@ final class FinalTranscriptNSTextView: NSTextView {
 /// the visible viewport instead of the complete document. The same text view is
 /// kept when editing starts or ends. Editing starts at the top visible character,
 /// and save or cancel restores that character as the viewport anchor.
+///
+/// With a header, the surface fills its pane and is the only scroll view: the
+/// header scrolls away above the transcript text instead of the text scrolling
+/// inside a fixed-height box nested in a second scroll view.
 struct TranscriptFindTextView: NSViewRepresentable {
     let text: String
     let currentRange: NSRange?
@@ -21,6 +25,8 @@ struct TranscriptFindTextView: NSViewRepresentable {
     let navigationToken: Int
     let isEditable: Bool
     let onTextChange: (String) -> Void
+    let header: AnyView?
+    let headerRevision: Int
 
     init(
         text: String,
@@ -36,6 +42,28 @@ struct TranscriptFindTextView: NSViewRepresentable {
         self.navigationToken = navigationToken
         self.isEditable = isEditable
         self.onTextChange = onTextChange
+        self.header = nil
+        self.headerRevision = 0
+    }
+
+    init<Header: View>(
+        text: String,
+        currentRange: NSRange?,
+        fontScale: Double,
+        navigationToken: Int,
+        isEditable: Bool = false,
+        headerRevision: Int,
+        onTextChange: @escaping (String) -> Void = { _ in },
+        @ViewBuilder header: () -> Header
+    ) {
+        self.text = text
+        self.currentRange = currentRange
+        self.fontScale = fontScale
+        self.navigationToken = navigationToken
+        self.isEditable = isEditable
+        self.onTextChange = onTextChange
+        self.header = AnyView(header())
+        self.headerRevision = headerRevision
     }
 
     @MainActor
@@ -73,7 +101,13 @@ struct TranscriptFindTextView: NSViewRepresentable {
         let textView = FinalTranscriptNSTextView(frame: NSRect(origin: .zero, size: scrollView.contentSize))
         textView.delegate = context.coordinator
         Self.configure(textView, for: scrollView.contentSize)
-        scrollView.documentView = textView
+        if let header {
+            let document = TranscriptTextDocumentView(textView: textView)
+            document.setHeader(header, revision: headerRevision)
+            scrollView.documentView = document
+        } else {
+            scrollView.documentView = textView
+        }
 
         update(scrollView, coordinator: context.coordinator)
         return scrollView
@@ -84,8 +118,13 @@ struct TranscriptFindTextView: NSViewRepresentable {
     }
 
     private func update(_ scrollView: NSScrollView, coordinator: Coordinator) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
+        let document = scrollView.documentView as? TranscriptTextDocumentView
+        guard let textView = document?.textView ?? scrollView.documentView as? NSTextView else { return }
         coordinator.onTextChange = onTextChange
+        if let document {
+            if let header { document.setHeader(header, revision: headerRevision) }
+            document.isEditing = isEditable
+        }
 
         if coordinator.text != text || coordinator.fontScale != fontScale {
             let textChanged = coordinator.text != text
@@ -218,9 +257,17 @@ struct TranscriptFindTextView: NSViewRepresentable {
             return
         }
         let clipView = scrollView.contentView
-        let targetY = rect.midY + textView.textContainerOrigin.y - (clipView.bounds.height / 2)
+        let midY = documentY(rect.midY + textView.textContainerOrigin.y, of: textView, in: scrollView)
+        let targetY = midY - (clipView.bounds.height / 2)
         clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: max(0, targetY)))
         scrollView.reflectScrolledClipView(clipView)
+    }
+
+    /// Converts a text-view y coordinate into the scroll view's document. The
+    /// text view is either the document itself or sits below a hosted header.
+    private static func documentY(_ y: CGFloat, of textView: NSTextView, in scrollView: NSScrollView) -> CGFloat {
+        guard let documentView = scrollView.documentView, documentView !== textView else { return y }
+        return textView.convert(NSPoint(x: 0, y: y), to: documentView).y
     }
 
     /// Returns the match rectangle after laying out only the range needed for
@@ -312,9 +359,16 @@ struct TranscriptFindTextView: NSViewRepresentable {
         }
         guard let layoutManager = textView.layoutManager,
             let textContainer = textView.textContainer,
-            let clipView = textView.enclosingScrollView?.contentView
+            let scrollView = textView.enclosingScrollView
         else {
             textView.scrollRangeToVisible(NSRange(location: clamped, length: 0))
+            return
+        }
+        let clipView = scrollView.contentView
+        // The top visible character is 0 while a header above the text is in
+        // view. Keep that exact offset so editing and saving do not scroll the
+        // header and its controls away.
+        if clamped == 0, textView.visibleRect.minY <= 0, scrollView.documentView !== textView {
             return
         }
         layoutManager.ensureLayout(forCharacterRange: NSRange(location: clamped, length: 0))
@@ -325,7 +379,174 @@ struct TranscriptFindTextView: NSViewRepresentable {
             forGlyphRange: NSRange(location: glyph, length: 1),
             in: textContainer
         )
-        clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: rect.minY + textView.textContainerOrigin.y))
-        textView.enclosingScrollView?.reflectScrolledClipView(clipView)
+        let y = documentY(rect.minY + textView.textContainerOrigin.y, of: textView, in: scrollView)
+        clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: y))
+        scrollView.reflectScrolledClipView(clipView)
+    }
+}
+
+/// The scroll document for a Text surface with a header: the hosted SwiftUI
+/// header, then a rounded backdrop containing the TextKit view. The text view
+/// keeps non-contiguous layout; this view only stacks frames and follows the
+/// text view's height.
+@MainActor
+final class TranscriptTextDocumentView: NSView {
+    static let textInset = DesignSystem.Spacing.lg
+    static let headerSpacing = DesignSystem.Spacing.md
+
+    let textView: NSTextView
+    private let headerHost = TranscriptTextHeaderHostingView(rootView: AnyView(EmptyView()))
+    private let backdrop = TranscriptTextBackdropView()
+    private var header: AnyView?
+    private var headerRevision: Int?
+    private var hostedWidth: CGFloat = -1
+    private var headerNeedsMeasurement = true
+    private var headerHeight: CGFloat = 0
+    private var isTiling = false
+
+    var isEditing = false {
+        didSet {
+            guard isEditing != oldValue else { return }
+            backdrop.isEditing = isEditing
+        }
+    }
+
+    init(textView: NSTextView) {
+        self.textView = textView
+        super.init(frame: NSRect(origin: .zero, size: textView.frame.size))
+        autoresizingMask = [.width]
+        autoresizesSubviews = false
+        textView.autoresizingMask = []
+        textView.postsFrameChangedNotifications = true
+        // SwiftUI reports header content changes, such as an expanded section,
+        // through intrinsic size. Measuring inside `tile` is not a new change.
+        headerHost.onIntrinsicSizeInvalidated = { [weak self] in
+            guard let self, !self.isTiling else { return }
+            self.headerNeedsMeasurement = true
+            self.needsLayout = true
+        }
+        addSubview(headerHost)
+        addSubview(backdrop)
+        addSubview(textView)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(textViewFrameDidChange),
+            name: NSView.frameDidChangeNotification,
+            object: textView
+        )
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var isFlipped: Bool { true }
+
+    /// Rehosts the header only when its revision changes, so find and playback
+    /// updates do not re-evaluate or remeasure it.
+    func setHeader(_ header: AnyView, revision: Int) {
+        guard revision != headerRevision else { return }
+        self.header = header
+        headerRevision = revision
+        hostedWidth = -1
+        tile()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let widthChanged = abs(newSize.width - frame.width) > 0.5
+        super.setFrameSize(newSize)
+        if widthChanged { tile() }
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        tile()
+    }
+
+    override func layout() {
+        super.layout()
+        if headerNeedsMeasurement { tile() }
+    }
+
+    @objc private func textViewFrameDidChange() {
+        tile()
+    }
+
+    private func tile() {
+        guard !isTiling else { return }
+        isTiling = true
+        defer { isTiling = false }
+
+        let width = max(1, enclosingScrollView?.contentSize.width ?? frame.width)
+        if let header, abs(width - hostedWidth) > 0.5 {
+            hostedWidth = width
+            headerHost.rootView = AnyView(header.frame(width: width, alignment: .leading))
+            headerNeedsMeasurement = true
+        }
+        if headerNeedsMeasurement {
+            headerNeedsMeasurement = false
+            headerHeight = header == nil ? 0 : ceil(headerHost.fittingSize.height)
+        }
+        let textTop = headerHeight > 0 ? headerHeight + Self.headerSpacing : 0
+        headerHost.frame = NSRect(x: 0, y: 0, width: width, height: headerHeight)
+
+        let textWidth = max(1, width - Self.textInset * 2)
+        if abs(textView.frame.width - textWidth) > 0.5 {
+            textView.setFrameSize(NSSize(width: textWidth, height: textView.frame.height))
+        }
+        let textOrigin = NSPoint(x: Self.textInset, y: textTop + Self.textInset)
+        if textView.frame.origin != textOrigin { textView.setFrameOrigin(textOrigin) }
+        backdrop.frame = NSRect(
+            x: 0,
+            y: textTop,
+            width: width,
+            height: textView.frame.height + Self.textInset * 2
+        )
+
+        let clipHeight = enclosingScrollView?.contentSize.height ?? 0
+        let height = max(backdrop.frame.maxY, clipHeight)
+        if abs(frame.width - width) > 0.5 || abs(frame.height - height) > 0.5 {
+            super.setFrameSize(NSSize(width: width, height: height))
+        }
+    }
+}
+
+private final class TranscriptTextHeaderHostingView: NSHostingView<AnyView> {
+    var onIntrinsicSizeInvalidated: (() -> Void)?
+
+    override func invalidateIntrinsicContentSize() {
+        super.invalidateIntrinsicContentSize()
+        onIntrinsicSizeInvalidated?()
+    }
+}
+
+/// A solid rounded layer behind the transcript text. It has no backing store,
+/// so its height can follow a multi-hour transcript.
+private final class TranscriptTextBackdropView: NSView {
+    var isEditing = false {
+        didSet { needsDisplay = true }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var wantsUpdateLayer: Bool { true }
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func updateLayer() {
+        guard let layer else { return }
+        layer.cornerRadius = DesignSystem.Layout.rowCornerRadius
+        layer.backgroundColor = NSColor(DesignSystem.Colors.surfaceElevated)
+            .withAlphaComponent(isEditing ? 0.75 : 0.6)
+            .cgColor
+        layer.borderWidth = isEditing ? 1 : 0
+        layer.borderColor = NSColor(DesignSystem.Colors.accent).withAlphaComponent(0.30).cgColor
     }
 }

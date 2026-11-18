@@ -205,7 +205,6 @@ struct TranscriptResultView: View {
     private var transcriptFontScale: Double = 1.0
     private static let transcriptFontScaleRange: ClosedRange<Double> = 0.85...1.4
     private static let transcriptFontScaleStep: Double = 0.1
-    private static let textSurfaceScrollTargetID = Int.min
     // In-transcript find (Transcript Detail Refresh / U2). The matcher is the
     // testable `TranscriptFindModel`; this view owns the bar's visibility, the
     // ordered blocks fed to the model, and the scroll wiring.
@@ -289,10 +288,16 @@ struct TranscriptResultView: View {
         .onAppear {
             playbackViewModelProbe?(playerViewModel)
             findSessionDriverProbe?(
-                TranscriptFindSessionDriver { query in
-                    openFindBar()
-                    setFindQuery(query)
-                }
+                TranscriptFindSessionDriver(
+                    setQuery: { query in
+                        openFindBar()
+                        setFindQuery(query)
+                    },
+                    next: {
+                        findModel.next()
+                        findScrollToken &+= 1
+                    }
+                )
             )
             // Lazy migration for existing webm/opus YouTube audio files
             // saved before issue #237's playback fix shipped. The VM
@@ -637,8 +642,46 @@ struct TranscriptResultView: View {
         ])
     }
 
+    /// Inputs of the leading sections hosted above the Reading and Text bodies.
+    /// Native surfaces rehost their header only when this changes, so find and
+    /// playback updates do not re-evaluate it.
+    private var transcriptHeaderRevisionValues: [String] {
+        [
+            activeTranscription.id.uuidString,
+            String(describing: activeTranscription.status),
+            String(activeTranscription.hasWordTimestamps),
+            String(activeTranscription.isTranscriptEdited),
+            String(describing: activeTranscription.userNotes),
+            String(describing: activeTranscription.calendarEventSnapshot),
+            String(describing: activeTranscription.meetingCaptureReport),
+            String(cachedHasPreferredText),
+            String(cachedHasCleanTranscriptText),
+            String(describing: transcriptDisplayMode),
+            String(editingTranscript),
+            String(transcriptDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
+            String(describing: transcriptEditError),
+            String(notesCopied),
+            String(clampedTranscriptFontScale),
+            String(shouldShowTranscriptAISetupBanner),
+            String(processingIssuesExpanded),
+            processingIssues.map { "\($0.id):\($0.title):\($0.detail):\(String(describing: $0.recoveryTitle))" }
+                .joined(separator: "\u{1f}"),
+            // Speaker structure only. Rename draft and focus update inside the
+            // hosted header; rehosting on each keystroke would drop focus.
+            activeTranscription.speakers?.map { "\($0.id):\($0.label)" }.joined(separator: "\u{1f}") ?? "",
+            String(readingTurnContentRevision),
+            String(speakerOverviewExpanded),
+        ]
+    }
+
+    private var transcriptHeaderRevision: Int {
+        var hasher = Hasher()
+        hasher.combine(transcriptHeaderRevisionValues)
+        return hasher.finalize()
+    }
+
     private var transcriptDocumentRevision: TranscriptDetailPresentationRevision {
-        TranscriptDetailPresentationRevision([
+        TranscriptDetailPresentationRevision(transcriptHeaderRevisionValues + [
             activeTranscription.id.uuidString,
             String(describing: activeTranscription.status),
             String(activeTranscription.hasWordTimestamps),
@@ -1731,6 +1774,13 @@ struct TranscriptResultView: View {
                     meetingReadingTurnView
                         .padding(DesignSystem.Spacing.lg)
                 )
+            } else if usesTranscriptTextSurface {
+                // Keep one structural identity while edit mode changes so the
+                // native selection and viewport remain in place.
+                AnyView(
+                    transcriptTextSurface
+                        .padding(DesignSystem.Spacing.lg)
+                )
             } else {
             AnyView(ScrollViewReader { proxy in
             ScrollView {
@@ -1738,68 +1788,15 @@ struct TranscriptResultView: View {
                     rowCount: transcriptBodyRowCount,
                     spacing: transcriptBodySpacing
                 ) {
-                    transcriptPaneHeader
+                    transcriptLeadingSections
 
-                    if let partialCapture = MeetingPartialCapturePresentation.make(for: activeTranscription) {
-                        meetingPartialCaptureBanner(partialCapture)
-                    }
-
-                    if activeTranscription.sourceType == .meeting,
-                       activeTranscription.status != .processing,
-                       !activeTranscription.hasWordTimestamps,
-                       let banner = meetingNoWordTimestampsBannerPresentation {
-                        meetingNoWordTimestampsBanner(banner)
-                    }
-
-                    if shouldShowTranscriptAISetupBanner {
-                        chatConfigurationBanner
-                    }
-
-                    if activeTranscription.sourceType == .meeting,
-                       let calendarSnapshot = activeTranscription.calendarEventSnapshot {
-                        SavedMeetingCalendarContextSection(snapshot: calendarSnapshot)
-                    }
-
-                    if let userNotes = activeTranscription.userNotes,
-                       !userNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        meetingNotesSection(userNotes)
-                    }
-
-                    if let error = transcriptEditError {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.errorRed)
-                    }
-
-                    if !processingIssues.isEmpty {
-                        processingIssuesState
-                    }
-
-                    if let presentation = meetingTranscriptProcessingPresentation {
-                        meetingTranscriptProcessingState(presentation)
-                    }
-
-                    if transcriptDisplayMode == .text,
-                       editingTranscript || cachedHasPreferredText {
-                        // Keep one structural identity while edit mode changes so
-                        // the native selection and viewport remain in place.
-                        transcriptTextBlock
-                    } else if transcriptDisplayMode == .timed,
-                              usesMeetingReadingSurface,
-                              !cachedReadingTurns.isEmpty {
-                        if let speakers = activeTranscription.speakers, !speakers.isEmpty {
-                            speakerEditingDomain(speakers: speakers, compact: true)
-                        }
-                        meetingReadingTurnView
-                    } else if transcriptDisplayMode == .timed,
-                              let timestamps = activeTranscription.wordTimestamps,
-                              !timestamps.isEmpty {
+                    if transcriptDisplayMode == .timed,
+                       let timestamps = activeTranscription.wordTimestamps,
+                       !timestamps.isEmpty {
                         if let speakers = activeTranscription.speakers, !speakers.isEmpty {
                             speakerEditingDomain(speakers: speakers, compact: false)
                         }
                         timestampedView(words: timestamps)
-                    } else if cachedHasPreferredText {
-                        transcriptTextBlock
                     } else if meetingTranscriptProcessingPresentation == nil {
                         Text("No transcript available")
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
@@ -1987,13 +1984,13 @@ struct TranscriptResultView: View {
         return (id: findBlocks[current.blockIndex].id, range: current.range)
     }
 
-    /// Text mode first centers its finite native surface in the outer scroll
-    /// view, then centers the exact glyph range inside that surface. Timed mode
-    /// scrolls directly to the matching block.
+    /// Timed modes scroll directly to the matching block. Text mode centers the
+    /// exact glyph range inside its native surface.
     private var findCurrentScrollTargetID: Int? {
         guard findBarVisible, let current = findModel.current,
               findBlocks.indices.contains(current.blockIndex) else { return nil }
-        guard transcriptDisplayMode != .text else { return Self.textSurfaceScrollTargetID }
+        // Text mode navigates inside its native surface.
+        guard transcriptDisplayMode != .text else { return nil }
         return findBlocks[current.blockIndex].id
     }
 
@@ -2222,6 +2219,63 @@ struct TranscriptResultView: View {
         return "Edit the transcript text"
     }
 
+    /// Header, banners, meeting context, notes, and processing state shown
+    /// above every transcript body. Reading and Text host it inside their native
+    /// scroll views; the timed SwiftUI surface places it in its stack.
+    @ViewBuilder
+    private var transcriptLeadingSections: some View {
+        transcriptPaneHeader
+
+        if let partialCapture = MeetingPartialCapturePresentation.make(for: activeTranscription) {
+            meetingPartialCaptureBanner(partialCapture)
+        }
+
+        if activeTranscription.sourceType == .meeting,
+           activeTranscription.status != .processing,
+           !activeTranscription.hasWordTimestamps,
+           let banner = meetingNoWordTimestampsBannerPresentation {
+            meetingNoWordTimestampsBanner(banner)
+        }
+
+        if shouldShowTranscriptAISetupBanner {
+            chatConfigurationBanner
+        }
+
+        if activeTranscription.sourceType == .meeting,
+           let calendarSnapshot = activeTranscription.calendarEventSnapshot {
+            SavedMeetingCalendarContextSection(snapshot: calendarSnapshot)
+        }
+
+        if let userNotes = activeTranscription.userNotes,
+           !userNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            meetingNotesSection(userNotes)
+        }
+
+        if let error = transcriptEditError {
+            Label(error, systemImage: "exclamationmark.triangle.fill")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.errorRed)
+        }
+
+        if !processingIssues.isEmpty {
+            processingIssuesState
+        }
+
+        if let presentation = meetingTranscriptProcessingPresentation {
+            meetingTranscriptProcessingState(presentation)
+        }
+    }
+
+    /// Text renders in the full-pane native surface whenever it is the selected
+    /// mode or the only transcript body available.
+    private var usesTranscriptTextSurface: Bool {
+        if transcriptDisplayMode == .text {
+            return editingTranscript || cachedHasPreferredText
+        }
+        let hasTimedBody = activeTranscription.wordTimestamps.map { !$0.isEmpty } ?? false
+        return !hasTimedBody && cachedHasPreferredText
+    }
+
     private var processingIssues: [OfflineProcessingViewModel.Issue] {
         var issues = offlineProcessingViewModel?.issues(for: activeTranscription.id) ?? []
         if activeTranscription.status == .error,
@@ -2340,36 +2394,23 @@ struct TranscriptResultView: View {
             && !viewModel.hasConversations
     }
 
-    private var transcriptTextBlock: some View {
+    private var transcriptTextSurface: some View {
         TranscriptFindTextView(
             text: editingTranscript ? transcriptDraft : transcriptText,
             currentRange: findFullTextCurrentHighlightRange,
             fontScale: clampedTranscriptFontScale,
             navigationToken: findScrollToken,
             isEditable: editingTranscript,
+            headerRevision: transcriptHeaderRevision,
             onTextChange: { updatedText in
                 guard editingTranscript else { return }
                 transcriptDraft = updatedText
             }
-        )
-        // Text mode owns a finite native viewport. TextKit can then lay out
-        // visible text only instead of reporting a complete document height to
-        // the enclosing SwiftUI scroll view.
-        .frame(minHeight: 320, idealHeight: 520, maxHeight: 640)
-        .padding(DesignSystem.Spacing.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                .fill(DesignSystem.Colors.surfaceElevated.opacity(editingTranscript ? 0.75 : 0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                .strokeBorder(
-                    editingTranscript ? DesignSystem.Colors.accent.opacity(0.30) : .clear,
-                    lineWidth: 1
-                )
-        )
-        .id(Self.textSurfaceScrollTargetID)
+        ) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                transcriptLeadingSections
+            }
+        }
     }
 
     private func transcriptTimedTextSearchableBlocks() -> some View {
@@ -3635,7 +3676,7 @@ struct TranscriptResultView: View {
             playbackIndex: cachedReadingTurnPlaybackIndex,
             speakerColorMap: cachedSpeakerColorMap,
             contentRevision: readingTurnContentRevision,
-            headerRevision: meetingReadingHeaderRevision,
+            headerRevision: transcriptHeaderRevision,
             findScrollID: findBarVisible ? findCurrentScrollTargetID : nil,
             findNavigationToken: findScrollToken,
             timestampLabel: { formatTimestamp(ms: $0) },
@@ -3675,50 +3716,12 @@ struct TranscriptResultView: View {
     @ViewBuilder
     private var meetingReadingTurnHeader: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            transcriptPaneHeader
-
-            if let partialCapture = MeetingPartialCapturePresentation.make(for: activeTranscription) {
-                meetingPartialCaptureBanner(partialCapture)
-            }
-            if activeTranscription.sourceType == .meeting,
-               activeTranscription.status != .processing,
-               !activeTranscription.hasWordTimestamps,
-               let banner = meetingNoWordTimestampsBannerPresentation {
-                meetingNoWordTimestampsBanner(banner)
-            }
-            if shouldShowTranscriptAISetupBanner { chatConfigurationBanner }
-            if let snapshot = activeTranscription.calendarEventSnapshot {
-                SavedMeetingCalendarContextSection(snapshot: snapshot)
-            }
-            if let userNotes = activeTranscription.userNotes,
-               !userNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                meetingNotesSection(userNotes)
-            }
-            if let error = transcriptEditError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.errorRed)
-            }
+            transcriptLeadingSections
             if let speakers = activeTranscription.speakers, !speakers.isEmpty {
                 speakerEditingDomain(speakers: speakers, compact: true)
             }
         }
         .padding(.bottom, DesignSystem.Spacing.md)
-    }
-
-    private var meetingReadingHeaderRevision: Int {
-        var hasher = Hasher()
-        hasher.combine(activeTranscription.id)
-        hasher.combine(activeTranscription.userNotes)
-        hasher.combine(activeTranscription.calendarEventSnapshot != nil)
-        hasher.combine(activeTranscription.hasWordTimestamps)
-        hasher.combine(meetingNoWordTimestampsBannerPresentation?.message)
-        hasher.combine(shouldShowTranscriptAISetupBanner)
-        hasher.combine(activeTranscription.speakers?.map { "\($0.id):\($0.label)" })
-        hasher.combine(speakerOverviewExpanded)
-        hasher.combine(transcriptEditError)
-        hasher.combine(clampedTranscriptFontScale)
-        return hasher.finalize()
     }
 
     // MARK: - Speaker Summary Panel

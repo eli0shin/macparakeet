@@ -11,7 +11,6 @@ import MacParakeetViewModels
 @MainActor
 final class FinalTranscriptDetailPerformanceTests: XCTestCase {
     private static let enabledKey = "MACPARAKEET_FINAL_TRANSCRIPT_PERFORMANCE"
-    private static let turnCount = 1_200
     private static let viewport = NSSize(width: 1_000, height: 800)
 
     private enum Mode: String, CaseIterable {
@@ -19,8 +18,17 @@ final class FinalTranscriptDetailPerformanceTests: XCTestCase {
         case text
     }
 
+    /// `multiSpeaker` is the documented 1,200-turn meeting. `singleTurn` is an
+    /// in-person recording without diarization: one 16,000-word microphone
+    /// Reading Turn over about 107 minutes.
+    private enum Shape: String, CaseIterable {
+        case multiSpeaker
+        case singleTurn
+    }
+
     private struct Fixture {
         let transcription: Transcription
+        let turnCount: Int
         let wordCount: Int
         let utf16Count: Int
     }
@@ -33,6 +41,7 @@ final class FinalTranscriptDetailPerformanceTests: XCTestCase {
         let findInputMax: Double
         let findSettledTotal: Double
         let findSettledMaxFrame: Double
+        let findStepMaxFrame: Double
         let matchCount: Int
     }
 
@@ -42,27 +51,31 @@ final class FinalTranscriptDetailPerformanceTests: XCTestCase {
             "Run scripts/dev/check_final_transcript_detail_performance.sh to enable the release gate."
         )
 
-        for mode in Mode.allCases {
-            let fixture = makeFixture(textMode: mode == .text)
-            let metrics = try measure(mode: mode, fixture: fixture)
-            print(
-                String(
-                    format:
-                        "FINAL_TRANSCRIPT_PERF mode=%@ turns=%d words=%d utf16=%d initial_total_ms=%.6f initial_max_frame_ms=%.6f scroll_max_frame_ms=%.6f playback_max_tick_ms=%.6f find_input_max_ms=%.6f find_settled_total_ms=%.6f find_settled_max_frame_ms=%.6f matches=%d",
-                    mode.rawValue,
-                    Self.turnCount,
-                    fixture.wordCount,
-                    fixture.utf16Count,
-                    metrics.initialTotal,
-                    metrics.initialMaxFrame,
-                    metrics.scrollMaxFrame,
-                    metrics.playbackMaxTick,
-                    metrics.findInputMax,
-                    metrics.findSettledTotal,
-                    metrics.findSettledMaxFrame,
-                    metrics.matchCount
+        for shape in Shape.allCases {
+            for mode in Mode.allCases {
+                let fixture = makeFixture(shape: shape, textMode: mode == .text)
+                let metrics = try measure(mode: mode, fixture: fixture)
+                print(
+                    String(
+                        format:
+                            "FINAL_TRANSCRIPT_PERF shape=%@ mode=%@ turns=%d words=%d utf16=%d initial_total_ms=%.6f initial_max_frame_ms=%.6f scroll_max_frame_ms=%.6f playback_max_tick_ms=%.6f find_input_max_ms=%.6f find_settled_total_ms=%.6f find_settled_max_frame_ms=%.6f find_step_max_frame_ms=%.6f matches=%d",
+                        shape.rawValue,
+                        mode.rawValue,
+                        fixture.turnCount,
+                        fixture.wordCount,
+                        fixture.utf16Count,
+                        metrics.initialTotal,
+                        metrics.initialMaxFrame,
+                        metrics.scrollMaxFrame,
+                        metrics.playbackMaxTick,
+                        metrics.findInputMax,
+                        metrics.findSettledTotal,
+                        metrics.findSettledMaxFrame,
+                        metrics.findStepMaxFrame,
+                        metrics.matchCount
+                    )
                 )
-            )
+            }
         }
     }
 
@@ -105,7 +118,7 @@ final class FinalTranscriptDetailPerformanceTests: XCTestCase {
             guard player != nil, findDriver != nil else { return false }
             switch mode {
             case .reading:
-                return self.findTableView(in: host)?.numberOfRows == Self.turnCount + 1
+                return (self.findTableView(in: host)?.numberOfRows ?? 0) > 1
             case .text:
                 return self.findTextView(in: host)?.string.utf16.count == fixture.utf16Count
             }
@@ -130,10 +143,12 @@ final class FinalTranscriptDetailPerformanceTests: XCTestCase {
         measuredPlayer.isPlaying = true
         switch mode {
         case .reading:
-            let expectedTurnRow = Int(Double(Self.turnCount) * 0.8)
             _ = try pumpMainRunLoop(timeout: 3) {
                 guard let tableView = self.findTableView(in: host) else { return false }
-                return tableView.rows(in: tableView.visibleRect).contains(expectedTurnRow)
+                // Rows follow transcript time in both fixture shapes, so the
+                // playback target is about 80% through the Reading rows.
+                let expectedRow = Int(Double(tableView.numberOfRows - 1) * 0.8)
+                return tableView.rows(in: tableView.visibleRect).contains(expectedRow)
             }
         case .text:
             RunLoop.main.run(until: Date().addingTimeInterval(0.05))
@@ -162,7 +177,16 @@ final class FinalTranscriptDetailPerformanceTests: XCTestCase {
             findState.query == "public" && !findState.isSearching && findState.matchCount > 0
         }
 
-        XCTAssertGreaterThan(findState.matchCount, Self.turnCount)
+        XCTAssertGreaterThan(findState.matchCount, fixture.turnCount)
+
+        var findStepMaxFrame = 0.0
+        for _ in 0..<40 {
+            let start = threadCPUSeconds()
+            measuredFindDriver.next()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.001))
+            findStepMaxFrame = max(findStepMaxFrame, millisecondsSince(start))
+        }
+
         return Metrics(
             initialTotal: initialTotal,
             initialMaxFrame: initialMaxFrame,
@@ -171,14 +195,26 @@ final class FinalTranscriptDetailPerformanceTests: XCTestCase {
             findInputMax: findInputMax,
             findSettledTotal: millisecondsSince(findSettledStart),
             findSettledMaxFrame: settledPump.maxFrameMilliseconds,
+            findStepMaxFrame: findStepMaxFrame,
             matchCount: findState.matchCount
         )
     }
 
-    private func makeFixture(textMode: Bool) -> Fixture {
-        let vocabulary = [
-            "public", "synthetic", "meeting", "decision", "context", "action", "owner", "followup",
-        ]
+    private static let vocabulary = [
+        "public", "synthetic", "meeting", "decision", "context", "action", "owner", "followup",
+    ]
+
+    private func makeFixture(shape: Shape, textMode: Bool) -> Fixture {
+        switch shape {
+        case .multiSpeaker:
+            return makeMultiSpeakerFixture(textMode: textMode)
+        case .singleTurn:
+            return makeSingleTurnFixture(textMode: textMode)
+        }
+    }
+
+    private func makeMultiSpeakerFixture(textMode: Bool) -> Fixture {
+        let turnCount = 1_200
         let speakers = [
             SpeakerInfo(id: "microphone", label: "Me"),
             SpeakerInfo(id: "system:S1", label: "Speaker 1"),
@@ -189,10 +225,10 @@ final class FinalTranscriptDetailPerformanceTests: XCTestCase {
         var turns: [ReadingTurn] = []
         var paragraphs: [String] = []
         words.reserveCapacity(72_000)
-        turns.reserveCapacity(Self.turnCount)
-        paragraphs.reserveCapacity(Self.turnCount)
+        turns.reserveCapacity(turnCount)
+        paragraphs.reserveCapacity(turnCount)
 
-        for turnIndex in 0..<Self.turnCount {
+        for turnIndex in 0..<turnCount {
             let speaker = speakers[turnIndex % speakers.count]
             let source: ReadingTurnSource = speaker.id == "microphone" ? .microphone : .system
             let wordsInTurn = [24, 48, 72, 96][turnIndex % 4]
@@ -200,7 +236,7 @@ final class FinalTranscriptDetailPerformanceTests: XCTestCase {
             var turnWords: [String] = []
             turnWords.reserveCapacity(wordsInTurn)
             for wordOffset in 0..<wordsInTurn {
-                let word = vocabulary[(turnIndex + wordOffset) % vocabulary.count]
+                let word = Self.vocabulary[(turnIndex + wordOffset) % Self.vocabulary.count]
                 let wordIndex = words.count
                 let startMs = wordIndex * 250
                 words.append(
@@ -241,7 +277,76 @@ final class FinalTranscriptDetailPerformanceTests: XCTestCase {
             )
         }
 
-        let transcriptText = paragraphs.joined(separator: "\n\n")
+        return makeTranscriptionFixture(
+            turns: turns,
+            words: words,
+            speakers: speakers,
+            transcriptText: paragraphs.joined(separator: "\n\n"),
+            textMode: textMode
+        )
+    }
+
+    private func makeSingleTurnFixture(textMode: Bool) -> Fixture {
+        let wordCount = 16_000
+        let wordsPerParagraph = 60
+        let speaker = SpeakerInfo(id: "microphone", label: "Me")
+        var words: [WordTimestamp] = []
+        var paragraphs: [ReadingTurnParagraph] = []
+        words.reserveCapacity(wordCount)
+
+        var paragraphWords: [String] = []
+        var paragraphReferences: [Int] = []
+        for wordIndex in 0..<wordCount {
+            let word = Self.vocabulary[(wordIndex * 3 + wordIndex / 7) % Self.vocabulary.count]
+            let startMs = wordIndex * 400
+            words.append(
+                WordTimestamp(
+                    word: word,
+                    startMs: startMs,
+                    endMs: startMs + 350,
+                    confidence: 1,
+                    speakerId: speaker.id
+                )
+            )
+            paragraphWords.append(word)
+            paragraphReferences.append(wordIndex)
+            if paragraphWords.count == wordsPerParagraph || wordIndex == wordCount - 1 {
+                paragraphs.append(
+                    ReadingTurnParagraph(
+                        text: paragraphWords.joined(separator: " ") + ".",
+                        wordReferences: paragraphReferences
+                    )
+                )
+                paragraphWords.removeAll(keepingCapacity: true)
+                paragraphReferences.removeAll(keepingCapacity: true)
+            }
+        }
+
+        let turn = ReadingTurn(
+            id: ReadingTurnIdentity(source: .microphone, speakerId: speaker.id, firstWordIndex: 0),
+            speakerId: speaker.id,
+            speakerLabel: speaker.label,
+            source: .microphone,
+            timeRange: ReadingTurnTimeRange(startMs: 0, endMs: words.last?.endMs ?? 0),
+            paragraphs: paragraphs,
+            wordReferences: Array(0..<wordCount)
+        )
+        return makeTranscriptionFixture(
+            turns: [turn],
+            words: words,
+            speakers: [speaker],
+            transcriptText: turn.text,
+            textMode: textMode
+        )
+    }
+
+    private func makeTranscriptionFixture(
+        turns: [ReadingTurn],
+        words: [WordTimestamp],
+        speakers: [SpeakerInfo],
+        transcriptText: String,
+        textMode: Bool
+    ) -> Fixture {
         let durationMs = words.last?.endMs ?? 0
         let transcription = Transcription(
             fileName: "Public Synthetic Long Meeting.m4a",
@@ -257,6 +362,7 @@ final class FinalTranscriptDetailPerformanceTests: XCTestCase {
         )
         return Fixture(
             transcription: transcription,
+            turnCount: turns.count,
             wordCount: words.count,
             utf16Count: transcriptText.utf16.count
         )
