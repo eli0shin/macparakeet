@@ -9,17 +9,162 @@ private let meetingPlaybackSignposter = OSSignposter(
     category: "TranscriptPlayback"
 )
 
+/// One rendered row of a Reading Turn. Short turns render as one row. A long
+/// turn, such as an undiarized in-person recording, renders as several bounded
+/// passages split at paragraph breaks. Only the first passage carries the byline.
 struct IdentifiedReadingTurn: Identifiable, Sendable {
+    struct ID: Hashable, Sendable {
+        let turn: ReadingTurnIdentity
+        let passageIndex: Int
+    }
+
     let turn: ReadingTurn
     let scrollID: Int
+    /// Passage text. Equals `turn.text` for a turn rendered as one row.
+    let text: String
+    /// Zero for the passage that carries the turn's byline.
+    let passageIndex: Int
+    /// Start of the passage's first timed word. The first passage uses the turn
+    /// start; a continuation without word evidence has no start of its own.
+    let startMs: Int?
 
-    var id: ReadingTurnIdentity { turn.id }
+    var id: ID { ID(turn: turn.id, passageIndex: passageIndex) }
+    var isContinuation: Bool { passageIndex > 0 }
 }
 
-func identifiedReadingTurns(_ turns: [ReadingTurn]) -> [IdentifiedReadingTurn] {
-    turns.enumerated().map { index, turn in
-        IdentifiedReadingTurn(turn: turn, scrollID: -2_000_000_000 + index)
+struct ReadingTurnPassage: Equatable, Sendable {
+    let text: String
+    let startMs: Int?
+}
+
+enum ReadingTurnPassageLayout {
+    /// Turns at or below this UTF-16 length render as one row, keeping native
+    /// selection across their paragraphs.
+    static let maximumUnsplitUTF16 = 2_000
+    /// Long turns group paragraphs into passages near this UTF-16 length. A
+    /// passage stays a few hundred points tall, so measuring, drawing, find
+    /// highlighting, and centering a row never scale with the whole turn.
+    static let targetPassageUTF16 = 1_000
+}
+
+func identifiedReadingTurns(
+    _ turns: [ReadingTurn],
+    words: [WordTimestamp]? = nil
+) -> [IdentifiedReadingTurn] {
+    var rows: [IdentifiedReadingTurn] = []
+    rows.reserveCapacity(turns.count)
+    for turn in turns {
+        for (passageIndex, passage) in readingTurnPassages(turn, words: words).enumerated() {
+            rows.append(
+                IdentifiedReadingTurn(
+                    turn: turn,
+                    scrollID: -2_000_000_000 + rows.count,
+                    text: passage.text,
+                    passageIndex: passageIndex,
+                    startMs: passage.startMs
+                )
+            )
+        }
     }
+    return rows
+}
+
+/// Splits one Reading Turn into display passages. Passages split only at
+/// paragraph breaks, so joining them with a blank line reproduces `turn.text`.
+/// A single paragraph longer than two passages is split at a sentence or word
+/// boundary instead.
+func readingTurnPassages(_ turn: ReadingTurn, words: [WordTimestamp]?) -> [ReadingTurnPassage] {
+    let text = turn.text
+    let turnStartMs = turn.timeRange?.startMs
+    guard text.utf16.count > ReadingTurnPassageLayout.maximumUnsplitUTF16 else {
+        return [ReadingTurnPassage(text: text, startMs: turnStartMs)]
+    }
+
+    // Paragraph word evidence gives continuation passages their own playback
+    // start. Validated AI formatting can reflow paragraphs, so its blocks have
+    // no reliable word mapping.
+    let units: [ReadingTurnPassage]
+    if turn.formattedText == nil || text == turn.deterministicText {
+        units = turn.paragraphs.map { paragraph in
+            let startMs = paragraph.wordReferences.first.flatMap { reference -> Int? in
+                guard let words, words.indices.contains(reference) else { return nil }
+                return words[reference].startMs
+            }
+            return ReadingTurnPassage(text: paragraph.text, startMs: startMs)
+        }
+    } else {
+        units = text.components(separatedBy: "\n\n").map {
+            ReadingTurnPassage(text: $0, startMs: nil)
+        }
+    }
+
+    let target = ReadingTurnPassageLayout.targetPassageUTF16
+    var passages: [ReadingTurnPassage] = []
+    var pending: [String] = []
+    var pendingLength = 0
+    var pendingStartMs: Int?
+
+    func flushPending() {
+        guard !pending.isEmpty else { return }
+        passages.append(
+            ReadingTurnPassage(text: pending.joined(separator: "\n\n"), startMs: pendingStartMs)
+        )
+        pending.removeAll(keepingCapacity: true)
+        pendingLength = 0
+        pendingStartMs = nil
+    }
+
+    for unit in units {
+        let length = unit.text.utf16.count
+        if length > target * 2 {
+            flushPending()
+            for (pieceIndex, piece) in splitOversizedReadingParagraph(unit.text, limit: target).enumerated() {
+                passages.append(ReadingTurnPassage(text: piece, startMs: pieceIndex == 0 ? unit.startMs : nil))
+            }
+            continue
+        }
+        if !pending.isEmpty, pendingLength + 2 + length > target {
+            flushPending()
+        }
+        if pending.isEmpty { pendingStartMs = unit.startMs }
+        pending.append(unit.text)
+        pendingLength += (pending.count > 1 ? 2 : 0) + length
+    }
+    flushPending()
+
+    guard !passages.isEmpty else {
+        return [ReadingTurnPassage(text: text, startMs: turnStartMs)]
+    }
+    passages[0] = ReadingTurnPassage(text: passages[0].text, startMs: turnStartMs)
+    return passages
+}
+
+/// Splits one long paragraph at spaces, preferring the last sentence end in the
+/// second half of each piece. Joining the pieces with one space reproduces it.
+func splitOversizedReadingParagraph(_ text: String, limit: Int) -> [String] {
+    let words = text.split(separator: " ", omittingEmptySubsequences: false)
+    var pieces: [String] = []
+    var current: [Substring] = []
+    var currentLength = 0
+
+    for word in words {
+        let length = word.utf16.count
+        if !current.isEmpty, currentLength + 1 + length > limit {
+            let sentenceEnd = current.lastIndex { $0.last.map { ".?!".contains($0) } ?? false }
+            if let sentenceEnd, sentenceEnd >= current.count / 2, sentenceEnd < current.count - 1 {
+                pieces.append(current[...sentenceEnd].joined(separator: " "))
+                current = Array(current[(sentenceEnd + 1)...])
+            } else {
+                pieces.append(current.joined(separator: " "))
+                current = []
+            }
+            currentLength = current.isEmpty ? 0 : current.reduce(-1) { $0 + $1.utf16.count + 1 }
+        }
+        currentLength += (current.isEmpty ? 0 : 1) + length
+        current.append(word)
+    }
+    if !current.isEmpty { pieces.append(current.joined(separator: " ")) }
+    return pieces
 }
 
 enum MeetingReadingTurnLayout {
@@ -33,6 +178,9 @@ enum MeetingReadingTurnLayout {
     /// Leading between text lines; paragraph blank lines come from the text.
     static let bodyLineSpacing: CGFloat = 4
     static let bylineHeight: CGFloat = 20
+    /// Extra space above a continuation passage, so the row break reads like
+    /// the paragraph break it replaces.
+    static let continuationTopPadding: CGFloat = 6
 }
 
 func readingTurnScrollTarget(
@@ -42,10 +190,19 @@ func readingTurnScrollTarget(
 ) -> Int? {
     if let playbackIndex {
         guard let target = playbackIndex.turnID(at: currentMs) else { return nil }
-        return turns.first { $0.id == target }?.scrollID
+        // Within the evidence turn, follow the latest passage that has started.
+        var result: Int?
+        for row in turns where row.turn.id == target {
+            if result == nil {
+                result = row.scrollID
+            } else if let startMs = row.startMs, startMs <= currentMs {
+                result = row.scrollID
+            }
+        }
+        return result
     }
-    return turns.filter { ($0.turn.timeRange?.startMs ?? .max) <= currentMs }
-        .max { ($0.turn.timeRange?.startMs ?? .min) < ($1.turn.timeRange?.startMs ?? .min) }?.scrollID
+    return turns.filter { ($0.startMs ?? .max) <= currentMs }
+        .max { ($0.startMs ?? .min) < ($1.startMs ?? .min) }?.scrollID
 }
 
 @MainActor @Observable
@@ -344,8 +501,10 @@ struct MeetingReadingTurnContentView: NSViewRepresentable {
             if row == 0 { return headerHeight(for: tableView) }
             let turnIndex = row - 1
             if let cached = heightCache[turnIndex] { return cached }
+            let row = parent.turns[turnIndex]
             let height = Self.turnHeight(
-                text: parent.turns[turnIndex].turn.text,
+                text: row.text,
+                isContinuation: row.isContinuation,
                 width: tableView.bounds.width,
                 pointSize: parent.bodyPointSize
             )
@@ -539,7 +698,12 @@ struct MeetingReadingTurnContentView: NSViewRepresentable {
             }
         }
 
-        private static func turnHeight(text: String, width: CGFloat, pointSize: CGFloat) -> CGFloat {
+        private static func turnHeight(
+            text: String,
+            isContinuation: Bool,
+            width: CGFloat,
+            pointSize: CGFloat
+        ) -> CGFloat {
             let textWidth = max(
                 1,
                 width - (MeetingReadingTurnLayout.horizontalPadding * 2)
@@ -567,17 +731,16 @@ struct MeetingReadingTurnContentView: NSViewRepresentable {
                 ).height
             )
             return bodyHeight
-                + MeetingReadingTurnLayout.bylineHeight
-                + DesignSystem.Spacing.xs
-                + (MeetingReadingTurnLayout.verticalPadding * 2)
+                + ReadingTurnTableCellView.bodyTopInset(isContinuation: isContinuation)
+                + MeetingReadingTurnLayout.verticalPadding
         }
     }
 }
 
 private struct ContentSignature: Equatable {
     let count: Int
-    let firstID: ReadingTurnIdentity?
-    let lastID: ReadingTurnIdentity?
+    let firstID: IdentifiedReadingTurn.ID?
+    let lastID: IdentifiedReadingTurn.ID?
     let pointSize: CGFloat
     let revision: Int
 
@@ -625,6 +788,18 @@ private final class ReadingTurnTableCellView: NSTableCellView, NSTextFieldDelega
     private var onCopyTurn: ((ReadingTurn) -> Void)?
     private var onRenameSpeaker: ((String, String) -> Void)?
     private var originalSpeakerLabel = ""
+    private var bodyTopConstraint: NSLayoutConstraint?
+
+    /// Distance from the row top to the body text. Height measurement and the
+    /// cell's constraints share this value.
+    static func bodyTopInset(isContinuation: Bool) -> CGFloat {
+        if isContinuation {
+            return MeetingReadingTurnLayout.verticalPadding + MeetingReadingTurnLayout.continuationTopPadding
+        }
+        return MeetingReadingTurnLayout.verticalPadding
+            + MeetingReadingTurnLayout.bylineHeight
+            + DesignSystem.Spacing.xs
+    }
 
     init(identifier: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
@@ -667,6 +842,11 @@ private final class ReadingTurnTableCellView: NSTableCellView, NSTextFieldDelega
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
+        let bodyTopConstraint = bodyLabel.topAnchor.constraint(
+            equalTo: topAnchor,
+            constant: Self.bodyTopInset(isContinuation: false)
+        )
+        self.bodyTopConstraint = bodyTopConstraint
         NSLayoutConstraint.activate([
             focusBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             focusBar.topAnchor.constraint(equalTo: topAnchor),
@@ -703,12 +883,7 @@ private final class ReadingTurnTableCellView: NSTableCellView, NSTextFieldDelega
             ),
             bodyLabel.trailingAnchor.constraint(
                 equalTo: trailingAnchor, constant: -MeetingReadingTurnLayout.horizontalPadding),
-            bodyLabel.topAnchor.constraint(
-                equalTo: topAnchor,
-                constant: MeetingReadingTurnLayout.verticalPadding
-                    + MeetingReadingTurnLayout.bylineHeight
-                    + DesignSystem.Spacing.xs
-            ),
+            bodyTopConstraint,
             bodyLabel.bottomAnchor.constraint(
                 equalTo: bottomAnchor, constant: -MeetingReadingTurnLayout.verticalPadding),
         ])
@@ -736,6 +911,11 @@ private final class ReadingTurnTableCellView: NSTableCellView, NSTextFieldDelega
         originalSpeakerLabel = identified.turn.speakerLabel
         if !speakerLabel.isEditable { speakerLabel.stringValue = originalSpeakerLabel }
 
+        // Continuation passages belong to the byline above them.
+        let isContinuation = identified.isContinuation
+        for view in [marker, speakerLabel, renameButton] { view.isHidden = isContinuation }
+        bodyTopConstraint?.constant = Self.bodyTopInset(isContinuation: isContinuation)
+
         marker.layer?.cornerRadius = MeetingReadingTurnLayout.speakerMarkerSize / 2
         marker.layer?.backgroundColor =
             speakerColor.withAlphaComponent(
@@ -751,7 +931,7 @@ private final class ReadingTurnTableCellView: NSTableCellView, NSTextFieldDelega
             SpeakerRenameAccessibility.renameButtonIdentifier(contextID: renameContextID)
         )
 
-        if let startMs = identified.turn.timeRange?.startMs {
+        if !isContinuation, let startMs = identified.turn.timeRange?.startMs {
             timestampButton.title = timestampLabel(startMs)
             timestampButton.tag = startMs
             timestampButton.isHidden = false
@@ -771,7 +951,7 @@ private final class ReadingTurnTableCellView: NSTableCellView, NSTextFieldDelega
             .foregroundColor: NSColor.labelColor,
             .paragraphStyle: paragraph,
         ]
-        let attributed = NSMutableAttributedString(string: identified.turn.text, attributes: attributes)
+        let attributed = NSMutableAttributedString(string: identified.text, attributes: attributes)
         if let currentRange,
             currentRange.location >= 0,
             currentRange.length >= 0,
@@ -784,7 +964,11 @@ private final class ReadingTurnTableCellView: NSTableCellView, NSTextFieldDelega
             )
         }
         bodyLabel.attributedStringValue = attributed
-        setAccessibilityLabel("\(identified.turn.speakerLabel) reading turn")
+        setAccessibilityLabel(
+            isContinuation
+                ? "\(identified.turn.speakerLabel) reading turn, continued"
+                : "\(identified.turn.speakerLabel) reading turn"
+        )
     }
 
     @objc private func timestampPressed() {
